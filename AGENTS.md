@@ -226,3 +226,4 @@ verifica antes de construir:
 | `docs/06-modulos-backend.md` | Módulos backend con checklist de avance |
 | `docs/07-modulos-frontend.md` | Módulos frontend con checklist de avance |
 | `docs/08-dashboard-kpis.md` | Definición exacta de cada KPI |
+| `docs/09-linea-grafica-frontend.md` | Línea gráfica del frontend: paleta, tipografía, librerías de UI candidatas y flujo de mockups con Stitch AI |

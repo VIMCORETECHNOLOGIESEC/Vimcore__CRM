@@ -89,6 +89,8 @@ upfront speculatively.
 - Tailwind utility classes directly. No CSS-in-JS.
 - Charts: Recharts (per `docs/07-modulos-frontend.md` F5) — declarative, typed, reasonable
   bundle size for this dashboard's chart volume.
+- Visual line (palette, typography, candidate component libraries, per-module mockup prompts):
+  `docs/09-linea-grafica-frontend.md`. Check it before styling a new screen from scratch.
 - Interface text is exclusively in Spanish (AGENTS.md §2, §4). This applies to UI copy, not to
   code identifiers/comments in the `.md` sense — component/variable naming follows whatever
   convention the surrounding code already uses.

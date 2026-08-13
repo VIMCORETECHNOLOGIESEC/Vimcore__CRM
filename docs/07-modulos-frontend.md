@@ -3,6 +3,9 @@
 React + TypeScript + Tailwind CSS. Web responsive, interfaz exclusivamente en
 español.
 
+Línea gráfica, paleta, librerías de UI candidatas y flujo de mockups por
+módulo: ver `docs/09-linea-grafica-frontend.md`.
+
 ---
 
 ## Estructura
@@ -43,7 +46,8 @@ frontend/src/
 - [ ] Diseño responsive con puntos de corte móvil, tableta y escritorio
 - [ ] Estados de carga (esqueletos), vacío y error en cada vista
 - [ ] Paleta base neutra y tipografía legible; sin manual de marca disponible,
-      se prioriza claridad y contraste sobre expresividad
+      se prioriza claridad y contraste sobre expresividad (línea gráfica
+      propuesta en `docs/09-linea-grafica-frontend.md`)
 
 ---
 
