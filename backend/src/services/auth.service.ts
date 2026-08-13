@@ -7,12 +7,12 @@ import { verifyPassword } from "../lib/password.js";
 import * as refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 
-export interface ParDeTokens {
+export interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
 
-export interface UsuarioPublico {
+export interface PublicUser {
   id: string;
   nombre: string;
   correo: string;
@@ -35,7 +35,7 @@ function hashRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function toPublicUser(user: Usuario): UsuarioPublico {
+function toPublicUser(user: Usuario): PublicUser {
   return {
     id: user.id,
     nombre: user.nombre,
@@ -44,26 +44,26 @@ function toPublicUser(user: Usuario): UsuarioPublico {
   };
 }
 
-async function issueTokenPair(user: Usuario): Promise<ParDeTokens> {
+async function issueTokenPair(user: Usuario): Promise<TokenPair> {
   const accessToken = await signAccessToken({ id: user.id, rol: user.rol });
   const jti = randomUUID();
-  const refresco = await signRefreshToken({ id: user.id, jti });
+  const refreshToken = await signRefreshToken({ id: user.id, jti });
 
   await refreshTokenRepository.create({
     jti,
     usuarioId: user.id,
-    hash: hashRefreshToken(refresco.token),
-    expiraEn: refresco.expiraEn,
+    hash: hashRefreshToken(refreshToken.token),
+    expiraEn: refreshToken.expiraEn,
   });
 
-  return { accessToken, refreshToken: refresco.token };
+  return { accessToken, refreshToken: refreshToken.token };
 }
 
 /** D1, D2, D5: emite un par de tokens si el usuario está activo. */
 export async function login(
   correo: string,
   password: string,
-): Promise<ParDeTokens & { usuario: UsuarioPublico }> {
+): Promise<TokenPair & { usuario: PublicUser }> {
   const user = await usuarioRepository.findByEmail(correo);
   if (!user) {
     throw invalidCredentials();
@@ -87,7 +87,7 @@ export async function login(
  * Rotación en cada uso (D1). D-D: reutilizar un `jti` ya revocado revoca
  * toda la familia de refresh tokens del usuario.
  */
-export async function refresh(token: string): Promise<ParDeTokens> {
+export async function refresh(token: string): Promise<TokenPair> {
   let payload: Awaited<ReturnType<typeof verifyRefreshToken>>;
   try {
     payload = await verifyRefreshToken(token);
@@ -125,20 +125,20 @@ export async function refresh(token: string): Promise<ParDeTokens> {
   }
 
   const accessToken = await signAccessToken({ id: user.id, rol: user.rol });
-  const nuevoJti = randomUUID();
-  const nuevoRefresco = await signRefreshToken({ id: user.id, jti: nuevoJti });
+  const newJti = randomUUID();
+  const newRefreshToken = await signRefreshToken({ id: user.id, jti: newJti });
 
   await refreshTokenRepository.rotate({
     previousJti: row.jti,
     newToken: {
-      jti: nuevoJti,
+      jti: newJti,
       usuarioId: user.id,
-      hash: hashRefreshToken(nuevoRefresco.token),
-      expiraEn: nuevoRefresco.expiraEn,
+      hash: hashRefreshToken(newRefreshToken.token),
+      expiraEn: newRefreshToken.expiraEn,
     },
   });
 
-  return { accessToken, refreshToken: nuevoRefresco.token };
+  return { accessToken, refreshToken: newRefreshToken.token };
 }
 
 /**
