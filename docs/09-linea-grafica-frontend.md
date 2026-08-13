@@ -49,26 +49,54 @@ Derivados de los "Criterios transversales de calidad" de `07-modulos-frontend.md
 8. **Interfaz 100% en español**, incluyendo formatos: fecha `DD/MM/AAAA
    HH:mm`, moneda USD con separador de miles.
 
+### 2.1 Skills de diseño instaladas
+
+Para mantener el mismo criterio de craft en las pantallas que faltan (F6-F8)
+y en el desarrollo general, este repo tiene instaladas 3 skills de Claude
+Code tomadas del registro comunitario [ui-skills.com](https://www.ui-skills.com/)
+(MIT, código en GitHub) en `.claude/skills/`:
+
+| Skill | Uso |
+|---|---|
+| `interface-design` | Craft-first para dashboards/admin panels/SaaS — la categoría de este CRM. Úsala al diseñar o revisar cualquier pantalla nueva. |
+| `better-layout` | Grouping, alineación, orden de lectura, breakpoints. Úsala para estructurar toolbars, tablas y formularios. |
+| `baseline-ui` | Baseline anti-slop: un acento por vista, primitivas accesibles, reglas de animación/estado. Úsala como pasada de limpieza rápida. |
+
+Se cargan solas cuando la tarea calza con su trigger (ver
+`.atl/skill-registry.md`); no hace falta invocarlas a mano. Procedencia y
+criterio de selección en `.claude/skills/_shared/ui-skills-sources.md`.
+
 ---
 
-## 3. Paleta y tipografía propuestas
+## 3. Paleta y tipografía — APROBADA
 
-Paleta neutra con un acento, más los tres colores fijos del semáforo (deben
-cumplir contraste WCAG AA como texto sobre fondo, no solo como chip de color):
+> **Estado:** aprobada por el cliente/diseño. Reemplaza la propuesta inicial
+> de acento azul de este documento. Referencia visual completa (swatches,
+> tipografía, y 4 pantallas maquetadas — login, listado de leads, detalle de
+> lead, dashboard): [`docs/mockups/propuesta-visual.html`](mockups/propuesta-visual.html)
+> (ábrelo en el navegador).
 
-| Uso | Color sugerido | Notas |
+Paleta de solo dos colores base mientras no hay manual de marca — blanco y
+negro — más los tres colores fijos del semáforo, que quedan **fuera** de esta
+paleta y nunca se usan de forma decorativa:
+
+| Uso | Color | Notas |
 |---|---|---|
-| Fondo base | `slate-50` / `slate-900` (modo oscuro futuro) | Neutro |
-| Texto principal | `slate-900` / `slate-100` | Contraste AA mínimo 4.5:1 |
-| Acento primario | `blue-600` | Botones primarios, enlaces, foco |
-| Semáforo — A tiempo | `emerald-600` + etiqueta "A tiempo" | Nunca solo el chip |
-| Semáforo — En riesgo | `amber-600` + etiqueta "En riesgo" | Evitar amarillo puro (bajo contraste) |
-| Semáforo — Atrasado | `red-600` + etiqueta "Atrasado" | |
-| Serie de gráficas (Recharts) | Paleta categórica de 6-8 tonos, distinguible en escala de grises | Definir junto con F5 |
+| Fondo / superficie | `#FFFFFF` | Fondo dominante en páginas, cards y cuerpo de tabla |
+| Acento estructural | `#111113` (negro) | Reservado a navegación/estructura: borde + estado activo del sidebar, regla del encabezado de tabla, botón principal. Nunca como panel sólido grande — el sidebar comparte fondo con el canvas, el negro es un acento preciso, no un bloque de color |
+| Texto principal | `#18181B` | Sobre fondo blanco |
+| Gris neutro (bordes, superficies secundarias) | `#E8E8E8` / `#F5F5F5` | Sin tinte de color |
+| Serie de gráficas (categórica) | `#4F46E5` `#2563EB` `#0D9488` `#7C3AED` | 4 tonos para distinguir series (red social, asesor); ninguno pisa los colores de semáforo |
+| Semáforo — Frío | `#16A34A` + etiqueta de texto | Nunca solo el chip |
+| Semáforo — Tibio | `#D97706` + etiqueta de texto | |
+| Semáforo — Caliente | `#DC2626` + etiqueta de texto | |
 
-Tipografía: una sola familia sans-serif del sistema (`Inter` o system-ui) para
-evitar peso de carga adicional; tamaño base 14-16px, escala tipográfica corta
-(4-5 pasos) para no fragmentar la jerarquía visual entre las 8 pantallas.
+Tipografía: Inter en toda la interfaz (headline y body), tamaño base 13-16px
+según densidad de la vista, escala corta para no fragmentar la jerarquía
+entre las 8 pantallas. Roundness moderado (8px).
+
+Ver también §2.1 (skills de diseño instaladas) para seguir tomando estas
+decisiones con el mismo criterio en las pantallas que faltan.
 
 ---
 
@@ -138,6 +166,17 @@ implementar cada módulo en código.
   variable de entorno local o en un archivo fuera del control de versiones
   (p. ej. `~/.config/`), nunca en `docs/`, `.env` versionado, ni en este
   archivo.
+- MCP de Stitch: **conectado y probado** (sesión Claude Code, autenticado con
+  la cuenta del usuario, sin clave manual). Proyecto reutilizable:
+  `CRM Comercial - Propuesta Visual`, `projectId 8669152245244265576`,
+  sistema de diseño `assets/15350993658645954285`. Generó con éxito la
+  pantalla de Login (F2) como render real; las pantallas más complejas
+  (listado de leads, detalle de lead, dashboard) dieron timeout de forma
+  sistemática en varios intentos — no depende del prompt ni de la paleta, es
+  un límite de capacidad del backend en este momento. Esas 3 se resolvieron
+  como wireframe HTML de alta fidelidad en
+  `docs/mockups/propuesta-visual.html`, con los mismos tokens. Al reintentar
+  F6-F8, esperar el mismo comportamiento y tener el wireframe como plan B.
 
 ### 6.3 Plantilla de prompt por pantalla
 
@@ -148,8 +187,9 @@ estructura de prompt:
 Pantalla: <nombre de la pantalla>
 Contexto: CRM de gestión comercial de leads, interfaz en español, web
   responsive (móvil/tableta/escritorio).
-Paleta: neutra (grises) + acento azul; semáforo verde/ámbar/rojo con
-  etiqueta de texto obligatoria junto al color.
+Paleta: blanco (fondo dominante) + negro (acento estructural: navegación,
+  encabezado de tabla, botón principal — nunca un panel sólido grande);
+  semáforo verde/ámbar/rojo con etiqueta de texto obligatoria junto al color.
 Elementos obligatorios: <lista de la columna "Elementos gráficos clave">
 Restricciones: sin bloqueo de interfaz (mostrar estado de carga), estados de
   error accionables en español, formato de fecha DD/MM/AAAA HH:mm.
@@ -157,20 +197,28 @@ Restricciones: sin bloqueo de interfaz (mostrar estado de carga), estados de
 
 ### 6.4 Pendiente de decisión
 
-No hay una integración de API pública documentada y confirmada de Stitch AI
-para automatizar la generación de mockups desde este flujo — el uso previsto
-es manual, vía su interfaz. Si existe un MCP o endpoint específico de Stitch
-que se quiera invocar en automático desde Claude Code, falta esa referencia
-concreta (URL de docs de la API) para integrarlo sin adivinar el contrato.
+Resuelto: el MCP de Stitch sí está integrado y se puede invocar en automático
+desde Claude Code (ver §6.2 para el proyecto/IDs reutilizables y la
+limitación de fiabilidad conocida en pantallas complejas).
 
 ---
 
-## 7. Próximos pasos
+## 7. Estado y próximos pasos
 
-1. Confirmar esta guía con el cliente/diseño antes de generar los 8 mockups.
-2. Generar en Stitch AI un mockup por fila de §5, guardar capturas de
-   referencia (fuera de este repo o en una carpeta `docs/mockups/` si se
-   decide versionarlas).
-3. Instalar shadcn/ui (CLI v3) + TanStack Table + React Hook Form + Zod +
-   lucide-react como parte de F1.
-4. Definir la paleta categórica final de Recharts junto con F5.
+- [x] Confirmar esta guía con el cliente/diseño — **aprobada**, ver §3.
+- [x] Generar mockups de referencia — 4 de 8 (F2 Login, F3 Listado de leads,
+      F4 Detalle de lead, F5 Dashboard) en
+      [`docs/mockups/propuesta-visual.html`](mockups/propuesta-visual.html).
+- [ ] Generar los 4 mockups restantes en Stitch (F1 Layout base, F6
+      Notificaciones, F7 Usuarios, F8 Bridges) reutilizando
+      `projectId 8669152245244265576` / `assets/15350993658645954285`. Esperar
+      timeouts en pantallas complejas (ver §6.2) y tener listo el patrón de
+      wireframe HTML como plan B.
+- [ ] Instalar shadcn/ui (CLI v3, `--force` o `--legacy-peer-deps` por
+      React 19) + TanStack Router/Query + TanStack Table + React Hook Form +
+      Zod + lucide-react + date-fns + sonner, como parte de F1. Nada de esto
+      está instalado todavía en `frontend/package.json`.
+- [ ] Definir la paleta categórica final de Recharts junto con F5 — punto de
+      partida en §3 (`#4F46E5 #2563EB #0D9488 #7C3AED`).
+- [ ] Con la línea gráfica aprobada, arrancar el desarrollo general del
+      frontend (F1 en adelante) sobre esta base.
