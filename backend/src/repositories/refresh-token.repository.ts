@@ -9,7 +9,7 @@ import { prisma } from "../lib/prisma.js";
  */
 type PrismaClientOrTransaction = typeof prisma | Prisma.TransactionClient;
 
-export interface CrearRefreshTokenParams {
+export interface CreateRefreshTokenParams {
   jti: string;
   usuarioId: string;
   hash: string;
@@ -17,7 +17,7 @@ export interface CrearRefreshTokenParams {
 }
 
 export async function create(
-  params: CrearRefreshTokenParams,
+  params: CreateRefreshTokenParams,
 ): Promise<RefreshToken> {
   return prisma.refreshToken.create({ data: params });
 }
@@ -55,7 +55,7 @@ export async function revokeAllForUser(
  */
 export async function rotate(params: {
   previousJti: string;
-  newToken: CrearRefreshTokenParams;
+  newToken: CreateRefreshTokenParams;
 }): Promise<RefreshToken> {
   const [, created] = await prisma.$transaction([
     prisma.refreshToken.update({

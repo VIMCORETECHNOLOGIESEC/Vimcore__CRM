@@ -29,15 +29,15 @@ export interface SignedRefreshToken {
   expiraEn: Date;
 }
 
-export async function signAccessToken(usuario: {
+export async function signAccessToken(user: {
   id: string;
   rol: string;
 }): Promise<string> {
   const expSeconds = Math.floor(Date.now() / 1000) + env.JWT_ACCESS_TTL_SECONDS;
 
-  return new SignJWT({ rol: usuario.rol, type: "access" })
+  return new SignJWT({ rol: user.rol, type: "access" })
     .setProtectedHeader({ alg: "HS256" })
-    .setSubject(usuario.id)
+    .setSubject(user.id)
     .setIssuer(ISSUER)
     .setAudience(AUDIENCE)
     .setIssuedAt()

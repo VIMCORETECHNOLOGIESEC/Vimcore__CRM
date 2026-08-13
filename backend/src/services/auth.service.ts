@@ -63,7 +63,7 @@ async function issueTokenPair(user: Usuario): Promise<TokenPair> {
 export async function login(
   correo: string,
   password: string,
-): Promise<TokenPair & { usuario: PublicUser }> {
+): Promise<TokenPair & { user: PublicUser }> {
   const user = await usuarioRepository.findByEmail(correo);
   if (!user) {
     throw invalidCredentials();
@@ -80,7 +80,7 @@ export async function login(
   }
 
   const pair = await issueTokenPair(user);
-  return { ...pair, usuario: toPublicUser(user) };
+  return { ...pair, user: toPublicUser(user) };
 }
 
 /**
