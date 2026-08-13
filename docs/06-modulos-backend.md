@@ -21,10 +21,15 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 - [x] Prisma conectado a PostgreSQL en Docker
 - [ ] Esquema inicial completo y primera migración
 - [x] Middleware de errores centralizado con clase `AppError`
-- [ ] Validación con Zod en el borde de cada controller
-- [ ] Registro de eventos estructurado (pino)
+- [x] Validación con Zod en el borde de cada controller (`auth.controller`;
+      `salud.controller` no recibe body/params/query, no aplica — hallazgo H3
+      del diseño de `m1-completo-m2-autenticacion`)
+- [x] Registro de eventos estructurado (`pino` + `pino-http`, con redacción de
+      credenciales y tokens)
 - [x] Variables de entorno validadas al arranque; el proceso no inicia si falta una
-- [ ] Semillas de datos para desarrollo (usuarios de cada rol, campañas de prueba)
+- [x] Semillas de datos para desarrollo (un usuario `activo=true` por cada rol
+      de `RolUsuario`; campañas de prueba quedan para M4, fuera de alcance de
+      este cambio)
 
 ---
 
@@ -32,13 +37,13 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 
 Desacoplado a propósito: otro equipo integrará el SSO contra esta misma API.
 
-- [ ] `POST /api/v1/auth/login` — devuelve JWT de acceso y refresh
-- [ ] `POST /api/v1/auth/refresh`
-- [ ] `POST /api/v1/auth/logout`
-- [ ] `GET /api/v1/auth/perfil`
-- [ ] Hash de contraseña con argon2id
-- [ ] Middleware `requiereAutenticacion`
-- [ ] Middleware `requiereRol(...roles)`
+- [x] `POST /api/v1/auth/login` — devuelve JWT de acceso y refresh
+- [x] `POST /api/v1/auth/refresh`
+- [x] `POST /api/v1/auth/logout`
+- [x] `GET /api/v1/auth/perfil`
+- [x] Hash de contraseña con argon2id (`@node-rs/argon2`)
+- [x] Middleware `requiereAutenticacion` (identificador real: `requireAuthentication`)
+- [x] Middleware `requiereRol(...roles)` (identificador real: `requireRole(...roles)`)
 - [ ] CRUD de usuarios (solo administrador)
 - [ ] Baja lógica de usuario con reasignación obligatoria de su cartera activa
 

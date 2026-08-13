@@ -29,5 +29,27 @@ model Usuario {
   creadoEn           DateTime   @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn      DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
+  refreshTokens RefreshToken[]
+
   @@map("usuarios")
+}
+
+// D-A: `jti` (UUID v4 generado en la emisión) es la PK — el 100% de los
+// accesos a esta tabla es por `jti` (rotación, logout, detección de
+// reutilización); un id sustituto no aportaría nada.
+model RefreshToken {
+  jti        String    @id @db.Uuid
+  usuarioId  String    @map("usuario_id") @db.Uuid
+  // D-B: sha256hex del JWT de refresco compacto completo. Nunca el token en
+  // claro. El control primario de seguridad es la firma HMAC del JWT; este
+  // hash es defensa en profundidad (ata la fila al string exacto del token).
+  hash       String    @db.Text
+  expiraEn   DateTime  @map("expira_en") @db.Timestamptz(6)
+  revocadoEn DateTime? @map("revocado_en") @db.Timestamptz(6)
+  creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, revocadoEn])
+  @@map("refresh_tokens")
 }
