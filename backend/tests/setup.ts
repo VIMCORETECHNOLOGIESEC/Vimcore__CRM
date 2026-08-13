@@ -1,7 +1,10 @@
 /**
  * `globalSetup` de vitest (D-H). Corre una sola vez antes de toda la
- * suite. Trunca `refresh_tokens` y `usuarios` contra la BD real de compose
- * para que cada corrida arranque desde un estado limpio y determinista.
+ * suite. Trunca `refresh_tokens`, `usuarios` y `clientes` contra la BD real
+ * de compose para que cada corrida arranque desde un estado limpio y
+ * determinista. `clientes CASCADE` arrastra también `correos_cliente`,
+ * `leads` y `lead_eventos` (M3): todo lo que cuelga de un cliente por FK
+ * desaparece igual, aunque no se nombre explícitamente en la sentencia.
  *
  * Guarda de seguridad no negociable: si `NODE_ENV !== "test"`, el proceso
  * aborta ANTES de tocar la base de datos. Sin esta guarda, un `pnpm test`
@@ -25,7 +28,7 @@ export default async function setup(): Promise<void> {
 
   try {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "refresh_tokens", "usuarios" CASCADE',
+      'TRUNCATE TABLE "refresh_tokens", "usuarios", "clientes" CASCADE',
     );
   } finally {
     await prisma.$disconnect();
