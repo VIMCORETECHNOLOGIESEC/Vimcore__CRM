@@ -62,9 +62,9 @@ describe("POST /api/v1/usuarios", () => {
       });
 
     expect(respuesta.status).toBe(201);
-    expect(respuesta.body.usuario.correo).toBe("nuevo@integracion.test");
-    expect(respuesta.body.usuario.rol).toBe("ASESOR");
-    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+    expect(respuesta.body.user.correo).toBe("nuevo@integracion.test");
+    expect(respuesta.body.user.rol).toBe("ASESOR");
+    expect(respuesta.body.user.passwordHash).toBeUndefined();
   });
 
   it("400 con una contraseña más corta que la política de alta (min 12)", async () => {
@@ -112,9 +112,9 @@ describe("GET /api/v1/usuarios y GET /api/v1/usuarios/:id", () => {
       .set("Authorization", `Bearer ${adminAccessToken}`);
 
     expect(respuesta.status).toBe(200);
-    expect(Array.isArray(respuesta.body.usuarios)).toBe(true);
-    for (const usuario of respuesta.body.usuarios) {
-      expect(usuario.passwordHash).toBeUndefined();
+    expect(Array.isArray(respuesta.body.users)).toBe(true);
+    for (const user of respuesta.body.users) {
+      expect(user.passwordHash).toBeUndefined();
     }
   });
 
@@ -124,8 +124,8 @@ describe("GET /api/v1/usuarios y GET /api/v1/usuarios/:id", () => {
       .set("Authorization", `Bearer ${adminAccessToken}`);
 
     expect(respuesta.status).toBe(200);
-    expect(respuesta.body.usuario.id).toBe(vendedorId);
-    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+    expect(respuesta.body.user.id).toBe(vendedorId);
+    expect(respuesta.body.user.passwordHash).toBeUndefined();
   });
 
   it("404 con un id que no existe", async () => {
@@ -153,8 +153,8 @@ describe("PATCH /api/v1/usuarios/:id", () => {
       .send({ nombre: "Vendedor Renombrado" });
 
     expect(respuesta.status).toBe(200);
-    expect(respuesta.body.usuario.nombre).toBe("Vendedor Renombrado");
-    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+    expect(respuesta.body.user.nombre).toBe("Vendedor Renombrado");
+    expect(respuesta.body.user.passwordHash).toBeUndefined();
   });
 
   it("400 con un body vacío (sin campos)", async () => {
