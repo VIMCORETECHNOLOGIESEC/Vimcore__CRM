@@ -123,8 +123,16 @@ backend y frontend, `.dockerignore` y `.env.example` con las claves sin valores.
    no lo resuelvas con un supuesto silencioso.
 3. **El orquestador no escribe código.** Coordina, delega y verifica los
    resúmenes de los sub-agentes.
-4. **Idioma:** artefactos SDD, comentarios, mensajes de commit y textos de
-   interfaz en español. Identificadores de código en inglés.
+4. **Idioma:** artefactos SDD (proposal, spec, design, tasks) en inglés.
+   Comentarios de código, mensajes de commit y textos de interfaz en español.
+   Identificadores de código: estructura en inglés (verbos, tipos, sufijos
+   técnicos como `Id`, `At`, `Params`) combinada con sustantivos de dominio de
+   negocio en español cuando el término ya está establecido en `docs/` — p. ej.
+   `TelefonoNormalizado`, `normalizeTelefono`, `VENTANA_REINGRESO_DIAS`,
+   `usuarioId`, `revocadoEn`. No traduzcas vocabulario de negocio sin
+   equivalente asentado en el proyecto; usa inglés puro para infraestructura
+   genérica sin carga de dominio (`AppError`, `requireAuthentication`,
+   `PrismaClientOrTransaction`).
 5. **Todo cambio de esquema pasa por una migración Prisma.** Nunca edites la
    base de datos directamente.
 
