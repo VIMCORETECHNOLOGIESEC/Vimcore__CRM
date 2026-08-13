@@ -1,0 +1,250 @@
+import request from "supertest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createApp } from "../src/app.js";
+import { hashPassword } from "../src/lib/password.js";
+import { prisma } from "../src/lib/prisma.js";
+
+const app = createApp();
+const ADMIN_PASSWORD = "clave-admin-123456";
+const VENDEDOR_PASSWORD = "clave-vendedor-1234";
+
+let adminAccessToken: string;
+let vendedorAccessToken: string;
+let vendedorId: string;
+
+beforeAll(async () => {
+  await prisma.usuario.create({
+    data: {
+      nombre: "Admin Integración",
+      correo: "admin-crud@integracion.test",
+      passwordHash: await hashPassword(ADMIN_PASSWORD),
+      rol: "ADMINISTRADOR",
+      activo: true,
+    },
+  });
+
+  const vendedor = await prisma.usuario.create({
+    data: {
+      nombre: "Vendedor Integración",
+      correo: "vendedor-crud@integracion.test",
+      passwordHash: await hashPassword(VENDEDOR_PASSWORD),
+      rol: "VENDEDOR",
+      activo: true,
+    },
+  });
+  vendedorId = vendedor.id;
+
+  const adminLogin = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ correo: "admin-crud@integracion.test", password: ADMIN_PASSWORD });
+  adminAccessToken = adminLogin.body.accessToken;
+
+  const vendedorLogin = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ correo: "vendedor-crud@integracion.test", password: VENDEDOR_PASSWORD });
+  vendedorAccessToken = vendedorLogin.body.accessToken;
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+describe("POST /api/v1/usuarios", () => {
+  it("201 crea un usuario y jamás devuelve passwordHash", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Nuevo Usuario",
+        correo: "nuevo@integracion.test",
+        password: "clave-nueva-123456",
+        rol: "ASESOR",
+      });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.usuario.correo).toBe("nuevo@integracion.test");
+    expect(respuesta.body.usuario.rol).toBe("ASESOR");
+    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+  });
+
+  it("400 con una contraseña más corta que la política de alta (min 12)", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Corto",
+        correo: "corto@integracion.test",
+        password: "corta1",
+        rol: "ASESOR",
+      });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("400 con un rol inválido (fuera de las 4 opciones del enum, D9)", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Rol Inválido",
+        correo: "rolinvalido@integracion.test",
+        password: "clave-valida-123456",
+        rol: "SUPERADMIN",
+      });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("400 con campos faltantes", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Incompleto" });
+
+    expect(respuesta.status).toBe(400);
+  });
+});
+
+describe("GET /api/v1/usuarios y GET /api/v1/usuarios/:id", () => {
+  it("200 lista usuarios sin exponer passwordHash", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(Array.isArray(respuesta.body.usuarios)).toBe(true);
+    for (const usuario of respuesta.body.usuarios) {
+      expect(usuario.passwordHash).toBeUndefined();
+    }
+  });
+
+  it("200 obtiene un usuario por id", async () => {
+    const respuesta = await request(app)
+      .get(`/api/v1/usuarios/${vendedorId}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.usuario.id).toBe(vendedorId);
+    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+  });
+
+  it("404 con un id que no existe", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("400 con un id que no es UUID", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios/no-es-un-uuid")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/v1/usuarios/:id", () => {
+  it("200 actualiza campos parciales sin exponer passwordHash", async () => {
+    const respuesta = await request(app)
+      .patch(`/api/v1/usuarios/${vendedorId}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Vendedor Renombrado" });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.usuario.nombre).toBe("Vendedor Renombrado");
+    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+  });
+
+  it("400 con un body vacío (sin campos)", async () => {
+    const respuesta = await request(app)
+      .patch(`/api/v1/usuarios/${vendedorId}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({});
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("404 con un id que no existe", async () => {
+    const respuesta = await request(app)
+      .patch("/api/v1/usuarios/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Fantasma" });
+
+    expect(respuesta.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/v1/usuarios/:id — baja lógica (D3)", () => {
+  it("204, activo=false y revoca el refresh activo del usuario en la misma transacción", async () => {
+    const passwordVictima = "clave-victima-123456";
+    const victima = await prisma.usuario.create({
+      data: {
+        nombre: "Víctima Baja",
+        correo: "victima-baja@integracion.test",
+        passwordHash: await hashPassword(passwordVictima),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+
+    const loginVictima = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: victima.correo, password: passwordVictima });
+    const refreshVictima = loginVictima.body.refreshToken as string;
+
+    const baja = await request(app)
+      .delete(`/api/v1/usuarios/${victima.id}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+    expect(baja.status).toBe(204);
+
+    const usuarioTrasBaja = await prisma.usuario.findUniqueOrThrow({
+      where: { id: victima.id },
+    });
+    expect(usuarioTrasBaja.activo).toBe(false);
+
+    // El refresh emitido antes de la baja ya no debe servir.
+    const refreshTrasBaja = await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken: refreshVictima });
+    expect(refreshTrasBaja.status).toBe(401);
+  });
+
+  it("404 con un id que no existe", async () => {
+    const respuesta = await request(app)
+      .delete("/api/v1/usuarios/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(404);
+  });
+});
+
+describe("Matriz de roles — solo ADMINISTRADOR opera el CRUD (D9)", () => {
+  it("403 cuando un VENDEDOR intenta listar usuarios", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${vendedorAccessToken}`);
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("403 cuando un VENDEDOR intenta crear un usuario", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${vendedorAccessToken}`)
+      .send({
+        nombre: "No Debería Crearse",
+        correo: "nodeberia@integracion.test",
+        password: "clave-cualquiera-1234",
+        rol: "ASESOR",
+      });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401 sin token de acceso en cualquier endpoint del CRUD", async () => {
+    const respuesta = await request(app).get("/api/v1/usuarios");
+    expect(respuesta.status).toBe(401);
+  });
+});

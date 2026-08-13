@@ -44,8 +44,15 @@ Desacoplado a propósito: otro equipo integrará el SSO contra esta misma API.
 - [x] Hash de contraseña con argon2id (`@node-rs/argon2`)
 - [x] Middleware `requiereAutenticacion` (identificador real: `requireAuthentication`)
 - [x] Middleware `requiereRol(...roles)` (identificador real: `requireRole(...roles)`)
-- [ ] CRUD de usuarios (solo administrador)
+- [x] CRUD de usuarios (solo administrador — `requireRole("ADMINISTRADOR")` en los 5 endpoints)
 - [ ] Baja lógica de usuario con reasignación obligatoria de su cartera activa
+      — **implementado solo en parte**: `DELETE /api/v1/usuarios/:id` sí
+      aplica la baja lógica (`activo=false` + revocación de todos sus refresh
+      tokens en la misma transacción). La **reasignación obligatoria de la
+      cartera activa queda explícitamente fuera de alcance de este cambio**:
+      no existe todavía una tabla `leads`/cartera (llega en M5/M6); la casilla
+      se deja sin marcar hasta que ese módulo exista y la reasignación pueda
+      implementarse de verdad.
 
 **Pruebas obligatorias:** cada endpoint protegido rechaza petición sin token, con
 token expirado y con rol insuficiente.
