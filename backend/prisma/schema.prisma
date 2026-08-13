@@ -30,6 +30,7 @@ model Usuario {
   actualizadoEn      DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   refreshTokens RefreshToken[]
+  leadEventos   LeadEvento[]
 
   @@map("usuarios")
 }
@@ -52,4 +53,105 @@ model RefreshToken {
 
   @@index([usuarioId, revocadoEn])
   @@map("refresh_tokens")
+}
+
+enum OrigenLead {
+  NUEVO
+  REINGRESO
+
+  @@map("origen_lead")
+}
+
+enum EtapaLead {
+  NUEVO
+  CONTACTADO
+  CITA
+  VENTA
+  NO_VENTA
+
+  @@map("etapa_lead")
+}
+
+enum TipoEventoLead {
+  INGRESO
+  ASIGNACION
+  REASIGNACION
+  TRASPASO
+  CAMBIO_ETAPA
+  CAMBIO_SEMAFORO
+  INTERACCION_REPETIDA
+  CITA_AGENDADA
+  CITA_REPROGRAMADA
+  SLA_INCUMPLIDO
+  CIERRE
+
+  @@map("tipo_evento_lead")
+}
+
+model Cliente {
+  id                  String   @id @default(uuid()) @db.Uuid
+  nombre              String?  @db.Text
+  telefonoOriginal    String?  @map("telefono_original") @db.Text
+  telefonoNormalizado String?  @unique @map("telefono_normalizado") @db.Text
+  telefonoValido      Boolean  @default(false) @map("telefono_valido")
+  creadoEn            DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  correos CorreoCliente[]
+  leads   Lead[]
+
+  @@map("clientes")
+}
+
+model CorreoCliente {
+  id                String  @id @default(uuid()) @db.Uuid
+  clienteId         String  @map("cliente_id") @db.Uuid
+  correo            String  @db.Text
+  correoNormalizado String  @map("correo_normalizado") @db.Citext
+  esPrincipal       Boolean @default(false) @map("es_principal")
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, correoNormalizado])
+  @@index([correoNormalizado])
+  @@map("correos_cliente")
+}
+
+// Rebanada M3 (D2): `campania_id`, `red_social`, `semaforo`, `puntuacion`,
+// `asesor_id`, `vendedor_id`, `campos_dinamicos`, `sla_inicio_en`,
+// `monto_venta`, `observacion_cierre` y `payload_original` los añade el
+// módulo que los puebla y los prueba (M4-M6), cada uno en su migración.
+model Lead {
+  id          String     @id @default(uuid()) @db.Uuid
+  clienteId   String     @map("cliente_id") @db.Uuid
+  origen      OrigenLead
+  etapa       EtapaLead  @default(NUEVO)
+  ingresadoEn DateTime   @map("ingresado_en") @db.Timestamptz(6)
+  cerradoEn   DateTime?  @map("cerrado_en") @db.Timestamptz(6)
+
+  cliente Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  eventos LeadEvento[]
+
+  @@index([clienteId, etapa])
+  @@index([clienteId, cerradoEn(sort: Desc)])
+  @@map("leads")
+}
+
+// `semaforo_anterior`/`semaforo_nuevo` requieren el enum `Semaforo`, que
+// pertenece a M5 (D2).
+model LeadEvento {
+  id            String         @id @default(uuid()) @db.Uuid
+  leadId        String         @map("lead_id") @db.Uuid
+  usuarioId     String?        @map("usuario_id") @db.Uuid
+  tipo          TipoEventoLead
+  etapaAnterior EtapaLead?     @map("etapa_anterior")
+  etapaNueva    EtapaLead?     @map("etapa_nueva")
+  detalle       Json?          @db.JsonB
+  ocurridoEn    DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+
+  lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, ocurridoEn])
+  @@index([tipo, ocurridoEn])
+  @@map("lead_eventos")
 }

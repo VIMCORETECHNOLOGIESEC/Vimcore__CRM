@@ -1,13 +1,5 @@
-import type { Prisma, RefreshToken } from "@prisma/client";
-import { prisma } from "../lib/prisma.js";
-
-/**
- * Permite que las funciones de este repositorio corran dentro de una
- * transacción ajena (p. ej. la baja lógica de `usuario.repository.ts`,
- * D3) sin duplicar la lógica de revocación en cascada. Por defecto usan el
- * cliente global `prisma`, igual que antes.
- */
-type PrismaClientOrTransaction = typeof prisma | Prisma.TransactionClient;
+import type { RefreshToken } from "@prisma/client";
+import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface CreateRefreshTokenParams {
   jti: string;
