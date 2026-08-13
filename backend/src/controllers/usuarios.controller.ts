@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import {
-  actualizarUsuarioBodySchema,
-  crearUsuarioBodySchema,
+  createUserBodySchema,
   idParamSchema,
+  updateUserBodySchema,
 } from "../schemas/usuarios.schema.js";
 import {
   createUser,
@@ -21,47 +21,47 @@ function invalidIdParam(): AppError {
   return new AppError("validacion_invalida", 400, "El identificador de usuario es inválido");
 }
 
-export async function postUsuario(req: Request, res: Response): Promise<void> {
-  const parsed = crearUsuarioBodySchema.safeParse(req.body);
+export async function postUser(req: Request, res: Response): Promise<void> {
+  const parsed = createUserBodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw zodValidationError();
   }
 
-  const usuario = await createUser(parsed.data);
-  res.status(201).json({ usuario });
+  const user = await createUser(parsed.data);
+  res.status(201).json({ user });
 }
 
-export async function getUsuarios(_req: Request, res: Response): Promise<void> {
-  const usuarios = await findAllUsers();
-  res.status(200).json({ usuarios });
+export async function getUsers(_req: Request, res: Response): Promise<void> {
+  const users = await findAllUsers();
+  res.status(200).json({ users });
 }
 
-export async function getUsuarioPorId(req: Request, res: Response): Promise<void> {
+export async function getUserById(req: Request, res: Response): Promise<void> {
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const usuario = await findUserById(parsedId.data.id);
-  res.status(200).json({ usuario });
+  const user = await findUserById(parsedId.data.id);
+  res.status(200).json({ user });
 }
 
-export async function patchUsuario(req: Request, res: Response): Promise<void> {
+export async function patchUser(req: Request, res: Response): Promise<void> {
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const parsedBody = actualizarUsuarioBodySchema.safeParse(req.body);
+  const parsedBody = updateUserBodySchema.safeParse(req.body);
   if (!parsedBody.success) {
     throw zodValidationError();
   }
 
-  const usuario = await updateUser(parsedId.data.id, parsedBody.data);
-  res.status(200).json({ usuario });
+  const user = await updateUser(parsedId.data.id, parsedBody.data);
+  res.status(200).json({ user });
 }
 
-export async function deleteUsuario(req: Request, res: Response): Promise<void> {
+export async function deleteUser(req: Request, res: Response): Promise<void> {
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();

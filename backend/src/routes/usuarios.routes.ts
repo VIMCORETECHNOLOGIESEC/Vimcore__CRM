@@ -1,10 +1,10 @@
 import { Router } from "express";
 import {
-  deleteUsuario,
-  getUsuarioPorId,
-  getUsuarios,
-  patchUsuario,
-  postUsuario,
+  deleteUser,
+  getUserById,
+  getUsers,
+  patchUser,
+  postUser,
 } from "../controllers/usuarios.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../middlewares/require-role.middleware.js";
@@ -16,29 +16,29 @@ usuariosRouter.post(
   "/usuarios",
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
-  postUsuario,
+  postUser,
 );
 usuariosRouter.get(
   "/usuarios",
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
-  getUsuarios,
+  getUsers,
 );
 usuariosRouter.get(
   "/usuarios/:id",
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
-  getUsuarioPorId,
+  getUserById,
 );
 usuariosRouter.patch(
   "/usuarios/:id",
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
-  patchUsuario,
+  patchUser,
 );
 usuariosRouter.delete(
   "/usuarios/:id",
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
-  deleteUsuario,
+  deleteUser,
 );

@@ -63,8 +63,8 @@ describe("POST /api/v1/auth/login", () => {
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.accessToken).toEqual(expect.any(String));
     expect(respuesta.body.refreshToken).toEqual(expect.any(String));
-    expect(respuesta.body.usuario.correo).toBe(correoActivo);
-    expect(respuesta.body.usuario.passwordHash).toBeUndefined();
+    expect(respuesta.body.user.correo).toBe(correoActivo);
+    expect(respuesta.body.user.passwordHash).toBeUndefined();
   });
 
   it("401 con contraseña incorrecta, sin emitir tokens", async () => {
@@ -180,7 +180,7 @@ describe("GET /api/v1/auth/perfil — matriz docs/06 L45", () => {
     const login = await request(app)
       .post("/api/v1/auth/login")
       .send({ correo: correoActivo, password: PASSWORD_ACTIVO });
-    const usuarioId = login.body.usuario.id as string;
+    const usuarioId = login.body.user.id as string;
     const tokenExpirado = await firmarTokenExpirado(usuarioId);
 
     const respuesta = await request(app)
