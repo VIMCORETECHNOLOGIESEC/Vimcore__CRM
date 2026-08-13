@@ -92,7 +92,7 @@ describe("auth.service.login", () => {
 
     expect(resultado.accessToken).toBe("access.jwt.fake");
     expect(resultado.refreshToken).toBe("refresh.jwt.fake");
-    expect(resultado.usuario).toEqual({
+    expect(resultado.user).toEqual({
       id: "usuario-1",
       nombre: "Ana",
       correo: "ana@crm.local",
