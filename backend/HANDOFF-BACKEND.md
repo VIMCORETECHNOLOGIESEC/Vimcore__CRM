@@ -89,8 +89,8 @@ tiene ni un archivo ni una migración escrita aún):
 | explore | ✅ hecho | `sdd/m4-ingesta-bridges-parcial/explore` |
 | propose | ✅ hecho, con 5 decisiones del usuario ya confirmadas | `sdd/m4-ingesta-bridges-parcial/proposal` |
 | spec | ✅ hecho | `sdd/m4-ingesta-bridges-parcial/spec` |
-| design | ⚠️ **lanzado pero no confirmado** — la sesión se cortó antes de recibir el resultado. Buscar primero en Engram (`mem_search(query: "sdd/m4-ingesta-bridges-parcial/design")`); si no aparece, hay que volver a correr `sdd-design` desde cero leyendo la propuesta. | `sdd/m4-ingesta-bridges-parcial/design` |
-| tasks | ❌ no empezado | — |
+| design | ✅ hecho (llegó justo antes del corte de cuota) — verificó que `deduplicarLead` no acepta `tx` externo (D3 sigue válida) y que `LeadEntrante` satisface `DeduplicacionInput` sin adaptación. Convención confirmada: este backend no usa clases, todo son módulos de funciones (`bridge.repository.ts` exporta `findByClaveApiHash`, no `class BridgeRepository`). 15 archivos nuevos, 6 modificados. | `sdd/m4-ingesta-bridges-parcial/design` |
+| tasks | ❌ no empezado — **siguiente paso inmediato al retomar** | — |
 | apply | ❌ no empezado (0 líneas de código escritas) | — |
 | verify / archive | ❌ no empezado | — |
 
@@ -161,13 +161,18 @@ se descubrió a mitad de camino):
 
 ## 5. Próximo paso inmediato al retomar
 
-1. `mem_search(query: "sdd/m4-ingesta-bridges-parcial/design", project: "crm_comercial")` —
-   si existe, seguir a `sdd-tasks`. Si no existe (probable, la sesión se
-   cortó ahí), correr `sdd-design` de nuevo leyendo la propuesta completa
-   (topic key arriba) más los archivos reales de M3
-   (`cliente.repository.ts`, `refresh-token.repository.ts`,
-   `deduplicacion.service.ts` — confirmar que este último sigue sin aceptar
-   `tx` externo, la decisión D3 depende de eso).
+1. Design ya está hecho y persistido — correr `sdd-tasks` directo, leyendo
+   spec (`sdd/m4-ingesta-bridges-parcial/spec`) y design
+   (`sdd/m4-ingesta-bridges-parcial/design`). El design dejó 2 riesgos para
+   que `sdd-tasks` los resuelva explícitamente, no en silencio:
+   - El endpoint público escribe una fila en `bridge_logs` en cada intento
+     no autenticado (antes de validar la clave) — superficie de crecimiento
+     no acotado, sin job de retención en este slice. Decidir si PR1 necesita
+     un cap/rate-limit o si se documenta como riesgo aceptado.
+   - El archivo de diseño lista 21 entradas de archivos; PR3 (servicio +
+     controller + ruta + 7 tests de integración) es la más propensa a superar
+     el presupuesto de 400 líneas — puede necesitar dividirse en PR4, igual
+     que pasó con PR2→PR3 en M3.
 2. Preflight de sesión ya está decidido para este proyecto (no volver a
    preguntar salvo que el usuario quiera cambiarlo): modo automático,
    artefactos en Engram, `delivery_strategy: ask-on-risk`, presupuesto 800
