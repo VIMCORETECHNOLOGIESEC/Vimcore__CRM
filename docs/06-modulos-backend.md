@@ -10,14 +10,20 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 
 ## M1 — Base e infraestructura
 
-- [ ] Monorepo pnpm con workspaces `backend` y `frontend`
-- [ ] Express + TypeScript con configuración estricta del compilador
-- [ ] Prisma conectado a PostgreSQL en Docker
+> **Progreso:** implementado en `configuracion-base-monorepo` (PR1
+> `feat/configuracion-base-backend`, PR2 `feat/configuracion-base-frontend`),
+> verificado PASS con 2 advertencias no bloqueantes (deriva de pnpm entre
+> `onlyBuiltDependencies` y `allowBuilds`; reinstalación completa de pnpm en el
+> primer arranque del contenedor).
+
+- [x] Monorepo pnpm con workspaces `backend` y `frontend`
+- [x] Express + TypeScript con configuración estricta del compilador
+- [x] Prisma conectado a PostgreSQL en Docker
 - [ ] Esquema inicial completo y primera migración
-- [ ] Middleware de errores centralizado con clase `AppError`
+- [x] Middleware de errores centralizado con clase `AppError`
 - [ ] Validación con Zod en el borde de cada controller
 - [ ] Registro de eventos estructurado (pino)
-- [ ] Variables de entorno validadas al arranque; el proceso no inicia si falta una
+- [x] Variables de entorno validadas al arranque; el proceso no inicia si falta una
 - [ ] Semillas de datos para desarrollo (usuarios de cada rol, campañas de prueba)
 
 ---

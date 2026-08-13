@@ -28,7 +28,14 @@ frontend/src/
 
 ## F1 — Base
 
-- [ ] Vite + React + TypeScript + Tailwind
+> **Progreso:** implementado en `configuracion-base-monorepo` (PR1
+> `feat/configuracion-base-backend`, PR2 `feat/configuracion-base-frontend`),
+> verificado PASS con 2 advertencias no bloqueantes (deriva de pnpm entre
+> `onlyBuiltDependencies` y `allowBuilds`; reinstalación completa de pnpm en el
+> primer arranque del contenedor). Tailwind fijado en v3 (no v4), para evitar
+> el binario nativo `oxide`.
+
+- [x] Vite + React + TypeScript + Tailwind
 - [ ] Enrutado con React Router y rutas protegidas por rol
 - [ ] TanStack Query configurado con manejo global de errores
 - [ ] Cliente HTTP con inyección de JWT y refresco automático ante 401
