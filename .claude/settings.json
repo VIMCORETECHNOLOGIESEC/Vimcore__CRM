@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "gentle-ai skill-registry refresh --quiet --no-gitignore --cwd \"${CLAUDE_PROJECT_DIR:-$PWD}\" || true",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ]
+  },
+  "mcpServers": {
+    "context7": {
+      "args": [
+        "-y",
+        "--package=@upstash/context7-mcp@2.2.5",
+        "--",
+        "context7-mcp"
+      ],
+      "command": "npx"
+    }
+  },
+  "outputStyle": "Gentleman"
+}
