@@ -1,5 +1,13 @@
-import type { RefreshToken } from "@prisma/client";
+import type { Prisma, RefreshToken } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+
+/**
+ * Permite que las funciones de este repositorio corran dentro de una
+ * transacción ajena (p. ej. la baja lógica de `usuario.repository.ts`,
+ * D3) sin duplicar la lógica de revocación en cascada. Por defecto usan el
+ * cliente global `prisma`, igual que antes.
+ */
+type PrismaClientOrTransaction = typeof prisma | Prisma.TransactionClient;
 
 export interface CrearRefreshTokenParams {
   jti: string;
@@ -30,8 +38,11 @@ export async function revoke(jti: string): Promise<void> {
  * usuario ante detección de reutilización. Solo toca filas aún vigentes
  * (`revocadoEn: null`) — revocar dos veces es un no-op idempotente.
  */
-export async function revokeAllForUser(usuarioId: string): Promise<void> {
-  await prisma.refreshToken.updateMany({
+export async function revokeAllForUser(
+  usuarioId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  await client.refreshToken.updateMany({
     where: { usuarioId, revocadoEn: null },
     data: { revocadoEn: new Date() },
   });
