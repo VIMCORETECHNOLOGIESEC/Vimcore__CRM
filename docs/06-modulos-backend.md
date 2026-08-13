@@ -64,14 +64,14 @@ token expirado y con rol insuficiente.
 El módulo de mayor riesgo del sistema. Un error aquí corrompe la base de clientes
 de forma progresiva y difícil de revertir.
 
-- [ ] Normalizador de teléfono a E.164 con país por defecto EC
-- [ ] Manejo de teléfono no normalizable sin descartar el lead
-- [ ] Normalizador de correo para comparación, preservando el original
-- [ ] Resolución de identidad de cliente por teléfono normalizado
-- [ ] Alta de correo adicional a cliente existente
-- [ ] Detección de lead abierto y registro de interacción repetida
-- [ ] Regla de reingreso con ventana de 90 días
-- [ ] Manejo de `ON CONFLICT` en la inserción de cliente (condición de carrera)
+- [x] Normalizador de teléfono a E.164 con país por defecto EC
+- [x] Manejo de teléfono no normalizable sin descartar el lead
+- [x] Normalizador de correo para comparación, preservando el original
+- [x] Resolución de identidad de cliente por teléfono normalizado
+- [x] Alta de correo adicional a cliente existente
+- [x] Detección de lead abierto y registro de interacción repetida
+- [x] Regla de reingreso con ventana de 90 días
+- [x] Manejo de `ON CONFLICT` en la inserción de cliente (condición de carrera)
 
 **Pruebas obligatorias:** batería de números en distintos formatos (con y sin
 prefijo, con espacios, con guiones, inválidos); dos webhooks simultáneos con el
