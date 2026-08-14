@@ -17,7 +17,7 @@ export interface TransactionBounds {
 }
 
 /**
- * Límites de la transacción de `deduplicarLead` cuando abre la suya propia
+ * Límites de la transacción de `deduplicateLead` cuando abre la suya propia
  * (M3, sin cambios de comportamiento).
  */
 export const DEDUPLICACION_TRANSACTION_BOUNDS: TransactionBounds = {
@@ -27,13 +27,27 @@ export const DEDUPLICACION_TRANSACTION_BOUNDS: TransactionBounds = {
 
 /**
  * Límites de la transacción de `ingesta.service` (M4): envuelve a
- * `deduplicarLead` más los pasos de recepción/log, así que su `timeout` debe
+ * `deduplicateLead` más los pasos de recepción/log, así que su `timeout` debe
  * ser mayor o igual al de dedup. Se deriva del bound de dedup, nunca se
  * duplica, para que "igual-o-más-amplio" sea estructural (DD3, diseño M4).
  */
 export const INGESTA_TRANSACTION_BOUNDS: TransactionBounds = {
   maxWait: DEDUPLICACION_TRANSACTION_BOUNDS.maxWait,
   timeout: DEDUPLICACION_TRANSACTION_BOUNDS.timeout + 10_000,
+};
+
+/**
+ * Límites de la transacción de `leads.service`/`formularios.service` (M5,
+ * DD4): validar acceso → validar formulario → calcular → escribir
+ * `respuestas_formulario` → actualizar `Lead` → escribir `lead_eventos`, todo
+ * en una sola transacción interactiva. NO se deriva de
+ * `DEDUPLICACION_TRANSACTION_BOUNDS`/`INGESTA_TRANSACTION_BOUNDS` (a
+ * diferencia de `INGESTA_TRANSACTION_BOUNDS`) porque las transacciones de M5
+ * nunca anidan con las de M3/M4 — son un flujo de escritura independiente.
+ */
+export const GESTION_LEAD_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
 };
 
 /**

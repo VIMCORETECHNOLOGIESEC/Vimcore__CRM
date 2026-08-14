@@ -1,4 +1,4 @@
-import type { Lead } from "@prisma/client";
+import type { Lead, Prisma } from "@prisma/client";
 import { EtapaLead } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
@@ -37,6 +37,15 @@ export interface CreateLeadData {
   clienteId: string;
   origen: Lead["origen"];
   ingresadoEn: Date;
+  /**
+   * M5 (DD1, diseño M5): `deduplicacion.service.ts::createLead` nunca los
+   * pasaba pese a que `LeadEntrante` (M4) ya los traía — quedaban NULL para
+   * siempre. Opcionales para no romper llamadas existentes que no los
+   * proveen (p. ej. pruebas de M3 que no simulan M4).
+   */
+  redSocial?: Lead["redSocial"];
+  payloadOriginal?: Prisma.InputJsonValue;
+  camposDinamicos?: Prisma.InputJsonValue;
 }
 
 export async function createLead(

@@ -29,8 +29,14 @@ model Usuario {
   creadoEn           DateTime   @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn      DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
-  refreshTokens RefreshToken[]
-  leadEventos   LeadEvento[]
+  refreshTokens        RefreshToken[]
+  leadEventos          LeadEvento[]
+  // M5 (D1): las columnas se agregan y se leen en M5; M6 las puebla en
+  // producción (algoritmo de asignación). Dos relaciones nombradas porque
+  // ambas apuntan al mismo modelo `Usuario`.
+  leadsComoAsesor      Lead[]                @relation("LeadAsesor")
+  leadsComoVendedor    Lead[]                @relation("LeadVendedor")
+  respuestasFormulario RespuestaFormulario[]
 
   @@map("usuarios")
 }
@@ -116,44 +122,101 @@ model CorreoCliente {
   @@map("correos_cliente")
 }
 
-// Rebanada M3 (D2): `campania_id`, `semaforo`, `puntuacion`, `asesor_id`,
-// `vendedor_id`, `sla_inicio_en`, `monto_venta`, `observacion_cierre` los
-// añade el módulo que los puebla y los prueba (M5-M6), cada uno en su
-// migración. `red_social`, `campos_dinamicos` y `payload_original` los añade
-// M4 (ver abajo) porque es el primer módulo capaz de poblarlos.
-model Lead {
-  id              String     @id @default(uuid()) @db.Uuid
-  clienteId       String     @map("cliente_id") @db.Uuid
-  origen          OrigenLead
-  etapa           EtapaLead  @default(NUEVO)
-  // M4: nulo en leads previos a esta rebanada o de orígenes que aún no
-  // reportan estos campos (docs/05-bridges.md §2).
-  redSocial       RedSocial? @map("red_social")
-  camposDinamicos Json?      @map("campos_dinamicos") @db.JsonB
-  payloadOriginal Json?      @map("payload_original") @db.JsonB
-  ingresadoEn     DateTime   @map("ingresado_en") @db.Timestamptz(6)
-  cerradoEn       DateTime?  @map("cerrado_en") @db.Timestamptz(6)
+enum Semaforo {
+  ROJO
+  AMARILLO
+  VERDE
 
-  cliente        Cliente        @relation(fields: [clienteId], references: [id], onDelete: Restrict)
-  eventos        LeadEvento[]
-  leadsRecibidos LeadRecibido[]
+  @@map("semaforo")
+}
+
+enum FormaPago {
+  CONTADO
+  CREDITO
+  FINANCIAMIENTO
+
+  @@map("forma_pago")
+}
+
+// Rebanada M3 (D2): `campania_id` sigue fuera de alcance (M5 filtra campaña
+// sobre el jsonb crudo de M4, D2 de la propuesta M5). `red_social`,
+// `campos_dinamicos` y `payload_original` los añadió M4 (ver abajo). M5
+// agrega semaforo/puntuacion (D14, nullable — sin backfill destructivo),
+// asesor_id/vendedor_id/sla_inicio_en (D1 — M5 los agrega y lee, M6 los
+// puebla en producción) y los campos de cierre (D13).
+model Lead {
+  id                String     @id @default(uuid()) @db.Uuid
+  clienteId         String     @map("cliente_id") @db.Uuid
+  origen            OrigenLead
+  etapa             EtapaLead  @default(NUEVO)
+  // M4: nulo en leads previos a esta rebanada o de orígenes que aún no
+  // reportan estos campos (docs/05-bridges.md §2). M5 DD1: la ausencia de
+  // `red_social`/`payload_original` en leads creados vía M4 antes de esta
+  // rebanada es un defecto de M4 (ver DD1 del diseño M5), no el estado
+  // esperado — la migración M5 hace un backfill NULL-only (D14-safe) para
+  // los que sí tienen recepción vinculada.
+  redSocial         RedSocial? @map("red_social")
+  camposDinamicos   Json?      @map("campos_dinamicos") @db.JsonB
+  payloadOriginal   Json?      @map("payload_original") @db.JsonB
+  // M5 (D14): nullable — los leads que M4 ya creó (sin calificar) quedan en
+  // `null`. "Sin calificar" es un cuarto valor de filtro explícito, nunca un
+  // default oculto.
+  semaforo          Semaforo?
+  puntuacion        Int?
+  // M5 (D1): M5 agrega y lee estas columnas; el algoritmo de asignación
+  // automática que las puebla en producción es de M6. Las pruebas de M5
+  // asignan por seed/fixture.
+  asesorId          String?    @map("asesor_id") @db.Uuid
+  vendedorId        String?    @map("vendedor_id") @db.Uuid
+  // M5 (D9): nulo mientras no haya asesor asignado — "sin_iniciar" (D15). El
+  // reinicio del reloj en cada reasignación es de M6.
+  slaInicioEn       DateTime?  @map("sla_inicio_en") @db.Timestamptz(6)
+  ingresadoEn       DateTime   @map("ingresado_en") @db.Timestamptz(6)
+  cerradoEn         DateTime?  @map("cerrado_en") @db.Timestamptz(6)
+  // M5 (D13): datos de cierre en columnas dedicadas — M9 los reporta por
+  // monto y por forma de pago con agregación SQL directa, no jsonb.
+  montoVenta        Decimal?   @map("monto_venta") @db.Decimal(12, 2)
+  observacionCierre String?    @map("observacion_cierre") @db.Text
+  productoServicio  String?    @map("producto_servicio") @db.Text
+  formaPago         FormaPago? @map("forma_pago")
+
+  cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
+  // borra, y un lead no debe quedar bloqueado por la baja de su asesor.
+  asesor               Usuario?              @relation("LeadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
+  vendedor             Usuario?              @relation("LeadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
+  eventos              LeadEvento[]
+  leadsRecibidos       LeadRecibido[]
+  respuestasFormulario RespuestaFormulario[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
+  // D11 (docs/03-modelo-datos.md §leads): el listado filtrado es el endpoint
+  // más caliente del sistema — índices desde el primer día. El índice
+  // parcial `idx_leads_sla` (`WHERE cerrado_en IS NULL`) no es expresable en
+  // el DSL de Prisma (sin soporte de índices parciales/filtrados a la fecha)
+  // y se agrega a mano en la migración — ver `migration.sql` de este cambio.
+  @@index([asesorId, etapa], map: "idx_leads_asesor_etapa")
+  @@index([vendedorId, etapa], map: "idx_leads_vendedor_etapa")
+  @@index([etapa, ingresadoEn(sort: Desc)], map: "idx_leads_etapa_ingreso")
+  @@index([redSocial], map: "idx_leads_red_social")
   @@map("leads")
 }
 
-// `semaforo_anterior`/`semaforo_nuevo` requieren el enum `Semaforo`, que
-// pertenece a M5 (D2).
+// M5: `semaforo_anterior`/`semaforo_nuevo` (D17 — una fila `CAMBIO_SEMAFORO`
+// independiente de `CAMBIO_ETAPA` cuando ambos cambian juntos, misma
+// transacción).
 model LeadEvento {
-  id            String         @id @default(uuid()) @db.Uuid
-  leadId        String         @map("lead_id") @db.Uuid
-  usuarioId     String?        @map("usuario_id") @db.Uuid
-  tipo          TipoEventoLead
-  etapaAnterior EtapaLead?     @map("etapa_anterior")
-  etapaNueva    EtapaLead?     @map("etapa_nueva")
-  detalle       Json?          @db.JsonB
-  ocurridoEn    DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  id               String         @id @default(uuid()) @db.Uuid
+  leadId           String         @map("lead_id") @db.Uuid
+  usuarioId        String?        @map("usuario_id") @db.Uuid
+  tipo             TipoEventoLead
+  etapaAnterior    EtapaLead?     @map("etapa_anterior")
+  etapaNueva       EtapaLead?     @map("etapa_nueva")
+  semaforoAnterior Semaforo?      @map("semaforo_anterior")
+  semaforoNuevo    Semaforo?      @map("semaforo_nuevo")
+  detalle          Json?          @db.JsonB
+  ocurridoEn       DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
 
   lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
@@ -161,6 +224,29 @@ model LeadEvento {
   @@index([leadId, ocurridoEn])
   @@index([tipo, ocurridoEn])
   @@map("lead_eventos")
+}
+
+// M5 (D8, docs/03 §respuestas_formulario): historial, nunca sobrescritura —
+// una fila por cada envío de formulario, vía `PATCH /etapa` o
+// `POST /formulario` (D16). `versionRubrica` (D12) congela la versión de la
+// rúbrica vigente al momento del cálculo; un cambio posterior de rúbrica no
+// recalcula puntuaciones ya persistidas.
+model RespuestaFormulario {
+  id             String    @id @default(uuid()) @db.Uuid
+  leadId         String    @map("lead_id") @db.Uuid
+  usuarioId      String    @map("usuario_id") @db.Uuid
+  etapa          EtapaLead
+  respuestas     Json      @db.JsonB
+  puntuacion     Int
+  semaforo       Semaforo
+  versionRubrica String    @map("version_rubrica") @db.Text
+  registradoEn   DateTime  @default(now()) @map("registrado_en") @db.Timestamptz(6)
+
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([leadId, registradoEn])
+  @@map("respuestas_formulario")
 }
 
 enum RedSocial {

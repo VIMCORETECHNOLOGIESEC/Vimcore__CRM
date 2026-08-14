@@ -5,7 +5,7 @@ import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
-import { deduplicarLead } from "./deduplicacion.service.js";
+import { deduplicateLead } from "./deduplicacion.service.js";
 
 export interface IngestaResultado {
   leadId: string;
@@ -26,7 +26,7 @@ interface ResultadoTransaccion extends IngestaResultado {
  * bloquear, igual que ya documenta `deduplicacion.service.ts`.
  *
  * Autocomprobación DD2 (no es una prueba separada, es invariante estructural
- * revisable en esta misma función): el único llamado a `deduplicarLead` de
+ * revisable en esta misma función): el único llamado a `deduplicateLead` de
  * este archivo pasa `tx` como tercer argumento, así que su `runInTransaction`
  * interno ve `txExterna` definido y solo ejecuta `fn(txExterna)` — nunca abre
  * una segunda `prisma.$transaction`/conexión (ver `lib/prisma.ts`). Una sola
@@ -112,7 +112,7 @@ async function procesarEnTransaccion(
     return { leadId: recepcion.leadId, duplicado: true, datosIncompletos: recepcion.datosIncompletos };
   }
 
-  const dedupResultado = await deduplicarLead(entrada, ahora, tx);
+  const dedupResultado = await deduplicateLead(entrada, ahora, tx);
   await leadRecibidoRepository.marcarProcesado(recepcion.id, dedupResultado.leadId, tx);
 
   return {

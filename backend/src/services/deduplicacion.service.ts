@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, RedSocial } from "@prisma/client";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
 import { DEDUPLICACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
@@ -22,6 +22,16 @@ export interface DeduplicacionInput {
   telefono: string | null;
   correo: string | null;
   ingresadoEn: Date;
+  /**
+   * M5 (DD1, diseño M5, finding): opcionales — un `DeduplicacionInput`
+   * levantado a mano (p. ej. pruebas de M3 sin M4) no los trae, pero un
+   * `LeadEntrante` completo (M4) siempre los trae los tres juntos. Antes de
+   * esta rebanada, `createLead` los descartaba pese a estar disponibles
+   * aquí — quedaban NULL para siempre en `leads`.
+   */
+  redSocial?: RedSocial;
+  payloadOriginal?: unknown;
+  camposDinamicos?: Record<string, unknown>;
 }
 
 export interface DeduplicacionResult {
@@ -70,10 +80,10 @@ export interface DetalleEventoLead {
  * (docs/03-modelo-datos.md §2, bitácora inmutable).
  *
  * `txExterna` (M4, DD1c): si el llamador (p. ej. `ingesta.service`) ya abrió
- * una transacción, `deduplicarLead` corre dentro de ella en vez de abrir la
+ * una transacción, `deduplicateLead` corre dentro de ella en vez de abrir la
  * suya propia — ver `runInTransaction` en `lib/prisma.ts`.
  */
-export async function deduplicarLead(
+export async function deduplicateLead(
   entrada: DeduplicacionInput,
   ahora: Date = new Date(),
   txExterna?: Prisma.TransactionClient,
@@ -171,7 +181,20 @@ export async function deduplicarLead(
 
       if (accion.kind === "crear_lead") {
         const lead = await leadRepository.createLead(
-          { clienteId, origen: accion.origen, ingresadoEn: entrada.ingresadoEn },
+          {
+            clienteId,
+            origen: accion.origen,
+            ingresadoEn: entrada.ingresadoEn,
+            // M5 (DD1 fix): antes de esta rebanada estos tres campos nunca
+            // se pasaban pese a venir en `entrada` (LeadEntrante completo
+            // cuando el llamador es `ingesta.service.ts`) — quedaban NULL
+            // para siempre en `leads`. Cuando `entrada` no los trae (p. ej.
+            // pruebas de M3 que no simulan un `LeadEntrante` de M4) quedan
+            // `undefined` y `createLead` preserva el comportamiento previo.
+            redSocial: entrada.redSocial,
+            payloadOriginal: entrada.payloadOriginal as Prisma.InputJsonValue | undefined,
+            camposDinamicos: entrada.camposDinamicos as Prisma.InputJsonValue | undefined,
+          },
           tx,
         );
         leadId = lead.id;

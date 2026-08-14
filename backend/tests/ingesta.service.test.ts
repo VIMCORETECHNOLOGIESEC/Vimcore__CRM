@@ -9,7 +9,7 @@ import type { LeadEntrante } from "../src/types/lead-entrante.js";
  * Mismo truco de inyección de fallos que `deduplicacion.service.test.ts`
  * (M3): solo `createEvento` se reemplaza por un mock que delega a la
  * implementación real por defecto, así se puede forzar un único fallo
- * puntual "durante el dedupe" (última escritura de `deduplicarLead`, ya
+ * puntual "durante el dedupe" (última escritura de `deduplicateLead`, ya
  * dentro de la misma transacción que abrió `ingestarLead`) sin tocar el
  * resto de la batería, que sigue corriendo contra la BD real de compose.
  */

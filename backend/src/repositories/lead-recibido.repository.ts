@@ -71,7 +71,7 @@ export async function upsertLeadRecibido(
 }
 
 /**
- * Ancla la recepción cruda al lead resultante de `deduplicarLead`, una vez
+ * Ancla la recepción cruda al lead resultante de `deduplicateLead`, una vez
  * resuelto dentro de la misma transacción (DD5, diseño M4). Sin máquina de
  * estados de recepción (D2 retirada): `leadId` pasa de `null` a un id, punto.
  */
