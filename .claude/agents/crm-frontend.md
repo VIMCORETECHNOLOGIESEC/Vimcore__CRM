@@ -89,6 +89,11 @@ upfront speculatively.
 - Tailwind utility classes directly. No CSS-in-JS.
 - Charts: Recharts (per `docs/07-modulos-frontend.md` F5) — declarative, typed, reasonable
   bundle size for this dashboard's chart volume.
+- Visual line (palette, typography, candidate component libraries, per-module mockup prompts):
+  `docs/09-linea-grafica-frontend.md`. Check it before styling a new screen from scratch.
+- Installed Claude Code skills for this frontend (what each one is for, when to reach for it):
+  `docs/10-skills-agente-frontend.md`. They load themselves when the task matches their trigger —
+  no need to invoke them by name.
 - Interface text is exclusively in Spanish (AGENTS.md §2, §4). This applies to UI copy, not to
   code identifiers/comments in the `.md` sense — component/variable naming follows whatever
   convention the surrounding code already uses.

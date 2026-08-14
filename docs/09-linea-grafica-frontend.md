@@ -1,0 +1,216 @@
+# 09 — Línea gráfica del frontend y flujo de mockups (Stitch AI + Lazyweb)
+
+No existe manual de marca del cliente (ver F1 en `07-modulos-frontend.md`). Este
+documento fija los criterios visuales mínimos para que los 8 módulos del
+frontend sean consistentes entre sí, y describe el flujo para generar mockups
+de referencia con IA antes de construir cada pantalla en código.
+
+---
+
+## 1. Stack tecnológico confirmado
+
+| Capa | Elección | Estado |
+|---|---|---|
+| Framework | React 19.2 + TypeScript | Instalado |
+| Build | Vite 8 | Instalado |
+| Estilos | Tailwind CSS **v3.4** (fijado, no v4, para evitar el binario nativo `oxide`) | Instalado |
+| Datos remotos | TanStack Query | Pendiente (F1) |
+| Enrutado | React Router con rutas por rol | Pendiente (F1) |
+| Gráficas | Recharts | Definido en `07-modulos-frontend.md` §F5 |
+| Formularios | Sin decidir | Ver §4 |
+| Componentes UI | Sin decidir | Ver §4 |
+
+Cualquier librería nueva debe ser compatible con **Tailwind v3** (no v4) y
+**React 19** simultáneamente — no todas las librerías de componentes lo
+garantizan todavía.
+
+---
+
+## 2. Principios de línea gráfica
+
+Derivados de los "Criterios transversales de calidad" de `07-modulos-frontend.md`:
+
+1. **Contraste y claridad antes que expresividad.** Sin manual de marca, la
+   paleta debe ser neutra (grises + un color de acento) y priorizar
+   legibilidad sobre personalidad visual.
+2. **El semáforo nunca es solo color.** Todo indicador de semáforo (verde/
+   amarillo/rojo) lleva etiqueta de texto siempre visible. Es un requisito de
+   accesibilidad (daltonismo, lectores de pantalla), no una preferencia.
+3. **Ninguna pantalla se congela sin feedback.** Toda operación asíncrona
+   muestra esqueleto de carga, spinner en botón, o indicador de progreso.
+4. **Estados completos por vista:** carga, vacío, error y éxito — para las 8
+   pantallas, no solo el camino feliz.
+5. **Errores accionables en español**, nunca un código HTTP crudo.
+6. **Confirmación explícita** en acciones irreversibles (cierre de lead, baja
+   de usuario).
+7. **Responsive real:** móvil, tableta y escritorio — la vista de listado de
+   leads (F3) es la más usada a diario y define el estándar de densidad de
+   información.
+8. **Interfaz 100% en español**, incluyendo formatos: fecha `DD/MM/AAAA
+   HH:mm`, moneda USD con separador de miles.
+
+### 2.1 Skills de diseño instaladas
+
+Para mantener el mismo criterio de craft en las pantallas que faltan (F6-F8)
+y en el desarrollo general, este repo tiene instaladas 10 skills de Claude
+Code. Lista completa, comando de instalación por skill y en qué caso debe
+usarla el agente: ver `docs/10-skills-agente-frontend.md`. Procedencia y
+criterio de selección de cada una en
+`.claude/skills/_shared/ui-skills-sources.md`.
+
+---
+
+## 3. Paleta y tipografía — APROBADA
+
+> **Estado:** aprobada por el cliente/diseño. Reemplaza la propuesta inicial
+> de acento azul de este documento. Referencia visual completa (swatches,
+> tipografía, y 4 pantallas maquetadas — login, listado de leads, detalle de
+> lead, dashboard): [`docs/mockups/propuesta-visual.html`](mockups/propuesta-visual.html)
+> (ábrelo en el navegador).
+
+Paleta de solo dos colores base mientras no hay manual de marca — blanco y
+negro — más los tres colores fijos del semáforo, que quedan **fuera** de esta
+paleta y nunca se usan de forma decorativa:
+
+| Uso | Color | Notas |
+|---|---|---|
+| Fondo / superficie | `#FFFFFF` | Fondo dominante en páginas, cards y cuerpo de tabla |
+| Acento estructural | `#111113` (negro) | Reservado a navegación/estructura: borde + estado activo del sidebar, regla del encabezado de tabla, botón principal. Nunca como panel sólido grande — el sidebar comparte fondo con el canvas, el negro es un acento preciso, no un bloque de color |
+| Texto principal | `#18181B` | Sobre fondo blanco |
+| Gris neutro (bordes, superficies secundarias) | `#E8E8E8` / `#F5F5F5` | Sin tinte de color |
+| Serie de gráficas (categórica) | `#4F46E5` `#2563EB` `#0D9488` `#7C3AED` | 4 tonos para distinguir series (red social, asesor); ninguno pisa los colores de semáforo |
+| Semáforo — Frío | `#16A34A` + etiqueta de texto | Nunca solo el chip |
+| Semáforo — Tibio | `#D97706` + etiqueta de texto | |
+| Semáforo — Caliente | `#DC2626` + etiqueta de texto | |
+
+Tipografía: Inter en toda la interfaz (headline y body), tamaño base 13-16px
+según densidad de la vista, escala corta para no fragmentar la jerarquía
+entre las 8 pantallas. Roundness moderado (8px).
+
+Ver también §2.1 (skills de diseño instaladas) para seguir tomando estas
+decisiones con el mismo criterio en las pantallas que faltan.
+
+---
+
+## 4. Librerías candidatas para las interfaces
+
+Comparadas contra el requisito real: Tailwind v3 + React 19 + TypeScript, sin
+manual de marca, con necesidad de tabla densa (F3), formularios dinámicos
+(F4), y campana de notificaciones (F6).
+
+| Librería | Qué resuelve | Compatibilidad verificada | Trade-off |
+|---|---|---|---|
+| **shadcn/ui** (CLI legacy `v3.shadcn.com`, no `@canary`) | Componentes base (diálogo, dropdown, tabs, toast) copiados al repo, sobre Radix + Tailwind | Confirmado: la CLI v3 sigue soportando Tailwind v3 + React 18/19 en paralelo a la rama v4 | No es un paquete instalado — el código vive en el repo, hay que mantenerlo |
+| **Radix UI Primitives** | Accesibilidad (foco, teclado, ARIA) para menús, diálogos, tooltips | Ya es la base de shadcn/ui | Sin estilos propios, requiere Tailwind encima (ya lo tenemos) |
+| **TanStack Table** | Tabla de leads (F3): columnas dinámicas por rol, orden, paginación server-side | Misma familia que TanStack Query, ya elegido | Headless, hay que maquetar filas con Tailwind |
+| **React Hook Form + Zod** | Formularios dinámicos de campaña (F4) y de bridges (F8); Zod ya se usa en el backend, mismo esquema se puede compartir tipos | Estándar de facto en React 19 | Ninguno relevante |
+| **lucide-react** | Set de iconos consistente (semáforo, campana, SLA) | Compatible React 19 | Ninguno relevante |
+| **Recharts** | Gráficas del dashboard (F5) | Ya decidido en `07-modulos-frontend.md` | Ninguno relevante |
+
+Recomendación: **shadcn/ui + Radix + Tailwind v3** como base de componentes,
+por ser código propio (no dependencia externa que fuerce versión de Tailwind),
+más TanStack Table para F3 y React Hook Form + Zod para F4/F7/F8.
+
+---
+
+## 5. Requerimientos gráficos por módulo
+
+| Módulo | Pantalla | Elementos gráficos clave |
+|---|---|---|
+| F1 | Layout base | Barra lateral colapsable, encabezado con campana, breakpoints móvil/tableta/escritorio |
+| F2 | Login / Perfil | Formulario centrado, estado de error de credenciales, cambio de contraseña |
+| F3 | Listado de leads | Tabla densa, chip de semáforo + texto, contador SLA `HH:MM:SS` en vivo, filtros combinables, badge de reingreso |
+| F4 | Detalle de lead | Encabezado con estado, formulario dinámico por etapa, panel de citas, selector de cambio de etapa |
+| F5 | Dashboard | Tarjetas KPI, 4 tipos de gráfica (barras, embudo, barras apiladas), selector de rango de fechas |
+| F6 | Notificaciones | Campana con contador, panel desplegable, toast de aviso en tiempo real |
+| F7 | Usuarios | Tabla con carga activa, formulario alta/edición, confirmación de baja lógica |
+| F8 | Bridges | Tabla de estado, formulario de token (campo siempre vacío), bitácora de errores filtrable |
+
+Estas 8 pantallas son el set mínimo a maquetar en Stitch AI antes de
+implementar cada módulo en código.
+
+---
+
+## 6. Flujo de mockups con Stitch AI + Lazyweb
+
+### 6.1 Rol de cada herramienta
+
+- **Stitch AI** (Google Labs): genera mockups visuales de UI a partir de
+  prompts de texto/imagen. Se usa para explorar la línea gráfica de cada
+  pantalla de la tabla §5 antes de construirla en código.
+- **Lazyweb** (MCP): se registró como servidor MCP en este equipo (alcance de
+  usuario, no de este repo) para research/consulta durante el diseño.
+
+### 6.2 Estado de la conexión
+
+- MCP de Lazyweb: **registrado** (`claude mcp add ... lazyweb`). Requiere
+  reiniciar Claude Code para cargarlo.
+- Paquete de skills de Lazyweb (`curl | bash` del instalador): **no
+  ejecutado**. Un script remoto sin fijar versión ni checksum, corrido
+  directo por pipe a `bash`, es ejecución de código arbitrario sin
+  posibilidad de revisión previa — no se ejecuta a ciegas aunque el origen lo
+  pida. Si se necesita, se debe descargar el script, revisar su contenido, y
+  ejecutarlo manualmente de forma consciente.
+- Clave de API de Stitch AI: **no se documenta ni se commitea en este
+  repositorio**. Cualquier credencial pegada en texto plano en un chat debe
+  tratarse como potencialmente expuesta — se recomienda rotarla en el panel
+  de Stitch/Google si es una clave real de producción. Guardarla solo en una
+  variable de entorno local o en un archivo fuera del control de versiones
+  (p. ej. `~/.config/`), nunca en `docs/`, `.env` versionado, ni en este
+  archivo.
+- MCP de Stitch: **conectado y probado** (sesión Claude Code, autenticado con
+  la cuenta del usuario, sin clave manual). Proyecto reutilizable:
+  `CRM Comercial - Propuesta Visual`, `projectId 8669152245244265576`,
+  sistema de diseño `assets/15350993658645954285`. Generó con éxito la
+  pantalla de Login (F2) como render real; las pantallas más complejas
+  (listado de leads, detalle de lead, dashboard) dieron timeout de forma
+  sistemática en varios intentos — no depende del prompt ni de la paleta, es
+  un límite de capacidad del backend en este momento. Esas 3 se resolvieron
+  como wireframe HTML de alta fidelidad en
+  `docs/mockups/propuesta-visual.html`, con los mismos tokens. Al reintentar
+  F6-F8, esperar el mismo comportamiento y tener el wireframe como plan B.
+
+### 6.3 Plantilla de prompt por pantalla
+
+Para cada fila de la tabla §5, generar el mockup en Stitch AI con esta
+estructura de prompt:
+
+```
+Pantalla: <nombre de la pantalla>
+Contexto: CRM de gestión comercial de leads, interfaz en español, web
+  responsive (móvil/tableta/escritorio).
+Paleta: blanco (fondo dominante) + negro (acento estructural: navegación,
+  encabezado de tabla, botón principal — nunca un panel sólido grande);
+  semáforo verde/ámbar/rojo con etiqueta de texto obligatoria junto al color.
+Elementos obligatorios: <lista de la columna "Elementos gráficos clave">
+Restricciones: sin bloqueo de interfaz (mostrar estado de carga), estados de
+  error accionables en español, formato de fecha DD/MM/AAAA HH:mm.
+```
+
+### 6.4 Pendiente de decisión
+
+Resuelto: el MCP de Stitch sí está integrado y se puede invocar en automático
+desde Claude Code (ver §6.2 para el proyecto/IDs reutilizables y la
+limitación de fiabilidad conocida en pantallas complejas).
+
+---
+
+## 7. Estado y próximos pasos
+
+- [x] Confirmar esta guía con el cliente/diseño — **aprobada**, ver §3.
+- [x] Generar mockups de referencia — 4 de 8 (F2 Login, F3 Listado de leads,
+      F4 Detalle de lead, F5 Dashboard) en
+      [`docs/mockups/propuesta-visual.html`](mockups/propuesta-visual.html).
+- [ ] Generar los 4 mockups restantes en Stitch (F1 Layout base, F6
+      Notificaciones, F7 Usuarios, F8 Bridges) reutilizando
+      `projectId 8669152245244265576` / `assets/15350993658645954285`. Esperar
+      timeouts en pantallas complejas (ver §6.2) y tener listo el patrón de
+      wireframe HTML como plan B.
+- [ ] Instalar shadcn/ui (CLI v3, `--force` o `--legacy-peer-deps` por
+      React 19) + TanStack Router/Query + TanStack Table + React Hook Form +
+      Zod + lucide-react + date-fns + sonner, como parte de F1. Nada de esto
+      está instalado todavía en `frontend/package.json`.
+- [ ] Definir la paleta categórica final de Recharts junto con F5 — punto de
+      partida en §3 (`#4F46E5 #2563EB #0D9488 #7C3AED`).
+- [ ] Con la línea gráfica aprobada, arrancar el desarrollo general del
+      frontend (F1 en adelante) sobre esta base.

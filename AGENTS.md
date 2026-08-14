@@ -235,17 +235,20 @@ verifica antes de construir:
 | `docs/07-modulos-frontend.md` | Módulos frontend con checklist de avance |
 | `docs/08-dashboard-kpis.md` | Definición exacta de cada KPI |
 | `docs/09-skills-agentes-backend.md` | Skills de IA habilitadas para backend: fuente, instalación y caso de uso |
+| `docs/09-linea-grafica-frontend.md` | Línea gráfica del frontend: paleta, tipografía, librerías de UI candidatas y flujo de mockups con Stitch AI |
+| `docs/10-skills-agente-frontend.md` | Skills de Claude Code Skills para el frontend: lista, comando de instalación por skill y en qué caso debe usarla el agente |
 
 ---
 
 ## 9. Skills de agentes de IA
 
-Antes de instalar o usar una skill de Claude Code para trabajo en `backend/**`,
-se aplica la misma barra de confianza que a una dependencia de npm (§2.1 —
-cadena de suministro): procedencia verificable (vendor oficial o repo de
-GitHub inspeccionable con autor y licencia identificables), nunca un
+Antes de instalar o usar una skill de Claude Code para trabajo en `backend/**`
+o `frontend/**`, se aplica la misma barra de confianza que a una dependencia
+de npm (§2.1 — cadena de suministro): procedencia verificable (vendor oficial
+o repo de GitHub inspeccionable con autor y licencia identificables), nunca un
 agregador que liste variaciones duplicadas del mismo tema sin mantenedor
 claro. El detalle por skill — fuente, comando de instalación y en qué caso
-concreto debe usarla el agente — vive en `docs/09-skills-agentes-backend.md`;
-ese documento también registra las skills evaluadas y descartadas, para no
-repetir la evaluación.
+concreto debe usarla el agente — vive en `docs/09-skills-agentes-backend.md`
+(backend) y `docs/10-skills-agente-frontend.md` (frontend); esos documentos
+también registran las skills evaluadas y descartadas, para no repetir la
+evaluación.
