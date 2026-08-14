@@ -464,3 +464,23 @@ export function getCatalogoResponsablesConRol(): ResponsableLead[] {
 export function getCatalogoVendedores(): { id: string; nombre: string }[] {
   return VENDEDORES.map(({ id, nombre }) => ({ id, nombre }));
 }
+
+const ETAPAS_TERMINALES: EtapaLead[] = ["VENTA", "NO_VENTA"];
+
+/**
+ * Leads activos (no en etapa terminal) donde `usuarioId` es el responsable
+ * operativo *vigente* -- `getResponsable()`, no `asesor`/`vendedor` por
+ * separado, mismo criterio que ya usa F5 para "leads por asesor": un lead
+ * traspasado cuenta para el vendedor que lo recibió, no para el asesor
+ * original (F7, "carga activa de leads"). Reutilizado por
+ * `funcionalidades/usuarios/usuarios.api.ts` para el listado y para la
+ * reasignación obligatoria en la baja lógica -- ver el comentario de brecha
+ * ahí sobre por qué esto solo produce datos reales contra los ids
+ * sintéticos de este mismo mock (`asesor-1`, `vendedor-1`, etc.), no contra
+ * ids reales de `GET /usuarios`.
+ */
+export function getLeadsActivosDeUsuario(usuarioId: string): Lead[] {
+  return LEADS_MOCK.filter(
+    (lead) => !ETAPAS_TERMINALES.includes(lead.etapa) && getResponsable(lead)?.id === usuarioId,
+  );
+}

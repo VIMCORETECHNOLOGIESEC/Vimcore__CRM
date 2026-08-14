@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
 import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
 import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage";
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
+import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
 import { AppLayout } from "@/layouts/AppLayout";
 
 /**
@@ -21,9 +22,11 @@ import { AppLayout } from "@/layouts/AppLayout";
  * Los patrones de rutas anidadas, loaders/actions y navegación de la skill
  * `react-router-framework-mode` siguen aplicando igual en modo datos.
  *
- * Las pantallas de los módulos aún no implementados (F6-F8) son marcadores
- * de posición (`PendingScreen`); F2 (login, perfil), F3 (listado de leads),
- * F4 (detalle de lead) y F5 (dashboard) ya están implementados.
+ * Las pantallas de los módulos aún no implementados (F8) son marcadores de
+ * posición (`PendingScreen`); F2 (login, perfil), F3 (listado de leads), F4
+ * (detalle de lead), F5 (dashboard) y F7 (administración de usuarios) ya
+ * están implementados. F6 (notificaciones) no es una ruta propia -- vive en
+ * la campana de `layouts/Header.tsx`.
  */
 export const router = createBrowserRouter([
   {
@@ -44,10 +47,7 @@ export const router = createBrowserRouter([
           {
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,
             children: [
-              {
-                path: "usuarios",
-                element: <PendingScreen module="F7 — Administración de usuarios" />,
-              },
+              { path: "usuarios", element: <UsuariosPage /> },
               {
                 path: "bridges",
                 element: <PendingScreen module="F8 — Administración de bridges" />,

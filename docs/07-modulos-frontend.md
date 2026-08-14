@@ -443,10 +443,116 @@ paquete es razonable para el volumen de gráficas de este dashboard.
 
 Solo administrador.
 
-- [ ] Listado con rol, estado y carga activa de leads
-- [ ] Alta y edición de usuario
-- [ ] Baja lógica con reasignación obligatoria de la cartera activa
-- [ ] Restablecimiento de contraseña
+> **Progreso:** a diferencia de F3-F6, el backend real de usuarios **ya
+> existía y estaba mergeado** en este worktree antes de empezar --
+> confirmado leyendo `backend/src/routes/usuarios.routes.ts`,
+> `usuarios.controller.ts` y `usuarios.service.ts`: los 5 endpoints CRUD
+> (`POST/GET/GET:id/PATCH:id/DELETE:id /usuarios`), todos
+> `requireRole("ADMINISTRADOR")`. Listado, alta, edición, restablecimiento
+> de contraseña y baja lógica (`funcionalidades/usuarios/usuarios.api.ts`)
+> llaman a ese backend real, no a un mock. TDD real: Vitest + Testing
+> Library, 29 tests nuevos (269 en total en el frontend); `tsc` + `vite
+> build` sin errores.
+>
+> **Brecha de backend detectada y documentada, no resuelta en este
+> cambio** (fuera de alcance de este agente, que no toca `backend/**`): no
+> existe ningún backend real de leads. Se verificó explícitamente antes de
+> escribir código -- `backend/src/{routes,controllers,services}` solo tiene
+> archivos de `usuarios`, `auth`, `salud` y `deduplicacion`; M5
+> (`docs/06-modulos-backend.md`) no está implementado ni siquiera como
+> esqueleto. Eso afecta a dos de los cuatro ítems del checklist:
+> - **"Listado con... carga activa de leads"**: no hay forma de consultar
+>   la cartera de un usuario real contra un backend real hoy.
+> - **"Baja lógica con reasignación obligatoria de la cartera activa"**:
+>   se leyó `backend/src/repositories/usuario.repository.ts::deactivateUser`
+>   línea por línea para confirmarlo -- la transacción real solo hace
+>   `activo=false` + `revokeAllForUser` (revoca todos los refresh tokens),
+>   **no reasigna ningún lead**. No hay ningún parámetro de reasignación en
+>   `DELETE /usuarios/:id` ni en `usuarios.service.ts::deactivateUser`.
+>
+> En vez de dejar esos dos ítems sin construir, se reutilizó el mismo
+> fixture en memoria que ya usan F3/F4/F5 (`leads.api.ts::LEADS_MOCK`, vía
+> las funciones nuevas `getLeadsActivosDeUsuario` ahí, y
+> `getCargaActivaDeUsuario`/`getCandidatosReasignacion`/
+> `reassignCarteraActiva` en `usuarios.api.ts`) -- para no inventar un
+> segundo mock paralelo, y para que la UI completa (listado con conteo,
+> diálogo de baja con reasignación forzada cuando corresponde) ya esté
+> lista y probada para cuando exista el backend real de leads. Consecuencia
+> importante a tener presente: ese mock usa ids sintéticos fijos
+> (`asesor-1`, `asesor-2`, `vendedor-1`, `vendedor-2`), no los UUID que
+> genera el backend real de usuarios -- en un ambiente real, salvo
+> coincidencia, cualquier usuario mostrará "0 leads activos" no porque no
+> tenga cartera, sino porque no hay ningún dato real contra el cual
+> contarla. Documentado en detalle en el comentario de cabecera de
+> `usuarios.api.ts`.
+>
+> **Restablecimiento de contraseña, sin brecha** (a diferencia de F2): el
+> mismo endpoint `PATCH /usuarios/:id` que F2 reutiliza para el
+> autoservicio (con la brecha ahí documentada, sigue sin resolverse) acá
+> **sí funciona de punta a punta para cualquier usuario objetivo**, porque
+> un administrador no necesita la contraseña actual del usuario que está
+> reseteando (`usuarios.service.ts::updateUser`, sin verificación de
+> contraseña previa) -- es justamente el flujo para el que ese endpoint fue
+> diseñado.
+>
+> **Decisiones de diseño propias del frontend** (no fijadas por ningún
+> contrato de backend):
+> - Alta y edición son dos diálogos separados (`CrearUsuarioDialog`,
+>   `EditarUsuarioDialog`) en vez de uno genérico con dos modos: alta pide
+>   contraseña inicial, edición no -- evita la gimnasia de tipos de un
+>   formulario RHF+Zod con un modo condicional, a costa de una pequeña
+>   duplicación de los campos nombre/correo/rol. Restablecer contraseña es
+>   un tercer diálogo aparte (`RestablecerPasswordDialog`), reflejando que
+>   el checklist ya los separa en dos ítems distintos.
+> - Sin schema compartido de `packages/schemas` para el cuerpo completo de
+>   alta/edición: `createUsuarioBodySchema`
+>   (`backend/src/schemas/usuarios.schema.ts`) usa `z.enum(RolUsuario)`
+>   sobre el enum nativo de Prisma -- importarlo arrastraría
+>   `@prisma/client` al bundle del frontend (misma decisión ya tomada en la
+>   nota de consolidación de F2). Sí se reutiliza `passwordPolicySchema`
+>   para la contraseña inicial y el restablecimiento.
+> - `ROLES_USUARIO` (`tipos/usuario.ts`) pasó de `readonly RolUsuario[]` a
+>   `as const satisfies readonly RolUsuario[]` para poder alimentar
+>   `z.enum(ROLES_USUARIO)` sin duplicar la lista de roles en un segundo
+>   lugar -- cambio mecánico, no afecta a ningún uso existente (F1-F6).
+> - "Carga activa de leads" cuenta por **responsable operativo vigente**
+>   (`getResponsable()`: vendedor si hubo traspaso, si no el asesor), mismo
+>   criterio que F5 usa para "leads por asesor" -- un lead traspasado cuenta
+>   para el vendedor que lo recibió, no para el asesor original.
+>   Administrador/supervisor muestran "No aplica" (no cargan cartera propia
+>   en este modelo de datos).
+> - El diálogo de baja fuerza la reasignación solo cuando hay cartera
+>   activa (`cargaActiva > 0`); si no la hay, es una confirmación simple
+>   (`"Esta acción es irreversible"`). Los candidatos de reasignación se
+>   filtran por el mismo rol operativo del usuario dado de baja (un asesor
+>   solo puede traspasar a otro asesor, un vendedor solo a otro vendedor).
+> - La reasignación (mock) y la baja lógica (backend real) **no son una
+>   transacción atómica**: si la reasignación falla, nunca se llama a
+>   `deactivateUsuarioApi` (cubierto con test); pero si la reasignación
+>   tuviera éxito y la baja real fallara después, la cartera ya se movió
+>   con el usuario todavía activo -- limitación conocida y documentada en
+>   `usuarios.api.ts::reassignCarteraActiva`, no resoluble desde el
+>   frontend sin que el backend real de leads mueva esta reasignación a la
+>   misma transacción de `deactivateUser` (igual que ya hace hoy con
+>   `revokeAllForUser`).
+> - Sin endpoint de reactivación: `updateUsuarioBodySchema`
+>   (`backend/src/schemas/usuarios.schema.ts`) no incluye el campo `activo`
+>   -- una vez dado de baja, no hay forma de reactivar a un usuario contra
+>   el backend actual. No se construyó UI para esto (no está en el
+>   checklist), pero se deja anotado; el botón "Dar de baja" se deshabilita
+>   para usuarios ya inactivos para no sugerir una acción sin efecto.
+>
+> Fuera de alcance: conexión real de "carga activa de leads" y
+> reasignación a un backend de leads (no existe, M5) y reactivación de
+> usuario (no hay endpoint, ni pedido por el checklist).
+
+- [x] Listado con rol, estado y carga activa de leads (carga activa: mock
+      de F3, ver nota de brecha arriba)
+- [x] Alta y edición de usuario
+- [x] Baja lógica con reasignación obligatoria de la cartera activa
+      (reasignación: mock de F3, ver nota de brecha arriba; la baja lógica
+      en sí es backend real)
+- [x] Restablecimiento de contraseña (backend real, sin brecha)
 
 ---
 

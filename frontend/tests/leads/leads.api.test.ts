@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { assignLeadsMasivoApi, fetchLeadsApi } from "@/funcionalidades/leads/leads.api";
+import {
+  assignLeadsMasivoApi,
+  fetchLeadsApi,
+  getLeadsActivosDeUsuario,
+} from "@/funcionalidades/leads/leads.api";
 
 const PAGINA_1 = { pagina: 1, porPagina: 50 };
 
@@ -113,6 +117,36 @@ describe("fetchLeadsApi — filtrado automático por rol (docs/06 M5)", () => {
       usuarioId: "cualquiera",
     });
     expect(comoAdmin.total).toBe(sinRestriccion.total);
+  });
+});
+
+/**
+ * `getLeadsActivosDeUsuario` va **antes** de `assignLeadsMasivoApi` a
+ * propósito: `LEADS_MOCK` es un fixture mutable compartido a nivel de
+ * módulo (no se resetea entre `it`s), y la suite de `assignLeadsMasivoApi`
+ * de más abajo reasigna leads reales a `asesor-1` -- si estas aserciones
+ * corrieran después, quedarían contaminadas por esa mutación.
+ */
+describe("getLeadsActivosDeUsuario (F7, carga activa de leads)", () => {
+  it("cuenta solo los leads donde el usuario es el responsable operativo vigente, sin etapas terminales", () => {
+    // lead-05 (VENTA) y lead-06 (NO_VENTA) quedan fuera aunque tengan
+    // asesor/vendedor asignado -- son etapas terminales, no cartera activa.
+    expect(getLeadsActivosDeUsuario("asesor-1").map((l) => l.id).sort()).toEqual([
+      "lead-01",
+      "lead-03",
+    ]);
+  });
+
+  it("un lead traspasado cuenta para el vendedor que lo recibió, no para el asesor original", () => {
+    // lead-02: asesor-2 originó el lead, pero vendedor-1 es el responsable
+    // vigente tras el traspaso (mismo criterio que F5 "leads por asesor").
+    const deVendedor1 = getLeadsActivosDeUsuario("vendedor-1");
+    expect(deVendedor1.map((l) => l.id)).toEqual(["lead-02"]);
+    expect(getLeadsActivosDeUsuario("asesor-2").map((l) => l.id)).not.toContain("lead-02");
+  });
+
+  it("devuelve una lista vacía para un id sin ningún lead asignado (ej. un usuario real recién creado)", () => {
+    expect(getLeadsActivosDeUsuario("un-id-que-no-existe-en-el-mock")).toEqual([]);
   });
 });
 

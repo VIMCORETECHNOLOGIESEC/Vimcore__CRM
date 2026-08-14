@@ -6,12 +6,18 @@
  */
 export type RolUsuario = "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR";
 
-export const ROLES_USUARIO: readonly RolUsuario[] = [
+/**
+ * `as const satisfies` (no solo `readonly RolUsuario[]`) para que el tipo se
+ * infiera como tupla literal -- necesario para reutilizarla directamente en
+ * `z.enum(ROLES_USUARIO)` (F7, formularios de alta/edición de usuario) sin
+ * duplicar la lista de roles en un segundo lugar.
+ */
+export const ROLES_USUARIO = [
   "ADMINISTRADOR",
   "SUPERVISOR",
   "ASESOR",
   "VENDEDOR",
-];
+] as const satisfies readonly RolUsuario[];
 
 /** Forma de `PublicUser` en `backend/src/services/auth.service.ts`. */
 export interface AuthenticatedUser {
@@ -19,4 +25,21 @@ export interface AuthenticatedUser {
   nombre: string;
   correo: string;
   rol: RolUsuario;
+}
+
+/**
+ * Vista administrativa de un usuario (F7, `GET/POST/PATCH /usuarios`).
+ * Forma de `AdminUserView` en `backend/src/repositories/usuario.repository.ts`
+ * (`adminUserSelect`) -- nunca incluye `passwordHash`. `creadoEn`/`actualizadoEn`
+ * llegan como ISO 8601 (`Date` de Prisma serializado por `res.json`), igual
+ * criterio que `Lead.ingresadoEn`.
+ */
+export interface AdminUsuario {
+  id: string;
+  nombre: string;
+  correo: string;
+  rol: RolUsuario;
+  activo: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
 }
