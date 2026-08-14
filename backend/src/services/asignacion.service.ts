@@ -1,10 +1,27 @@
-import type { Lead, Prisma } from "@prisma/client";
+import type { EtapaLead, Lead, Prisma, RolUsuario } from "@prisma/client";
+import { AppError } from "../lib/app-error.js";
+import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
+import type { AsignarBody, ReasignarBody, TraspasarBody } from "../schemas/leads.schema.js";
+import { canReassign, canTransfer, type MotivoDenegacion, type UsuarioAcceso } from "./leads.access.js";
+import type { LeadConSla } from "./leads.service.js";
+import { calculateEstadoSla } from "./sla.calculator.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
+
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+
+/**
+ * M6 (diseño, "Cálculo de menor carga activa"): re-tipada localmente para
+ * ensanchar el tipo tupla-literal (`as const` en `lead.repository.ts`) al
+ * tipo amplio `EtapaLead` — así `.includes(lead.etapa)` acepta cualquier
+ * valor del enum sin duplicar los dos valores en una cuarta constante (la
+ * fuente de verdad sigue siendo `leadRepository.ETAPAS_CERRADAS`).
+ */
+const ETAPAS_CERRADAS: readonly EtapaLead[] = leadRepository.ETAPAS_CERRADAS;
 
 export interface CandidatoAsignacion {
   id: string;
@@ -207,5 +224,213 @@ export async function assignAutomatically(
       ahora,
     },
     tx,
+  );
+}
+
+/**
+ * Espejo local del helper privado de `leads.service.ts` (no se modifica ese
+ * archivo — no figura en la tabla de cambios de archivos del diseño M6):
+ * mismo cálculo de una línea con `sla.calculator.ts`, sin duplicar reglas de
+ * negocio, solo la combinación `Lead + estadoSla` para el payload HTTP.
+ */
+function withEstadoSla(lead: Lead, ahora: Date): LeadConSla {
+  return { ...lead, estadoSla: calculateEstadoSla(lead.slaInicioEn, lead.cerradoEn, ahora) };
+}
+
+/** DD12 (diseño M6): las tres operaciones manuales rechazan un lead cerrado. */
+function assertLeadAbierto(lead: Lead): void {
+  if (ETAPAS_CERRADAS.includes(lead.etapa)) {
+    throw new AppError("lead_cerrado", 409, "El lead ya está en una etapa terminal y no puede reasignarse");
+  }
+}
+
+/**
+ * DD9 (diseño M6): traduce el `MotivoDenegacion` puro de `leads.access.ts` al
+ * código HTTP — único punto de mapeo, reutilizado por las tres operaciones
+ * manuales (tarea 2.14).
+ */
+function throwPorMotivoDenegacion(motivo: MotivoDenegacion): never {
+  if (motivo === "etapa_no_traspasable") {
+    throw new AppError(
+      "etapa_no_traspasable",
+      409,
+      "Un lead en etapa NUEVO no puede traspasarse",
+    );
+  }
+  throw new AppError("permiso_denegado", 403, "No tienes permiso para esta acción");
+}
+
+/**
+ * D9 (diseño M6, "Selección de destinatario según rol ejecutor"): si el
+ * actor indicó `destinoId` (solo posible para Admin/Supervisor, DD10), lo
+ * valida contra los activos del pool y lo usa directo — sin correr el
+ * algoritmo. Si no, corre `selectResponsable` (el algoritmo de menor carga).
+ * El titular actual (`excluirId`) nunca es su propio candidato ni su propio
+ * destinatario explícito.
+ */
+async function resolveReceptor(
+  pool: PoolAsignacion,
+  tx: Prisma.TransactionClient,
+  excluirId: string | undefined,
+  destinoId: string | undefined,
+): Promise<string> {
+  if (destinoId !== undefined) {
+    if (destinoId === excluirId) {
+      throw new AppError(
+        "destinatario_invalido",
+        409,
+        "El destinatario no puede ser el responsable actual",
+      );
+    }
+    const activos = await usuarioRepository.findActivosPorRol(pool, tx);
+    const esValido = activos.some((candidato) => candidato.id === destinoId);
+    if (!esValido) {
+      throw new AppError("destinatario_invalido", 409, "El destinatario indicado no es válido");
+    }
+    return destinoId;
+  }
+
+  const candidato = await selectResponsable(pool, tx, excluirId);
+  if (candidato === null) {
+    throw new AppError("sin_candidatos", 409, "No hay candidatos disponibles para la asignación");
+  }
+  return candidato.id;
+}
+
+/**
+ * `POST /api/v1/leads/:id/asignar` (diseño M6). La ruta ya restringe el rol a
+ * ADMINISTRADOR/SUPERVISOR (`requireRole`, primer uso del router) — DD10 se
+ * respeta de todos modos de forma defensiva ante una invocación directa del
+ * servicio.
+ */
+export async function assignLead(
+  usuario: UsuarioAcceso,
+  leadId: string,
+  body: AsignarBody,
+): Promise<LeadConSla> {
+  return runInTransaction(
+    undefined,
+    async (tx) => {
+      const ahora = new Date();
+      const lead = await leadRepository.findById(leadId, tx);
+      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+      assertLeadAbierto(lead);
+
+      const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
+      const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
+
+      const leadActualizado = await applyAsignacion(
+        {
+          leadId,
+          pool: "ASESOR",
+          receptorId,
+          responsableAnteriorId: lead.asesorId,
+          tipoEvento: "ASIGNACION",
+          motivo: "manual",
+          ejecutadoPorId: usuario.id,
+          ahora,
+        },
+        tx,
+      );
+
+      return withEstadoSla(leadActualizado, ahora);
+    },
+    ASIGNACION_TRANSACTION_BOUNDS,
+  );
+}
+
+/**
+ * `POST /api/v1/leads/:id/reasignar` (diseño M6, D8): la regla híbrida
+ * rol+recurso vive en `canReassign`, evaluada aquí sobre el lead leído de BD
+ * dentro de la transacción — nunca en middleware ni sobre datos del body.
+ */
+export async function reassignLead(
+  usuario: UsuarioAcceso,
+  leadId: string,
+  body: ReasignarBody,
+): Promise<LeadConSla> {
+  return runInTransaction(
+    undefined,
+    async (tx) => {
+      const ahora = new Date();
+      const lead = await leadRepository.findById(leadId, tx);
+      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+      assertLeadAbierto(lead);
+
+      const motivoDenegacion = canReassign(usuario, {
+        asesorId: lead.asesorId,
+        vendedorId: lead.vendedorId,
+        semaforo: lead.semaforo,
+      });
+      if (motivoDenegacion !== null) throwPorMotivoDenegacion(motivoDenegacion);
+
+      const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
+      const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
+
+      const leadActualizado = await applyAsignacion(
+        {
+          leadId,
+          pool: "ASESOR",
+          receptorId,
+          responsableAnteriorId: lead.asesorId,
+          tipoEvento: "REASIGNACION",
+          motivo: "reasignacion",
+          ejecutadoPorId: usuario.id,
+          ahora,
+        },
+        tx,
+      );
+
+      return withEstadoSla(leadActualizado, ahora);
+    },
+    ASIGNACION_TRANSACTION_BOUNDS,
+  );
+}
+
+/**
+ * `POST /api/v1/leads/:id/traspasar` (diseño M6, D9): pool `VENDEDOR`. La
+ * compuerta de etapa (`NUEVO` → 409) vive en `canTransfer` y aplica a todos
+ * los roles, incluido Administrador.
+ */
+export async function transferLead(
+  usuario: UsuarioAcceso,
+  leadId: string,
+  body: TraspasarBody,
+): Promise<LeadConSla> {
+  return runInTransaction(
+    undefined,
+    async (tx) => {
+      const ahora = new Date();
+      const lead = await leadRepository.findById(leadId, tx);
+      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+      assertLeadAbierto(lead);
+
+      const motivoDenegacion = canTransfer(usuario, {
+        asesorId: lead.asesorId,
+        vendedorId: lead.vendedorId,
+        etapa: lead.etapa,
+      });
+      if (motivoDenegacion !== null) throwPorMotivoDenegacion(motivoDenegacion);
+
+      const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
+      const receptorId = await resolveReceptor("VENDEDOR", tx, lead.vendedorId ?? undefined, destino);
+
+      const leadActualizado = await applyAsignacion(
+        {
+          leadId,
+          pool: "VENDEDOR",
+          receptorId,
+          responsableAnteriorId: lead.vendedorId,
+          tipoEvento: "TRASPASO",
+          motivo: "traspaso",
+          ejecutadoPorId: usuario.id,
+          ahora,
+        },
+        tx,
+      );
+
+      return withEstadoSla(leadActualizado, ahora);
+    },
+    ASIGNACION_TRANSACTION_BOUNDS,
   );
 }

@@ -64,7 +64,21 @@ export const postFormularioBodySchema = z.object({
   respuestas: z.record(z.string(), z.string()),
 });
 
+/**
+ * M6 (diseño, "Endpoints"): `z.object` descarta claves desconocidas (mismo
+ * patrón DD8 de M5) — un `slaInicioEn`/`semaforo` inyectado en el body no
+ * tiene forma estructural de llegar al servicio. `asesorId`/`vendedorId` solo
+ * se leen del body cuando el actor es Administrador/Supervisor (DD10);
+ * `leads.access.ts`/`asignacion.service.ts` deciden eso, no el schema.
+ */
+export const asignarBodySchema = z.object({ asesorId: z.uuid().optional() });
+export const reasignarBodySchema = z.object({ asesorId: z.uuid().optional() });
+export const traspasarBodySchema = z.object({ vendedorId: z.uuid().optional() });
+
 export type PatchEtapaBody = z.infer<typeof patchEtapaBodySchema>;
 export type ListLeadsQuery = z.infer<typeof listLeadsQuerySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
 export type PostFormularioBody = z.infer<typeof postFormularioBodySchema>;
+export type AsignarBody = z.infer<typeof asignarBodySchema>;
+export type ReasignarBody = z.infer<typeof reasignarBodySchema>;
+export type TraspasarBody = z.infer<typeof traspasarBodySchema>;

@@ -2,11 +2,15 @@ import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
+  asignarBodySchema,
   idParamSchema,
   listLeadsQuerySchema,
   patchEtapaBodySchema,
   postFormularioBodySchema,
+  reasignarBodySchema,
+  traspasarBodySchema,
 } from "../schemas/leads.schema.js";
+import { assignLead, reassignLead, transferLead } from "../services/asignacion.service.js";
 import { findLeadById, findLeads, recalificarLead, transitionEtapa } from "../services/leads.service.js";
 
 function zodValidationError(): AppError {
@@ -62,5 +66,45 @@ export async function postLeadFormulario(req: Request, res: Response): Promise<v
   if (!parsedBody.success) throw zodValidationError();
 
   const lead = await recalificarLead(usuario, parsedId.data.id, parsedBody.data.respuestas);
+  res.status(200).json({ lead });
+}
+
+/** M6 (diseño): calco de `patchLeadEtapa` — traducción HTTP pura, cero reglas de negocio aquí. */
+export async function postLeadAsignar(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedId = idParamSchema.safeParse(req.params);
+  if (!parsedId.success) throw zodValidationError();
+
+  const parsedBody = asignarBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const lead = await assignLead(usuario, parsedId.data.id, parsedBody.data);
+  res.status(200).json({ lead });
+}
+
+export async function postLeadReasignar(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedId = idParamSchema.safeParse(req.params);
+  if (!parsedId.success) throw zodValidationError();
+
+  const parsedBody = reasignarBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const lead = await reassignLead(usuario, parsedId.data.id, parsedBody.data);
+  res.status(200).json({ lead });
+}
+
+export async function postLeadTraspasar(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedId = idParamSchema.safeParse(req.params);
+  if (!parsedId.success) throw zodValidationError();
+
+  const parsedBody = traspasarBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const lead = await transferLead(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ lead });
 }
