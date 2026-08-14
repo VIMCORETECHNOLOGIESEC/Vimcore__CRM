@@ -1,4 +1,4 @@
-import { Bell, LogOut, Menu, Settings, User } from "lucide-react";
+import { LogOut, Menu, Settings, User } from "lucide-react";
 import { Link } from "react-router";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { CampanaNotificaciones } from "@/funcionalidades/notificaciones/CampanaNotificaciones";
 import { Sidebar } from "./Sidebar";
 
 function getInitials(name: string): string {
@@ -26,7 +26,7 @@ function getInitials(name: string): string {
 
 /**
  * Encabezado principal: disparador del menú móvil, campana de notificaciones
- * (solo layout -- F6 implementa la funcionalidad real) y menú de usuario.
+ * (`CampanaNotificaciones`, F6) y menú de usuario.
  */
 export function Header() {
   const { user, logout } = useAuth();
@@ -50,21 +50,7 @@ export function Header() {
       <div className="flex-1" />
 
       <div className="flex items-center gap-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Notificaciones (aún no disponible)"
-              aria-disabled="true"
-              className="cursor-not-allowed opacity-50"
-              onClick={(event) => event.preventDefault()}
-            >
-              <Bell className="size-5" aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Notificaciones — disponible en el módulo F6</TooltipContent>
-        </Tooltip>
+        <CampanaNotificaciones />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
