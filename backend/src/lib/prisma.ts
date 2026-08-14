@@ -64,6 +64,17 @@ export const ASIGNACION_TRANSACTION_BOUNDS: TransactionBounds = {
 };
 
 /**
+ * Límites de la transacción de `citas.service` (M7): independiente, mismo
+ * criterio que `ASIGNACION_TRANSACTION_BOUNDS` — agendar/reprogramar una cita
+ * es un flujo de escritura propio que nunca anida con dedup/ingesta/gestión
+ * de leads/asignación.
+ */
+export const CITAS_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+/**
  * Seam D1 (diseño M4, DD1c): si el llamador ya trae una transacción externa
  * (`txExterna`), `fn` corre dentro de ella y `bounds` se ignora — nunca se
  * abre una segunda transacción/conexión (precondición de DD2). Si no,

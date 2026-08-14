@@ -37,6 +37,8 @@ model Usuario {
   leadsComoAsesor      Lead[]                @relation("LeadAsesor")
   leadsComoVendedor    Lead[]                @relation("LeadVendedor")
   respuestasFormulario RespuestaFormulario[]
+  // M7: citas donde este usuario es el responsable (`usuario_id`, "Responsable").
+  citas                Cita[]
 
   @@map("usuarios")
 }
@@ -194,6 +196,7 @@ model Lead {
   eventos              LeadEvento[]
   leadsRecibidos       LeadRecibido[]
   respuestasFormulario RespuestaFormulario[]
+  citas                Cita[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
@@ -253,6 +256,70 @@ model RespuestaFormulario {
 
   @@index([leadId, registradoEn])
   @@map("respuestas_formulario")
+}
+
+enum ModalidadCita {
+  PRESENCIAL
+  VIRTUAL
+  TELEFONICA
+
+  @@map("modalidad_cita")
+}
+
+enum EstadoCita {
+  AGENDADA
+  CUMPLIDA
+  NO_ASISTIO
+  // M7 (diseño, decisión de reprogramación): el trabajo de recordatorio (§4,
+  // docs/06) filtra estrictamente `estado = AGENDADA` — para que una cita
+  // reprogramada siga recibiendo su recordatorio 1h antes de la NUEVA fecha,
+  // `citas.service.ts::rescheduleCita` deja el `estado` en `AGENDADA` tras
+  // reprogramar (mismo registro, `programadaPara` actualizada), nunca en
+  // `REPROGRAMADA`. Este valor se conserva en el enum por fidelidad exacta
+  // con `docs/03-modelo-datos.md` §citas, pero ningún camino de código actual
+  // lo persiste — queda disponible para un futuro estado transitorio propio
+  // sin requerir otra migración.
+  REPROGRAMADA
+  CANCELADA
+
+  @@map("estado_cita")
+}
+
+// M7 (docs/03-modelo-datos.md §citas): un registro por reunión agendada con
+// el lead. Es un registro ASOCIADO al lead, no un reemplazo del flujo de
+// etapa/formulario de M5 — marcar el resultado de una cita (`CUMPLIDA`/
+// `NO_ASISTIO`) nunca mueve `leads.etapa` ni escribe `respuestas_formulario`
+// por sí solo; el vendedor sigue completando el formulario de la etapa CITA
+// (docs/04-formularios-semaforo.md §5) por su propio flujo ya existente
+// (`PATCH /leads/:id/etapa` o `POST /leads/:id/formulario`, M5).
+model Cita {
+  id                  String        @id @default(uuid()) @db.Uuid
+  leadId              String        @map("lead_id") @db.Uuid
+  // "Responsable" (docs/03): quien la agenda por defecto (D-M7a, diseño M7);
+  // Admin/Supervisor pueden asignarla a otro usuario explícito.
+  usuarioId           String        @map("usuario_id") @db.Uuid
+  programadaPara      DateTime      @map("programada_para") @db.Timestamptz(6)
+  modalidad           ModalidadCita
+  estado              EstadoCita    @default(AGENDADA)
+  notas               String?       @db.Text
+  recordatorioEnviado Boolean       @default(false) @map("recordatorio_enviado")
+  creadoEn            DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  // Restrict (no SetNull): a diferencia de `Lead.asesorId`/`vendedorId`
+  // (M5 D1, columna nullable), `usuario_id` de `citas` es NOT NULL en el
+  // modelo de datos (docs/03) — mismo criterio que
+  // `RespuestaFormulario.usuario` (M5), que también es requerido.
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([leadId])
+  // M7: forma de consulta del trabajo de recordatorio (`estado = AGENDADA`,
+  // `recordatorioEnviado = false`, `programadaPara` en la ventana de 1h) —
+  // volumen de `citas` muy por debajo de `leads`, así que un índice compuesto
+  // regular basta; no se justifica el índice parcial a mano que sí requirió
+  // `idx_leads_sla` (DD1, M5/M6) para la tabla más caliente del sistema.
+  @@index([estado, programadaPara])
+  @@map("citas")
 }
 
 enum RedSocial {
