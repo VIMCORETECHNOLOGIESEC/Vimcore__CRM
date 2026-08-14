@@ -5,7 +5,11 @@ import * as citaRepository from "../repositories/cita.repository.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
-import type { CrearCitaBody } from "../schemas/citas.schema.js";
+import type {
+  CrearCitaBody,
+  MarcarResultadoCitaBody,
+  ReprogramarCitaBody,
+} from "../schemas/citas.schema.js";
 import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
@@ -186,4 +190,104 @@ export async function cancelCita(usuario: UsuarioAcceso, citaId: string): Promis
     );
   }
   return citaRepository.updateCita(citaId, { estado: "CANCELADA" });
+}
+
+/**
+ * `POST /api/v1/citas/:citaId/reprogramar` (diseño M7, checklist
+ * "Reprogramación con registro de evento"). Decisión de diseño explícita
+ * (dejada abierta por el diseño del cambio): `estado` vuelve a `AGENDADA`
+ * con la nueva `programadaPara` — NUNCA queda en `REPROGRAMADA` — porque el
+ * trabajo de recordatorio (`citas-recordatorio.service.ts`) filtra
+ * estrictamente `estado = AGENDADA`; dejar la fila en `REPROGRAMADA` la
+ * excluiría para siempre del recordatorio de 1h antes de la NUEVA fecha, un
+ * defecto funcional. El historial de que hubo una reprogramación (y cuántas)
+ * vive en `lead_eventos` (`CITA_REPROGRAMADA`, uno por cada reprogramación),
+ * no en el valor persistido de `estado` — mismo patrón que `CAMBIO_SEMAFORO`/
+ * `CAMBIO_ETAPA` en `leads.service.ts` (M5): la fila mutable + la bitácora
+ * inmutable en la misma transacción. `recordatorioEnviado` se resetea a
+ * `false`: la nueva fecha es una ventana de recordatorio distinta.
+ */
+export async function rescheduleCita(
+  usuario: UsuarioAcceso,
+  citaId: string,
+  body: ReprogramarCitaBody,
+  ahora: Date = new Date(),
+): Promise<Cita> {
+  return runInTransaction(
+    undefined,
+    async (tx) => {
+      const cita = await findCitaOrThrow(citaId, tx);
+      const lead = await findLeadOrThrow(cita.leadId, tx);
+      if (!canEdit(usuario, lead)) {
+        throw new AppError("permiso_denegado", 403, "No tienes permiso para reprogramar esta cita");
+      }
+      if (cita.estado !== "AGENDADA") {
+        throw new AppError(
+          "cita_no_reprogramable",
+          409,
+          `La cita está en estado ${cita.estado} y no puede reprogramarse`,
+        );
+      }
+      assertProgramadaEnFuturo(body.programadaPara, ahora);
+
+      const citaActualizada = await citaRepository.updateCita(
+        citaId,
+        { programadaPara: body.programadaPara, estado: "AGENDADA", recordatorioEnviado: false },
+        tx,
+      );
+
+      await leadEventoRepository.createEvento(
+        {
+          leadId: cita.leadId,
+          tipo: "CITA_REPROGRAMADA",
+          usuarioId: usuario.id,
+          detalle: {
+            citaId,
+            programadaParaAnterior: cita.programadaPara.toISOString(),
+            programadaParaNueva: body.programadaPara.toISOString(),
+          } satisfies Prisma.InputJsonValue,
+        },
+        tx,
+      );
+
+      return citaActualizada;
+    },
+    CITAS_TRANSACTION_BOUNDS,
+  );
+}
+
+/**
+ * `POST /api/v1/citas/:citaId/resultado` (diseño M7, checklist "Estados de
+ * cita y su efecto en el formulario de la etapa Cita"). Límite explícito de
+ * diseño: esta operación es un registro ASOCIADO — marca el resultado de la
+ * REUNIÓN en `citas.estado` (`CUMPLIDA`/`NO_ASISTIO`), pero NUNCA mueve
+ * `leads.etapa` ni escribe `respuestas_formulario` por sí sola. El formulario
+ * de la etapa CITA (docs/04-formularios-semaforo.md §5, "¿Asistió a la
+ * cita?") lo sigue completando el vendedor por su propio flujo ya existente
+ * de M5 (`PATCH /leads/:id/etapa` o `POST /leads/:id/formulario`,
+ * `formularios.service.ts::applyFormulario`) — este endpoint no lo invoca ni
+ * lo duplica, evita una segunda fuente de verdad para la misma pregunta.
+ * Tampoco escribe `lead_eventos`: no existe un tipo `TipoEventoLead` propio
+ * para el resultado de una cita (solo `CITA_AGENDADA`/`CITA_REPROGRAMADA`
+ * están reservados en el enum) — la bitácora de leads no necesita esta
+ * granularidad, `citas.estado` ya es su propio registro auditable.
+ */
+export async function marcarResultadoCita(
+  usuario: UsuarioAcceso,
+  citaId: string,
+  body: MarcarResultadoCitaBody,
+): Promise<Cita> {
+  const cita = await findCitaOrThrow(citaId);
+  const lead = await findLeadOrThrow(cita.leadId);
+  if (!canEdit(usuario, lead)) {
+    throw new AppError("permiso_denegado", 403, "No tienes permiso para marcar el resultado de esta cita");
+  }
+  if (cita.estado !== "AGENDADA") {
+    throw new AppError(
+      "cita_no_editable",
+      409,
+      `La cita está en estado ${cita.estado} y no admite marcar un resultado`,
+    );
+  }
+  return citaRepository.updateCita(citaId, { estado: body.estado });
 }

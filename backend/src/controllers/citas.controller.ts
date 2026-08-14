@@ -5,8 +5,17 @@ import { idParamSchema } from "../schemas/leads.schema.js";
 import {
   citaIdParamSchema,
   crearCitaBodySchema,
+  marcarResultadoCitaBodySchema,
+  reprogramarCitaBodySchema,
 } from "../schemas/citas.schema.js";
-import { cancelCita, getCitaById, listCitasByLead, scheduleCita } from "../services/citas.service.js";
+import {
+  cancelCita,
+  getCitaById,
+  listCitasByLead,
+  marcarResultadoCita,
+  rescheduleCita,
+  scheduleCita,
+} from "../services/citas.service.js";
 
 function zodValidationError(): AppError {
   return new AppError("validacion_invalida", 400, "La petición es inválida");
@@ -57,5 +66,31 @@ export async function postCancelarCita(req: Request, res: Response): Promise<voi
   if (!parsedId.success) throw zodValidationError();
 
   const cita = await cancelCita(usuario, parsedId.data.citaId);
+  res.status(200).json({ cita });
+}
+
+export async function postReprogramarCita(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedId = citaIdParamSchema.safeParse(req.params);
+  if (!parsedId.success) throw zodValidationError();
+
+  const parsedBody = reprogramarCitaBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const cita = await rescheduleCita(usuario, parsedId.data.citaId, parsedBody.data);
+  res.status(200).json({ cita });
+}
+
+export async function postResultadoCita(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedId = citaIdParamSchema.safeParse(req.params);
+  if (!parsedId.success) throw zodValidationError();
+
+  const parsedBody = marcarResultadoCitaBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const cita = await marcarResultadoCita(usuario, parsedId.data.citaId, parsedBody.data);
   res.status(200).json({ cita });
 }

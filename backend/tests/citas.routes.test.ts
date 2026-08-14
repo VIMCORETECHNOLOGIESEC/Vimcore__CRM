@@ -211,3 +211,85 @@ describe("POST /api/v1/citas/:citaId/cancelar", () => {
     expect(respuesta.body.code).toBe("cita_no_cancelable");
   });
 });
+
+describe("POST /api/v1/citas/:citaId/reprogramar", () => {
+  it("200: reprograma y el estado vuelve a AGENDADA con la nueva fecha", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id });
+
+    const creada = await request(app)
+      .post(`/api/v1/leads/${lead.id}/citas`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+
+    const nuevaFecha = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const respuesta = await request(app)
+      .post(`/api/v1/citas/${creada.body.cita.id}/reprogramar`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ programadaPara: nuevaFecha });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.cita.estado).toBe("AGENDADA");
+    expect(respuesta.body.cita.programadaPara).toBe(nuevaFecha);
+  });
+
+  it("409: no se puede reprogramar una cita cancelada", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id });
+
+    const creada = await request(app)
+      .post(`/api/v1/leads/${lead.id}/citas`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+
+    await request(app)
+      .post(`/api/v1/citas/${creada.body.cita.id}/cancelar`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({});
+
+    const respuesta = await request(app)
+      .post(`/api/v1/citas/${creada.body.cita.id}/reprogramar`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ programadaPara: enUnaHoraIso() });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.code).toBe("cita_no_reprogramable");
+  });
+});
+
+describe("POST /api/v1/citas/:citaId/resultado", () => {
+  it("200: marca la cita como CUMPLIDA", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id });
+
+    const creada = await request(app)
+      .post(`/api/v1/leads/${lead.id}/citas`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+
+    const respuesta = await request(app)
+      .post(`/api/v1/citas/${creada.body.cita.id}/resultado`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ estado: "CUMPLIDA" });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.cita.estado).toBe("CUMPLIDA");
+  });
+
+  it("400: un estado fuera de {CUMPLIDA, NO_ASISTIO} se rechaza en el borde", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id });
+
+    const creada = await request(app)
+      .post(`/api/v1/leads/${lead.id}/citas`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+
+    const respuesta = await request(app)
+      .post(`/api/v1/citas/${creada.body.cita.id}/resultado`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ estado: "CANCELADA" });
+
+    expect(respuesta.status).toBe(400);
+  });
+});
