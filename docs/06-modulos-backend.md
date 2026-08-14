@@ -86,6 +86,13 @@ reingreso, hace 91 días sí.
 > (endpoint genérico + adaptador Google Forms). Meta, LinkedIn, X, cifrado de
 > tokens, CRUD de bridges/cuentas publicitarias y los trabajos programados
 > quedan fuera de alcance de este cambio — llegan en un cambio SDD futuro.
+>
+> **Corrección retroactiva (M5, DD1):** `deduplicacion.service.ts::createLead`
+> no poblaba `redSocial`/`payloadOriginal`/`camposDinamicos` en `leads` pese a
+> que `LeadEntrante` ya los traía completos — quedaban NULL en todo lead nuevo.
+> Corregido en `m5-gestion-leads` PR1 (commit `79f95aa`), con backfill NULL-only
+> para leads previos (`camposDinamicos` queda fuera del backfill a propósito,
+> ver `migration.sql`). El contrato y los endpoints de M4 no cambiaron.
 
 - [x] Contrato `LeadEntrante` y normalizador compartido
 - [x] Tabla `leads_recibidos` con índice único de idempotencia
