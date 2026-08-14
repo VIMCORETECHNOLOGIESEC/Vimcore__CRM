@@ -209,6 +209,23 @@ export interface AssignResponsableData {
 }
 
 /**
+ * M6 (diseño, DD1 — "idx_leads_sla SÍ aterrizó"): forma EXACTA del índice
+ * parcial `idx_leads_sla` (`WHERE cerrado_en IS NULL`) — `cerradoEn: null`
+ * primero, `slaInicioEn` como rango después. Misma forma que
+ * `leads.service.ts::buildWhere` para `?estadoSla=atrasado`. Un lead con
+ * `slaInicioEn = null` nunca entra: SQL `NULL <= X` es NULL (falso), Prisma
+ * lo traduce igual — el cron nunca lo marca atrasado (D3).
+ */
+export async function findAtrasadosAbiertos(
+  fronteraAtrasado: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead[]> {
+  return client.lead.findMany({
+    where: { cerradoEn: null, slaInicioEn: { lte: fronteraAtrasado } },
+  });
+}
+
+/**
  * M6 (diseño, contrato `applyAsignacion`): una de las tres escrituras
  * atómicas de la operación de asignación (D11) — escribe `asesorId` o
  * `vendedorId` según `pool` más el reinicio de `slaInicioEn`, nunca ambos

@@ -38,3 +38,21 @@ export async function createEvento(
 ): Promise<LeadEvento> {
   return client.leadEvento.create({ data });
 }
+
+/**
+ * M6 (diseño, D4/DD2): consulta por lote para el filtro de idempotencia del
+ * cron de SLA — un solo viaje por tick, independiente del número de leads
+ * atrasados. Solo trae `leadId`/`ocurridoEn`: el filtro `ocurridoEn >=
+ * slaInicioEn` se resuelve en memoria en `jobs/sla-atrasado.job.ts`.
+ */
+export async function findPorLeadsYTipo(
+  leadIds: readonly string[],
+  tipo: LeadEvento["tipo"],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Array<Pick<LeadEvento, "leadId" | "ocurridoEn">>> {
+  if (leadIds.length === 0) return [];
+  return client.leadEvento.findMany({
+    where: { leadId: { in: [...leadIds] }, tipo },
+    select: { leadId: true, ocurridoEn: true },
+  });
+}
