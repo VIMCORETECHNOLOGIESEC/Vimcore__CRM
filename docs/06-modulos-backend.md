@@ -82,22 +82,30 @@ reingreso, hace 91 días sí.
 
 ## M4 — Ingesta y bridges
 
-- [ ] Contrato `LeadEntrante` y normalizador compartido
-- [ ] Tabla `leads_recibidos` con índice único de idempotencia
-- [ ] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
-- [ ] Adaptador Google Forms
+> **Progreso:** rebanada parcial implementada en `m4-ingesta-bridges-parcial`
+> (endpoint genérico + adaptador Google Forms). Meta, LinkedIn, X, cifrado de
+> tokens, CRUD de bridges/cuentas publicitarias y los trabajos programados
+> quedan fuera de alcance de este cambio — llegan en un cambio SDD futuro.
+
+- [x] Contrato `LeadEntrante` y normalizador compartido
+- [x] Tabla `leads_recibidos` con índice único de idempotencia
+- [x] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
+- [x] Adaptador Google Forms
 - [ ] Adaptador Meta: handshake, verificación de firma, consulta de detalle
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
 - [ ] Cifrado y descifrado de tokens (AES-256-GCM)
 - [ ] CRUD de bridges y cuentas publicitarias
-- [ ] Registro en `bridge_logs` de todo error de recepción
+- [x] Registro en `bridge_logs` de todo error de recepción
 - [ ] Trabajo programado: verificación de expiración de tokens
 - [ ] Trabajo programado: detección de bridge sin actividad por 72 h
 
-**Pruebas obligatorias:** webhook con firma inválida se rechaza; el mismo
-`idExternoLead` dos veces crea un solo lead; lead sin teléfono ni correo se
-persiste con marca de dato incompleto.
+**Pruebas obligatorias:** `X-Bridge-Key` ausente, malformada o que no coincide
+con ningún bridge activo se rechaza con 401 y registra una fila `bridge_logs`
+ERROR (control por clave de API, no firma HMAC — eso es específico del futuro
+adaptador Meta, fuera de esta rebanada); el mismo `idExternoLead` dos veces,
+incluida entrega concurrente, produce un solo lead; lead sin teléfono ni
+correo se persiste con marca de dato incompleto.
 
 ---
 

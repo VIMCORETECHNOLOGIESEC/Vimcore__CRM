@@ -19,11 +19,13 @@ clientes ──┬──< correos_cliente
 campanias ──< leads
 cuentas_publicitarias ──< campanias
 bridges ──┬──< cuentas_publicitarias
-          └──< bridge_logs
+          ├──< bridge_logs
+          └──< leads_recibidos ──> leads (nulo hasta que la ingesta resuelve el lead)
 
 leads ──┬──< lead_eventos
         ├──< respuestas_formulario
-        └──< citas
+        ├──< citas
+        └──< leads_recibidos
 ```
 
 ---
@@ -211,26 +213,48 @@ Conexión con una red social.
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
-| `red_social` | enum | |
+| `red_social` | enum | `FACEBOOK`, `INSTAGRAM`, `X`, `LINKEDIN`, `GOOGLE_FORMS` |
 | `nombre` | text | Etiqueta del administrador |
-| `token_cifrado` | text | AES-256-GCM. **Nunca sale por la API** |
-| `token_expira_en` | timestamptz NULL | |
-| `estado` | enum | `ACTIVO`, `TOKEN_EXPIRADO`, `ERROR`, `INACTIVO` |
+| `clave_api_hash` | text UNIQUE | Hash sha256hex irreversible de `X-Bridge-Key` (`m4-ingesta-bridges-parcial`). La clave en claro nunca se persiste |
+| `estado` | enum | `ACTIVO`, `TOKEN_EXPIRADO`, `ERROR`, `INACTIVO`. Nuevo bridge nace `INACTIVO` |
 | `ultimo_lead_en` | timestamptz NULL | Detección de bridges mudos |
-| `secreto_webhook` | text | Verificación de firma |
+| `token_cifrado` | text | AES-256-GCM. **Nunca sale por la API**. Planificado para el adaptador Meta/LinkedIn, aún no implementado |
+| `token_expira_en` | timestamptz NULL | Planificado junto con `token_cifrado` |
+| `secreto_webhook` | text | Verificación de firma HMAC. Planificado para el adaptador Meta, aún no implementado |
 
 ### `bridge_logs`
 
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
-| `bridge_id` | uuid FK NULL | |
+| `bridge_id` | uuid FK NULL | Nulo cuando la autenticación falla antes de resolver un bridge |
 | `nivel` | enum | `INFO`, `ADVERTENCIA`, `ERROR` |
 | `mensaje` | text | |
 | `payload` | jsonb NULL | |
 | `ocurrido_en` | timestamptz | |
 
 Índice `(bridge_id, ocurrido_en DESC)`. Política de retención: 90 días.
+
+Se escribe siempre **fuera** de la transacción de ingesta, para que sobreviva
+a un rollback (`m4-ingesta-bridges-parcial`, DD5).
+
+### `leads_recibidos`
+
+Recepción cruda de cada lead entrante, previa a la deduplicación
+(`m4-ingesta-bridges-parcial`, F1).
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | uuid PK | |
+| `bridge_id` | uuid FK | |
+| `id_externo_lead` | text | Identificador del lead en la plataforma de origen |
+| `lead_id` | uuid FK NULL | Nulo hasta que la transacción de ingesta lo resuelve — no hay máquina de estados de recepción |
+| `payload` | jsonb | Cuerpo crudo recibido, incluida la atribución de campaña sin resolver (`id_externo_campania`, `nombre_campania`, `id_externo_cuenta`) |
+| `datos_incompletos` | boolean | `true` si llegó sin teléfono ni correo |
+| `recibido_en` | timestamptz | |
+
+UNIQUE (`bridge_id`, `id_externo_lead`) — defensa de idempotencia contra
+reintentos de webhook, incluida entrega concurrente.
 
 ### `notificaciones`
 
