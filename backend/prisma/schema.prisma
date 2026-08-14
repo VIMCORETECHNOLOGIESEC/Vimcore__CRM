@@ -116,20 +116,27 @@ model CorreoCliente {
   @@map("correos_cliente")
 }
 
-// Rebanada M3 (D2): `campania_id`, `red_social`, `semaforo`, `puntuacion`,
-// `asesor_id`, `vendedor_id`, `campos_dinamicos`, `sla_inicio_en`,
-// `monto_venta`, `observacion_cierre` y `payload_original` los añade el
-// módulo que los puebla y los prueba (M4-M6), cada uno en su migración.
+// Rebanada M3 (D2): `campania_id`, `semaforo`, `puntuacion`, `asesor_id`,
+// `vendedor_id`, `sla_inicio_en`, `monto_venta`, `observacion_cierre` los
+// añade el módulo que los puebla y los prueba (M5-M6), cada uno en su
+// migración. `red_social`, `campos_dinamicos` y `payload_original` los añade
+// M4 (ver abajo) porque es el primer módulo capaz de poblarlos.
 model Lead {
-  id          String     @id @default(uuid()) @db.Uuid
-  clienteId   String     @map("cliente_id") @db.Uuid
-  origen      OrigenLead
-  etapa       EtapaLead  @default(NUEVO)
-  ingresadoEn DateTime   @map("ingresado_en") @db.Timestamptz(6)
-  cerradoEn   DateTime?  @map("cerrado_en") @db.Timestamptz(6)
+  id              String     @id @default(uuid()) @db.Uuid
+  clienteId       String     @map("cliente_id") @db.Uuid
+  origen          OrigenLead
+  etapa           EtapaLead  @default(NUEVO)
+  // M4: nulo en leads previos a esta rebanada o de orígenes que aún no
+  // reportan estos campos (docs/05-bridges.md §2).
+  redSocial       RedSocial? @map("red_social")
+  camposDinamicos Json?      @map("campos_dinamicos") @db.JsonB
+  payloadOriginal Json?      @map("payload_original") @db.JsonB
+  ingresadoEn     DateTime   @map("ingresado_en") @db.Timestamptz(6)
+  cerradoEn       DateTime?  @map("cerrado_en") @db.Timestamptz(6)
 
-  cliente Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
-  eventos LeadEvento[]
+  cliente        Cliente        @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  eventos        LeadEvento[]
+  leadsRecibidos LeadRecibido[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
@@ -154,4 +161,94 @@ model LeadEvento {
   @@index([leadId, ocurridoEn])
   @@index([tipo, ocurridoEn])
   @@map("lead_eventos")
+}
+
+enum RedSocial {
+  FACEBOOK
+  INSTAGRAM
+  X
+  LINKEDIN
+  GOOGLE_FORMS
+
+  @@map("red_social")
+}
+
+enum EstadoBridge {
+  ACTIVO
+  TOKEN_EXPIRADO
+  ERROR
+  INACTIVO
+
+  @@map("estado_bridge")
+}
+
+enum NivelBridgeLog {
+  INFO
+  ADVERTENCIA
+  ERROR
+
+  @@map("nivel_bridge_log")
+}
+
+// Conexión con una red social (docs/05-bridges.md §1, §7). D-M4: el cifrado
+// de token (`token_cifrado`, `secreto_webhook`) queda fuera de esta
+// rebanada — no hay token reversible que cifrar todavía, Meta/LinkedIn
+// quedan para un cambio SDD futuro — y lo añade el módulo que lo consuma.
+model Bridge {
+  id           String       @id @default(uuid()) @db.Uuid
+  redSocial    RedSocial    @map("red_social")
+  nombre       String       @db.Text
+  // F2: hash sha256hex irreversible de la clave de API (`X-Bridge-Key`,
+  // docs/05-bridges.md §5). La clave en claro nunca se persiste.
+  claveApiHash String       @unique @map("clave_api_hash") @db.Text
+  // Desactivado por defecto (docs/05-bridges.md §6): un bridge nuevo no
+  // recibe leads hasta activación explícita.
+  estado       EstadoBridge @default(INACTIVO)
+  ultimoLeadEn DateTime?    @map("ultimo_lead_en") @db.Timestamptz(6)
+
+  bridgeLogs     BridgeLog[]
+  leadsRecibidos LeadRecibido[]
+
+  @@map("bridges")
+}
+
+// Bitácora de errores/eventos por bridge (docs/05-bridges.md §8). Se escribe
+// siempre fuera de la transacción de ingesta (DD5, diseño M4) para que
+// sobreviva a un rollback.
+model BridgeLog {
+  id         String         @id @default(uuid()) @db.Uuid
+  bridgeId   String?        @map("bridge_id") @db.Uuid
+  nivel      NivelBridgeLog
+  mensaje    String         @db.Text
+  payload    Json?          @db.JsonB
+  ocurridoEn DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+
+  bridge Bridge? @relation(fields: [bridgeId], references: [id], onDelete: SetNull)
+
+  @@index([bridgeId, ocurridoEn(sort: Desc)])
+  @@map("bridge_logs")
+}
+
+// Recepción cruda de cada lead entrante (F1: ausente hasta ahora de
+// docs/03-modelo-datos.md). `UNIQUE(bridge_id, id_externo_lead)` es la
+// defensa de idempotencia contra reintentos de webhook (docs/05-bridges.md
+// §2). `leadId` es nulo hasta que la transacción de ingesta lo resuelve —
+// no hay máquina de estados de recepción (D2, diseño M4, retirada).
+model LeadRecibido {
+  id               String   @id @default(uuid()) @db.Uuid
+  bridgeId         String   @map("bridge_id") @db.Uuid
+  idExternoLead    String   @map("id_externo_lead") @db.Text
+  leadId           String?  @map("lead_id") @db.Uuid
+  // Cuerpo crudo recibido; incluye la atribución de campaña sin resolver
+  // (`idExternoCampania`, `nombreCampania`, `idExternoCuenta` — D4, diseño
+  // M4: no se crean `campanias`/`cuentas_publicitarias` en esta rebanada).
+  payload          Json     @db.JsonB
+  datosIncompletos Boolean  @default(false) @map("datos_incompletos")
+  recibidoEn       DateTime @default(now()) @map("recibido_en") @db.Timestamptz(6)
+
+  bridge Bridge @relation(fields: [bridgeId], references: [id], onDelete: Restrict)
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([bridgeId, idExternoLead])
+  @@map("leads_recibidos")
 }
