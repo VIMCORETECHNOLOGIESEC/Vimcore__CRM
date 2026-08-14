@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-table";
 import { RotateCcw } from "lucide-react";
 import { useMemo } from "react";
+import { Link } from "react-router";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -59,7 +60,12 @@ export function LeadsTable({
         cell: ({ row }) => (
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">{row.original.cliente.nombre}</span>
+              <Link
+                to={`/leads/${row.original.id}`}
+                className="font-medium text-foreground underline-offset-2 hover:underline"
+              >
+                {row.original.cliente.nombre}
+              </Link>
               {row.original.origen === "REINGRESO" ? (
                 <Tooltip>
                   <TooltipTrigger asChild>

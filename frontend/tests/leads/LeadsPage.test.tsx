@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
@@ -71,7 +72,10 @@ function renderLeadsPage() {
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <LeadsPage />
+        {/* MemoryRouter: LeadsTable enlaza el nombre del cliente a /leads/:id (F4). */}
+        <MemoryRouter>
+          <LeadsPage />
+        </MemoryRouter>
       </TooltipProvider>
     </QueryClientProvider>,
   );

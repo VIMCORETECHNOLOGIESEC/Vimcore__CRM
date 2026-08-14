@@ -1,4 +1,4 @@
-import type { EstadoSla, EtapaLead, Lead, RedSocial, SemaforoLead } from "@/tipos/lead";
+import type { EstadoSla, EtapaLead, Lead, RedSocial, ResponsableLead, SemaforoLead } from "@/tipos/lead";
 import type { RolUsuario } from "@/tipos/usuario";
 import { calculateEstadoSla } from "./sla";
 import { getResponsable } from "./leads.utils";
@@ -70,6 +70,9 @@ const CAMPANIA_VERANO = { id: "camp-1", nombre: "Verano 2026" };
 const CAMPANIA_LANZAMIENTO = { id: "camp-2", nombre: "Lanzamiento Q3" };
 const CAMPANIA_CREDITOS = { id: "camp-3", nombre: "Campaña Créditos" };
 
+const CUENTA_ADS_PRINCIPAL = { id: "cuenta-1", nombre: "Cuenta Ads Principal" };
+const CUENTA_ADS_CREDITOS = { id: "cuenta-2", nombre: "Cuenta Ads Créditos" };
+
 function hoursAgo(horas: number): string {
   return new Date(Date.now() - horas * 60 * 60 * 1000).toISOString();
 }
@@ -80,7 +83,7 @@ function hoursAgo(horas: number): string {
  * siempre tengan ejemplos vigentes sin importar cuándo se ejecute la app o
  * los tests (nunca fechas absolutas fijas que quedarían viejas).
  */
-const LEADS_MOCK: Lead[] = [
+export const LEADS_MOCK: Lead[] = [
   {
     id: "lead-01",
     cliente: {
@@ -89,6 +92,7 @@ const LEADS_MOCK: Lead[] = [
       telefonoOriginal: "0991234567",
       telefonoNormalizado: "+593991234567",
       correoPrincipal: "roberto.salazar@mail.com",
+      telefonoValido: true,
     },
     campania: CAMPANIA_VERANO,
     origen: "REINGRESO",
@@ -101,6 +105,12 @@ const LEADS_MOCK: Lead[] = [
     slaInicioEn: hoursAgo(0.25),
     ingresadoEn: hoursAgo(0.3),
     cerradoEn: null,
+    cuentaPublicitaria: CUENTA_ADS_PRINCIPAL,
+    camposDinamicos: { "Presupuesto mensual": "$300 - $500", Interés: "Financiamiento" },
+    montoVenta: null,
+    productoVendido: null,
+    formaPago: null,
+    observacionCierre: null,
   },
   {
     id: "lead-02",
@@ -110,6 +120,8 @@ const LEADS_MOCK: Lead[] = [
       telefonoOriginal: "0987654321",
       telefonoNormalizado: "+593987654321",
       correoPrincipal: "mfibarra@mail.com",
+      telefonoValido: true,
+      correosSecundarios: ["mf.ibarra.alt@mail.com"],
     },
     campania: CAMPANIA_LANZAMIENTO,
     origen: "NUEVO",
@@ -122,6 +134,12 @@ const LEADS_MOCK: Lead[] = [
     slaInicioEn: hoursAgo(20),
     ingresadoEn: hoursAgo(21),
     cerradoEn: null,
+    cuentaPublicitaria: CUENTA_ADS_PRINCIPAL,
+    camposDinamicos: {},
+    montoVenta: null,
+    productoVendido: null,
+    formaPago: null,
+    observacionCierre: null,
   },
   {
     id: "lead-03",
@@ -169,6 +187,8 @@ const LEADS_MOCK: Lead[] = [
     slaInicioEn: hoursAgo(30),
     ingresadoEn: hoursAgo(31),
     cerradoEn: null,
+    cuentaPublicitaria: CUENTA_ADS_CREDITOS,
+    camposDinamicos: { Ciudad: "Guayaquil" },
   },
   {
     id: "lead-05",
@@ -190,6 +210,12 @@ const LEADS_MOCK: Lead[] = [
     slaInicioEn: hoursAgo(60),
     ingresadoEn: hoursAgo(72),
     cerradoEn: hoursAgo(2),
+    cuentaPublicitaria: CUENTA_ADS_PRINCIPAL,
+    camposDinamicos: {},
+    montoVenta: 4500,
+    productoVendido: "Plan Premium Anual",
+    formaPago: "CREDITO",
+    observacionCierre: "Cliente satisfecho, pago acordado en 12 cuotas.",
   },
   {
     id: "lead-06",
@@ -199,6 +225,7 @@ const LEADS_MOCK: Lead[] = [
       telefonoOriginal: "0987001122",
       telefonoNormalizado: "+593987001122",
       correoPrincipal: null,
+      telefonoValido: false,
     },
     campania: null,
     origen: "NUEVO",
@@ -211,6 +238,13 @@ const LEADS_MOCK: Lead[] = [
     slaInicioEn: hoursAgo(96),
     ingresadoEn: hoursAgo(100),
     cerradoEn: hoursAgo(10),
+    cuentaPublicitaria: null,
+    camposDinamicos: {},
+    montoVenta: null,
+    productoVendido: null,
+    formaPago: null,
+    observacionCierre:
+      "Cliente indicó que ya contrató con la competencia hace dos semanas; no está interesado en retomar contacto por ahora.",
   },
   {
     id: "lead-07",
@@ -410,4 +444,23 @@ export function getCatalogoResponsables(): { id: string; nombre: string }[] {
 
 export function getCatalogoCampanias(): { id: string; nombre: string }[] {
   return [CAMPANIA_VERANO, CAMPANIA_LANZAMIENTO, CAMPANIA_CREDITOS];
+}
+
+/**
+ * Igual que `getCatalogoResponsables`, pero conservando `rol` -- lo usa F4
+ * (`leadDetalle.api.ts`) para decidir a qué campo del `Lead` (`asesor` o
+ * `vendedor`) escribir al reasignar.
+ */
+export function getCatalogoResponsablesConRol(): ResponsableLead[] {
+  return [...ASESORES, ...VENDEDORES];
+}
+
+/**
+ * Solo vendedores, para el traspaso (F4). Cuando el asesor traspasa su
+ * propio lead sin elegir vendedor, `handoffToVendedorApi` usa el primero de
+ * esta lista como simplificación de "algoritmo de menor carga" -- ver el
+ * comentario ahí.
+ */
+export function getCatalogoVendedores(): { id: string; nombre: string }[] {
+  return VENDEDORES.map(({ id, nombre }) => ({ id, nombre }));
 }

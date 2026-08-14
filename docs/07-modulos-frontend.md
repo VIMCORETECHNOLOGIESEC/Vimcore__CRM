@@ -216,17 +216,87 @@ del producto.
 
 Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 
-- [ ] Encabezado: nombre, semáforo, etapa, responsable, contador de SLA
-- [ ] Datos de contacto: teléfono, correos asociados, marca de dato inválido
-- [ ] Origen: red social, campaña, cuenta publicitaria, fecha de ingreso
-- [ ] Campos dinámicos del formulario de la campaña
-- [ ] Formulario de la etapa vigente con cálculo de puntuación
-- [ ] Guía de acción según el color del semáforo
-- [ ] Selector de cambio de etapa que abre el formulario correspondiente
-- [ ] Acción de traspaso a vendedor (asesor, desde etapa Contactado)
-- [ ] Acción de reasignación con la regla de semáforo aplicada
-- [ ] Panel de citas: agendar, reprogramar, marcar resultado
-- [ ] Campos de cierre para Venta y No Venta con validación
+> **Progreso:** implementado contra un **mock en memoria**
+> (`funcionalidades/leads/detalle/leadDetalle.api.ts`), igual que F3 — M6/M7
+> (`docs/06-modulos-backend.md`) no existen todavía ni como esqueleto: no hay
+> endpoint de detalle de lead, formulario/puntuación/semáforo, citas ni
+> cierre, tampoco modelos Prisma para nada de eso. Comparte el fixture
+> mutable `LEADS_MOCK` con `leads.api.ts` (F3) para que listado y detalle
+> queden consistentes en una misma sesión. Cada punto de integración
+> pendiente está marcado con el token `INTEGRACION-BACKEND`.
+>
+> **Decisiones de diseño propias del frontend** (no fijadas por ningún
+> contrato de backend, documentadas para que quien conecte el backend real
+> las revise):
+> - **Preguntas/opciones de los 3 formularios calificables**
+>   (`formulariosEtapa.ts`): los pesos por pregunta y por etapa (NUEVO=11,
+>   CONTACTADO=13, CITA=14) sí vienen de docs/02; el *contenido* de cada
+>   pregunta y sus opciones (mayormente "Sí"=10 / "Parcial"=5 / "No"=0, con
+>   excepciones puntuales donde el sentido de la pregunta pedía otra escala)
+>   es una propuesta de diseño razonable, no un catálogo ya fijado.
+> - **Fórmula de puntuación**: una pregunta sin responder cuenta en el
+>   denominador (peso máximo posible) pero no aporta al numerador — así un
+>   formulario incompleto puntúa más bajo en vez de ignorarse la pregunta
+>   como si no existiera. Cubierto con tests de varios casos.
+> - **Traspaso sin elegir vendedor** (asesor): se simula el "algoritmo de
+>   menor carga" documentado asignando el primer vendedor del catálogo — es
+>   una simplificación explícita del mock, el balanceo real es
+>   responsabilidad de M6/M7.
+> - **Guards de reasignación/traspaso** (`leadDetalle.guards.ts`) son de
+>   **UX únicamente** (ocultan/deshabilitan botones): la autorización real
+>   sigue siendo responsabilidad del backend cuando exista.
+> - **Correos múltiples**: se agregó `ClienteLead.correosSecundarios?`
+>   (opcional) en vez de remodelar `correoPrincipal`, para no romper el uso
+>   ya existente en F3 (`LeadsTable.tsx`, `leads.api.ts` y sus tests).
+> - **Campos nuevos de `Lead`/`ClienteLead`** (`telefonoValido`,
+>   `correosSecundarios`, `cuentaPublicitaria`, `camposDinamicos`, campos de
+>   cierre) se agregaron **opcionales** deliberadamente, para no forzar
+>   cambios en los fixtures/tests de F3 ya commiteados.
+> - Se agregaron `components/ui/dialog.tsx` (wrapper de
+>   `@radix-ui/react-dialog`, ya instalado — mismo primitivo que usa
+>   `sheet.tsx`) y `componentes/ConfirmDialog.tsx` para la confirmación
+>   explícita de cierre (irreversible), y `components/ui/textarea.tsx`. No
+>   se agregó ninguna dependencia nueva.
+> - `LeadsTable.tsx`: el nombre del cliente ahora es un `Link` a
+>   `/leads/:id`. Esto requirió envolver `renderLeadsPage()` en
+>   `tests/leads/LeadsPage.test.tsx` con `<MemoryRouter>` (cambio mecánico
+>   mínimo en el arnés de test, sin tocar aserciones existentes) porque
+>   `Link` necesita contexto de Router para renderizar.
+>
+> TDD: Vitest, 60 tests nuevos (167 en total en el frontend) cubriendo la
+> fórmula de puntuación, los rangos de semáforo, los guards de
+> traspaso/reasignación, "sin formulario no hay transición", las citas y las
+> validaciones Zod de cierre. `tsc` + `vite build` sin errores.
+>
+> Fuera de alcance: conexión real a M6/M7 (no existen), y el contrato exacto
+> de los futuros endpoints (nombres de parámetros/rutas son una suposición
+> razonable a validar contra la implementación real).
+>
+> **Ambigüedades reales a confirmar por un humano antes de M6/M7** (no
+> resueltas por suposición, señaladas para no perderse en la consolidación):
+> - `canReassignLead` permite a administrador/supervisor reasignar un lead en
+>   etapa terminal (VENTA/NO_VENTA) porque `docs/02` dice literalmente
+>   "reasignan cualquiera sin condición" — pero reasignar un lead ya cerrado
+>   es semánticamente raro. Implementado literal a la regla escrita; a
+>   confirmar si el backend real (M6) debería excluir etapas terminales.
+> - La `puntuacion` que ya traían los leads de ejemplo en etapa VENTA/NO_VENTA
+>   (heredada del fixture de F3) no se recalcula al pasar por
+>   `submitCierreVentaApi`/`submitCierreNoVentaApi`, aunque `docs/02` dice que
+>   esas etapas "no tienen puntuación". No se fijó a `0`/`null` automáticamente
+>   para no inventar una regla no pedida — a decidir el criterio correcto
+>   (¿se conserva el último valor calificado, se limpia, se oculta en UI?).
+
+- [x] Encabezado: nombre, semáforo, etapa, responsable, contador de SLA
+- [x] Datos de contacto: teléfono, correos asociados, marca de dato inválido
+- [x] Origen: red social, campaña, cuenta publicitaria, fecha de ingreso
+- [x] Campos dinámicos del formulario de la campaña
+- [x] Formulario de la etapa vigente con cálculo de puntuación
+- [x] Guía de acción según el color del semáforo
+- [x] Selector de cambio de etapa que abre el formulario correspondiente
+- [x] Acción de traspaso a vendedor (asesor, desde etapa Contactado)
+- [x] Acción de reasignación con la regla de semáforo aplicada
+- [x] Panel de citas: agendar, reprogramar, marcar resultado
+- [x] Campos de cierre para Venta y No Venta con validación
 
 ---
 
