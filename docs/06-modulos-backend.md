@@ -175,11 +175,69 @@ de detección de atrasados reutiliza la misma forma de consulta que
 
 ## M7 — Citas
 
-- [ ] CRUD de citas asociadas a un lead
-- [ ] Validación: no se agenda una cita en el pasado
-- [ ] Reprogramación con registro de evento
-- [ ] Estados de cita y su efecto en el formulario de la etapa Cita
-- [ ] Trabajo programado: recordatorio 1 hora antes
+- [x] CRUD de citas asociadas a un lead
+- [x] Validación: no se agenda una cita en el pasado
+- [x] Reprogramación con registro de evento
+- [x] Estados de cita y su efecto en el formulario de la etapa Cita
+- [x] Trabajo programado: recordatorio 1 hora antes
+
+**Pruebas obligatorias:** cobertura de integración para el CRUD de citas,
+reprogramación y máquina de estados (`citas.service.test.ts`,
+`citas.routes.test.ts`), y para el trabajo de recordatorio, incluida su
+idempotencia y la guarda de re-entrada (`citas-recordatorio.job.test.ts`).
+
+> **Progreso:** `model Cita` (enums `ModalidadCita`/`EstadoCita`) agregado por
+> migración (`20260814220844_m7_citas`), con relaciones a `Lead`/`Usuario`.
+> Endpoints: `POST/GET /leads/:id/citas`, `GET /citas/:citaId`,
+> `POST /citas/:citaId/cancelar|reprogramar|resultado`. Autorización por
+> recurso reutiliza `canRead`/`canEdit` de `leads.access.ts` (D4, M5) sin
+> duplicar la regla — mismo criterio que reasignar/traspasar en M6, sin
+> `requireRole` fijo en las rutas.
+>
+> **D-M7a (responsable por defecto):** no existe algoritmo de selección
+> automática de responsable para citas (distinto de
+> `asignacion.service.ts::selectResponsable`, M6) — fuera del alcance del
+> checklist M7. Por defecto, quien agenda es su propio responsable;
+> Administrador/Supervisor pueden asignarla a otro usuario explícito
+> (mismo patrón DD10 de M6).
+>
+> **D-M7b (reprogramación, decisión dejada abierta por el diseño del
+> cambio):** tras reprogramar, `citas.estado` vuelve a `AGENDADA` con la
+> nueva `programadaPara` — **nunca** queda persistido en `REPROGRAMADA` —
+> porque el trabajo de recordatorio filtra estrictamente `estado =
+> AGENDADA`; dejarlo en `REPROGRAMADA` excluiría para siempre la cita
+> reprogramada del recordatorio de la nueva fecha. El valor `REPROGRAMADA`
+> se mantiene en el enum por fidelidad exacta con
+> `docs/03-modelo-datos.md` §citas, pero ningún camino de código actual lo
+> persiste. El historial de reprogramaciones (una o varias) vive en
+> `lead_eventos` (`CITA_REPROGRAMADA`, uno por evento), no en `estado`.
+>
+> **D-M7c (límite con el formulario de etapa CITA, decisión de integración
+> pedida explícitamente por el diseño del cambio):** `POST
+> /citas/:citaId/resultado` marca `CUMPLIDA`/`NO_ASISTIO` como un registro
+> **asociado** al lead — nunca mueve `leads.etapa` ni escribe
+> `respuestas_formulario`. El formulario de la etapa CITA
+> (`docs/04-formularios-semaforo.md` §5, "¿Asistió a la cita?") lo sigue
+> completando el vendedor por su flujo ya existente de M5 (`PATCH
+> /leads/:id/etapa` o `POST /leads/:id/formulario`,
+> `formularios.service.ts::applyFormulario`) — no se duplica esa lógica ni
+> se inventa una segunda fuente de verdad para la misma pregunta. Tampoco
+> escribe `lead_eventos`: `TipoEventoLead` solo reserva `CITA_AGENDADA`/
+> `CITA_REPROGRAMADA` para M7, `citas.estado` ya es su propio registro
+> auditable para el resultado.
+>
+> **D-M7d (recordatorio, límite explícito con M8):** `citas-recordatorio.job.ts`
+> corre cada 15 minutos (mismo patrón de guarda de re-entrada que
+> `sla-atrasado.job.ts` de M6) e invoca `enviarRecordatoriosCita`, que marca
+> `recordatorio_enviado = true` de forma atómica (`UPDATE ... WHERE
+> recordatorio_enviado = false`) para citas `AGENDADA` cuya
+> `programada_para` cae en `[ahora, ahora + 1h]`. La emisión real de la
+> notificación al responsable y su entrega por SSE son de M8
+> (`docs/06-modulos-backend.md` M8, "Servicio de creación de
+> notificaciones" / canal SSE), que todavía no existe en el código — este
+> job solo deja la marca anti-duplicado y un log estructurado por cita
+> (`citas-recordatorio.service.ts`) como punto de enganche documentado, sin
+> inventar infraestructura de notificaciones.
 
 ---
 
