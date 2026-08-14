@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasRoleAccess } from "@/funcionalidades/autenticacion/permissions";
+import { getLandingRoute, hasRoleAccess } from "@/funcionalidades/autenticacion/permissions";
 
 describe("hasRoleAccess", () => {
   it("permite el acceso cuando no se especifican roles permitidos", () => {
@@ -24,5 +24,22 @@ describe("hasRoleAccess", () => {
 
   it("deniega el acceso cuando no hay rol de usuario (undefined) y hay roles restringidos", () => {
     expect(hasRoleAccess(undefined, ["ADMINISTRADOR"])).toBe(false);
+  });
+});
+
+describe("getLandingRoute", () => {
+  it.each(["ADMINISTRADOR", "SUPERVISOR", "ASESOR", "VENDEDOR"] as const)(
+    "devuelve una ruta accesible para el rol %s",
+    (rol) => {
+      const ruta = getLandingRoute(rol);
+      expect(ruta).toMatch(/^\//);
+    },
+  );
+
+  it("devuelve /panel para los 4 roles hoy (F3+ todavía no distingue landings por rol)", () => {
+    expect(getLandingRoute("ADMINISTRADOR")).toBe("/panel");
+    expect(getLandingRoute("SUPERVISOR")).toBe("/panel");
+    expect(getLandingRoute("ASESOR")).toBe("/panel");
+    expect(getLandingRoute("VENDEDOR")).toBe("/panel");
   });
 });

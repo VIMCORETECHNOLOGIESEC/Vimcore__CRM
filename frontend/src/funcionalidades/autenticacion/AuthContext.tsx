@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -7,16 +8,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getRefreshToken, setOnSessionExpired, setTokens } from "@/api/httpClient";
+import { getRefreshToken, restoreSession, setOnSessionExpired, setTokens } from "@/api/httpClient";
 import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
-import { loginApi, logoutApi } from "./autenticacion.api";
+import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
 
 interface AuthContextValue {
   user: AuthenticatedUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (correo: string, password: string) => Promise<void>;
+  login: (correo: string, password: string) => Promise<AuthenticatedUser>;
   logout: () => Promise<void>;
   hasRole: (allowedRoles?: readonly RolUsuario[]) => boolean;
 }
@@ -24,34 +25,90 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
- * Estado de sesión en memoria (ver nota de alcance en `api/httpClient.ts`):
- * F1 no rehidrata sesión entre recargas de página, eso es F2
- * ("Persistencia de sesión y cierre automático al expirar el refresh").
+ * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver
+ * `autenticacion.api.ts#getPerfilApi` y `backend/src/controllers/auth.controller.ts`).
+ * Si el backend cambia la forma de esa respuesta, hay que mantener
+ * sincronizado el tipo `AuthenticatedUser` en `@/tipos/usuario`.
+ */
+const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
+
+/**
+ * Estado de sesión (F2, "Persistencia de sesión y cierre automático al
+ * expirar el refresh" -- ver `api/httpClient.ts`). `user` es estado de
+ * servidor (`GET /auth/perfil`) y vive en TanStack Query bajo la key
+ * `["auth", "perfil"]` (AGENTS.md §4).
+ *
+ * La `queryFn` reproduce la rehidratación de sesión al arrancar la app:
+ * intenta `restoreSession()` a partir del refresh token persistido en
+ * `localStorage`; si no hay sesión que restaurar, o si `restoreSession()`/
+ * `getPerfilApi()` fallan (refresh token expirado o revocado), resuelve a
+ * `null` en silencio -- el usuario simplemente ve la pantalla de login, sin
+ * error visible (el interceptor 401 de `httpClient.ts` ya limpió el store
+ * de tokens en ese caso).
+ *
+ * La query solo se dispara si había un refresh token persistido *al
+ * montar* (capturado una única vez en `hadPersistedRefreshToken`, no leído
+ * de nuevo en cada render) -- así se evita el parpadeo de "cargando" en el
+ * caso normal de "nunca inició sesión".
+ *
+ * `retry: false`, `refetchOnWindowFocus: false`, `refetchOnMount: false` y
+ * `staleTime: Infinity`: esta query es una comprobación de arranque de una
+ * sola vez, no un dato que deba revalidarse en segundo plano. La validez de
+ * la sesión durante el uso de la app la sigue gobernando el interceptor 401
+ * de `httpClient.ts` (que invoca `onSessionExpired` para limpiar la cache),
+ * no el ciclo de vida normal de TanStack Query.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthenticatedUser | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const [hadPersistedRefreshToken] = useState(() => Boolean(getRefreshToken()));
+  const [isLoginPending, setIsLoginPending] = useState(false);
+
+  const perfilQuery = useQuery({
+    queryKey: PERFIL_QUERY_KEY,
+    queryFn: async (): Promise<AuthenticatedUser | null> => {
+      try {
+        const restaurada = await restoreSession();
+        if (!restaurada) {
+          return null;
+        }
+        return await getPerfilApi();
+      } catch {
+        return null;
+      }
+    },
+    enabled: hadPersistedRefreshToken,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    staleTime: Infinity,
+  });
+
+  const user = perfilQuery.data ?? null;
 
   useEffect(() => {
-    setOnSessionExpired(() => setUser(null));
+    setOnSessionExpired(() => queryClient.setQueryData(PERFIL_QUERY_KEY, null));
     return () => setOnSessionExpired(null);
-  }, []);
+  }, [queryClient]);
 
-  const login = useCallback(async (correo: string, password: string) => {
-    setIsLoading(true);
-    try {
-      const response = await loginApi(correo, password);
-      setTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken });
-      setUser(response.user);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const login = useCallback(
+    async (correo: string, password: string) => {
+      setIsLoginPending(true);
+      try {
+        const response = await loginApi(correo, password);
+        setTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken });
+        queryClient.setQueryData(PERFIL_QUERY_KEY, response.user);
+        return response.user;
+      } finally {
+        setIsLoginPending(false);
+      }
+    },
+    [queryClient],
+  );
 
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
     setTokens(null);
-    setUser(null);
+    queryClient.setQueryData(PERFIL_QUERY_KEY, null);
     if (refreshToken) {
       try {
         await logoutApi(refreshToken);
@@ -61,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // hay nada accionable que mostrarle al usuario.
       }
     }
-  }, []);
+  }, [queryClient]);
 
   const hasRole = useCallback(
     (allowedRoles?: readonly RolUsuario[]) => hasRoleAccess(user?.rol, allowedRoles),
@@ -72,12 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isAuthenticated: user !== null,
-      isLoading,
+      isLoading: perfilQuery.isLoading || isLoginPending,
       login,
       logout,
       hasRole,
     }),
-    [user, isLoading, login, logout, hasRole],
+    [user, perfilQuery.isLoading, isLoginPending, login, logout, hasRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

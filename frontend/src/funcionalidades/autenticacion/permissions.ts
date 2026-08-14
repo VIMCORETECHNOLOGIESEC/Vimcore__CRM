@@ -1,3 +1,4 @@
+import { NAVIGATION_ITEMS } from "@/layouts/navigation";
 import type { RolUsuario } from "@/tipos/usuario";
 
 /**
@@ -22,4 +23,21 @@ export function hasRoleAccess(
     return false;
   }
   return allowedRoles.includes(rol);
+}
+
+/**
+ * Ruta de aterrizaje tras iniciar sesión, según rol (F2, "Redirección
+ * post-login según rol"). Primer ítem de `NAVIGATION_ITEMS` accesible para el
+ * rol -- única fuente de verdad, ya usada por la barra lateral.
+ *
+ * Hoy F3+ (leads, dashboard) todavía no distingue vistas por rol, así que
+ * el resultado es "/panel" para los 4 roles; cuando existan landings
+ * distintas por rol, esta función ya las resuelve sin tocar quien la llama
+ * (`LoginPage`).
+ */
+export function getLandingRoute(rol: RolUsuario): string {
+  const primerItemAccesible = NAVIGATION_ITEMS.find((item) =>
+    hasRoleAccess(rol, item.allowedRoles),
+  );
+  return primerItemAccesible?.route ?? "/panel";
 }

@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import {
-  createUserBodySchema,
+  createUsuarioBodySchema,
   idParamSchema,
-  updateUserBodySchema,
+  updateUsuarioBodySchema,
 } from "../schemas/usuarios.schema.js";
 import {
   createUser,
@@ -22,7 +22,7 @@ function invalidIdParam(): AppError {
 }
 
 export async function postUser(req: Request, res: Response): Promise<void> {
-  const parsed = createUserBodySchema.safeParse(req.body);
+  const parsed = createUsuarioBodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw zodValidationError();
   }
@@ -52,7 +52,7 @@ export async function patchUser(req: Request, res: Response): Promise<void> {
     throw invalidIdParam();
   }
 
-  const parsedBody = updateUserBodySchema.safeParse(req.body);
+  const parsedBody = updateUsuarioBodySchema.safeParse(req.body);
   if (!parsedBody.success) {
     throw zodValidationError();
   }

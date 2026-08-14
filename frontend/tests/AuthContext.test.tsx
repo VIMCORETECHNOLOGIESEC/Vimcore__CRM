@@ -1,13 +1,16 @@
-import { act, renderHook } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/funcionalidades/autenticacion/autenticacion.api", () => ({
   loginApi: vi.fn(),
   logoutApi: vi.fn(),
+  getPerfilApi: vi.fn(),
 }));
 vi.mock("@/api/httpClient", () => ({
   getRefreshToken: vi.fn(),
+  restoreSession: vi.fn(),
   setOnSessionExpired: vi.fn(),
   setTokens: vi.fn(),
 }));
@@ -18,7 +21,9 @@ const { AuthProvider, useAuth } = await import("@/funcionalidades/autenticacion/
 
 const loginApiMock = vi.mocked(authApi.loginApi);
 const logoutApiMock = vi.mocked(authApi.logoutApi);
+const getPerfilApiMock = vi.mocked(authApi.getPerfilApi);
 const getRefreshTokenMock = vi.mocked(httpClientModule.getRefreshToken);
+const restoreSessionMock = vi.mocked(httpClientModule.restoreSession);
 const setOnSessionExpiredMock = vi.mocked(httpClientModule.setOnSessionExpired);
 const setTokensMock = vi.mocked(httpClientModule.setTokens);
 
@@ -30,13 +35,22 @@ const usuarioFake = {
 };
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <AuthProvider>{children}</AuthProvider>;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  );
 }
 
 beforeEach(() => {
   loginApiMock.mockReset();
   logoutApiMock.mockReset();
+  getPerfilApiMock.mockReset();
   getRefreshTokenMock.mockReset();
+  restoreSessionMock.mockReset();
   setOnSessionExpiredMock.mockReset();
   setTokensMock.mockReset();
 });
@@ -46,11 +60,13 @@ afterEach(() => {
 });
 
 describe("AuthContext — estado inicial", () => {
-  it("arranca sin usuario, no autenticado y sin cargar (F1 no rehidrata sesión, ver F2)", () => {
+  it("sin refresh token persistido, arranca sin usuario, no autenticado y sin cargar", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     expect(result.current.user).toBeNull();
     expect(result.current.isAuthenticated).toBe(false);
     expect(result.current.isLoading).toBe(false);
+    // Sin refresh token persistido no hay nada que rehidratar.
+    expect(restoreSessionMock).not.toHaveBeenCalled();
   });
 
   it("registra un handler de sesión expirada al montar y lo limpia al desmontar", () => {
@@ -59,6 +75,49 @@ describe("AuthContext — estado inicial", () => {
 
     unmount();
     expect(setOnSessionExpiredMock).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe("AuthContext — rehidratación de sesión al arrancar (F2)", () => {
+  it("con un refresh token persistido válido, restaura la sesión y carga el perfil", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(restoreSessionMock).toHaveBeenCalledTimes(1);
+    expect(getPerfilApiMock).toHaveBeenCalledTimes(1);
+    expect(result.current.user).toEqual(usuarioFake);
+    expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it("con un refresh token persistido inválido, no restaura sesión y termina sin usuario", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(false);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(getPerfilApiMock).not.toHaveBeenCalled();
+    expect(result.current.user).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  it("si restoreSession resuelve true pero falla la carga del perfil, termina sin usuario y sin relanzar", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockRejectedValue(new Error("500"));
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
   });
 });
 
@@ -71,10 +130,15 @@ describe("AuthContext — login", () => {
     });
     const { result } = renderHook(() => useAuth(), { wrapper });
 
+    let usuarioDevuelto: typeof usuarioFake | undefined;
     await act(async () => {
-      await result.current.login("ana@crm.test", "clave-segura");
+      usuarioDevuelto = await result.current.login("ana@crm.test", "clave-segura");
     });
 
+    // `login` resuelve el usuario autenticado (no solo `void`) para que
+    // `LoginPage` pueda redirigir según su rol sin depender del timing de
+    // `setState` (F2, "Redirección post-login según rol").
+    expect(usuarioDevuelto).toEqual(usuarioFake);
     expect(loginApiMock).toHaveBeenCalledWith("ana@crm.test", "clave-segura");
     expect(setTokensMock).toHaveBeenCalledWith({
       accessToken: "access-1",
@@ -199,11 +263,16 @@ describe("AuthContext — sesión expirada notificada por httpClient", () => {
     const handlerRegistrado = setOnSessionExpiredMock.mock.calls[0]?.[0] as () => void;
     expect(handlerRegistrado).toBeTypeOf("function");
 
+    // `queryClient.setQueryData` notifica a los observadores en un
+    // microtask (notifyManager de TanStack Query): `waitFor` reintenta la
+    // aserción hasta que esa notificación se refleje, en vez de asumir que
+    // un solo tick de `act(async () => {...})` alcanza (es una carrera, no
+    // una garantía).
     act(() => {
       handlerRegistrado();
     });
 
-    expect(result.current.user).toBeNull();
+    await waitFor(() => expect(result.current.user).toBeNull());
     expect(result.current.isAuthenticated).toBe(false);
   });
 });

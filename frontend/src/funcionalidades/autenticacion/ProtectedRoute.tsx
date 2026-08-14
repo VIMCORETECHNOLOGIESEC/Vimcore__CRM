@@ -14,8 +14,19 @@ interface ProtectedRouteProps {
  * backend es quien autoriza de verdad en cada endpoint.
  */
 export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
+
+  // `isLoading` cubre la rehidratación de sesión al arrancar la app (F2):
+  // sin esto, un refresh token persistido válido igual mostraría un
+  // parpadeo de "sesión expirada" -> login mientras se restaura.
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <span className="text-sm text-muted-foreground">Cargando sesión…</span>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/iniciar-sesion" replace state={{ desde: location.pathname }} />;

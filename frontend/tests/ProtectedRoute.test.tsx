@@ -92,4 +92,21 @@ describe("ProtectedRoute", () => {
 
     expect(await screen.findByText("Contenido privado")).toBeInTheDocument();
   });
+
+  it("mientras isLoading es true (rehidratando sesión, F2), muestra un estado de carga sin redirigir", () => {
+    useAuthMock.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: vi.fn(),
+    });
+
+    renderWithRoute();
+
+    expect(screen.getByText("Cargando sesión…")).toBeInTheDocument();
+    expect(screen.queryByText("Pantalla de inicio de sesión")).not.toBeInTheDocument();
+    expect(screen.queryByText("Contenido privado")).not.toBeInTheDocument();
+  });
 });

@@ -78,10 +78,87 @@ frontend/src/
 
 ## F2 — Autenticación
 
-- [ ] Pantalla de inicio de sesión
-- [ ] Persistencia de sesión y cierre automático al expirar el refresh
-- [ ] Redirección post-login según rol
-- [ ] Pantalla de perfil con cambio de contraseña
+> **Progreso:** implementado sobre la base de F1 (`AuthContext`, `httpClient`,
+> `ProtectedRoute`, `permissions.ts` ya existían con placeholders/estado en
+> memoria). TDD real: Vitest + Testing Library, 63/63 tests pasan; `tsc` +
+> `vite build` sin errores.
+>
+> - **Login** (`LoginPage.tsx`): React Hook Form + Zod, importando
+>   literalmente `loginBodySchema` desde el paquete compartido
+>   `packages/schemas` (ver nota de consolidación más abajo) — ya no es un
+>   espejo manual, es el mismo schema que usa
+>   `backend/src/schemas/auth.schema.ts`; error accionable vía
+>   `getErrorMessage`. Se agregaron dos primitivas UI propias
+>   (`components/ui/input.tsx`, `components/ui/label.tsx`) siguiendo el estilo
+>   shadcn/zinc/new-york ya usado en el repo, **sin** sumar
+>   `@radix-ui/react-label` (dependencia nueva no declarada, AGENTS.md §2.1):
+>   `Label` es un `<label>` nativo, `Input` no necesita Radix.
+> - **Persistencia de sesión** (`httpClient.ts`): el `refreshToken` se
+>   persiste en `localStorage` (`accessToken` sigue solo en memoria, vida
+>   corta). Nueva función `restoreSession()` reutiliza la misma cola de
+>   deduplicación de refrescos que el interceptor 401. `AuthProvider` la
+>   invoca al montar; mientras rehidrata, `ProtectedRoute` muestra "Cargando
+>   sesión…" en vez de parpadear a login. Si el refresh persistido ya no es
+>   válido, el mismo `onSessionExpired` del interceptor 401 cierra la sesión
+>   sola. `user` es estado de servidor (`GET /auth/perfil`) y se maneja con
+>   TanStack Query (`useQuery`, key `["auth", "perfil"]`) en
+>   `AuthContext.tsx`, conforme a AGENTS.md §4 — sin excepción alguna al
+>   estándar. Ver el comentario en `AuthContext.tsx` para el detalle
+>   completo del contrato.
+> - **Redirección post-login por rol** (`permissions.ts::getLandingRoute`):
+>   primer ítem de `NAVIGATION_ITEMS` (barra lateral, ya existente) accesible
+>   para el rol del usuario; hoy resuelve `/panel` para los 4 roles porque
+>   F3+ todavía no tiene vistas distintas por rol, pero es la única fuente de
+>   verdad para cuando las tenga. `LoginPage` respeta además el
+>   `location.state.desde` que deja `ProtectedRoute` al redirigir a login
+>   desde una ruta específica.
+> - **Perfil y cambio de contraseña** (`PerfilPage.tsx`, ruta `/perfil`,
+>   protegida para cualquier rol autenticado, enlazada desde el menú de
+>   usuario del encabezado): **brecha de backend detectada y documentada, no
+>   resuelta en este cambio** (fuera de alcance de este agente, que no toca
+>   `backend/**`). El backend no expone un endpoint de autoservicio para
+>   cambiar la propia contraseña; el único que toca `password` es
+>   `PATCH /usuarios/:id` (`backend/src/routes/usuarios.routes.ts`),
+>   protegido con `requireRole("ADMINISTRADOR")` y sin verificar la
+>   contraseña actual. El frontend reutiliza ese endpoint pasando el propio
+>   `id` (`autenticacion.api.ts::changePasswordApi`, con la decisión
+>   documentada en el comentario del código): hoy solo funciona de punta a
+>   punta para el rol ADMINISTRADOR; para SUPERVISOR/ASESOR/VENDEDOR el
+>   backend responde 403 con mensaje accionable. Se necesita un endpoint
+>   propio (p. ej. `PATCH /auth/perfil/password`, exigiendo la contraseña
+>   actual) para cerrar esta brecha para el resto de los roles.
+
+> **Nota de consolidación — `packages/schemas` (nuevo paquete pnpm):**
+> el hook de pre-commit (Gentleman Guardian Angel, revisor AI contra
+> `AGENTS.md`) bloqueó el primer intento de commit de F2 porque
+> `LoginPage.tsx` y `PerfilPage.tsx` tenían copias manuales de los schemas
+> Zod del backend en vez de reutilizarlos (`AGENTS.md` §4: "Formularios con
+> RHF+Zod, reutilizando los esquemas del backend"). Como el workspace no
+> tenía ningún paquete compartido entre `backend/` y `frontend/`, se creó
+> `packages/schemas/` (agregado a `pnpm-workspace.yaml`, dependencia
+> `"schemas": "workspace:*"` en ambos `package.json`) que exporta
+> `loginBodySchema` y `passwordPolicySchema` — **solo** lo que ya estaba
+> duplicado, no todo `createUsuarioBodySchema`, para no arrastrar
+> `@prisma/client` (vía el enum `RolUsuario`) hacia el bundle del frontend.
+> `backend/src/schemas/auth.schema.ts` y `usuarios.schema.ts` ahora
+> importan de ahí en vez de definir esos dos schemas inline.
+>
+> **Punto a coordinar en la consolidación con `dev-back`:** este cambio
+> tocó archivos de `backend/src/schemas/` y `pnpm-workspace.yaml` desde el
+> worktree `dev-front`, mientras el backend se sigue desarrollando en
+> paralelo en el worktree `dev-back`. Al mergear ambas ramas, verificar que
+> `dev-back` no haya modificado `auth.schema.ts`/`usuarios.schema.ts` de
+> forma incompatible con esta extracción, y evaluar si otros schemas que
+> `dev-back` agregue mientras tanto (p. ej. de `leads`, cuando F3 se
+> conecte al backend real) también deberían vivir en `packages/schemas` en
+> vez de crear un mirror nuevo del lado del frontend.
+
+- [x] Pantalla de inicio de sesión
+- [x] Persistencia de sesión y cierre automático al expirar el refresh
+- [x] Redirección post-login según rol
+- [x] Pantalla de perfil con cambio de contraseña (frontend completo; ver
+      nota de progreso — funciona de punta a punta solo para ADMINISTRADOR
+      hasta que exista un endpoint de backend de autoservicio)
 
 ---
 

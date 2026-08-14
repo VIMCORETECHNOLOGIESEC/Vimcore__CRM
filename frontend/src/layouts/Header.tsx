@@ -1,4 +1,5 @@
-import { Bell, LogOut, Menu, User } from "lucide-react";
+import { Bell, LogOut, Menu, Settings, User } from "lucide-react";
+import { Link } from "react-router";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,6 +85,12 @@ export function Header() {
               <span className="text-xs font-normal text-muted-foreground">{user?.correo}</span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/perfil" className="cursor-pointer">
+                <Settings className="size-4" aria-hidden="true" />
+                Mi perfil
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void logout()}>
               <LogOut className="size-4" aria-hidden="true" />
               Cerrar sesión

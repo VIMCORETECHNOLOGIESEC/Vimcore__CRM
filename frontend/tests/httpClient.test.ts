@@ -5,6 +5,7 @@ import {
   getErrorMessage,
   getRefreshToken,
   httpClient,
+  restoreSession,
   setOnSessionExpired,
   setTokens,
 } from "@/api/httpClient";
@@ -280,6 +281,64 @@ describe("httpClient — mapeo de errores", () => {
 
     const resultado = await httpClient.delete("/algo");
     expect(resultado).toBeUndefined();
+  });
+});
+
+describe("httpClient — persistencia del refresh token (F2)", () => {
+  it("setTokens con un par válido persiste el refresh token en localStorage", () => {
+    setTokens({ accessToken: "access-1", refreshToken: "refresh-persistido" });
+    expect(localStorage.getItem("crm.refreshToken")).toBe("refresh-persistido");
+  });
+
+  it("setTokens(null) elimina el refresh token de localStorage", () => {
+    setTokens({ accessToken: "access-1", refreshToken: "refresh-persistido" });
+    setTokens(null);
+    expect(localStorage.getItem("crm.refreshToken")).toBeNull();
+  });
+});
+
+describe("restoreSession — rehidratación al arrancar la app (F2)", () => {
+  it("sin refresh token persistido, no llama a fetch y devuelve false", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const restaurada = await restoreSession();
+
+    expect(restaurada).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("con un refresh token válido, refresca los tokens y devuelve true", async () => {
+    setTokens({ accessToken: "", refreshToken: "refresh-valido" });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse(200, { accessToken: "access-nuevo", refreshToken: "refresh-nuevo" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const restaurada = await restoreSession();
+
+    expect(restaurada).toBe(true);
+    expect(getAccessToken()).toBe("access-nuevo");
+    expect(getRefreshToken()).toBe("refresh-nuevo");
+  });
+
+  it("con un refresh token inválido, limpia la sesión, notifica onSessionExpired y devuelve false", async () => {
+    setTokens({ accessToken: "", refreshToken: "refresh-invalido" });
+    const onSessionExpired = vi.fn();
+    setOnSessionExpired(onSessionExpired);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(401, { code: "token_invalido", message: "Token inválido" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const restaurada = await restoreSession();
+
+    expect(restaurada).toBe(false);
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
   });
 });
 

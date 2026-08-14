@@ -1,9 +1,10 @@
 /**
- * Cliente HTTP para la API del backend (AGENTS.md §4, docs/07 F1).
+ * Cliente HTTP para la API del backend (AGENTS.md §4, docs/07 F1/F2).
  *
  * Cobertura de TDD (AGENTS.md §5): este módulo contiene lógica no trivial
  * (inyección de JWT, cola de refresco ante 401, deduplicación de refrescos
- * concurrentes, mapeo de errores) -- ver `frontend/tests/httpClient.test.ts`.
+ * concurrentes, mapeo de errores, persistencia de sesión) -- ver
+ * `frontend/tests/httpClient.test.ts`.
  *
  * Contrato verificado contra `backend/src/controllers/auth.controller.ts`,
  * `backend/src/services/auth.service.ts` y
@@ -47,19 +48,48 @@ interface TokenPair {
   refreshToken: string;
 }
 
+const REFRESH_TOKEN_STORAGE_KEY = "crm.refreshToken";
+
 /**
- * Estado de tokens en memoria (módulo singleton). F1 no persiste la sesión
- * entre recargas -- eso es alcance explícito de F2 ("Persistencia de sesión
- * y cierre automático al expirar el refresh", docs/07). El diseño con
- * getters/setters permite que F2 conecte un backing store persistente sin
- * tocar el resto de este archivo.
+ * `localStorage` puede no estar disponible (modo privado estricto de algunos
+ * navegadores, contextos sin `window`) -- estas envolturas degradan a
+ * "sin persistencia" en vez de romper el login.
+ */
+function readPersistedRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistRefreshToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // Sin persistencia disponible, la sesión no sobrevive a un recargo pero
+    // sigue funcionando en memoria durante la pestaña actual.
+  }
+}
+
+/**
+ * Estado de tokens: `accessToken` solo vive en memoria (nunca se persiste --
+ * vida corta, se rehidrata desde `refreshTokenValue` al montar la app). El
+ * `refreshTokenValue` sí se persiste en `localStorage` (F2, "Persistencia de
+ * sesión y cierre automático al expirar el refresh") y se lee una vez al
+ * cargar este módulo para que `restoreSession()` pueda usarlo al arrancar.
  */
 let accessToken: string | null = null;
-let refreshTokenValue: string | null = null;
+let refreshTokenValue: string | null = readPersistedRefreshToken();
 
 export function setTokens(tokens: TokenPair | null): void {
   accessToken = tokens?.accessToken ?? null;
   refreshTokenValue = tokens?.refreshToken ?? null;
+  persistRefreshToken(refreshTokenValue);
 }
 
 export function getAccessToken(): string | null {
@@ -118,6 +148,23 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 
   return pendingRefresh;
+}
+
+/**
+ * Rehidrata la sesión al montar la app a partir del refresh token
+ * persistido (F2). Reutiliza `refreshAccessToken()` -- la misma cola que
+ * deduplica refrescos concurrentes ante un 401 -- así un refresco disparado
+ * al arrancar nunca compite con uno disparado por una petición temprana.
+ * Si el refresh token persistido ya expiró o fue revocado, `AuthProvider`
+ * recibe el mismo `onSessionExpired` que usa el interceptor 401 y cierra la
+ * sesión sola (sin sesión previa real que cerrar, es un no-op visible).
+ */
+export async function restoreSession(): Promise<boolean> {
+  if (!refreshTokenValue) {
+    return false;
+  }
+  const newAccessToken = await refreshAccessToken();
+  return newAccessToken !== null;
 }
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
