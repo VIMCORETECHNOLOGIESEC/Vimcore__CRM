@@ -4,6 +4,15 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 export interface CreateEventoData {
   leadId: string;
   tipo: LeadEvento["tipo"];
+  /**
+   * M6 (diseño, DD5): `LeadEvento.usuarioId` existe desde M3 pero ningún
+   * módulo previo lo poblaba. M6 lo agrega opcional y lo puebla con el
+   * ejecutor humano — `null` en el camino automático de asignación y en el
+   * cron de SLA. La columna es el portador canónico para M9 (agregación SQL
+   * sin leer JSON); `DetalleEventoAsignacion.ejecutadoPorId` es el espejo
+   * que M8 consume sin join.
+   */
+  usuarioId?: LeadEvento["usuarioId"];
   etapaAnterior?: LeadEvento["etapaAnterior"];
   etapaNueva?: LeadEvento["etapaNueva"];
   /**

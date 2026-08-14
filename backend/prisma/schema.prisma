@@ -90,6 +90,12 @@ enum TipoEventoLead {
   CITA_REPROGRAMADA
   SLA_INCUMPLIDO
   CIERRE
+  // M6 (D6/DD3): agregado AL FINAL — `ADD VALUE` sin BEFORE/AFTER lo anexa al
+  // final del orden físico de PG; declararlo en otra posición del DSL
+  // crearía deriva permanente entre `schema.prisma` y `pg_enum`. Señala que
+  // no hubo candidatos activos del rol requerido al momento de la
+  // asignación automática (docs/02 §3.5).
+  SIN_ASIGNAR
 
   @@map("tipo_evento_lead")
 }

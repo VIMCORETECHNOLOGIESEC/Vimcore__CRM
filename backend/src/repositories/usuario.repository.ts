@@ -1,5 +1,5 @@
 import type { Prisma, RolUsuario, Usuario } from "@prisma/client";
-import { prisma } from "../lib/prisma.js";
+import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 import { revokeAllForUser } from "./refresh-token.repository.js";
 
 /**
@@ -82,6 +82,41 @@ export async function updateUser(
     }
     throw error;
   }
+}
+
+/** M6 (diseño, "Cálculo de menor carga activa — consulta exacta"). */
+export interface CandidatoRol {
+  id: string;
+  ultimaAsignacionEn: Date | null;
+}
+
+/**
+ * M6 (diseño, DD4): tx-aware — las funciones YA existentes de este
+ * repositorio (arriba) usan el `prisma` de módulo y NO se refactorizan
+ * (fuera de alcance, rompería M2 sin necesidad). Solo las funciones NUEVAS
+ * de M6 aceptan `PrismaClientOrTransaction`.
+ */
+export async function findActivosPorRol(
+  rol: RolUsuario,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CandidatoRol[]> {
+  return client.usuario.findMany({
+    where: { rol, activo: true },
+    select: { id: true, ultimaAsignacionEn: true },
+  });
+}
+
+/**
+ * M6 (diseño, D10): actualiza `ultimaAsignacionEn` del receptor en los
+ * cuatro caminos de asignación (automática, `asignar`, `reasignar`,
+ * `traspasar`) — sin esto el desempate FIFO degenera.
+ */
+export async function updateUltimaAsignacion(
+  id: string,
+  ahora: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  await client.usuario.update({ where: { id }, data: { ultimaAsignacionEn: ahora } });
 }
 
 /**

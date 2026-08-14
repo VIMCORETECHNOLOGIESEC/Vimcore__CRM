@@ -5,6 +5,7 @@ import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
+import { assignAutomatically } from "./asignacion.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 
 export interface IngestaResultado {
@@ -114,6 +115,14 @@ async function procesarEnTransaccion(
 
   const dedupResultado = await deduplicateLead(entrada, ahora, tx);
   await leadRecibidoRepository.marcarProcesado(recepcion.id, dedupResultado.leadId, tx);
+
+  // M6 (D1): la asignación automática corre en la MISMA transacción de
+  // ingesta, con el `tx` vivo, y SOLO si el lead es realmente nuevo.
+  // `deduplicacion.service.ts` no se toca — el hook vive aquí, del lado del
+  // consumidor de `DeduplicacionResult.leadCreado`.
+  if (dedupResultado.leadCreado) {
+    await assignAutomatically(dedupResultado.leadId, ahora, tx);
+  }
 
   return {
     leadId: dedupResultado.leadId,

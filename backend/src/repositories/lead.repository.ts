@@ -6,8 +6,13 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
  * §2 (docs/02-reglas-negocio.md): un lead está "abierto" mientras su etapa
  * no sea una etapa de cierre. `VENTA`/`NO_VENTA` son las dos únicas etapas
  * de cierre — cualquier otra cuenta como abierta.
+ *
+ * M6 (diseño, "Cálculo de menor carga activa"): exportada para que
+ * `countCargaActivaPorResponsable` la reutilice en vez de declarar una
+ * cuarta copia (ya existe también como `ETAPAS_TERMINALES` en
+ * `leads.service.ts`).
  */
-const ETAPAS_CERRADAS = [EtapaLead.VENTA, EtapaLead.NO_VENTA] as const;
+export const ETAPAS_CERRADAS = [EtapaLead.VENTA, EtapaLead.NO_VENTA] as const;
 
 export async function findLeadAbierto(
   clienteId: string,
@@ -142,4 +147,83 @@ export async function updateEtapa(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Lead> {
   return client.lead.update({ where: { id }, data });
+}
+
+export type PoolAsignacion = "ASESOR" | "VENDEDOR";
+
+/**
+ * M6 (diseño, DD8): `groupBy` de Prisma solo devuelve grupos CON filas — un
+ * candidato con carga activa 0 está AUSENTE de `filas`, no presente con
+ * `_count: 0`. El llamador (`asignacion.service::selectResponsable`)
+ * completa los ausentes con 0; esta función nunca los descarta ni asume que
+ * `groupBy` cubre todos los candidatos.
+ *
+ * REFACTOR (tarea 1.19): `groupBy` exige literales estáticos en `by` para su
+ * tipado, así que las dos ramas de consulta quedan explícitas (el intento de
+ * unificarlas con un `campo` dinámico rompe la sobrecarga de tipos de
+ * Prisma); lo que se unifica es el post-procesamiento (DD8: completar
+ * ausentes queda a cargo del llamador, esta función solo mapea filas
+ * presentes) en `groupByRowsToCountMap`, sin duplicarlo. Utilidad de
+ * infraestructura genérica sin carga de dominio — nombre en inglés puro.
+ */
+function groupByRowsToCountMap<K extends string>(
+  filas: ReadonlyArray<{ _count: { _all: number } } & Record<K, string | null>>,
+  campo: K,
+): Map<string, number> {
+  const mapa = new Map<string, number>();
+  for (const fila of filas) {
+    const id = fila[campo];
+    if (id !== null) mapa.set(id, fila._count._all);
+  }
+  return mapa;
+}
+
+export async function countCargaActivaPorResponsable(
+  pool: PoolAsignacion,
+  candidatoIds: readonly string[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, number>> {
+  if (candidatoIds.length === 0) return new Map();
+
+  if (pool === "ASESOR") {
+    const filas = await client.lead.groupBy({
+      by: ["asesorId"],
+      where: { asesorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+      _count: { _all: true },
+    });
+    return groupByRowsToCountMap(filas, "asesorId");
+  }
+
+  const filas = await client.lead.groupBy({
+    by: ["vendedorId"],
+    where: { vendedorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+    _count: { _all: true },
+  });
+  return groupByRowsToCountMap(filas, "vendedorId");
+}
+
+export interface AssignResponsableData {
+  pool: PoolAsignacion;
+  responsableId: string;
+  slaInicioEn: Date;
+}
+
+/**
+ * M6 (diseño, contrato `applyAsignacion`): una de las tres escrituras
+ * atómicas de la operación de asignación (D11) — escribe `asesorId` o
+ * `vendedorId` según `pool` más el reinicio de `slaInicioEn`, nunca ambos
+ * campos de responsable a la vez.
+ */
+export async function assignResponsable(
+  id: string,
+  data: AssignResponsableData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead> {
+  return client.lead.update({
+    where: { id },
+    data:
+      data.pool === "ASESOR"
+        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn }
+        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn },
+  });
 }
