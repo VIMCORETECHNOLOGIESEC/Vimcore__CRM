@@ -11,6 +11,9 @@ const envSchema = z.object({
   // `setExpirationTime` y el cálculo de `expiraEn` en `refresh_tokens`.
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
+  // Origen permitido para CORS (frontend). Default: donde corre el frontend
+  // en Docker Compose / `pnpm dev` local.
+  CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN es obligatoria").default("http://localhost:5173"),
 });
 
 export type Env = z.infer<typeof envSchema>;
