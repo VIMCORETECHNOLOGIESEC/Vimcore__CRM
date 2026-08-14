@@ -234,3 +234,18 @@ verifica antes de construir:
 | `docs/06-modulos-backend.md` | Módulos backend con checklist de avance |
 | `docs/07-modulos-frontend.md` | Módulos frontend con checklist de avance |
 | `docs/08-dashboard-kpis.md` | Definición exacta de cada KPI |
+| `docs/09-skills-agentes-backend.md` | Skills de IA habilitadas para backend: fuente, instalación y caso de uso |
+
+---
+
+## 9. Skills de agentes de IA
+
+Antes de instalar o usar una skill de Claude Code para trabajo en `backend/**`,
+se aplica la misma barra de confianza que a una dependencia de npm (§2.1 —
+cadena de suministro): procedencia verificable (vendor oficial o repo de
+GitHub inspeccionable con autor y licencia identificables), nunca un
+agregador que liste variaciones duplicadas del mismo tema sin mantenedor
+claro. El detalle por skill — fuente, comando de instalación y en qué caso
+concreto debe usarla el agente — vive en `docs/09-skills-agentes-backend.md`;
+ese documento también registra las skills evaluadas y descartadas, para no
+repetir la evaluación.

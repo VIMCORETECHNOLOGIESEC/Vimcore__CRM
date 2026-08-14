@@ -1,6 +1,7 @@
 # Local AI runtime state
 .atl/
 .claude/settings.local.json
+.codegraph/
 
 # Node / pnpm
 node_modules/
