@@ -78,7 +78,7 @@ paleta y nunca se usan de forma decorativa:
 | Acento estructural | `#111113` (negro) | Reservado a navegación/estructura: borde + estado activo del sidebar, regla del encabezado de tabla, botón principal. Nunca como panel sólido grande — el sidebar comparte fondo con el canvas, el negro es un acento preciso, no un bloque de color |
 | Texto principal | `#18181B` | Sobre fondo blanco |
 | Gris neutro (bordes, superficies secundarias) | `#E8E8E8` / `#F5F5F5` | Sin tinte de color |
-| Serie de gráficas (categórica) | `#4F46E5` `#2563EB` `#0D9488` `#7C3AED` | 4 tonos para distinguir series (red social, asesor); ninguno pisa los colores de semáforo |
+| Serie de gráficas (categórica) | `#DB2777` `#2563EB` `#0D9488` `#7C3AED` `#0891B2` | 5 tonos en este orden fijo (magenta, azul, teal, violeta, cian) — orden 1..N asignado en secuencia, nunca ciclado. Corrección técnica de la paleta original de 4 tonos (`#4F46E5 #2563EB #0D9488 #7C3AED`): validada con `dataviz/scripts/validate_palette.js`, el par adyacente azul-índigo fallaba el piso de daltonismo (ΔE 2.8 deutan) y el piso de visión normal (ΔE 6.7, por debajo de 15) — indistinguibles incluso sin daltonismo. Esta paleta corregida pasa los 5 checks contra la superficie clara `#FFFFFF` (peor par adyacente: ΔE 15.0 deutan, ΔE 22.6 visión normal). Sin validar contra modo oscuro: el proyecto no tiene superficie oscura aprobada ni `ThemeProvider` activo (F1-F4), `darkMode: ["class"]` en `tailwind.config.js` es boilerplate de shadcn sin uso. Ninguno pisa los colores de semáforo (verde/ámbar/rojo quedan fuera de la familia cromática usada acá) |
 | Semáforo — Frío | `#16A34A` + etiqueta de texto | Nunca solo el chip |
 | Semáforo — Tibio | `#D97706` + etiqueta de texto | |
 | Semáforo — Caliente | `#DC2626` + etiqueta de texto | |
@@ -214,7 +214,9 @@ limitación de fiabilidad conocida en pantallas complejas).
       React Hook Form + Zod (pendientes de uso hasta F4/F7/F8) + lucide-react
       + sonner + date-fns, como parte de F1. **Pendiente:** `@tanstack/react-table`
       no está instalado todavía — se agrega cuando arranque F3.
-- [ ] Definir la paleta categórica final de Recharts junto con F5 — punto de
-      partida en §3 (`#4F46E5 #2563EB #0D9488 #7C3AED`).
+- [x] Definir la paleta categórica final de Recharts junto con F5 — resuelta
+      en §3 (`#DB2777 #2563EB #0D9488 #7C3AED #0891B2`, corregida y validada
+      con la skill de dataviz; el punto de partida original de 4 tonos
+      fallaba la validación de daltonismo).
 - [x] Con la línea gráfica aprobada, arrancar el desarrollo general del
       frontend — F1 completo, ver `docs/07-modulos-frontend.md`.
