@@ -111,21 +111,27 @@ correo se persiste con marca de dato incompleto.
 
 ## M5 — Gestión de leads
 
-- [ ] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
+- [x] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
       responsable, rango de fechas, estado de SLA), paginación y orden
-- [ ] Filtrado automático por rol: asesor y vendedor solo ven su cartera
-- [ ] `GET /api/v1/leads/:id` con verificación de acceso
-- [ ] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
-- [ ] Validación de campos obligatorios en etapas terminales
-- [ ] Escritura de `lead_eventos` en la misma transacción que cada cambio
-- [ ] `GET /api/v1/formularios/:etapa` — definición de formulario
-- [ ] `POST /api/v1/leads/:id/formulario` — respuestas y cálculo de puntuación
-- [ ] Motor de cálculo del semáforo con versionado de rúbrica
+- [x] Filtrado automático por rol: asesor y vendedor solo ven su cartera
+- [x] `GET /api/v1/leads/:id` con verificación de acceso
+- [x] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
+- [x] Validación de campos obligatorios en etapas terminales
+- [x] Escritura de `lead_eventos` en la misma transacción que cada cambio
+- [x] `GET /api/v1/formularios/:etapa` — definición de formulario
+- [x] `POST /api/v1/leads/:id/formulario` — respuestas y cálculo de puntuación
+- [x] Motor de cálculo del semáforo con versionado de rúbrica
 
 **Pruebas obligatorias:** un asesor no puede leer ni modificar un lead ajeno
 (prueba directa contra el endpoint, no contra la interfaz); cambio de etapa sin
 formulario se rechaza; cada combinación de respuestas produce la puntuación
 esperada; VENTA sin monto se rechaza.
+
+**Límite M5/M6:** `Lead.asesorId`/`vendedorId` ya existen en el esquema desde
+M5 y `leads.service.ts` los consume (filtro de cartera, D4), pero **nadie los
+escribe todavía** — la asignación automática por menor carga, la reasignación
+y el traspaso son responsabilidad de M6. Hasta que M6 aterrice, estos campos
+solo se pueblan manualmente (semillas/fixtures) para ejercitar M5.
 
 ---
 
