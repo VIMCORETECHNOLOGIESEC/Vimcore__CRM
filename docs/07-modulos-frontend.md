@@ -42,15 +42,37 @@ frontend/src/
 > el binario nativo `oxide`.
 
 - [x] Vite + React + TypeScript + Tailwind
-- [ ] Enrutado con React Router y rutas protegidas por rol
-- [ ] TanStack Query configurado con manejo global de errores
-- [ ] Cliente HTTP con inyección de JWT y refresco automático ante 401
-- [ ] Layout principal: barra lateral, encabezado, campana de notificaciones
-- [ ] Diseño responsive con puntos de corte móvil, tableta y escritorio
-- [ ] Estados de carga (esqueletos), vacío y error en cada vista
-- [ ] Paleta base neutra y tipografía legible; sin manual de marca disponible,
+- [x] Enrutado con React Router y rutas protegidas por rol
+- [x] TanStack Query configurado con manejo global de errores
+- [x] Cliente HTTP con inyección de JWT y refresco automático ante 401
+- [x] Layout principal: barra lateral, encabezado, campana de notificaciones
+- [x] Diseño responsive con puntos de corte móvil, tableta y escritorio
+- [x] Estados de carga (esqueletos), vacío y error en cada vista
+- [x] Paleta base neutra y tipografía legible; sin manual de marca disponible,
       se prioriza claridad y contraste sobre expresividad (línea gráfica
       propuesta en `docs/09-linea-grafica-frontend.md`)
+
+> **F1 completado** (agente frontend, rama `dev-front`). Rutas y layout con
+> React Router en modo datos (`createBrowserRouter`, no el modo "framework"
+> completo -- ver nota en `frontend/src/router.tsx`), TanStack Query con
+> `QueryCache`/`MutationCache` mostrando errores en español vía `sonner`,
+> cliente HTTP propio con cola de refresco anti-carrera (rotación de refresh
+> tokens en el backend, D-D), shadcn/ui inicializado con la CLI legacy
+> `shadcn@3.8.5` (no `@latest`/`@canary`: la 4.x rompe con Tailwind v3, ver
+> informe de la tarea) sobre la paleta aprobada de `docs/09` §3.
+> **Bloqueante de testing resuelto** (decisión explícita del usuario): se
+> instaló Vitest + jsdom + Testing Library (`@testing-library/react`,
+> `jest-dom`, `user-event`) como devDependencies de `frontend/`, con
+> `vitest.config.ts` (reutiliza el alias `@/*` y el plugin de React de
+> `vite.config.ts` vía `mergeConfig`) y script `pnpm --filter frontend test`
+> (`vitest run`). La lógica real sin cubrir que motivó el bloqueante ahora
+> tiene test unitario (AGENTS.md §5): inyección de JWT, reintento ante 401,
+> deduplicación de refrescos concurrentes y sesión expirada en
+> `api/httpClient.ts`; mapeo global de errores en `api/queryClient.ts`;
+> `hasRoleAccess` en `permissions.ts`; login/logout/estado de sesión/`hasRole`
+> en `AuthContext.tsx`; y las redirecciones de `ProtectedRoute.tsx` (sin
+> sesión, sin rol permitido, con acceso). 40 tests, 5 archivos, todos en
+> verde (`frontend/tests/*.test.{ts,tsx}`).
 
 ---
 

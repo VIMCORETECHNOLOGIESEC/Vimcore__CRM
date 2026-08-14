@@ -206,11 +206,15 @@ limitación de fiabilidad conocida en pantallas complejas).
       `projectId 8669152245244265576` / `assets/15350993658645954285`. Esperar
       timeouts en pantallas complejas (ver §6.2) y tener listo el patrón de
       wireframe HTML como plan B.
-- [ ] Instalar shadcn/ui (CLI v3, `--force` o `--legacy-peer-deps` por
-      React 19) + TanStack Router/Query + TanStack Table + React Hook Form +
-      Zod + lucide-react + date-fns + sonner, como parte de F1. Nada de esto
-      está instalado todavía en `frontend/package.json`.
+- [x] Instalar shadcn/ui (CLI legacy `3.8.5`, la última pre-v4: `@latest`
+      resuelve a la generación v4, preset-based con Tailwind v4/oklch,
+      incompatible con Tailwind v3.4 fijado en este repo) + React Router
+      (enrutado, no TanStack Router — corrección de esta línea, ver
+      `docs/07-modulos-frontend.md` §1 tabla de stack) + TanStack Query +
+      React Hook Form + Zod (pendientes de uso hasta F4/F7/F8) + lucide-react
+      + sonner + date-fns, como parte de F1. **Pendiente:** `@tanstack/react-table`
+      no está instalado todavía — se agrega cuando arranque F3.
 - [ ] Definir la paleta categórica final de Recharts junto con F5 — punto de
       partida en §3 (`#4F46E5 #2563EB #0D9488 #7C3AED`).
-- [ ] Con la línea gráfica aprobada, arrancar el desarrollo general del
-      frontend (F1 en adelante) sobre esta base.
+- [x] Con la línea gráfica aprobada, arrancar el desarrollo general del
+      frontend — F1 completo, ver `docs/07-modulos-frontend.md`.
