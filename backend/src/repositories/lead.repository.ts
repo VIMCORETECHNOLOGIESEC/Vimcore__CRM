@@ -57,7 +57,15 @@ export async function createLead(
 
 export interface UpdateSemaforoData {
   semaforo: Lead["semaforo"];
-  puntuacion: Lead["puntuacion"];
+  /**
+   * PR3 (M5): opcional para el fijado directo de color en etapas terminales
+   * (VENTA=VERDE/NO_VENTA=ROJO, D6) — esas transiciones no pasan por el
+   * motor de puntuación (`applyFormulario` las rechaza, PR2) y no deben
+   * tocar `puntuacion`. Cuando se omite, Prisma no incluye la columna en el
+   * `UPDATE` (un valor `undefined` en `data` significa "no tocar", distinto
+   * de `null`).
+   */
+  puntuacion?: Lead["puntuacion"];
 }
 
 /**
@@ -68,6 +76,69 @@ export interface UpdateSemaforoData {
 export async function updateSemaforo(
   id: string,
   data: UpdateSemaforoData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead> {
+  return client.lead.update({ where: { id }, data });
+}
+
+/**
+ * PR3 (diseño M5, detalle con verificación de acceso): `null` es un
+ * resultado válido — el controller lo traduce a 404, nunca lanza aquí.
+ */
+export async function findById(
+  id: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead | null> {
+  return client.lead.findUnique({ where: { id } });
+}
+
+export interface FindManyLeadsOptions {
+  skip: number;
+  take: number;
+  orderBy: Prisma.LeadOrderByWithRelationInput;
+}
+
+export interface FindManyLeadsResult {
+  leads: Lead[];
+  total: number;
+}
+
+/**
+ * PR3 (spec, "Filtros, paginación y orden del listado"): el `where` completo
+ * —incluida la inyección del filtro de rol, DD5— lo construye
+ * `leads.service.ts`; este repositorio solo ejecuta la consulta. `total` es
+ * el conteo real bajo el mismo `where`, no el tamaño de la página.
+ */
+export async function findMany(
+  where: Prisma.LeadWhereInput,
+  options: FindManyLeadsOptions,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<FindManyLeadsResult> {
+  const [leads, total] = await Promise.all([
+    client.lead.findMany({ where, skip: options.skip, take: options.take, orderBy: options.orderBy }),
+    client.lead.count({ where }),
+  ]);
+  return { leads, total };
+}
+
+export interface UpdateEtapaData {
+  etapa: EtapaLead;
+  /** Solo presentes en una transición hacia VENTA/NO_VENTA (D13). */
+  cerradoEn?: Date;
+  montoVenta?: Prisma.Decimal.Value;
+  productoServicio?: string;
+  formaPago?: Lead["formaPago"];
+  observacionCierre?: string;
+}
+
+/**
+ * PR3 (diseño M5, DD7): una sola escritura para `etapa` + los campos de
+ * cierre de la etapa terminal correspondiente, dentro de la transacción de
+ * `leads.service::transitionEtapa`.
+ */
+export async function updateEtapa(
+  id: string,
+  data: UpdateEtapaData,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Lead> {
   return client.lead.update({ where: { id }, data });
