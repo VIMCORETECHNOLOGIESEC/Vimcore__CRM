@@ -54,3 +54,21 @@ export async function createLead(
 ): Promise<Lead> {
   return client.lead.create({ data });
 }
+
+export interface UpdateSemaforoData {
+  semaforo: Lead["semaforo"];
+  puntuacion: Lead["puntuacion"];
+}
+
+/**
+ * M5 (DD4, diseño): escritura del motor de semáforo — solo toca
+ * `semaforo`/`puntuacion`, nunca `etapa` (D16: recalificar no mueve la
+ * etapa del lead).
+ */
+export async function updateSemaforo(
+  id: string,
+  data: UpdateSemaforoData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead> {
+  return client.lead.update({ where: { id }, data });
+}

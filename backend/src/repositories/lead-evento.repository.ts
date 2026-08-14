@@ -6,6 +6,15 @@ export interface CreateEventoData {
   tipo: LeadEvento["tipo"];
   etapaAnterior?: LeadEvento["etapaAnterior"];
   etapaNueva?: LeadEvento["etapaNueva"];
+  /**
+   * M5 (D17, diseño M5): un cambio de color se registra en un evento
+   * `CAMBIO_SEMAFORO` propio, independiente de `CAMBIO_ETAPA`, dentro de la
+   * misma transacción cuando ambos cambian juntos. Opcionales — el resto de
+   * los tipos de evento (M3/M4) los dejan `undefined`/NULL, sin cambio de
+   * comportamiento.
+   */
+  semaforoAnterior?: LeadEvento["semaforoAnterior"];
+  semaforoNuevo?: LeadEvento["semaforoNuevo"];
   detalle?: Prisma.InputJsonValue;
 }
 
