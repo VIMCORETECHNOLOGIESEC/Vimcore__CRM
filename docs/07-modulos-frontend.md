@@ -302,18 +302,82 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 
 ## F5 — Dashboard
 
-- [ ] Tarjetas de resumen: total de leads, en gestión, cerrados, tasa de
+> **Progreso:** implementado contra un **mock en memoria**
+> (`funcionalidades/dashboard/metricas.api.ts`), reutilizando el mismo
+> fixture `LEADS_MOCK` compartido con F3/F4 (`leads.api.ts`) — M9
+> (`docs/06-modulos-backend.md`) no existe todavía ni como esqueleto:
+> ninguno de los siete endpoints `GET /api/v1/metricas/*` está implementado.
+> La lógica de agregación real y testeada vive en `metricas.utils.ts`
+> (funciones puras `calculate*`, con fixtures propios y deterministas en
+> `tests/dashboard/metricas.utils.test.ts`, separada de la capa mock
+> siguiendo el mismo criterio que `leads.utils.ts`/`leads.api.ts`). Cada
+> punto de integración pendiente está marcado con el token
+> `INTEGRACION-BACKEND`.
+>
+> **Simplificaciones del mock frente a `docs/08-dashboard-kpis.md`** (no hay
+> tabla `lead_eventos` en el fixture — simularla con event-sourcing completo
+> sería sobre-ingeniería para un mock):
+> - **Tiempo promedio de primera respuesta** (§2.5) y **cumplimiento de SLA**
+>   (§2.7): se aproximan con `slaInicioEn - ingresadoEn` (el reloj de SLA
+>   arranca en la asignación, `leadDetalle.api.ts`) para leads que ya
+>   salieron de NUEVO, en vez de `lead_eventos.ASIGNACION`/`CAMBIO_ETAPA`
+>   reales. El cálculo real es responsabilidad de M9.
+> - **Embudo por etapa** (§3.3): cada paso cuenta los leads *actualmente* en
+>   esa etapa dentro del rango (foto del pipeline), no el acumulado
+>   histórico de leads que alguna vez pasaron por ella — eso también
+>   requeriría `lead_eventos.CAMBIO_ETAPA`. Con el fixture de F3 el
+>   resultado igual es decreciente, pero no está garantizado con datos
+>   reales del mock.
+> - **Leads por campaña** (§3.4): se agrupa por `(campaniaId, redSocial)`
+>   armado en el momento de agregar, porque `CampaniaLead` (docs/03) no trae
+>   su propia red social — vive en el lead.
+> - **Leads por asesor** (§3.2): agrupa por **responsable operativo vigente**
+>   (`getResponsable`, ya usado en F3/F4: vendedor si hubo traspaso, si no el
+>   asesor), no por el campo `asesor` crudo del lead. Un lead traspasado
+>   aparece bajo el vendedor, no bajo el asesor que lo originó — consistente
+>   con cómo F3/F4 ya muestran "responsable" en tabla y detalle, pero a
+>   confirmar si para este KPI específico se prefiere atribución al asesor
+>   original en vez del responsable vigente.
+>
+> **Paleta:** ya cerrada y validada en `docs/09-linea-grafica-frontend.md`
+> (categórica de 5 colores en orden fijo para redes sociales/series, y la de
+> semáforo reutilizando los mismos hex que `SemaforoBadge.tsx`), definida
+> una única vez en `funcionalidades/dashboard/paleta.ts` y reutilizada por
+> los 6 gráficos.
+>
+> Sin componente de embudo nativo en Recharts: `GraficoEmbudo.tsx` se armó
+> con un `BarChart` horizontal decreciente con el % de caída como texto,
+> no un layout de embudo real — cumple igual la regla de "No Venta se
+> muestra aparte, nunca como paso del embudo".
+>
+> TDD: Vitest, 46 tests nuevos (213 en total en el frontend) cubriendo las
+> fórmulas de tasa de conversión, tiempos promedio, cumplimiento de SLA, la
+> regla de "período anterior con menos de 10 leads → valores absolutos" y el
+> alcance por rol. `tsc` + `vite build` sin errores.
+>
+> Fuera de alcance: conexión real a M9 (no existe) y la actualización en
+> tiempo real por SSE (docs/08 §5) -- mismo criterio que el comentario
+> `INTEGRACION-BACKEND` ya dejado en `LeadsPage.tsx` (F3).
+
+- [x] Tarjetas de resumen: total de leads, en gestión, cerrados, tasa de
       conversión, tiempo promedio de primera respuesta, tiempo promedio de cierre
-- [ ] Gráfica de barras: leads por red social
-- [ ] Gráfica de barras: leads por asesor
-- [ ] Gráfica de embudo: leads por etapa
-- [ ] Gráfica de barras: leads por campaña
-- [ ] Gráfica de barras apiladas: red social × semáforo (la que responde de qué
+      (se agregó también cumplimiento de SLA, séptimo indicador de
+      `docs/08-dashboard-kpis.md` §2 no listado en este ítem del checklist)
+- [x] Gráfica de barras: leads por red social
+- [x] Gráfica de barras: leads por asesor
+- [x] Gráfica de embudo: leads por etapa
+- [x] Gráfica de barras: leads por campaña
+- [x] Gráfica de barras apiladas: red social × semáforo (la que responde de qué
       red llegan los leads con más probabilidad de cierre)
-- [ ] Selector de rango de fechas con comparativa contra el período anterior
-- [ ] Alcance por rol: general para administrador y supervisor, personal para
+- [x] Gráfica de anillo: distribución por semáforo, solo leads en gestión
+      (ítem no listado en este checklist pero explícitamente requerido por
+      `docs/08-dashboard-kpis.md` §3.6 -- se agrega acá para no dejar la
+      gráfica sin registro de progreso)
+- [x] Selector de rango de fechas con comparativa contra el período anterior
+- [x] Alcance por rol: general para administrador y supervisor, personal para
       asesor y vendedor
-- [ ] Actualización en tiempo real vía SSE
+- [ ] Actualización en tiempo real vía SSE (pendiente, depende de M9 y de
+      infraestructura de tiempo real — F8)
 
 **Biblioteca de gráficas:** Recharts. Es declarativa, tipada, y su tamaño de
 paquete es razonable para el volumen de gráficas de este dashboard.
