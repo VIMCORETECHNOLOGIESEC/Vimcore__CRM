@@ -4,6 +4,7 @@ import { PendingScreen } from "@/componentes/PendingScreen";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
+import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { AppLayout } from "@/layouts/AppLayout";
 
 /**
@@ -18,8 +19,9 @@ import { AppLayout } from "@/layouts/AppLayout";
  * Los patrones de rutas anidadas, loaders/actions y navegación de la skill
  * `react-router-framework-mode` siguen aplicando igual en modo datos.
  *
- * Las pantallas de los módulos aún no implementados (F3-F8) son marcadores
- * de posición (`PendingScreen`); F2 (login, perfil) ya está implementado.
+ * Las pantallas de los módulos aún no implementados (F5-F8) son marcadores
+ * de posición (`PendingScreen`); F2 (login, perfil) y F3 (leads) ya están
+ * implementados.
  */
 export const router = createBrowserRouter([
   {
@@ -34,7 +36,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/panel" replace /> },
           { path: "panel", element: <PendingScreen module="F5 — Dashboard" /> },
-          { path: "leads", element: <PendingScreen module="F3 — Listado de leads" /> },
+          { path: "leads", element: <LeadsPage /> },
           { path: "perfil", element: <PerfilPage /> },
           {
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,

@@ -167,19 +167,44 @@ frontend/src/
 Es la pantalla de trabajo diario. Su rendimiento percibido define la experiencia
 del producto.
 
-- [ ] Tabla con columnas: cliente, teléfono, red social, campaña, etapa,
+> **Progreso:** implementado contra un **mock en memoria**
+> (`funcionalidades/leads/leads.api.ts`), no contra el backend real —
+> `GET /api/v1/leads` (M5) y la asignación masiva (M6) todavía no existen ni
+> como esqueleto en `docs/06-modulos-backend.md` al momento de este cambio,
+> y el backend se sigue desarrollando en paralelo en el worktree `dev-back`.
+> El usuario autorizó explícitamente construir F3+ contra datos en memoria
+> con la misma forma de función que tendrá la integración real
+> (`fetchLeadsApi`, `assignLeadsMasivoApi`), para que conectar el backend
+> sea reemplazar el cuerpo de esas dos funciones, no reescribir quien las
+> consume (`useLeads.ts`, `LeadsPage.tsx`). Cada punto de integración
+> pendiente está marcado con el token `INTEGRACION-BACKEND` (grepeable en
+> todo el repo) — buscarlo ahí es el punto de partida para conectar F3 al
+> backend real cuando esté disponible. TanStack Query (`useLeads`,
+> `keepPreviousData`) para evitar parpadeo entre páginas; TanStack Table
+> para el modelo de columnas. Vitest + Testing Library, todos los tests en
+> verde; `tsc` + `vite build` sin errores.
+>
+> Fuera de alcance de esta implementación: actualización por SSE (depende
+> de infraestructura de bridges/tiempo real que todavía no existe, F8) y el
+> contrato exacto de query params de `GET /api/v1/leads` (los nombres
+> usados en `LeadsQueryParams` son una suposición razonable a validar
+> contra la implementación real del backend antes de conectar).
+
+- [x] Tabla con columnas: cliente, teléfono, red social, campaña, etapa,
       semáforo, responsable, estado de SLA, fecha de ingreso
-- [ ] Indicador de semáforo con color **y** etiqueta de texto
-- [ ] Contador de SLA en vivo con formato `HH:MM:SS`, actualizado en cliente
-- [ ] Distintivo visual para leads de reingreso
-- [ ] Filtros combinables: etapa, semáforo, red social, campaña, responsable,
+- [x] Indicador de semáforo con color **y** etiqueta de texto
+- [x] Contador de SLA en vivo con formato `HH:MM:SS`, actualizado en cliente
+- [x] Distintivo visual para leads de reingreso
+- [x] Filtros combinables: etapa, semáforo, red social, campaña, responsable,
       rango de fechas, estado de SLA
-- [ ] Búsqueda por nombre, teléfono o correo
-- [ ] Paginación del lado del servidor
-- [ ] Vista adaptada por rol: asesor y vendedor ven solo su cartera, sin columna
+- [x] Búsqueda por nombre, teléfono o correo
+- [x] Paginación del lado del servidor (simulada en el mock; real cuando
+      exista `GET /api/v1/leads`)
+- [x] Vista adaptada por rol: asesor y vendedor ven solo su cartera, sin columna
       de responsable
-- [ ] Acciones masivas de asignación para supervisor y administrador
-- [ ] Actualización por SSE cuando ingresa un lead nuevo
+- [x] Acciones masivas de asignación para supervisor y administrador
+- [ ] Actualización por SSE cuando ingresa un lead nuevo (pendiente,
+      depende de infraestructura de bridges/tiempo real — F8)
 
 > El contador de SLA se calcula en el cliente a partir de la marca de tiempo
 > recibida. No consultes al servidor cada segundo: a 100 concurrentes eso son
