@@ -2,9 +2,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "@/api/httpClient";
 import {
   BRIDGES_MOCK,
+  createBridgeApi,
+  deleteBridgeApi,
   fetchBridgeDetalleApi,
   fetchBridgeLogsApi,
   fetchBridgesApi,
+  fetchRedesSocialesActivasApi,
+  fetchRedesSocialesSoportadasApi,
+  reactivateBridgeApi,
+  regenerateClaveApi,
   saveTokenApi,
   testConnectionApi,
   toggleCuentaActivaApi,
@@ -17,18 +23,17 @@ import {
  * nunca afecte a otro test (mismo problema y misma solución que
  * `reassignCarteraActiva` -- ver `usuarios.api.test.ts`, que en cambio no
  * necesita restaurar porque solo un test lo ejercita).
+ *
+ * A partir de bridge-lifecycle-management, `BRIDGES_MOCK` también cambia de
+ * TAMAÑO (alta/baja física con push/splice) -- por eso la restauración ya no
+ * alcanza con pisar campos: reconstruye el arreglo completo con el snapshot
+ * inicial clonado.
  */
 const SNAPSHOT_INICIAL: typeof BRIDGES_MOCK = JSON.parse(JSON.stringify(BRIDGES_MOCK));
 
 afterEach(() => {
-  for (const original of SNAPSHOT_INICIAL) {
-    const actual = BRIDGES_MOCK.find((b) => b.id === original.id);
-    if (!actual) continue;
-    actual.estado = original.estado;
-    actual.tokenExpiraEn = original.tokenExpiraEn;
-    actual.ultimoLeadEn = original.ultimoLeadEn;
-    actual.cuentasPublicitarias = original.cuentasPublicitarias.map((c) => ({ ...c }));
-  }
+  BRIDGES_MOCK.length = 0;
+  BRIDGES_MOCK.push(...SNAPSHOT_INICIAL.map((b) => ({ ...b, cuentasPublicitarias: b.cuentasPublicitarias.map((c) => ({ ...c })) })));
 });
 
 describe("fetchBridgesApi", () => {
@@ -182,5 +187,126 @@ describe("fetchBridgeLogsApi — bitácora con filtro por nivel y rango de fecha
     const logs = await fetchBridgeLogsApi("bridge-linkedin");
     const timestamps = logs.map((log) => new Date(log.ocurridoEn).getTime());
     expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
+  });
+});
+
+describe("createBridgeApi — alta de bridge (Requirement: Create Bridge)", () => {
+  it("crea el bridge con estado INACTIVO y devuelve la clave en texto plano una única vez", async () => {
+    const respuesta = await createBridgeApi({ redSocial: "GOOGLE_FORMS", nombre: "Formulario Ventas Norte" });
+
+    expect(respuesta.bridge.redSocial).toBe("GOOGLE_FORMS");
+    expect(respuesta.bridge.nombre).toBe("Formulario Ventas Norte");
+    expect(respuesta.bridge.estado).toBe("INACTIVO");
+    expect(respuesta.claveApi).toMatch(/^brg_/);
+  });
+
+  it("el bridge creado aparece en el listado inmediatamente después", async () => {
+    const respuesta = await createBridgeApi({ redSocial: "X", nombre: "X — Campaña Sur" });
+
+    const bridges = await fetchBridgesApi();
+    expect(bridges.some((b) => b.id === respuesta.bridge.id)).toBe(true);
+  });
+
+  it("permite dos bridges con la misma redSocial y distinto nombre (Requirement: Multiple Bridges per Red Social)", async () => {
+    await createBridgeApi({ redSocial: "FACEBOOK", nombre: "Facebook — Página Norte" });
+    await createBridgeApi({ redSocial: "FACEBOOK", nombre: "Facebook — Página Sur" });
+
+    const bridges = await fetchBridgesApi();
+    const facebookBridges = bridges.filter((b) => b.redSocial === "FACEBOOK");
+    expect(facebookBridges.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(facebookBridges.map((b) => b.id)).size).toBe(facebookBridges.length);
+  });
+});
+
+describe("deleteBridgeApi — baja física u lógica según historial de leads (Requirement: Hard Delete Only Without Leads)", () => {
+  it("bridge sin leads recibidos (ultimoLeadEn nulo): baja física, se elimina del listado", async () => {
+    const resultado = await deleteBridgeApi("bridge-google-forms");
+
+    expect(resultado.resultado).toBe("BAJA_FISICA");
+    const bridges = await fetchBridgesApi();
+    expect(bridges.some((b) => b.id === "bridge-google-forms")).toBe(false);
+  });
+
+  it("bridge con leads recibidos (ultimoLeadEn no nulo): baja lógica, queda INACTIVO pero no se elimina", async () => {
+    const resultado = await deleteBridgeApi("bridge-facebook");
+
+    expect(resultado.resultado).toBe("BAJA_LOGICA");
+    expect(resultado.bridge.estado).toBe("INACTIVO");
+    const bridges = await fetchBridgesApi();
+    expect(bridges.some((b) => b.id === "bridge-facebook")).toBe(true);
+  });
+
+  it("lanza un error si el bridge no existe", async () => {
+    await expect(deleteBridgeApi("no-existe")).rejects.toThrow();
+  });
+});
+
+describe("reactivateBridgeApi — reactivación preserva clave e historial (Requirement: Soft Deactivate and Reactivate)", () => {
+  it("pasa el estado a ACTIVO sin tocar ultimoLeadEn ni cuentasPublicitarias", async () => {
+    const bridge = await reactivateBridgeApi("bridge-google-forms");
+
+    expect(bridge.estado).toBe("ACTIVO");
+    expect(bridge.ultimoLeadEn).toBe(SNAPSHOT_INICIAL.find((b) => b.id === "bridge-google-forms")?.ultimoLeadEn ?? null);
+  });
+
+  it("funciona igual sobre un bridge ya ACTIVO (idempotente)", async () => {
+    const bridge = await reactivateBridgeApi("bridge-facebook");
+    expect(bridge.estado).toBe("ACTIVO");
+  });
+
+  it("lanza un error si el bridge no existe", async () => {
+    await expect(reactivateBridgeApi("no-existe")).rejects.toThrow();
+  });
+});
+
+describe("regenerateClaveApi — invalida la clave anterior (Requirement: Regenerate Key)", () => {
+  it("devuelve una nueva clave en texto plano con la misma forma que la de alta", async () => {
+    const respuesta = await regenerateClaveApi("bridge-x");
+    expect(respuesta.claveApi).toMatch(/^brg_/);
+    expect(respuesta.bridge.id).toBe("bridge-x");
+  });
+
+  it("dos regeneraciones sucesivas nunca devuelven la misma clave", async () => {
+    const primera = await regenerateClaveApi("bridge-x");
+    const segunda = await regenerateClaveApi("bridge-x");
+    expect(primera.claveApi).not.toBe(segunda.claveApi);
+  });
+
+  it("no cambia el estado guardado del bridge", async () => {
+    await regenerateClaveApi("bridge-google-forms");
+    const bridge = await fetchBridgeDetalleApi("bridge-google-forms");
+    expect(bridge.estado).toBe("INACTIVO");
+  });
+
+  it("lanza un error si el bridge no existe", async () => {
+    await expect(regenerateClaveApi("no-existe")).rejects.toThrow();
+  });
+});
+
+describe("fetchRedesSocialesSoportadasApi — catálogo de creación (Requirement: Backend-Driven Creation Catalog)", () => {
+  it("devuelve las 5 redes sociales soportadas", async () => {
+    const redes = await fetchRedesSocialesSoportadasApi();
+    expect(new Set(redes)).toEqual(new Set(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "X", "GOOGLE_FORMS"]));
+  });
+});
+
+describe("fetchRedesSocialesActivasApi — catálogo de activas para el filtro de F3 (Requirement: Active Red-Social Catalog Endpoint)", () => {
+  it("devuelve solo las redes sociales de bridges ACTIVO, sin duplicados", async () => {
+    const redes = await fetchRedesSocialesActivasApi();
+    expect(new Set(redes)).toEqual(new Set(["FACEBOOK", "INSTAGRAM"]));
+    expect(redes.length).toBe(new Set(redes).size);
+  });
+
+  it("una vez desactivado el único bridge de una red, esa red ya no aparece", async () => {
+    await deleteBridgeApi("bridge-facebook");
+    const redes = await fetchRedesSocialesActivasApi();
+    expect(redes).not.toContain("FACEBOOK");
+  });
+
+  it("devuelve vacío cuando ningún bridge está ACTIVO", async () => {
+    await deleteBridgeApi("bridge-facebook");
+    await deleteBridgeApi("bridge-instagram");
+    const redes = await fetchRedesSocialesActivasApi();
+    expect(redes).toEqual([]);
   });
 });

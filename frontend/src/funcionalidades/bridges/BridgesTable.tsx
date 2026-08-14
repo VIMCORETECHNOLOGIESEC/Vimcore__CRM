@@ -11,6 +11,10 @@ import { EstadoBridgeBadge } from "./EstadoBridgeBadge";
 
 interface BridgesTableProps {
   bridges: Bridge[];
+  /** Requirement: Hard Delete Only Without Leads / Soft Deactivate and Reactivate. */
+  onDarDeBaja: (bridge: Bridge) => void;
+  onReactivar: (bridgeId: string) => void;
+  reactivando: boolean;
 }
 
 const columnHelper = createColumnHelper<Bridge>();
@@ -21,7 +25,7 @@ const columnHelper = createColumnHelper<Bridge>();
  * (docs/07, criterio transversal de accesibilidad -- nunca solo un ícono de
  * color) y enlaza al detalle, donde el aviso completo se repite destacado.
  */
-export function BridgesTable({ bridges }: BridgesTableProps) {
+export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }: BridgesTableProps) {
   const columns = useMemo(
     () => [
       columnHelper.accessor((b) => b.redSocial, {
@@ -84,14 +88,33 @@ export function BridgesTable({ bridges }: BridgesTableProps) {
       columnHelper.display({
         id: "acciones",
         header: "Acciones",
-        cell: ({ row }) => (
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/bridges/${row.original.id}`}>Ver detalle</Link>
-          </Button>
-        ),
+        cell: ({ row }) => {
+          const bridge = row.original;
+          return (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/bridges/${bridge.id}`}>Ver detalle</Link>
+              </Button>
+              {bridge.estado === "INACTIVO" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reactivando}
+                  onClick={() => onReactivar(bridge.id)}
+                >
+                  Reactivar
+                </Button>
+              ) : (
+                <Button variant="destructive" size="sm" onClick={() => onDarDeBaja(bridge)}>
+                  Dar de baja
+                </Button>
+              )}
+            </div>
+          );
+        },
       }),
     ],
-    [],
+    [onDarDeBaja, onReactivar, reactivando],
   );
 
   const table = useReactTable({ data: bridges, columns, getCoreRowModel: getCoreRowModel() });

@@ -21,13 +21,26 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   ]),
 }));
 
+/**
+ * `LeadsFiltros` (F3) consume `useRedesSocialesActivas()` desde
+ * bridge-lifecycle-management -- se mockea acá para que estas pruebas sigan
+ * siendo deterministas y no dependan de `BRIDGES_MOCK` (fixture de otra
+ * funcionalidad). El comportamiento del filtro en sí tiene su propio test
+ * dedicado en `tests/leads/LeadsFiltros.test.tsx`.
+ */
+vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
+  fetchRedesSocialesActivasApi: vi.fn(),
+}));
+
 const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
 const { fetchLeadsApi, assignLeadsMasivoApi } = await import("@/funcionalidades/leads/leads.api");
+const { fetchRedesSocialesActivasApi } = await import("@/funcionalidades/bridges/bridges.api");
 const { LeadsPage } = await import("@/funcionalidades/leads/LeadsPage");
 
 const useAuthMock = vi.mocked(useAuth);
 const fetchLeadsApiMock = vi.mocked(fetchLeadsApi);
 const assignLeadsMasivoApiMock = vi.mocked(assignLeadsMasivoApi);
+const fetchRedesSocialesActivasApiMock = vi.mocked(fetchRedesSocialesActivasApi);
 
 function mockearAuth(rol: RolUsuario) {
   useAuthMock.mockReturnValue({
@@ -85,6 +98,8 @@ beforeEach(() => {
   fetchLeadsApiMock.mockReset();
   assignLeadsMasivoApiMock.mockReset();
   assignLeadsMasivoApiMock.mockResolvedValue(undefined);
+  fetchRedesSocialesActivasApiMock.mockReset();
+  fetchRedesSocialesActivasApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"]);
 });
 
 afterEach(() => {

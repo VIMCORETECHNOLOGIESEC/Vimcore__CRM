@@ -52,6 +52,21 @@ export function tieneAvisoDestacado(aviso: AvisoBridge): boolean {
   return aviso.tokenExpirado || aviso.sinActividad;
 }
 
+/**
+ * `true` si el bridge puede eliminarse físicamente en vez de darse de baja
+ * lógicamente (bridge-lifecycle-management, Requirement: Hard Delete Only
+ * Without Leads). El backend real decide con `leadsRecibidos.count === 0`;
+ * `tipos/bridge.ts` no trae ese conteo al frontend, así que se usa
+ * `ultimoLeadEn === null` ("nunca recibió un lead") como señal equivalente
+ * -- misma decisión de mock documentada en `bridges.api.ts::deleteBridgeApi`,
+ * reutilizada acá como función pura para que `BridgesTable`/`BridgesPage`
+ * puedan advertir la irreversibilidad ANTES de confirmar la baja, sin
+ * duplicar la regla.
+ */
+export function puedeEliminarseFisicamente(bridge: Bridge): boolean {
+  return bridge.ultimoLeadEn === null;
+}
+
 /** `DD/MM/AAAA HH:mm` en hora local del navegador (docs/07, "Formato de fechas"). */
 export function formatFecha(iso: string): string {
   const fecha = new Date(iso);

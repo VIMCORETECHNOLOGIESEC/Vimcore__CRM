@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { evaluarAvisoBridge, formatFecha, tieneAvisoDestacado } from "@/funcionalidades/bridges/bridges.utils";
+import {
+  evaluarAvisoBridge,
+  formatFecha,
+  puedeEliminarseFisicamente,
+  tieneAvisoDestacado,
+} from "@/funcionalidades/bridges/bridges.utils";
 import type { Bridge } from "@/tipos/bridge";
 
 const AHORA = new Date("2026-08-14T12:00:00.000Z");
@@ -96,5 +101,17 @@ describe("formatFecha", () => {
   it("formatea en DD/MM/AAAA HH:mm (docs/07, formato de fechas)", () => {
     const iso = new Date(2026, 2, 5, 8, 7).toISOString();
     expect(formatFecha(iso)).toBe("05/03/2026 08:07");
+  });
+});
+
+describe("puedeEliminarseFisicamente — señal de baja física vs. lógica (Requirement: Hard Delete Only Without Leads)", () => {
+  it("es true cuando el bridge nunca recibió un lead (ultimoLeadEn nulo)", () => {
+    const bridge = bridgeFake({ ultimoLeadEn: null });
+    expect(puedeEliminarseFisicamente(bridge)).toBe(true);
+  });
+
+  it("es false cuando el bridge ya recibió al menos un lead", () => {
+    const bridge = bridgeFake({ ultimoLeadEn: horasAntes(5) });
+    expect(puedeEliminarseFisicamente(bridge)).toBe(false);
   });
 });

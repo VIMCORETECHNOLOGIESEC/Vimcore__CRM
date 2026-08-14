@@ -9,9 +9,9 @@ import { RED_SOCIAL_ETIQUETAS } from "../catalogos";
 import { EstadoBridgeBadge } from "../EstadoBridgeBadge";
 import { useBridgeDetalle } from "../useBridges";
 import { BitacoraErrores } from "./BitacoraErrores";
+import { CredencialBridgeForm } from "./CredencialBridgeForm";
 import { CuentasPublicitariasList } from "./CuentasPublicitariasList";
 import { PruebaConexionBoton } from "./PruebaConexionBoton";
-import { TokenForm } from "./TokenForm";
 
 /**
  * Detalle de un bridge (F8, docs/07 -- solo administrador, ruta protegida en
@@ -78,14 +78,8 @@ export function BridgeDetallePage() {
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold text-foreground">Carga y renovación de token</h2>
-          <p className="text-xs text-muted-foreground">
-            El campo siempre se muestra vacío: el token nunca se devuelve por la API, ni siquiera
-            enmascarado. Se envía solo al guardar y se verifica de inmediato.
-          </p>
-        </div>
-        <TokenForm bridgeId={bridge.id} />
+        <h2 className="text-sm font-semibold text-foreground">Credenciales</h2>
+        <CredencialBridgeForm bridge={bridge} />
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">

@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { CrearBridgeInput } from "@/tipos/bridge";
 import {
+  createBridgeApi,
+  deleteBridgeApi,
   fetchBridgeDetalleApi,
   fetchBridgeLogsApi,
   fetchBridgesApi,
+  fetchRedesSocialesActivasApi,
+  fetchRedesSocialesSoportadasApi,
+  reactivateBridgeApi,
+  regenerateClaveApi,
   saveTokenApi,
   testConnectionApi,
   toggleCuentaActivaApi,
@@ -12,6 +19,8 @@ import {
 
 const BRIDGES_QUERY_KEY = "bridges";
 const BRIDGE_LOGS_QUERY_KEY = "bridge-logs";
+const REDES_SOCIALES_SOPORTADAS_QUERY_KEY = "redes-sociales-soportadas";
+const REDES_SOCIALES_ACTIVAS_QUERY_KEY = "redes-sociales-activas";
 
 /** Listado de bridges (F8). Mock -- ver `bridges.api.ts`. */
 export function useBridges() {
@@ -80,5 +89,93 @@ export function useBridgeLogs(bridgeId: string, filtros: BridgeLogsFiltros) {
   return useQuery({
     queryKey: [BRIDGE_LOGS_QUERY_KEY, bridgeId, filtros],
     queryFn: () => fetchBridgeLogsApi(bridgeId, filtros),
+  });
+}
+
+/**
+ * Alta de bridge (bridge-lifecycle-management, Requirement: Create Bridge).
+ * No dispara el toast de éxito acá -- `BridgesPage` encadena la apertura de
+ * `ClaveBridgeModal` con la clave devuelta, y el toast de éxito ("Bridge
+ * creado correctamente") acompaña ese cierre, no la sola creación.
+ */
+export function useCreateBridge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CrearBridgeInput) => createBridgeApi(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [BRIDGES_QUERY_KEY] });
+    },
+  });
+}
+
+/**
+ * Baja física o lógica (Requirement: Hard Delete Only Without Leads). El
+ * toast refleja `resultado` -- distinto mensaje según haya sido eliminación
+ * permanente o desactivación reversible (misma razón por la que el backend
+ * real responde `200` con `{ resultado }` en vez de `204`, ver diseño).
+ */
+export function useDeleteBridge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bridgeId: string) => deleteBridgeApi(bridgeId),
+    onSuccess: (resultado) => {
+      void queryClient.invalidateQueries({ queryKey: [BRIDGES_QUERY_KEY] });
+      toast.success(
+        resultado.resultado === "BAJA_FISICA"
+          ? "Bridge eliminado permanentemente: nunca había recibido leads."
+          : "Bridge dado de baja correctamente. Podés reactivarlo cuando quieras.",
+      );
+    },
+  });
+}
+
+/** Reactivación, preservando clave e historial (Requirement: Soft Deactivate and Reactivate). */
+export function useReactivateBridge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bridgeId: string) => reactivateBridgeApi(bridgeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [BRIDGES_QUERY_KEY] });
+      toast.success("Bridge reactivado correctamente.");
+    },
+  });
+}
+
+/**
+ * Regeneración de clave (Requirement: Regenerate Key). Tampoco dispara el
+ * toast de éxito acá, mismo criterio que `useCreateBridge` -- la clave nueva
+ * se muestra a través de `ClaveBridgeModal`, no de un toast (no puede
+ * mostrarse ahí sin violar la confirmación reforzada).
+ */
+export function useRegenerateClave(bridgeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => regenerateClaveApi(bridgeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [BRIDGES_QUERY_KEY] });
+    },
+  });
+}
+
+/**
+ * Catálogo de creación (Requirement: Backend-Driven Creation Catalog),
+ * consumido por `NuevoBridgeDialog` para poblar el selector de red social.
+ */
+export function useRedesSocialesSoportadas() {
+  return useQuery({
+    queryKey: [REDES_SOCIALES_SOPORTADAS_QUERY_KEY],
+    queryFn: fetchRedesSocialesSoportadasApi,
+  });
+}
+
+/**
+ * Catálogo de redes activas (Requirement: Active Red-Social Catalog
+ * Endpoint), consumido por el filtro de red social de F3
+ * (`leads/LeadsFiltros.tsx`).
+ */
+export function useRedesSocialesActivas() {
+  return useQuery({
+    queryKey: [REDES_SOCIALES_ACTIVAS_QUERY_KEY],
+    queryFn: fetchRedesSocialesActivasApi,
   });
 }

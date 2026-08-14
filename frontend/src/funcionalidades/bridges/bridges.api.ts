@@ -1,5 +1,13 @@
 import { ApiError } from "@/api/httpClient";
-import type { Bridge, BridgeLog, NivelBridgeLog } from "@/tipos/bridge";
+import type { RedSocial } from "@/tipos/lead";
+import type {
+  Bridge,
+  BridgeLog,
+  CrearBridgeInput,
+  NivelBridgeLog,
+  ResultadoBajaBridge,
+  RespuestaClaveBridge,
+} from "@/tipos/bridge";
 
 /**
  * Capa de datos de administración de bridges (F8, docs/07) -- **mock en
@@ -344,4 +352,151 @@ export async function fetchBridgeLogsApi(
     .filter((log) => !filtros.nivel || log.nivel === filtros.nivel)
     .filter((log) => matchesRangoFechas(log.ocurridoEn, filtros.fechaDesde, filtros.fechaHasta))
     .sort((a, b) => new Date(b.ocurridoEn).getTime() - new Date(a.ocurridoEn).getTime());
+}
+
+// ---------------------------------------------------------------------------
+// bridge-lifecycle-management (Fase 1) -- alta/baja/reactivación/clave y
+// catálogos de red social. `BRIDGES_MOCK` deja de ser solo mutable en sus
+// campos: a partir de acá también cambia de TAMAÑO (push en alta, splice en
+// baja física), mismo criterio ya usado para el resto del archivo.
+// ---------------------------------------------------------------------------
+
+/**
+ * Genera un identificador de bridge nuevo. `crypto.randomUUID()` está
+ * disponible tanto en navegadores modernos como en jsdom (entorno de test) --
+ * no requiere ningún polyfill adicional.
+ */
+function generateIdBridge(): string {
+  return `bridge-${crypto.randomUUID()}`;
+}
+
+/**
+ * INTEGRACION-BACKEND: el backend real genera la clave con
+ * `generarClaveBridge()` (`backend/src/lib/clave-bridge.ts`,
+ * `brg_${randomBytes(32).toString("base64url")}`) y solo persiste su hash.
+ * Este mock reproduce la MISMA FORMA (`brg_` + string aleatorio) para que
+ * `ClaveBridgeModal` se ejercite con datos honestos, sin depender de ningún
+ * backend -- el valor en sí no es criptográficamente equivalente.
+ */
+function generateClaveBridgeMock(): string {
+  return `brg_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+/**
+ * Catálogo de creación (Requirement: Backend-Driven Creation Catalog). El
+ * backend real lo deriva de `Object.values(RedSocial)` sobre el enum nativo
+ * de Prisma -- el frontend no comparte ese cliente (misma decisión que el
+ * resto de `tipos/*.ts`), así que este mock declara la misma lista de forma
+ * explícita. Es la ÚNICA lista estática de redes sociales que debe quedar en
+ * el frontend: `LeadsFiltros.tsx` (F3) y `NuevoBridgeDialog.tsx` (F8) NUNCA
+ * declaran su propio arreglo -- consumen este catálogo o el de activas vía
+ * los hooks de `useBridges.ts`.
+ */
+const TODAS_LAS_REDES_SOCIALES: RedSocial[] = ["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"];
+
+/**
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.post<{ bridge: Bridge; claveApi: string }>("/bridges", input)`.
+ * Alta de bridge (Requirement: Create Bridge) -- crea con `estado: "INACTIVO"`
+ * (el admin lo activa explícitamente después) y devuelve la clave en texto
+ * plano UNA SOLA VEZ, igual que `regenerateClaveApi`.
+ */
+export async function createBridgeApi(input: CrearBridgeInput): Promise<RespuestaClaveBridge> {
+  await delay();
+  const nuevoBridge: Bridge = {
+    id: generateIdBridge(),
+    redSocial: input.redSocial,
+    nombre: input.nombre,
+    estado: "INACTIVO",
+    tokenExpiraEn: null,
+    ultimoLeadEn: null,
+    cuentasPublicitarias: [],
+  };
+  BRIDGES_MOCK.push(nuevoBridge);
+  return { bridge: cloneBridge(nuevoBridge), claveApi: generateClaveBridgeMock() };
+}
+
+/**
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.delete<{ resultado: "BAJA_FISICA" | "BAJA_LOGICA"; bridge: Bridge }>("/bridges/:id")`.
+ * Baja física u lógica según haya recibido leads (Requirement: Hard Delete
+ * Only Without Leads) -- el backend real decide con
+ * `leadsRecibidos.count === 0`; el frontend no tiene ese conteo en
+ * `tipos/bridge.ts`, así que este mock usa `ultimoLeadEn === null` como
+ * señal equivalente ("nunca recibió un lead" implica cero leads
+ * recibidos). DECISIÓN DE MOCK, a confirmar contra el backend real (M8) si
+ * existiera algún caso donde `ultimoLeadEn` se limpie sin que el conteo sea
+ * cero.
+ */
+export async function deleteBridgeApi(bridgeId: string): Promise<ResultadoBajaBridge> {
+  await delay();
+  const bridge = findBridgeOrThrow(bridgeId);
+
+  if (bridge.ultimoLeadEn === null) {
+    const bridgeEliminado = cloneBridge(bridge);
+    const indice = BRIDGES_MOCK.findIndex((b) => b.id === bridgeId);
+    BRIDGES_MOCK.splice(indice, 1);
+    return { resultado: "BAJA_FISICA", bridge: bridgeEliminado };
+  }
+
+  bridge.estado = "INACTIVO";
+  return { resultado: "BAJA_LOGICA", bridge: cloneBridge(bridge) };
+}
+
+/**
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.patch<{ bridge: Bridge }>("/bridges/:id", { estado: "ACTIVO" })`.
+ * Reactivación (Requirement: Soft Deactivate and Reactivate) -- solo cambia
+ * `estado`; la clave y el historial (`ultimoLeadEn`, `cuentasPublicitarias`)
+ * quedan intactos porque viven en la misma fila.
+ */
+export async function reactivateBridgeApi(bridgeId: string): Promise<Bridge> {
+  await delay();
+  const bridge = findBridgeOrThrow(bridgeId);
+  bridge.estado = "ACTIVO";
+  return cloneBridge(bridge);
+}
+
+/**
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.post<{ bridge: Bridge; claveApi: string }>("/bridges/:id/clave")`.
+ * Regeneración de clave (Requirement: Regenerate Key) -- invalida la clave
+ * anterior de inmediato (en el backend real, sobrescribiendo el hash
+ * guardado) y devuelve la nueva en texto plano una única vez. No cambia
+ * `estado`: regenerar la clave es independiente de activar/desactivar el
+ * bridge.
+ */
+export async function regenerateClaveApi(bridgeId: string): Promise<RespuestaClaveBridge> {
+  await delay();
+  const bridge = findBridgeOrThrow(bridgeId);
+  return { bridge: cloneBridge(bridge), claveApi: generateClaveBridgeMock() };
+}
+
+/**
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.get<{ redesSociales: RedSocial[] }>("/bridges/catalogo/redes-soportadas")`.
+ * Catálogo de creación (Requirement: Backend-Driven Creation Catalog) --
+ * consumido por `NuevoBridgeDialog.tsx` para poblar el selector de red
+ * social sin hardcodear un arreglo en el componente.
+ */
+export async function fetchRedesSocialesSoportadasApi(): Promise<RedSocial[]> {
+  await delay();
+  return [...TODAS_LAS_REDES_SOCIALES];
+}
+
+/**
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.get<{ redesSociales: RedSocial[] }>("/bridges/redes-activas")`.
+ * Catálogo de redes activas (Requirement: Active Red-Social Catalog
+ * Endpoint) -- fuente del filtro de red social de F3
+ * (`leads/LeadsFiltros.tsx`). Solo valores DISTINTOS de bridges con
+ * `estado === "ACTIVO"`; nunca expone id/nombre/estado por fila, igual que
+ * el endpoint real (contención documentada en el diseño).
+ */
+export async function fetchRedesSocialesActivasApi(): Promise<RedSocial[]> {
+  await delay();
+  const activas = new Set(
+    BRIDGES_MOCK.filter((bridge) => bridge.estado === "ACTIVO").map((bridge) => bridge.redSocial),
+  );
+  return [...activas];
 }

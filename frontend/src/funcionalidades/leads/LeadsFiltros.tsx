@@ -1,4 +1,6 @@
 import { Search } from "lucide-react";
+import { useMemo } from "react";
+import { useRedesSocialesActivas } from "@/funcionalidades/bridges/useBridges";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,7 +30,6 @@ interface LeadsFiltrosProps {
 
 const ETAPAS: EtapaLead[] = ["NUEVO", "CONTACTADO", "CITA", "VENTA", "NO_VENTA"];
 const SEMAFOROS: SemaforoLead[] = ["VERDE", "AMARILLO", "ROJO"];
-const REDES_SOCIALES: RedSocial[] = ["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"];
 const ESTADOS_SLA: EstadoSla[] = ["A_TIEMPO", "EN_RIESGO", "ATRASADO"];
 
 /** Barra de filtros combinables y búsqueda del listado de leads (docs/07 F3). */
@@ -42,6 +43,24 @@ export function LeadsFiltros({
   function update<K extends keyof LeadsFiltrosState>(campo: K, valor: LeadsFiltrosState[K]) {
     onChange({ ...filtros, [campo]: valor });
   }
+
+  const { data: redesSocialesActivas, isLoading: cargandoRedesSociales } = useRedesSocialesActivas();
+
+  /**
+   * Requirement: Red-Social Filter Sourced from Active Bridges. Edge case
+   * documentado en el diseño: si el `redSocial` ya elegido dejó de estar
+   * activo (se desactivó su bridge DESPUÉS de aplicar el filtro), se
+   * mantiene como opción renderizada en vez de desaparecer -- si no,
+   * un filtro activo se "esfumaría" silenciosamente sin que el usuario lo
+   * haya tocado.
+   */
+  const opcionesRedSocial = useMemo<RedSocial[]>(() => {
+    const activas = redesSocialesActivas ?? [];
+    if (filtros.redSocial !== FILTRO_TODOS && !activas.includes(filtros.redSocial)) {
+      return [...activas, filtros.redSocial];
+    }
+    return activas;
+  }, [redesSocialesActivas, filtros.redSocial]);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3">
@@ -76,7 +95,8 @@ export function LeadsFiltros({
           etiqueta="Red social"
           valor={filtros.redSocial}
           onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
-          opciones={REDES_SOCIALES.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
+          opciones={opcionesRedSocial.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
+          disabled={cargandoRedesSociales}
         />
         <CampoSelect
           etiqueta="Campaña"
@@ -130,13 +150,14 @@ interface CampoSelectProps {
   valor: string;
   onChange: (valor: string) => void;
   opciones: { valor: string; etiqueta: string }[];
+  disabled?: boolean;
 }
 
-function CampoSelect({ etiqueta, valor, onChange, opciones }: CampoSelectProps) {
+function CampoSelect({ etiqueta, valor, onChange, opciones, disabled }: CampoSelectProps) {
   return (
     <div className="flex flex-col gap-1">
       <Label className="text-xs text-muted-foreground">{etiqueta}</Label>
-      <Select value={valor} onValueChange={onChange}>
+      <Select value={valor} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger aria-label={etiqueta}>
           <SelectValue placeholder="Todos" />
         </SelectTrigger>

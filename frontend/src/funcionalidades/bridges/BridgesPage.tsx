@@ -1,23 +1,41 @@
-import { useMemo } from "react";
+import { Plus } from "lucide-react";
+import { useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/componentes/ConfirmDialog";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import type { Bridge } from "@/tipos/bridge";
 import { AvisoBridge } from "./AvisoBridge";
-import { evaluarAvisoBridge, tieneAvisoDestacado } from "./bridges.utils";
+import { evaluarAvisoBridge, puedeEliminarseFisicamente, tieneAvisoDestacado } from "./bridges.utils";
 import { BridgesTable } from "./BridgesTable";
-import { useBridges } from "./useBridges";
+import { ClaveBridgeModal } from "./ClaveBridgeModal";
+import { NuevoBridgeDialog } from "./NuevoBridgeDialog";
+import { useBridges, useCreateBridge, useDeleteBridge, useReactivateBridge } from "./useBridges";
 
 const BRIDGES_POR_ESQUELETO = 5;
 
+interface ClaveModalState {
+  bridgeNombre: string;
+  claveApi: string;
+}
+
 /**
- * Administración de bridges (F8, docs/07 -- solo administrador, ruta
- * protegida en `router.tsx`). Mock en memoria -- ver `bridges.api.ts` para
- * el detalle de qué se simula y el punto de integración con el futuro
- * backend real de bridges (M8, no existe todavía).
+ * Administración de bridges (F8/bridges-lifecycle-management, docs/07 --
+ * solo administrador, ruta protegida en `router.tsx`). Mock en memoria --
+ * ver `bridges.api.ts` para el detalle de qué se simula y el punto de
+ * integración con el futuro backend real de bridges (M8, no existe todavía).
  */
 export function BridgesPage() {
   const { data, isLoading, isError, error, refetch } = useBridges();
+  const crear = useCreateBridge();
+  const eliminar = useDeleteBridge();
+  const reactivar = useReactivateBridge();
+
+  const [dialogAltaAbierto, setDialogAltaAbierto] = useState(false);
+  const [claveModal, setClaveModal] = useState<ClaveModalState | null>(null);
+  const [bridgeParaBaja, setBridgeParaBaja] = useState<Bridge | null>(null);
 
   const bridgesConAviso = useMemo(
     () =>
@@ -31,6 +49,10 @@ export function BridgesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Bridges</h1>
+        <Button onClick={() => setDialogAltaAbierto(true)}>
+          <Plus className="size-4" aria-hidden="true" />
+          Nuevo bridge
+        </Button>
       </div>
 
       {bridgesConAviso.length > 0 ? (
@@ -48,11 +70,63 @@ export function BridgesPage() {
       ) : !data || data.length === 0 ? (
         <EmptyState
           title="Todavía no hay bridges configurados"
-          description="Los bridges de captación se dan de alta desde el backend."
+          description="Creá el primero con el botón «Nuevo bridge»."
         />
       ) : (
-        <BridgesTable bridges={data} />
+        <BridgesTable
+          bridges={data}
+          onDarDeBaja={setBridgeParaBaja}
+          onReactivar={(bridgeId) => reactivar.mutate(bridgeId)}
+          reactivando={reactivar.isPending}
+        />
       )}
+
+      {dialogAltaAbierto ? (
+        <NuevoBridgeDialog
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setDialogAltaAbierto(false);
+          }}
+          enviando={crear.isPending}
+          onSubmit={(valores) =>
+            crear.mutate(valores, {
+              onSuccess: (respuesta) => {
+                setDialogAltaAbierto(false);
+                setClaveModal({ bridgeNombre: respuesta.bridge.nombre, claveApi: respuesta.claveApi });
+              },
+            })
+          }
+        />
+      ) : null}
+
+      {claveModal ? (
+        <ClaveBridgeModal
+          open
+          bridgeNombre={claveModal.bridgeNombre}
+          claveApi={claveModal.claveApi}
+          onClose={() => setClaveModal(null)}
+        />
+      ) : null}
+
+      {bridgeParaBaja ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setBridgeParaBaja(null);
+          }}
+          title={`Dar de baja a ${bridgeParaBaja.nombre}`}
+          description={
+            puedeEliminarseFisicamente(bridgeParaBaja)
+              ? "Este bridge nunca recibió leads: se eliminará de forma permanente e irreversible."
+              : "El bridge pasará a estado Inactivo. Podés reactivarlo cuando quieras, sin perder su clave ni su historial."
+          }
+          confirmLabel="Confirmar"
+          confirming={eliminar.isPending}
+          onConfirm={() =>
+            eliminar.mutate(bridgeParaBaja.id, { onSuccess: () => setBridgeParaBaja(null) })
+          }
+        />
+      ) : null}
     </div>
   );
 }

@@ -15,6 +15,16 @@ export type EstadoBridge = "ACTIVO" | "TOKEN_EXPIRADO" | "ERROR" | "INACTIVO";
 
 export type NivelBridgeLog = "INFO" | "ADVERTENCIA" | "ERROR";
 
+/**
+ * Estilo de autenticación de un bridge (bridge-lifecycle-management,
+ * Requirement: Credential Form Branches by Authentication Style). Determina
+ * qué formulario de credenciales se muestra: `CLAVE_API` genera/regenera una
+ * clave del lado del servidor (el admin nunca la escribe); `TOKEN_PROVEEDOR`
+ * usa el flujo OAuth existente de `TokenForm.tsx` (Fase 2, ver
+ * `catalogos.ts::ESTILO_AUTENTICACION_POR_RED`).
+ */
+export type EstiloAutenticacionBridge = "CLAVE_API" | "TOKEN_PROVEEDOR";
+
 /** Forma de una fila de `cuentas_publicitarias` (docs/03). */
 export interface CuentaPublicitariaBridge {
   id: string;
@@ -51,4 +61,27 @@ export interface BridgeLog {
   nivel: NivelBridgeLog;
   mensaje: string;
   ocurridoEn: string;
+}
+
+/** Payload de alta de un bridge (bridge-lifecycle-management, Requirement: Create Bridge). */
+export interface CrearBridgeInput {
+  redSocial: RedSocial;
+  nombre: string;
+}
+
+/**
+ * Respuesta de alta o regeneración de clave (Requirement: Create Bridge,
+ * Regenerate Key). `claveApi` es la ÚNICA exposición en texto plano de la
+ * clave -- el backend real solo almacena su hash irreversible, así que este
+ * campo no vuelve a aparecer en ninguna otra respuesta.
+ */
+export interface RespuestaClaveBridge {
+  bridge: Bridge;
+  claveApi: string;
+}
+
+/** Resultado de dar de baja un bridge (Requirement: Hard Delete Only Without Leads). */
+export interface ResultadoBajaBridge {
+  resultado: "BAJA_FISICA" | "BAJA_LOGICA";
+  bridge: Bridge;
 }

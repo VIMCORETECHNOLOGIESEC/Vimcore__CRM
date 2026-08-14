@@ -189,6 +189,16 @@ del producto.
 > contrato exacto de query params de `GET /api/v1/leads` (los nombres
 > usados en `LeadsQueryParams` son una suposición razonable a validar
 > contra la implementación real del backend antes de conectar).
+>
+> **Actualización (bridge-lifecycle-management, Fase 1, dev-front):** el
+> filtro de red social dejó de listar las 5 redes del enum estático
+> (`REDES_SOCIALES` local, eliminado) y ahora consume
+> `useRedesSocialesActivas()` (`funcionalidades/bridges/useBridges.ts`),
+> que solo ofrece las redes con al menos un bridge `ACTIVO` -- ver F8 más
+> abajo. Mientras carga, el selector queda deshabilitado con solo la opción
+> "Todos"; si el `redSocial` ya elegido deja de estar activo, se mantiene
+> como opción renderizada en vez de desaparecer (si no, un filtro aplicado
+> se "esfumaría" solo). Test dedicado en `tests/leads/LeadsFiltros.test.tsx`.
 
 - [x] Tabla con columnas: cliente, teléfono, red social, campaña, etapa,
       semáforo, responsable, estado de SLA, fecha de ingreso
@@ -645,6 +655,50 @@ Solo administrador.
 > el contrato exacto de sus futuros endpoints (nombres de rutas/parámetros
 > son una suposición razonable a validar contra la implementación real antes
 > de conectar).
+>
+> **Actualización (bridge-lifecycle-management, Fase 1, dev-front, fases
+> 5-8 del plan de tareas):** se agregó administración completa del ciclo de
+> vida del bridge, todavía contra el mismo mock en memoria -- el backend
+> real (`bridge*`) se implementa en paralelo y de forma aislada en
+> `dev-back`, sin mergear todavía; la Fase 9 (integration swap) queda
+> explícitamente bloqueada hasta entonces.
+> - **Alta** (`NuevoBridgeDialog.tsx`): el selector de red social se puebla
+>   desde `useRedesSocialesSoportadas()` -- nunca un arreglo fijo en el
+>   componente (mismo criterio que el filtro de F3 arriba). El bridge se
+>   crea en `estado: "INACTIVO"`.
+> - **Baja física u lógica** (`BridgesTable.tsx` + `ConfirmDialog.tsx`):
+>   `deleteBridgeApi` decide con `ultimoLeadEn === null` como señal
+>   equivalente a "nunca recibió leads" (decisión de mock documentada en el
+>   propio archivo, porque `tipos/bridge.ts` no trae un conteo de leads al
+>   frontend) -- baja física (se elimina la fila) si nunca recibió leads,
+>   baja lógica (pasa a `INACTIVO`, reversible) si ya recibió alguno.
+> - **Reactivación**: acción directa (`PATCH` simulado) desde la tabla,
+>   sin diálogo de confirmación -- es reversible y no destructiva.
+> - **Regeneración de clave y credenciales por estilo de autenticación**
+>   (`CredencialBridgeForm.tsx`, `ESTILO_AUTENTICACION_POR_RED`): Google
+>   Forms/X (`CLAVE_API`) solo ofrecen "Regenerar clave" -- el administrador
+>   nunca escribe la clave, el servidor la genera; Facebook/Instagram/
+>   LinkedIn (`TOKEN_PROVEEDOR`) siguen usando el `TokenForm` existente,
+>   ahora etiquetado "Fase 2 · Proveedor OAuth no conectado todavía" pero
+>   sin deshabilitarse -- la etiqueta distingue la falta de integración
+>   real, no la ausencia de comportamiento simulado.
+> - **Confirmación reforzada de clave de un solo uso**
+>   (`ClaveBridgeModal.tsx`): comparte el mismo modal para alta y
+>   regeneración. El cierre (overlay, `Escape`, botón "X" y el botón
+>   "Entendido, cerrar") queda bloqueado hasta tildar la casilla "Ya copié
+>   la clave y la guardé en un lugar seguro" -- una advertencia pasiva no
+>   alcanza (spec).
+> - **`BRIDGES_MOCK` mutable en tamaño**: a diferencia de F8 original (solo
+>   mutaba campos), ahora también crece con `push` (alta) y se achica con
+>   `splice` (baja física) -- `tests/bridges/bridges.api.test.ts` reconstruye
+>   el arreglo completo en `afterEach`, no solo los campos.
+>
+> 38 tests nuevos (364 en total en el frontend): `bridges.api.test.ts` (17),
+> `bridges.utils.test.ts` (2, `puedeEliminarseFisicamente`),
+> `ClaveBridgeModal.test.tsx` (5), `CredencialBridgeForm.test.tsx` (4),
+> `BridgesPage.test.tsx` (6, alta/baja/reactivación) y
+> `LeadsFiltros.test.tsx` (4, filtro de F3). `tsc` + `vite build` sin
+> errores.
 >
 > **Con F8 completo, el roadmap F1-F8 de `docs/07-modulos-frontend.md` queda
 > con al menos una implementación en cada módulo.** Las brechas que quedan
