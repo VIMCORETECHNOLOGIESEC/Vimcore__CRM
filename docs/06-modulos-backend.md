@@ -134,29 +134,42 @@ correo se persiste con marca de dato incompleto.
 formulario se rechaza; cada combinación de respuestas produce la puntuación
 esperada; VENTA sin monto se rechaza.
 
-**Límite M5/M6:** `Lead.asesorId`/`vendedorId` ya existen en el esquema desde
-M5 y `leads.service.ts` los consume (filtro de cartera, D4), pero **nadie los
-escribe todavía** — la asignación automática por menor carga, la reasignación
-y el traspaso son responsabilidad de M6. Hasta que M6 aterrice, estos campos
-solo se pueblan manualmente (semillas/fixtures) para ejercitar M5.
+**Límite M5/M6 (cerrado):** `Lead.asesorId`/`vendedorId` ya existían en el
+esquema desde M5 y `leads.service.ts` los consume (filtro de cartera, D4).
+M6 aterrizó y es quien los escribe en producción: la asignación automática
+por menor carga, la reasignación y el traspaso.
 
 ---
 
 ## M6 — Asignación, traspaso y SLA
 
-- [ ] Algoritmo de asignación por menor carga activa con desempate FIFO
-- [ ] Asignación automática al persistir lead nuevo o de reingreso
-- [ ] Manejo del caso sin asesores activos
-- [ ] `POST /api/v1/leads/:id/asignar` (administrador y supervisor)
-- [ ] `POST /api/v1/leads/:id/reasignar` con regla de semáforo para el asesor
-- [ ] `POST /api/v1/leads/:id/traspasar` con selección automática de vendedor
-- [ ] Reinicio de `sla_inicio_en` en asignación, reasignación y traspaso
-- [ ] Cálculo derivado del estado de SLA (nunca persistido)
-- [ ] Trabajo programado cada 15 minutos: detección de leads atrasados
+- [x] Algoritmo de asignación por menor carga activa con desempate FIFO
+- [x] Asignación automática al persistir lead nuevo o de reingreso
+- [x] Manejo del caso sin asesores activos
+- [x] `POST /api/v1/leads/:id/asignar` (administrador y supervisor)
+- [x] `POST /api/v1/leads/:id/reasignar` con regla de semáforo para el asesor
+- [x] `POST /api/v1/leads/:id/traspasar` con selección automática de vendedor
+- [x] Reinicio de `sla_inicio_en` en asignación, reasignación y traspaso
+- [x] Cálculo derivado del estado de SLA (nunca persistido)
+- [x] Trabajo programado cada 15 minutos: detección de leads atrasados
 
 **Pruebas obligatorias:** con cargas 3/1/2 el lead va al asesor de carga 1; con
 cargas iguales gana el de asignación más antigua; asesor con lead verde no puede
 reasignarlo; el estado de SLA cambia a "En riesgo" exactamente a las 18 h.
+
+**Nota D3 (ancla del SLA):** el criterio de atraso ancla en `sla_inicio_en`, NO en
+`ingresado_en` — "24 horas desde su ingreso" en la redacción original de
+`docs/02-reglas-negocio.md` §7 es una paráfrasis suelta de "desde la primera
+asignación": el reloj arranca al asignar y **se reinicia** en cada reasignación
+o traspaso (`sla.calculator.ts` y `slaFilterBoundaries` ya estaban anclados así
+desde M5). Un lead sin asignar (`sla_inicio_en = null`) es `sin_iniciar`, nunca
+`atrasado` — el cron de M6 lo ignora por completo.
+
+**Nota DD1 (índice del cron):** `idx_leads_sla` (índice parcial `WHERE
+cerrado_en IS NULL` sobre `sla_inicio_en`) ya existía desde la migración de M5
+(`20260814050000_m5_gestion_leads`); M6 no agrega ningún índice nuevo — el job
+de detección de atrasados reutiliza la misma forma de consulta que
+`GET /leads?estadoSla=atrasado` de M5.
 
 ---
 
