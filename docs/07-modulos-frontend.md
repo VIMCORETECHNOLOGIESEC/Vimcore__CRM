@@ -560,12 +560,109 @@ Solo administrador.
 
 Solo administrador.
 
-- [ ] Listado con estado, último lead recibido y expiración de token
-- [ ] Detalle con cuentas publicitarias asociadas
-- [ ] Formulario de carga y renovación de token con verificación inmediata
-- [ ] Botón de prueba de conexión
-- [ ] Bitácora de errores con filtro por nivel y fecha
-- [ ] Aviso destacado ante token expirado o bridge sin actividad
+> **Progreso:** implementado contra un **mock en memoria**
+> (`funcionalidades/bridges/bridges.api.ts`), mismo criterio ya autorizado
+> para F3-F6 (no el de F7, que sí tuvo backend real de usuarios) -- se
+> verificó explícitamente antes de escribir código que **no existe ningún
+> backend de bridges**: `backend/src/routes/` solo tiene `auth.routes.ts`,
+> `salud.routes.ts` y `usuarios.routes.ts`; M8 (`docs/06-modulos-backend.md`)
+> no está implementado ni siquiera como esqueleto, y no hay modelos Prisma de
+> `bridges`/`cuentas_publicitarias`/`bridge_logs`. Cada punto de integración
+> pendiente está marcado con el token `INTEGRACION-BACKEND` (grepeable en
+> todo el repo). A diferencia de F3-F6, acá el **modelo de datos y el
+> catálogo de estados/niveles sí están fijados** por
+> `docs/03-modelo-datos.md` §`bridges`/`cuentas_publicitarias`/`bridge_logs`
+> y por `docs/05-bridges.md` §7/§8 -- no son una suposición del frontend, se
+> revisaron ambos documentos antes de diseñar (buscando "bridge" en todo
+> `docs/`) para no inventar reglas ya especificadas.
+>
+> **Decisiones de diseño propias del frontend** (no fijadas por ningún
+> contrato de backend, documentadas para que quien conecte el backend real
+> las revise):
+> - **Regla de "sin actividad"** (`bridges.utils.ts::evaluarAvisoBridge`):
+>   docs/05 §8 dice "bridge sin leads durante 72 h **con campañas activas**",
+>   pero `docs/03-modelo-datos.md` no modela "campaña" como entidad propia
+>   del bridge, solo `cuentas_publicitarias`. Se interpretó "campañas
+>   activas" como "al menos una cuenta publicitaria activa" -- la señal más
+>   cercana disponible en el modelo de datos documentado, a confirmar contra
+>   el backend real (M8) si existiera un concepto de campaña más granular. Un
+>   bridge `INACTIVO` nunca dispara este aviso a propósito (ej. Google Forms
+>   desactivado por defecto en producción, docs/05 §6): no recibir leads ahí
+>   es el comportamiento esperado, no un problema de configuración.
+> - **Simulación de "verificación inmediata" del token**
+>   (`bridges.api.ts::saveTokenApi`): sin un proveedor real (Meta/LinkedIn/X)
+>   contra el cual verificar, el mock rechaza cualquier token de menos de 20
+>   caracteres para poder ejercitar el flujo de error de punta a punta. El
+>   umbral es arbitrario y **no** es un contrato de ningún proveedor real.
+>   Se usa `ApiError` (no un `Error` genérico, a diferencia de
+>   `leadDetalle.api.ts` en F4) para que el mensaje llegue accionable al
+>   usuario a través del manejo global de errores de mutaciones
+>   (`api/queryClient.ts`) -- un `Error` simple ahí se reemplaza por el
+>   mensaje genérico, porque `getErrorMessage` solo reexpone el mensaje de
+>   instancias de `ApiError`. Vale la pena que un humano revise si F4 debería
+>   adoptar el mismo criterio para sus propios `throw new Error(...)`, hoy
+>   silenciados por el manejo global.
+> - **Vigencia simulada del token nuevo por red social**
+>   (`DIAS_VIGENCIA_TOKEN`): 60 días para Meta (Facebook/Instagram, docs/05
+>   §3, "Page Access Token de larga duración (~60 días)"), 30 días para
+>   LinkedIn (docs/05 §4 solo dice "más corta que la de Meta", sin cifra
+>   exacta -- 30 es un valor razonable, no documentado), y sin expiración
+>   (`null`) para X y Google Forms, que se autentican con clave de API, no
+>   con un token OAuth (docs/05 §5/§6).
+> - **Prueba de conexión determinística, no aleatoria**
+>   (`bridges.api.ts::testConnectionApi`): el resultado se deriva del
+>   `estado` actual del bridge para que sea testeable, y es puramente
+>   diagnóstica -- a diferencia de guardar un token, no cambia el estado
+>   guardado del bridge.
+> - **Alta/baja de cuentas publicitarias** (`toggleCuentaActivaApi`,
+>   `CuentasPublicitariasList.tsx`): el checklist de este documento solo pedía
+>   "Detalle con cuentas publicitarias asociadas" (mostrarlas), pero
+>   `docs/05-bridges.md` §7 sí documenta explícitamente "Alta y baja de
+>   cuentas publicitarias" como parte del panel -- se agregó activar/desactivar
+>   por ese motivo. **No** se agregó alta de una cuenta nueva: requeriría
+>   decidir de dónde saldría el `idExterno` (¿catálogo que trae el backend
+>   desde la plataforma? ¿texto libre del administrador?), decisión de
+>   backend/UX no fijada por ningún documento -- señalada para no inventarla,
+>   no construida en este cambio.
+> - **Cinco bridges de ejemplo en el fixture**, uno por red social
+>   documentada (docs/05 §3-§6), cubriendo deliberadamente las cuatro
+>   combinaciones de aviso (ninguno, solo token expirado, solo sin actividad,
+>   ambos a la vez) y el caso `INACTIVO` excluido -- ver el comentario de
+>   cabecera de `bridges.api.ts` para el detalle de cada uno.
+>
+> TDD real: Vitest + Testing Library, 57 tests nuevos (326 en total en el
+> frontend) cubriendo `evaluarAvisoBridge` (las cuatro combinaciones y el caso
+> `INACTIVO`), `formatFecha`, el contrato completo del mock
+> (`bridges.api.test.ts`: listado, detalle, guardado de token válido/inválido,
+> prueba de conexión por estado, alta/baja de cuenta, bitácora con filtros
+> combinables) y los componentes (`BridgesPage.test.tsx`,
+> `BridgeDetallePage.test.tsx`: estados de carga/vacío/error, aviso destacado,
+> token siempre vacío y su verificación inmediata, prueba de conexión,
+> cuentas publicitarias, bitácora con filtro por nivel). `tsc` + `vite build`
+> sin errores.
+>
+> Fuera de alcance: conexión real a un backend de bridges (M8, no existe) y
+> el contrato exacto de sus futuros endpoints (nombres de rutas/parámetros
+> son una suposición razonable a validar contra la implementación real antes
+> de conectar).
+>
+> **Con F8 completo, el roadmap F1-F8 de `docs/07-modulos-frontend.md` queda
+> con al menos una implementación en cada módulo.** Las brechas que quedan
+> abiertas (autoservicio de contraseña para roles no-administrador en F2,
+> conexión real a los backends de leads/dashboard/notificaciones/bridges en
+> F3-F6/F8, actualización en tiempo real por SSE en F3/F5/F6, "carga activa
+> de leads" y reasignación contra un backend real de leads en F7) están
+> documentadas en la nota de progreso de cada módulo respectivo y dependen
+> de trabajo de backend (M5-M9) que no existe todavía -- no son ítems sin
+> hacer del frontend, son puntos de integración pendientes ya marcados con
+> `INTEGRACION-BACKEND`.
+
+- [x] Listado con estado, último lead recibido y expiración de token
+- [x] Detalle con cuentas publicitarias asociadas
+- [x] Formulario de carga y renovación de token con verificación inmediata
+- [x] Botón de prueba de conexión
+- [x] Bitácora de errores con filtro por nivel y fecha
+- [x] Aviso destacado ante token expirado o bridge sin actividad
 
 > El campo de token siempre se muestra vacío, nunca precargado. Se envía solo al
 > guardar.

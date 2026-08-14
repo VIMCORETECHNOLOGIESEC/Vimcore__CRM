@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { NotFoundPage } from "@/componentes/NotFoundPage";
-import { PendingScreen } from "@/componentes/PendingScreen";
+import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
+import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
@@ -22,11 +23,12 @@ import { AppLayout } from "@/layouts/AppLayout";
  * Los patrones de rutas anidadas, loaders/actions y navegación de la skill
  * `react-router-framework-mode` siguen aplicando igual en modo datos.
  *
- * Las pantallas de los módulos aún no implementados (F8) son marcadores de
- * posición (`PendingScreen`); F2 (login, perfil), F3 (listado de leads), F4
- * (detalle de lead), F5 (dashboard) y F7 (administración de usuarios) ya
- * están implementados. F6 (notificaciones) no es una ruta propia -- vive en
- * la campana de `layouts/Header.tsx`.
+ * F2 (login, perfil), F3 (listado de leads), F4 (detalle de lead), F5
+ * (dashboard), F7 (administración de usuarios) y F8 (administración de
+ * bridges) ya están implementados -- con F8 completo, ya no quedan módulos
+ * pendientes de este roadmap sin al menos una implementación (ver la nota
+ * de cierre en `docs/07-modulos-frontend.md`). F6 (notificaciones) no es una
+ * ruta propia -- vive en la campana de `layouts/Header.tsx`.
  */
 export const router = createBrowserRouter([
   {
@@ -48,10 +50,8 @@ export const router = createBrowserRouter([
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,
             children: [
               { path: "usuarios", element: <UsuariosPage /> },
-              {
-                path: "bridges",
-                element: <PendingScreen module="F8 — Administración de bridges" />,
-              },
+              { path: "bridges", element: <BridgesPage /> },
+              { path: "bridges/:id", element: <BridgeDetallePage /> },
             ],
           },
         ],

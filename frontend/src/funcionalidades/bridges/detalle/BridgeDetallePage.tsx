@@ -1,0 +1,99 @@
+import { useNavigate, useParams } from "react-router";
+import { getErrorMessage } from "@/api/httpClient";
+import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/componentes/states/ErrorState";
+import { LoadingState } from "@/componentes/states/LoadingState";
+import { AvisoBridge } from "../AvisoBridge";
+import { evaluarAvisoBridge, formatFecha } from "../bridges.utils";
+import { RED_SOCIAL_ETIQUETAS } from "../catalogos";
+import { EstadoBridgeBadge } from "../EstadoBridgeBadge";
+import { useBridgeDetalle } from "../useBridges";
+import { BitacoraErrores } from "./BitacoraErrores";
+import { CuentasPublicitariasList } from "./CuentasPublicitariasList";
+import { PruebaConexionBoton } from "./PruebaConexionBoton";
+import { TokenForm } from "./TokenForm";
+
+/**
+ * Detalle de un bridge (F8, docs/07 -- solo administrador, ruta protegida en
+ * `router.tsx`). Mock en memoria -- ver `bridges.api.ts`.
+ */
+export function BridgeDetallePage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { data: bridge, isLoading, isError, error, refetch } = useBridgeDetalle(id ?? "");
+
+  if (!id) {
+    return <ErrorState message="Falta el identificador del bridge en la URL." />;
+  }
+
+  if (isLoading) {
+    return <LoadingState rows={5} rowHeight="h-16" />;
+  }
+
+  if (isError || !bridge) {
+    return (
+      <ErrorState
+        message={error ? getErrorMessage(error) : "No se encontró el bridge solicitado."}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
+  const aviso = evaluarAvisoBridge(bridge);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <Button variant="outline" size="sm" onClick={() => navigate("/bridges")}>
+          ← Volver al listado
+        </Button>
+      </div>
+
+      <AvisoBridge nombre={bridge.nombre} aviso={aviso} />
+
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-lg font-semibold text-foreground">{bridge.nombre}</h1>
+            <span className="text-sm text-muted-foreground">
+              {RED_SOCIAL_ETIQUETAS[bridge.redSocial]}
+            </span>
+          </div>
+          <EstadoBridgeBadge estado={bridge.estado} />
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <dt className="text-muted-foreground">Último lead recibido</dt>
+          <dd className="text-foreground">
+            {bridge.ultimoLeadEn ? formatFecha(bridge.ultimoLeadEn) : "Nunca"}
+          </dd>
+
+          <dt className="text-muted-foreground">Expiración de token</dt>
+          <dd className="text-foreground">
+            {bridge.tokenExpiraEn ? formatFecha(bridge.tokenExpiraEn) : "No expira"}
+          </dd>
+        </dl>
+
+        <PruebaConexionBoton bridgeId={bridge.id} />
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-sm font-semibold text-foreground">Carga y renovación de token</h2>
+          <p className="text-xs text-muted-foreground">
+            El campo siempre se muestra vacío: el token nunca se devuelve por la API, ni siquiera
+            enmascarado. Se envía solo al guardar y se verifica de inmediato.
+          </p>
+        </div>
+        <TokenForm bridgeId={bridge.id} />
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+        <h2 className="text-sm font-semibold text-foreground">Cuentas publicitarias asociadas</h2>
+        <CuentasPublicitariasList bridgeId={bridge.id} cuentas={bridge.cuentasPublicitarias} />
+      </section>
+
+      <BitacoraErrores bridgeId={bridge.id} />
+    </div>
+  );
+}
