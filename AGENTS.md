@@ -227,3 +227,4 @@ verifica antes de construir:
 | `docs/07-modulos-frontend.md` | Módulos frontend con checklist de avance |
 | `docs/08-dashboard-kpis.md` | Definición exacta de cada KPI |
 | `docs/09-linea-grafica-frontend.md` | Línea gráfica del frontend: paleta, tipografía, librerías de UI candidatas y flujo de mockups con Stitch AI |
+| `docs/10-skills-agente-frontend.md` | Skills de Claude Code Skills para el frontend: lista, comando de instalación por skill y en qué caso debe usarla el agente |

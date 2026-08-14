@@ -6,6 +6,9 @@ español.
 Línea gráfica, paleta, librerías de UI candidatas y flujo de mockups por
 módulo: ver `docs/09-linea-grafica-frontend.md`.
 
+Skills de agente IA instaladas para el desarrollo de este frontend (lista,
+instalación y cuándo usar cada una): ver `docs/10-skills-agente-frontend.md`.
+
 ---
 
 ## Estructura

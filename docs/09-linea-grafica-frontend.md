@@ -52,19 +52,11 @@ Derivados de los "Criterios transversales de calidad" de `07-modulos-frontend.md
 ### 2.1 Skills de diseño instaladas
 
 Para mantener el mismo criterio de craft en las pantallas que faltan (F6-F8)
-y en el desarrollo general, este repo tiene instaladas 3 skills de Claude
-Code tomadas del registro comunitario [ui-skills.com](https://www.ui-skills.com/)
-(MIT, código en GitHub) en `.claude/skills/`:
-
-| Skill | Uso |
-|---|---|
-| `interface-design` | Craft-first para dashboards/admin panels/SaaS — la categoría de este CRM. Úsala al diseñar o revisar cualquier pantalla nueva. |
-| `better-layout` | Grouping, alineación, orden de lectura, breakpoints. Úsala para estructurar toolbars, tablas y formularios. |
-| `baseline-ui` | Baseline anti-slop: un acento por vista, primitivas accesibles, reglas de animación/estado. Úsala como pasada de limpieza rápida. |
-
-Se cargan solas cuando la tarea calza con su trigger (ver
-`.atl/skill-registry.md`); no hace falta invocarlas a mano. Procedencia y
-criterio de selección en `.claude/skills/_shared/ui-skills-sources.md`.
+y en el desarrollo general, este repo tiene instaladas 10 skills de Claude
+Code. Lista completa, comando de instalación por skill y en qué caso debe
+usarla el agente: ver `docs/10-skills-agente-frontend.md`. Procedencia y
+criterio de selección de cada una en
+`.claude/skills/_shared/ui-skills-sources.md`.
 
 ---
 
