@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
-import { prisma } from "../lib/prisma.js";
+import { DEDUPLICACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import { normalizeTelefono } from "../lib/telefono.js";
 import * as clienteRepository from "../repositories/cliente.repository.js";
 import * as correoClienteRepository from "../repositories/correo-cliente.repository.js";
@@ -68,15 +68,21 @@ export interface DetalleEventoLead {
  *   A. IDENTIDAD → B. ADJUNTAR CORREO → C. LEER ESTADO → D. DECIDIR → E. ESCRIBIR
  * `lead_eventos` se escribe en la MISMA transacción que su causa, siempre
  * (docs/03-modelo-datos.md §2, bitácora inmutable).
+ *
+ * `txExterna` (M4, DD1c): si el llamador (p. ej. `ingesta.service`) ya abrió
+ * una transacción, `deduplicarLead` corre dentro de ella en vez de abrir la
+ * suya propia — ver `runInTransaction` en `lib/prisma.ts`.
  */
 export async function deduplicarLead(
   entrada: DeduplicacionInput,
   ahora: Date = new Date(),
+  txExterna?: Prisma.TransactionClient,
 ): Promise<DeduplicacionResult> {
   const telefono = normalizeTelefono(entrada.telefono);
   const correo = normalizeCorreo(entrada.correo);
 
-  return prisma.$transaction(
+  return runInTransaction(
+    txExterna,
     async (tx) => {
       // A. IDENTIDAD — primera sentencia de la transacción, sin excepciones.
       let clienteId: string;
@@ -220,6 +226,6 @@ export async function deduplicarLead(
         accion,
       };
     },
-    { maxWait: 10_000, timeout: 20_000 },
+    DEDUPLICACION_TRANSACTION_BOUNDS,
   );
 }
