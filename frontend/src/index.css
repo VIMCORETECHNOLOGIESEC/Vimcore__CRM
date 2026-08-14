@@ -1,3 +1,69 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Línea gráfica aprobada (docs/09-linea-grafica-frontend.md §3).
+ * Paleta de dos colores base (blanco/negro) sin manual de marca, más el
+ * semáforo (fuera de esta paleta, nunca decorativo) y la serie categórica
+ * de gráficas. Variables en hex plano -- shadcn/ui v3 admite cualquier
+ * formato de color siempre que `tailwind.config.js` la referencie sin un
+ * envoltorio `hsl()`/`oklch()` incompatible (ver Colores por AGENT en el
+ * commit que instaló shadcn: la salida por defecto de la CLI mezclaba
+ * variables `oklch()` con un `tailwind.config.js` que las envolvía en
+ * `hsl()`, una combinación inválida).
+ */
+@layer base {
+  :root {
+    --background: #FFFFFF;
+    --foreground: #18181B;
+    --card: #FFFFFF;
+    --card-foreground: #18181B;
+    --popover: #FFFFFF;
+    --popover-foreground: #18181B;
+    --primary: #111113;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F5F5F5;
+    --secondary-foreground: #18181B;
+    --muted: #F5F5F5;
+    --muted-foreground: #71717A;
+    --accent: #F5F5F5;
+    --accent-foreground: #18181B;
+    --destructive: #DC2626;
+    --destructive-foreground: #FFFFFF;
+    --border: #E8E8E8;
+    --input: #E8E8E8;
+    --ring: #111113;
+    --chart-1: #4F46E5;
+    --chart-2: #2563EB;
+    --chart-3: #0D9488;
+    --chart-4: #7C3AED;
+    --chart-5: #71717A;
+    --radius: 0.5rem;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #18181B;
+    --sidebar-primary: #111113;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #F5F5F5;
+    --sidebar-accent-foreground: #18181B;
+    --sidebar-border: #E8E8E8;
+    --sidebar-ring: #111113;
+
+    /* Semáforo -- siempre acompañado de etiqueta de texto (ver F3, F4). */
+    --semaforo-frio: #16A34A;
+    --semaforo-frio-foreground: #FFFFFF;
+    --semaforo-tibio: #D97706;
+    --semaforo-tibio-foreground: #FFFFFF;
+    --semaforo-caliente: #DC2626;
+    --semaforo-caliente-foreground: #FFFFFF;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
