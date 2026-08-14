@@ -215,6 +215,63 @@ describe("PATCH /api/v1/leads/:id/etapa — no reabre etapa terminal (D5)", () =
   });
 });
 
+describe("POST /api/v1/leads/:id/formulario — recalificación sin cambio de etapa (D16)", () => {
+  it("200: recalifica el semáforo sin mover la etapa ni escribir CAMBIO_ETAPA", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO", semaforo: "ROJO" });
+
+    const respuesta = await request(app)
+      .post(`/api/v1/leads/${lead.id}/formulario`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ respuestas: RESPUESTAS_ALTAS_NUEVO });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.lead.etapa).toBe("NUEVO");
+    expect(respuesta.body.lead.semaforo).not.toBe("ROJO");
+
+    const sinEventoEtapa = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "CAMBIO_ETAPA" },
+    });
+    expect(sinEventoEtapa).toBeNull();
+  });
+
+  it("403 cuando el usuario no tiene permiso de edición sobre el lead", async () => {
+    const asesorAjeno = await crearUsuarioConToken("ASESOR");
+    const dueno = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: dueno.id, etapa: "NUEVO" });
+
+    const respuesta = await request(app)
+      .post(`/api/v1/leads/${lead.id}/formulario`)
+      .set("Authorization", `Bearer ${asesorAjeno.token}`)
+      .send({ respuestas: RESPUESTAS_ALTAS_NUEVO });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("404 cuando el lead no existe", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+
+    const respuesta = await request(app)
+      .post("/api/v1/leads/00000000-0000-0000-0000-000000000000/formulario")
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ respuestas: RESPUESTAS_ALTAS_NUEVO });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("400 cuando el body no trae respuestas", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO" });
+
+    const respuesta = await request(app)
+      .post(`/api/v1/leads/${lead.id}/formulario`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({});
+
+    expect(respuesta.status).toBe(400);
+  });
+});
+
 describe("Matriz de acceso — GET/PATCH sobre un lead ajeno por cada rol (D4)", () => {
   it("ADMINISTRADOR y SUPERVISOR pueden leer y editar cualquier lead; ASESOR/VENDEDOR ajenos reciben 403", async () => {
     const dueno = await crearUsuarioConToken("ASESOR");

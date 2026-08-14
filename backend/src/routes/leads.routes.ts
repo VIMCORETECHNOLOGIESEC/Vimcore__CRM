@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getLeadById, getLeads, patchLeadEtapa } from "../controllers/leads.controller.js";
+import { getLeadById, getLeads, patchLeadEtapa, postLeadFormulario } from "../controllers/leads.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 
 export const leadsRouter = Router();
@@ -9,3 +9,5 @@ export const leadsRouter = Router();
 leadsRouter.get("/leads", requireAuthentication, getLeads);
 leadsRouter.get("/leads/:id", requireAuthentication, getLeadById);
 leadsRouter.patch("/leads/:id/etapa", requireAuthentication, patchLeadEtapa);
+// D16: recalificación sin mover la etapa — reutiliza applyFormulario (PR2).
+leadsRouter.post("/leads/:id/formulario", requireAuthentication, postLeadFormulario);

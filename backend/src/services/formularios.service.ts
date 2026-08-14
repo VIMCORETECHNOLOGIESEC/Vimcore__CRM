@@ -1,5 +1,5 @@
 import type { EtapaLead, Prisma, Semaforo } from "@prisma/client";
-import { getFormulario } from "../config/formularios.js";
+import { getFormulario, type FormularioEtapa } from "../config/formularios.js";
 import { AppError } from "../lib/app-error.js";
 import { GESTION_LEAD_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as leadRepository from "../repositories/lead.repository.js";
@@ -20,6 +20,16 @@ export interface ApplyFormularioResult {
   respuestaId: string;
   /** `null` si el color no cambió — D16: solo se emite evento cuando cambia. */
   eventoSemaforoId: string | null;
+}
+
+/**
+ * spec ("Definición de formulario por etapa"): capa de servicio entre el
+ * controller HTTP y la rúbrica estática de `config/formularios.ts` — AGENTS.md
+ * §4 exige que los controllers nunca importen `config/` directamente, aunque
+ * no haya acceso a base de datos de por medio.
+ */
+export function findFormulario(etapa: EtapaLead): FormularioEtapa {
+  return getFormulario(etapa);
 }
 
 /**

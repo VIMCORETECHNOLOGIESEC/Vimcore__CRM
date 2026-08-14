@@ -199,3 +199,28 @@ export async function transitionEtapa(
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );
 }
+
+/**
+ * spec ("Recalificación sin cambio de etapa", D16): reutiliza `applyFormulario`
+ * (PR2) sobre la etapa ACTUAL del lead, sin transacción externa — nunca toca
+ * `leads.etapa` ni escribe `CAMBIO_ETAPA`. Mismo control de acceso que
+ * `transitionEtapa` (D4): solo el responsable operativo o Admin/Supervisor.
+ */
+export async function recalificarLead(
+  usuario: UsuarioAcceso,
+  id: string,
+  respuestas: Record<string, string>,
+): Promise<LeadConSla> {
+  const lead = await leadRepository.findById(id);
+  if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+  if (!canEdit(usuario, lead)) {
+    throw new AppError("permiso_denegado", 403, "No tienes permiso para modificar este lead");
+  }
+
+  const resultado = await applyFormulario(lead, respuestas, usuario.id);
+
+  return withEstadoSla(
+    { ...lead, semaforo: resultado.semaforo, puntuacion: resultado.puntuacion },
+    new Date(),
+  );
+}

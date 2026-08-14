@@ -56,6 +56,15 @@ export const listLeadsQuerySchema = z.object({
   direccion: z.enum(["asc", "desc"]).default("desc"),
 });
 
+/**
+ * spec ("Recalificación sin cambio de etapa", D16): solo `respuestas` — la
+ * etapa la determina el lead actual en el servidor, nunca el body.
+ */
+export const postFormularioBodySchema = z.object({
+  respuestas: z.record(z.string(), z.string()),
+});
+
 export type PatchEtapaBody = z.infer<typeof patchEtapaBodySchema>;
 export type ListLeadsQuery = z.infer<typeof listLeadsQuerySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
+export type PostFormularioBody = z.infer<typeof postFormularioBodySchema>;
