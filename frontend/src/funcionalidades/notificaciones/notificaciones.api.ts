@@ -1,5 +1,6 @@
 import type { Notificacion, TipoNotificacion } from "@/tipos/notificacion";
 import { LEADS_MOCK } from "@/funcionalidades/leads/leads.api";
+import { sortByFechaDesc } from "./notificaciones.utils";
 
 /**
  * Capa de datos de notificaciones -- **mock hasta que exista el backend
@@ -117,11 +118,9 @@ export async function fetchNotificacionesApi(
 ): Promise<Notificacion[]> {
   await delay(150);
 
-  const lista = getListaUsuario(usuarioId).slice();
+  const lista = getListaUsuario(usuarioId);
   const filtradas = soloNoLeidas ? lista.filter((n) => !n.leidaEn) : lista;
-  return filtradas.sort(
-    (a, b) => new Date(b.creadaEn).getTime() - new Date(a.creadaEn).getTime(),
-  );
+  return sortByFechaDesc(filtradas);
 }
 
 /**
