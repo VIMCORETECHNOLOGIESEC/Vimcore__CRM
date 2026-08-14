@@ -1,5 +1,6 @@
 import { env } from "./config/env.js";
 import { createApp } from "./app.js";
+import { startCitasRecordatorioJob } from "./jobs/citas-recordatorio.job.js";
 import { startSlaAtrasadoJob } from "./jobs/sla-atrasado.job.js";
 
 const app = createApp();
@@ -12,3 +13,5 @@ app.listen(env.PORT, () => {
 // M6 (D2): el intervalo arranca aquí, nunca en app.ts, para que la suite de
 // integración monte la app sin levantar timers vivos.
 startSlaAtrasadoJob();
+// M7: mismo patrón que el job de SLA.
+startCitasRecordatorioJob();
