@@ -73,6 +73,20 @@ frontend/src/
 > en `AuthContext.tsx`; y las redirecciones de `ProtectedRoute.tsx` (sin
 > sesión, sin rol permitido, con acceso). 40 tests, 5 archivos, todos en
 > verde (`frontend/tests/*.test.{ts,tsx}`).
+>
+> **Seguimiento post-F1** (rama `dev-front`, tras F8): `layouts/AppLayout.tsx`
+> fija `aside` y `Header` fuera del área scrolleable de `main`, con
+> scrollbar temática propia (`d93cf7e`). El item de navegación "Panel" pasa
+> a mostrarse como "Dashboard" -- la ruta `/panel` y el resto de la lógica
+> quedan intactos, solo cambia el texto visible (`989eab9`). Se agrega
+> `layouts/PageHeaderContext.tsx` (`PageHeaderProvider` + hooks
+> `usePageHeader`/`usePageHeaderValue`, mismo estilo que `AuthContext`) para
+> publicar el título de cada pantalla en el Header ahora fijo, con un
+> breadcrumb-lite (`ChevronRight` de lucide-react) cuando la página publica
+> `backTo` (`7315bd9`). Las 8 rutas migran a `usePageHeader` y se borran los
+> `h1`/botón "Volver al listado" locales que quedaban duplicados y
+> scrolleaban junto con el contenido (`3938145`). Verificado: `tsc --noEmit`
+> sin errores; `pnpm test -- --run` en verde, 35 archivos / 373 tests.
 
 ---
 
