@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Outlet } from "react-router";
 import { Header } from "./Header";
+import { PageHeaderProvider } from "./PageHeaderContext";
 import { Sidebar } from "./Sidebar";
 
 /**
@@ -36,21 +37,23 @@ export function AppLayout() {
   }, []);
 
   return (
-    <div className="flex h-full overflow-hidden bg-background">
-      <aside className="hidden w-60 shrink-0 border-r border-border md:block">
-        <Sidebar />
-      </aside>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <Header />
-        <main className="relative min-h-0 flex-1 overflow-hidden">
-          <div
-            ref={scrollRef}
-            className="scrollbar-themed absolute inset-0 right-1.5 overflow-y-auto overflow-x-hidden overscroll-contain p-4 md:p-6"
-          >
-            <Outlet />
-          </div>
-        </main>
+    <PageHeaderProvider>
+      <div className="flex h-full overflow-hidden bg-background">
+        <aside className="hidden w-60 shrink-0 border-r border-border md:block">
+          <Sidebar />
+        </aside>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Header />
+          <main className="relative min-h-0 flex-1 overflow-hidden">
+            <div
+              ref={scrollRef}
+              className="scrollbar-themed absolute inset-0 right-1.5 overflow-y-auto overflow-x-hidden overscroll-contain p-4 md:p-6"
+            >
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </PageHeaderProvider>
   );
 }
