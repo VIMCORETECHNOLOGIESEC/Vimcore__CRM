@@ -30,31 +30,31 @@ interface ClaveBridgeModalProps {
  * confirmación -- una advertencia pasiva no alcanza (spec): overlay,
  * `Escape` y el botón «X» del `DialogContent` disparan el mismo
  * `onOpenChange` controlado, así que basta con ignorar el intento de cierre
- * en un solo lugar mientras `confirmado` sea `false`.
+ * en un solo lugar mientras `confirmed` sea `false`.
  */
 export function ClaveBridgeModal({ open, bridgeNombre, claveApi, onClose }: ClaveBridgeModalProps) {
-  const [confirmado, setConfirmado] = useState(false);
-  const [copiado, setCopiado] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  function intentarCerrar(siguienteAbierto: boolean) {
-    if (siguienteAbierto) return;
-    if (!confirmado) return;
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) return;
+    if (!confirmed) return;
     onClose();
   }
 
-  async function copiarClave() {
+  async function copyClave() {
     await navigator.clipboard.writeText(claveApi);
-    setCopiado(true);
+    setCopied(true);
   }
 
   return (
-    <Dialog open={open} onOpenChange={intentarCerrar}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         onInteractOutside={(evento) => {
-          if (!confirmado) evento.preventDefault();
+          if (!confirmed) evento.preventDefault();
         }}
         onEscapeKeyDown={(evento) => {
-          if (!confirmado) evento.preventDefault();
+          if (!confirmed) evento.preventDefault();
         }}
       >
         <DialogHeader>
@@ -66,22 +66,22 @@ export function ClaveBridgeModal({ open, bridgeNombre, claveApi, onClose }: Clav
         </DialogHeader>
 
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted p-2">
-          <code className="flex-1 overflow-x-auto text-sm">{claveApi}</code>
-          <Button type="button" variant="outline" size="sm" onClick={() => void copiarClave()}>
-            {copiado ? (
+          <code className="scrollbar-themed flex-1 overflow-x-auto text-sm">{claveApi}</code>
+          <Button type="button" variant="outline" size="sm" onClick={() => void copyClave()}>
+            {copied ? (
               <Check className="size-4" aria-hidden="true" />
             ) : (
               <Copy className="size-4" aria-hidden="true" />
             )}
-            {copiado ? "Copiada" : "Copiar"}
+            {copied ? "Copiada" : "Copiar"}
           </Button>
         </div>
 
         <div className="flex items-start gap-2">
           <Checkbox
             id="clave-bridge-confirmacion"
-            checked={confirmado}
-            onCheckedChange={(valor) => setConfirmado(valor === true)}
+            checked={confirmed}
+            onCheckedChange={(valor) => setConfirmed(valor === true)}
           />
           <Label htmlFor="clave-bridge-confirmacion" className="text-sm font-normal">
             Ya copié la clave y la guardé en un lugar seguro
@@ -89,7 +89,7 @@ export function ClaveBridgeModal({ open, bridgeNombre, claveApi, onClose }: Clav
         </div>
 
         <DialogFooter>
-          <Button type="button" disabled={!confirmado} onClick={onClose}>
+          <Button type="button" disabled={!confirmed} onClick={onClose}>
             Entendido, cerrar
           </Button>
         </DialogFooter>

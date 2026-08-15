@@ -66,4 +66,54 @@
   body {
     @apply bg-background text-foreground;
   }
+  /*
+   * Ancla la contención de scroll en la raíz real del documento, no solo en
+   * el div de AppLayout. Sin esto, un redondeo de subpíxel en la cadena de
+   * flex anidados (aside + columna + main) puede dejar ese div un pelo más
+   * alto que el viewport; Chromium expone esa diferencia como scroll del
+   * documento (espacio en blanco scrolleable debajo del shell), mientras
+   * que Firefox la absorbe en silencio. Clampeando html/body/#root acá, el
+   * documento nunca puede scrollear -- solo main, por diseño.
+   */
+  html,
+  body,
+  #root {
+    @apply h-full overflow-hidden;
+  }
+}
+
+/*
+ * Scrollbar personalizada (docs/09 §3): fuera de la paleta de acento
+ * (semáforo, chart), usa exclusivamente los tokens neutros ya definidos
+ * arriba. En reposo, thumb en --muted-foreground (gris identificable, no
+ * el --border casi invisible) -- al pasar el mouse, arrastrar, o mientras
+ * `main` está efectivamente scrolleando (clase `is-scrolling` que pone
+ * AppLayout.tsx), pasa a --primary (negro) para marcar movimiento.
+ * Firefox solo soporta el color base de `scrollbar-color`, sin estado por
+ * interacción -- limitación real del motor, no un bug nuestro.
+ */
+@layer utilities {
+  .scrollbar-themed {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+  .scrollbar-themed::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .scrollbar-themed::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-themed::-webkit-scrollbar-thumb {
+    background-color: var(--muted-foreground);
+    border-radius: var(--radius);
+    border: 2px solid var(--background);
+    background-clip: padding-box;
+    transition: background-color 0.15s ease;
+  }
+  .scrollbar-themed::-webkit-scrollbar-thumb:hover,
+  .scrollbar-themed::-webkit-scrollbar-thumb:active,
+  .scrollbar-themed.is-scrolling::-webkit-scrollbar-thumb {
+    background-color: var(--primary);
+  }
 }
