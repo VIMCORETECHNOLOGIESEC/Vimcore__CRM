@@ -116,6 +116,17 @@ persiste con marca de dato incompleto.
 - [ ] Filtrado automático por rol: asesor y vendedor solo ven su cartera
 - [ ] `GET /api/v1/leads/:id` con verificación de acceso
 - [ ] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
+      > **Pendiente de aprobación (frontend, `dev-front`):** la regla de
+      > reversibilidad cambió (docs/02-reglas-negocio.md §6, ya no es "orden
+      > sugerido") a progreso lineal hacia adelante entre etapas no
+      > terminales (Nuevo → Contactado → Cita, nunca se retrocede) más salto
+      > directo a cierre (Venta/No Venta) desde cualquier etapa no terminal.
+      > El frontend construye la whitelist en
+      > `funcionalidades/leads/etapas.ts::getTransicionesValidas` y solo la
+      > usa para decidir qué controles mostrar (`detalle/LeadTimeline.tsx`)
+      > -- es un guard de UX. Cuando se implemente este endpoint, debe
+      > validar la transición contra esa misma whitelist del lado del
+      > servidor -- nunca confiar en que el cliente la respete.
 - [ ] Validación de campos obligatorios en etapas terminales
 - [ ] Escritura de `lead_eventos` en la misma transacción que cada cambio
 - [ ] `GET /api/v1/formularios/:etapa` — definición de formulario

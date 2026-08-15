@@ -52,8 +52,16 @@ describe("submitFormularioEtapaApi — 'sin formulario no hay transición' (docs
     expect(releido.semaforo).toBe("ROJO");
   });
 
-  it("permite saltar o retroceder de etapa libremente (sin restricción de secuencia)", async () => {
-    // De CITA (dejado por el test anterior) retrocede a NUEVO sin error.
+  it("esta capa de datos no impone la regla de transición lineal por sí misma", async () => {
+    // La whitelist de transiciones válidas (docs/02 §6, "progreso lineal
+    // hacia adelante") vive en `funcionalidades/leads/etapas.ts` y la aplica
+    // el timeline (`detalle/LeadTimeline.tsx`) al construir qué formulario
+    // ofrecer -- es un guard de UX, igual criterio que
+    // `leadDetalle.guards.ts`. Esta función de mock, como el resto de la capa
+    // de datos, no valida el destino: una petición manipulada que se salte
+    // la UI llegaría igual hasta acá, así como llegaría al backend real
+    // (M5) si este no valida `getTransicionesValidas` del lado del
+    // servidor -- ver anotación en docs/06-modulos-backend.md.
     const resultado = await submitFormularioEtapaApi(LEAD_NUEVO_ID, "NUEVO", { contactabilidad: "SI" });
     expect(resultado.etapa).toBe("NUEVO");
   });

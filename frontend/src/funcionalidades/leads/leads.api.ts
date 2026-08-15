@@ -1,5 +1,6 @@
 import type { EstadoSla, EtapaLead, Lead, RedSocial, ResponsableLead, SemaforoLead } from "@/tipos/lead";
 import type { RolUsuario } from "@/tipos/usuario";
+import { ETAPAS_TERMINALES } from "./etapas";
 import { calculateEstadoSla } from "./sla";
 import { getResponsable } from "./leads.utils";
 
@@ -472,8 +473,6 @@ export function getCatalogoResponsablesConRol(): ResponsableLead[] {
 export function getCatalogoVendedores(): { id: string; nombre: string }[] {
   return VENDEDORES.map(({ id, nombre }) => ({ id, nombre }));
 }
-
-const ETAPAS_TERMINALES: EtapaLead[] = ["VENTA", "NO_VENTA"];
 
 /**
  * Leads activos (no en etapa terminal) donde `usuarioId` es el responsable

@@ -148,8 +148,11 @@ por separado.
 | 4 | Venta | Vendedor | Sí |
 | 5 | No Venta | Vendedor | Sí |
 
-- **El orden es sugerido, no obligatorio.** El sistema permite avanzar, saltar y
-  retroceder libremente. Toda transición queda registrada en `lead_eventos`.
+- **El progreso es lineal hacia adelante entre las etapas no terminales**
+  (Nuevo → Contactado → Cita): nunca se puede retroceder de una etapa no
+  terminal a otra anterior. Desde cualquier etapa no terminal se permite el
+  salto directo a cierre (Venta o No Venta). Toda transición queda registrada
+  en `lead_eventos`.
 - Cada cambio de etapa **exige completar el formulario** de la etapa destino
   (ver `04-formularios-semaforo.md`). Sin formulario no hay transición.
 - **Venta** exige fecha de cierre y monto.

@@ -1,5 +1,6 @@
 import type { AuthenticatedUser } from "@/tipos/usuario";
 import type { Lead } from "@/tipos/lead";
+import { ETAPAS_TERMINALES } from "../etapas";
 
 /**
  * Guards de UX para traspaso (`handoff`) y reasignación (`reassign`) de un
@@ -11,8 +12,6 @@ import type { Lead } from "@/tipos/lead";
  * con tests (`tests/leads/detalle/leadDetalle.guards.test.ts`) por ser
  * lógica de reglas de negocio, aunque solo gobierne la UI.
  */
-
-const ETAPAS_TERMINALES: Lead["etapa"][] = ["VENTA", "NO_VENTA"];
 
 function esEtapaTerminal(etapa: Lead["etapa"]): boolean {
   return ETAPAS_TERMINALES.includes(etapa);

@@ -337,13 +337,51 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 >   para no inventar una regla no pedida — a decidir el criterio correcto
 >   (¿se conserva el último valor calificado, se limpia, se oculta en UI?).
 
+> **Actualización (reversibilidad de etapas + rediseño a timeline,
+> dev-front):** `docs/02-reglas-negocio.md` §6 decía "el orden es sugerido,
+> no obligatorio... avanzar, saltar y retroceder libremente" y
+> `LeadDetallePage.tsx` era fiel a esa regla con un `<Select>` de 5 opciones
+> sin ningún guard. Regla nueva: progreso **lineal hacia adelante** entre
+> etapas no terminales (Nuevo → Contactado → Cita, nunca se retrocede), con
+> salto directo a cierre (Venta/No Venta) desde cualquier etapa no terminal
+> -- terminal sigue sin reabrirse, eso no cambió. Whitelist única en
+> `funcionalidades/leads/etapas.ts::getTransicionesValidas` (antes
+> `ETAPAS_TERMINALES` vivía duplicada en `leads.api.ts` y
+> `detalle/leadDetalle.guards.ts`, unificada acá). El `<Select>` libre se
+> reemplazó por `detalle/LeadTimeline.tsx`: línea de tiempo vertical con
+> nodos Nuevo/Contactado/Cita agendada (punto + conector, negro `#111113`
+> como acento estructural, sin panel sólido grande, docs/09 §3), estado
+> completado/actual/pendiente por nodo, el formulario de la etapa vigente
+> expandido bajo el nodo actual (el destino ya no lo elige el usuario, lo
+> calcula el propio timeline como el siguiente paso lineal), y una barra de
+> acción persistente ("Cerrar como venta"/"Cerrar como no venta") fuera de
+> la timeline, visible en cualquier etapa no terminal y oculta por completo
+> en etapa terminal -- reutiliza `CierreVentaForm`/`CierreNoVentaForm` tal
+> cual, con su propio `ConfirmDialog`, sin duplicar esa confirmación. El
+> mock (`leadDetalle.api.ts`) no tiene historial de transición por etapa
+> (`lead_eventos` no está expuesto por `GET /api/v1/leads/:id`, M5): los
+> nodos completados que no son "Nuevo" muestran "Fecha no disponible" en vez
+> de inventar una fecha (`INTEGRACION-BACKEND` en `LeadTimeline.tsx`); el
+> nodo "Nuevo" sí usa `lead.ingresadoEn` (existe en el modelo), y el nodo de
+> cierre en etapa terminal usa `lead.cerradoEn`. Tests nuevos:
+> `tests/leads/etapas.test.ts` (las 5 ramas de `getTransicionesValidas`) y
+> `tests/leads/detalle/LeadTimeline.test.tsx` (ningún control ofrece una
+> etapa anterior como destino, la barra de cierre desaparece en etapa
+> terminal, fechas presentes/ausentes según corresponda); se actualizó
+> también un test de `leadDetalle.api.test.ts` que documentaba la regla
+> vieja ("permite... retroceder libremente") para dejar explícito que esa
+> capa de mock no aplica la whitelist por sí misma (guard de UX, igual
+> criterio que `leadDetalle.guards.ts`). `tsc --noEmit` y `vitest run` sin
+> errores (409 tests en verde).
+
 - [x] Encabezado: nombre, semáforo, etapa, responsable, contador de SLA
 - [x] Datos de contacto: teléfono, correos asociados, marca de dato inválido
 - [x] Origen: red social, campaña, cuenta publicitaria, fecha de ingreso
 - [x] Campos dinámicos del formulario de la campaña
 - [x] Formulario de la etapa vigente con cálculo de puntuación
 - [x] Guía de acción según el color del semáforo
-- [x] Selector de cambio de etapa que abre el formulario correspondiente
+- [x] Timeline de progreso de etapa (lineal hacia adelante) con acción
+      persistente de cierre directo a Venta/No Venta
 - [x] Acción de traspaso a vendedor (asesor, desde etapa Contactado)
 - [x] Acción de reasignación con la regla de semáforo aplicada
 - [x] Panel de citas: agendar, reprogramar, marcar resultado
