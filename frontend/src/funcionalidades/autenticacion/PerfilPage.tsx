@@ -7,6 +7,7 @@ import { getErrorMessage } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { RolUsuario } from "@/tipos/usuario";
 import { useAuth } from "./AuthContext";
 import { changePasswordApi } from "./autenticacion.api";
@@ -44,6 +45,8 @@ export function PerfilPage() {
     formState: { errors, isSubmitting },
   } = useForm<CambiarPasswordValues>({ resolver: zodResolver(cambiarPasswordSchema) });
 
+  usePageHeader({ title: "Mi perfil" });
+
   const onSubmit = handleSubmit(async (valores) => {
     if (!user) {
       return;
@@ -66,8 +69,7 @@ export function PerfilPage() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6">
       <section className="rounded-lg border border-border bg-background p-6">
-        <h1 className="text-lg font-semibold text-foreground">Mi perfil</h1>
-        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Nombre</dt>
           <dd className="text-foreground">{user.nombre}</dd>
           <dt className="text-muted-foreground">Correo</dt>

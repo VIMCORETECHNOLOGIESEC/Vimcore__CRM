@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { AdminUsuario } from "@/tipos/usuario";
 import { BajaUsuarioDialog } from "./BajaUsuarioDialog";
 import { CrearUsuarioDialog } from "./CrearUsuarioDialog";
@@ -29,6 +30,8 @@ const USUARIOS_POR_ESQUELETO = 5;
  * en la baja son mock -- ver el comentario de brecha ahí.
  */
 export function UsuariosPage() {
+  usePageHeader({ title: "Usuarios" });
+
   const { data, isLoading, isError, error, refetch } = useUsuarios();
   const crear = useCreateUsuario();
   const actualizar = useUpdateUsuario();
@@ -42,8 +45,7 @@ export function UsuariosPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Usuarios</h1>
+      <div className="flex justify-end">
         <Button onClick={() => setDialogAltaAbierto(true)}>
           <Plus className="size-4" aria-hidden="true" />
           Nuevo usuario

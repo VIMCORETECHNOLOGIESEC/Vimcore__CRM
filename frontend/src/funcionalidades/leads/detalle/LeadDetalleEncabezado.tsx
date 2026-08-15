@@ -19,7 +19,6 @@ export function LeadDetalleEncabezado({ lead }: LeadDetalleEncabezadoProps) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-foreground">{lead.cliente.nombre}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <SemaforoBadge semaforo={lead.semaforo} />
           <span className="rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">

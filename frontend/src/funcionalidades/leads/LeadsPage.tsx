@@ -5,6 +5,7 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
 import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AccionesMasivas } from "./AccionesMasivas";
 import { getCatalogoCampanias, getCatalogoResponsables } from "./leads.api";
 import { FILTROS_LEADS_VACIOS, buildLeadsQueryParams, type LeadsFiltrosState } from "./leads.utils";
@@ -20,6 +21,8 @@ const LEADS_POR_PAGINA = 10;
  * integración exacto con el backend real (M5/M6).
  */
 export function LeadsPage() {
+  usePageHeader({ title: "Leads" });
+
   const { hasRole } = useAuth();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
 
@@ -74,18 +77,15 @@ export function LeadsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Leads</h1>
-        {/*
-          INTEGRACION-BACKEND: acá se conecta el canal SSE de "lead nuevo"
-          (F6/M8, todavía no existen ni el endpoint de eventos ni el motor de
-          notificaciones en el backend). Cuando exista, un lead entrante debe
-          invalidar la query ["leads", ...] de TanStack Query (ver
-          `useLeads.ts`) o insertarse de forma optimista -- nunca por
-          polling: docs/07 F3 pide explícitamente evitar consultar al
-          servidor en un intervalo corto para simular tiempo real.
-        */}
-      </div>
+      {/*
+        INTEGRACION-BACKEND: acá se conecta el canal SSE de "lead nuevo"
+        (F6/M8, todavía no existen ni el endpoint de eventos ni el motor de
+        notificaciones en el backend). Cuando exista, un lead entrante debe
+        invalidar la query ["leads", ...] de TanStack Query (ver
+        `useLeads.ts`) o insertarse de forma optimista -- nunca por
+        polling: docs/07 F3 pide explícitamente evitar consultar al
+        servidor en un intervalo corto para simular tiempo real.
+      */}
 
       <LeadsFiltros
         filtros={filtros}

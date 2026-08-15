@@ -6,6 +6,7 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
+import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { DashboardFiltros } from "./DashboardFiltros";
 import {
   buildMetricasFiltros,
@@ -46,6 +47,8 @@ export function DashboardPage() {
   const { hasRole } = useAuth();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
 
+  usePageHeader({ title: esGestorDeCartera ? "Dashboard general" : "Dashboard personal" });
+
   const [presetSeleccionado, setPresetSeleccionado] = useState<PresetSeleccionado>(RANGO_INICIAL);
   const [rango, setRango] = useState<RangoFechas>(() => calculateRangoPreset("SIETE_DIAS"));
   const [filtrosDashboard, setFiltrosDashboard] = useState<DashboardFiltrosState>(FILTROS_DASHBOARD_VACIOS);
@@ -74,23 +77,18 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">
-          {esGestorDeCartera ? "Dashboard general" : "Dashboard personal"}
-        </h1>
-        {/*
-          INTEGRACION-BACKEND: acá se conecta la actualización en tiempo real
-          por SSE (docs/08 §5 -- M9/F5, todavía no existen ni el endpoint de
-          eventos ni el motor de notificaciones en el backend). Cuando
-          exista, el servidor reemite indicadores recalculados en ventanas
-          de 2s ante ingreso de lead/cambio de etapa/cierre/asignación; el
-          cliente debe invalidar las queries ["metricas", ...] (ver
-          `useMetricas.ts`) en vez de hacer polling -- mismo criterio que el
-          comentario SSE ya dejado en `LeadsPage.tsx` (F3), y con el mismo
-          indicador de reconexión pedido en docs/08 §5 ante interrupción del
-          canal.
-        */}
-      </div>
+      {/*
+        INTEGRACION-BACKEND: acá se conecta la actualización en tiempo real
+        por SSE (docs/08 §5 -- M9/F5, todavía no existen ni el endpoint de
+        eventos ni el motor de notificaciones en el backend). Cuando
+        exista, el servidor reemite indicadores recalculados en ventanas
+        de 2s ante ingreso de lead/cambio de etapa/cierre/asignación; el
+        cliente debe invalidar las queries ["metricas", ...] (ver
+        `useMetricas.ts`) en vez de hacer polling -- mismo criterio que el
+        comentario SSE ya dejado en `LeadsPage.tsx` (F3), y con el mismo
+        indicador de reconexión pedido en docs/08 §5 ante interrupción del
+        canal.
+      */}
 
       <FiltroRangoFechas presetSeleccionado={presetSeleccionado} rango={rango} onChange={onChangeRango} />
       <DashboardFiltros

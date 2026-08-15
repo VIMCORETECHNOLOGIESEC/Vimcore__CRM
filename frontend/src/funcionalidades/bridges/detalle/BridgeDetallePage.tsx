@@ -1,8 +1,8 @@
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { getErrorMessage } from "@/api/httpClient";
-import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AvisoBridge } from "../AvisoBridge";
 import { evaluarAvisoBridge, formatFecha } from "../bridges.utils";
 import { RED_SOCIAL_ETIQUETAS } from "../catalogos";
@@ -19,8 +19,11 @@ import { PruebaConexionBoton } from "./PruebaConexionBoton";
  */
 export function BridgeDetallePage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { data: bridge, isLoading, isError, error, refetch } = useBridgeDetalle(id ?? "");
+
+  usePageHeader(
+    bridge ? { title: bridge.nombre, backTo: { label: "Bridges", href: "/bridges" } } : null,
+  );
 
   if (!id) {
     return <ErrorState message="Falta el identificador del bridge en la URL." />;
@@ -43,22 +46,11 @@ export function BridgeDetallePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <Button variant="outline" size="sm" onClick={() => navigate("/bridges")}>
-          ← Volver al listado
-        </Button>
-      </div>
-
       <AvisoBridge nombre={bridge.nombre} aviso={aviso} />
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-lg font-semibold text-foreground">{bridge.nombre}</h1>
-            <span className="text-sm text-muted-foreground">
-              {RED_SOCIAL_ETIQUETAS[bridge.redSocial]}
-            </span>
-          </div>
+          <span className="text-sm text-muted-foreground">{RED_SOCIAL_ETIQUETAS[bridge.redSocial]}</span>
           <EstadoBridgeBadge estado={bridge.estado} />
         </div>
 

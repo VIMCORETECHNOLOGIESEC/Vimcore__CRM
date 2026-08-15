@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/componentes/ConfirmDialog";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { Bridge } from "@/tipos/bridge";
 import { AvisoBridge } from "./AvisoBridge";
 import { evaluarAvisoBridge, puedeEliminarseFisicamente, tieneAvisoDestacado } from "./bridges.utils";
@@ -28,6 +29,8 @@ interface ClaveModalState {
  * integración con el futuro backend real de bridges (M8, no existe todavía).
  */
 export function BridgesPage() {
+  usePageHeader({ title: "Bridges" });
+
   const { data, isLoading, isError, error, refetch } = useBridges();
   const crear = useCreateBridge();
   const eliminar = useDeleteBridge();
@@ -47,8 +50,7 @@ export function BridgesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Bridges</h1>
+      <div className="flex justify-end">
         <Button onClick={() => setDialogAltaAbierto(true)}>
           <Plus className="size-4" aria-hidden="true" />
           Nuevo bridge

@@ -91,8 +91,7 @@ describe("BridgeDetallePage — encabezado", () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    expect(await screen.findByRole("heading", { name: "LinkedIn Lead Sync" })).toBeInTheDocument();
-    expect(screen.getByText("LinkedIn")).toBeInTheDocument();
+    expect(await screen.findByText("LinkedIn")).toBeInTheDocument();
     expect(screen.getByText("Activo")).toBeInTheDocument();
   });
 
@@ -118,7 +117,7 @@ describe("BridgeDetallePage — aviso destacado ante token expirado o sin activi
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
     expect(screen.queryByText(/necesita atención/)).not.toBeInTheDocument();
   });
 });
@@ -128,7 +127,7 @@ describe("BridgeDetallePage — token siempre vacío, verificación inmediata", 
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
     expect(screen.getByLabelText("Token")).toHaveValue("");
   });
 
@@ -137,7 +136,7 @@ describe("BridgeDetallePage — token siempre vacío, verificación inmediata", 
     saveTokenApiMock.mockResolvedValue(bridgeFake({ estado: "ACTIVO" }));
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
 
     await user.type(screen.getByLabelText("Token"), "un-token-bastante-largo-1234");
     await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
@@ -156,7 +155,7 @@ describe("BridgeDetallePage — token siempre vacío, verificación inmediata", 
     );
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
 
     await user.type(screen.getByLabelText("Token"), "corto");
     await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
@@ -172,7 +171,7 @@ describe("BridgeDetallePage — token siempre vacío, verificación inmediata", 
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
 
     await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
 
@@ -187,7 +186,7 @@ describe("BridgeDetallePage — prueba de conexión", () => {
     testConnectionApiMock.mockResolvedValue({ ok: true, mensaje: "Conexión verificada correctamente." });
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
 
     await user.click(screen.getByRole("button", { name: "Probar conexión" }));
 
@@ -203,7 +202,7 @@ describe("BridgeDetallePage — prueba de conexión", () => {
     });
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
 
     await user.click(screen.getByRole("button", { name: "Probar conexión" }));
 
@@ -260,7 +259,7 @@ describe("BridgeDetallePage — bitácora de errores con filtro por nivel y fech
     fetchBridgeLogsApiMock.mockResolvedValue([]);
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "LinkedIn Lead Sync" });
+    await screen.findByText("LinkedIn");
 
     await waitFor(() => expect(fetchBridgeLogsApiMock).toHaveBeenCalledWith("bridge-1", {}));
 
