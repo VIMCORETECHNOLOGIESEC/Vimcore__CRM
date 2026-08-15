@@ -12,7 +12,7 @@ export interface NavigationItem {
 
 /** Ítems de la barra lateral principal (docs/07 F1). */
 export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
-  { label: "Panel", route: "/panel", icon: LayoutDashboard },
+  { label: "Dashboard", route: "/panel", icon: LayoutDashboard },
   { label: "Leads", route: "/leads", icon: Users },
   {
     label: "Usuarios",
