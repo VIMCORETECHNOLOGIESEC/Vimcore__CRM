@@ -20,3 +20,14 @@ if (typeof Element !== "undefined") {
   Element.prototype.releasePointerCapture ??= () => {};
   Element.prototype.scrollIntoView ??= () => {};
 }
+
+// jsdom tampoco implementa `ResizeObserver` -- lo usa `cmdk` (combobox de
+// Responsable, F3) para medir el alto de la lista filtrada. Mismo criterio
+// que el polyfill de arriba: limitación conocida de jsdom, no de la app.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

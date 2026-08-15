@@ -13,6 +13,12 @@ import { LeadsFiltros } from "./LeadsFiltros";
 import { LeadsTable } from "./LeadsTable";
 import { useAssignLeadsMasivo, useLeads } from "./useLeads";
 
+/**
+ * Sin selector de tamaño de página todavía (pendiente de aprobación del
+ * usuario: `<Select>` "Leads por página" 10/25/50/100 junto a
+ * Anterior/Siguiente). Ver nota INTEGRACION-BACKEND en
+ * `leads.api.ts::LeadsQueryParams.porPagina`.
+ */
 const LEADS_POR_PAGINA = 10;
 
 /**

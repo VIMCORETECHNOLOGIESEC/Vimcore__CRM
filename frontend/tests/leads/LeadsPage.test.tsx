@@ -204,6 +204,7 @@ describe("LeadsPage — filtros combinables y búsqueda", () => {
     renderLeadsPage();
     await screen.findByText("Roberto Salazar");
 
+    await user.click(screen.getByRole("button", { name: /Filtros/ }));
     await user.click(screen.getByRole("combobox", { name: "Etapa" }));
     await user.click(await screen.findByRole("option", { name: "Venta" }));
 

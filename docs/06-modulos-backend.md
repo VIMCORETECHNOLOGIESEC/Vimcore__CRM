@@ -105,6 +105,14 @@ persiste con marca de dato incompleto.
 
 - [ ] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
       responsable, rango de fechas, estado de SLA), paginación y orden
+      > **Pendiente de aprobación (frontend, `dev-front`):** agregar un
+      > selector "Leads por página" (10/25/50/100 fijo, sin input libre) en
+      > `LeadsPage.tsx`. `porPagina` ya viaja en el contrato
+      > (`leads.api.ts::LeadsQueryParams`) pero hoy el frontend siempre manda
+      > 10. Cuando se implemente este endpoint, validar `porPagina` contra
+      > ese mismo whitelist acotado del lado del servidor -- no confiar en
+      > que el cliente respete el límite, para no permitir páginas
+      > arbitrariamente grandes.
 - [ ] Filtrado automático por rol: asesor y vendedor solo ven su cartera
 - [ ] `GET /api/v1/leads/:id` con verificación de acceso
 - [ ] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio

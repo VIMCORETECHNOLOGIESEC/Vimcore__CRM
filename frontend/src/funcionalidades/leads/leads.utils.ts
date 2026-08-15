@@ -1,4 +1,10 @@
 import type { EstadoSla, EtapaLead, Lead, RedSocial, ResponsableLead, SemaforoLead } from "@/tipos/lead";
+import {
+  ESTADO_SLA_ETIQUETAS,
+  ETAPA_ETIQUETAS,
+  RED_SOCIAL_ETIQUETAS,
+  SEMAFORO_ETIQUETAS,
+} from "./catalogos";
 import type { LeadsQueryParams } from "./leads.api";
 
 /**
@@ -65,4 +71,62 @@ export function buildLeadsQueryParams(
   if (filtros.fechaHasta) params.fechaHasta = filtros.fechaHasta;
 
   return params;
+}
+
+export interface FiltroActivo {
+  campo: keyof LeadsFiltrosState;
+  etiqueta: string;
+  valorLegible: string;
+}
+
+/** Orden fijo de campos filtrables, usado para construir los chips sin riesgo de duplicados. */
+const CAMPOS_FILTRO_ACTIVO: { campo: keyof LeadsFiltrosState; etiqueta: string }[] = [
+  { campo: "busqueda", etiqueta: "Búsqueda" },
+  { campo: "etapa", etiqueta: "Etapa" },
+  { campo: "semaforo", etiqueta: "Semáforo" },
+  { campo: "redSocial", etiqueta: "Red social" },
+  { campo: "campaniaId", etiqueta: "Campaña" },
+  { campo: "responsableId", etiqueta: "Responsable" },
+  { campo: "estadoSla", etiqueta: "Estado de SLA" },
+  { campo: "fechaDesde", etiqueta: "Ingreso desde" },
+  { campo: "fechaHasta", etiqueta: "Ingreso hasta" },
+];
+
+function formatFechaCorta(iso: string): string {
+  const [anio, mes, dia] = iso.split("-");
+  return `${dia}/${mes}/${anio}`;
+}
+
+/**
+ * Construye la lista de chips de filtros activos, un elemento por campo
+ * (nunca más de uno), iterando `CAMPOS_FILTRO_ACTIVO` una sola vez: el "sin
+ * duplicados" queda garantizado por construcción, no por una guarda ad hoc.
+ */
+export function buildFiltrosActivos(
+  filtros: LeadsFiltrosState,
+  campanias: { id: string; nombre: string }[],
+  responsables: { id: string; nombre: string }[],
+): FiltroActivo[] {
+  const resolver: Record<keyof LeadsFiltrosState, () => string | null> = {
+    busqueda: () => (filtros.busqueda !== "" ? filtros.busqueda : null),
+    etapa: () => (filtros.etapa !== FILTRO_TODOS ? ETAPA_ETIQUETAS[filtros.etapa] : null),
+    semaforo: () => (filtros.semaforo !== FILTRO_TODOS ? SEMAFORO_ETIQUETAS[filtros.semaforo] : null),
+    redSocial: () => (filtros.redSocial !== FILTRO_TODOS ? RED_SOCIAL_ETIQUETAS[filtros.redSocial] : null),
+    campaniaId: () =>
+      filtros.campaniaId !== FILTRO_TODOS
+        ? (campanias.find((c) => c.id === filtros.campaniaId)?.nombre ?? filtros.campaniaId)
+        : null,
+    responsableId: () =>
+      filtros.responsableId !== FILTRO_TODOS
+        ? (responsables.find((r) => r.id === filtros.responsableId)?.nombre ?? filtros.responsableId)
+        : null,
+    estadoSla: () => (filtros.estadoSla !== FILTRO_TODOS ? ESTADO_SLA_ETIQUETAS[filtros.estadoSla] : null),
+    fechaDesde: () => (filtros.fechaDesde !== "" ? formatFechaCorta(filtros.fechaDesde) : null),
+    fechaHasta: () => (filtros.fechaHasta !== "" ? formatFechaCorta(filtros.fechaHasta) : null),
+  };
+
+  return CAMPOS_FILTRO_ACTIVO.flatMap(({ campo, etiqueta }) => {
+    const valorLegible = resolver[campo]();
+    return valorLegible !== null ? [{ campo, etiqueta, valorLegible }] : [];
+  });
 }

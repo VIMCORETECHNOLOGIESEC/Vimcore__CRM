@@ -19,6 +19,14 @@ import { getResponsable } from "./leads.utils";
 export interface LeadsQueryParams {
   /** 1-based. */
   pagina: number;
+  /**
+   * INTEGRACION-BACKEND: hoy el frontend manda siempre `LEADS_POR_PAGINA`
+   * (10, fijo, `LeadsPage.tsx`) -- no hay selector de tamaño de página
+   * todavía. Si se agrega un `<Select>` "Leads por página" (10/25/50/100,
+   * decisión pendiente de aprobación), `GET /api/v1/leads` (M5) debe validar
+   * `porPagina` contra ese mismo whitelist acotado (nunca un entero libre
+   * sin tope) para no permitir que el cliente pida una página gigante.
+   */
   porPagina: number;
   /** Nombre, teléfono o correo (docs/07 F3, "Búsqueda"). */
   busqueda?: string;

@@ -214,6 +214,33 @@ del producto.
 > como opción renderizada en vez de desaparecer (si no, un filtro aplicado
 > se "esfumaría" solo). Test dedicado en `tests/leads/LeadsFiltros.test.tsx`.
 
+> **Actualización (rediseño de la barra de filtros, dev-front):**
+> `LeadsFiltros.tsx` reorganiza los filtros avanzados detrás de un botón
+> "Filtros" (`SlidersHorizontal`) que abre un `Popover` anclado debajo del
+> botón (grid de 2 columnas, `side="bottom"` forzado con
+> `avoidCollisions={false}` porque el Header de la app es fijo y voltearlo
+> hacia arriba lo cortaría) -- la card principal solo muestra la búsqueda y
+> ese botón, con un `Badge` que cuenta los filtros avanzados activos (etapa,
+> semáforo, red social, campaña, responsable, estado de SLA, rango de
+> fechas; la búsqueda no cuenta para el badge). Debajo, una fila responsiva
+> (`flex flex-wrap`) de chips muestra cada campo activo -- incluida la
+> búsqueda -- con una "×" para quitarlo individualmente, más un ícono
+> `Trash2` que limpia todos los filtros de una vez (`FILTROS_LEADS_VACIOS`);
+> la lista de chips se construye iterando una sola vez el conjunto fijo de
+> campos (`leads.utils.ts::buildFiltrosActivos`), así que nunca hay más de
+> un chip por campo. El filtro de Responsable pasó de `<Select>` a un
+> combobox buscable (`Popover` + `Command` de shadcn, componentes agregados
+> en este cambio junto con la dependencia nueva `cmdk`) que filtra por
+> nombre y muestra un máximo de 5 coincidencias, con "Todos los
+> responsables" fijo como primera opción -- vive anidado dentro del
+> `Popover` de filtros, y Radix maneja ese anidamiento sin conflictos
+> (abrir/cerrar el combobox interno no afecta al popover padre). Test
+> dedicado actualizado en `tests/leads/LeadsFiltros.test.tsx` (incluye abrir
+> el Popover antes de interactuar con los campos, el tope de 5 del combobox
+> y los chips); se agregó también un polyfill de `ResizeObserver` en
+> `tests/setup.ts` (jsdom no lo implementa y `cmdk` lo necesita). `tsc
+> --noEmit` y `vite build` sin errores.
+
 - [x] Tabla con columnas: cliente, teléfono, red social, campaña, etapa,
       semáforo, responsable, estado de SLA, fecha de ingreso
 - [x] Indicador de semáforo con color **y** etiqueta de texto

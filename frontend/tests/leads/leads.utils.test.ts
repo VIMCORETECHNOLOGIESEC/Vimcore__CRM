@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFiltrosActivos,
   buildLeadsQueryParams,
   FILTROS_LEADS_VACIOS,
   getResponsable,
@@ -86,5 +87,56 @@ describe("buildLeadsQueryParams", () => {
   it("una búsqueda de solo espacios se trata como vacía", () => {
     const params = buildLeadsQueryParams({ ...FILTROS_LEADS_VACIOS, busqueda: "   " }, 1, 10);
     expect(params.busqueda).toBeUndefined();
+  });
+});
+
+describe("buildFiltrosActivos", () => {
+  const campanias = [{ id: "camp-1", nombre: "Campaña Verano" }];
+  const responsables = [{ id: "asesor-1", nombre: "Marta Herrera" }];
+
+  it("con filtros vacíos, no devuelve ningún chip", () => {
+    expect(buildFiltrosActivos(FILTROS_LEADS_VACIOS, campanias, responsables)).toEqual([]);
+  });
+
+  it("devuelve exactamente un chip por campo activo, en el orden fijo de campos", () => {
+    const filtros: LeadsFiltrosState = {
+      ...FILTROS_LEADS_VACIOS,
+      busqueda: "roberto",
+      etapa: "CONTACTADO",
+      fechaDesde: "2026-08-01",
+    };
+
+    expect(buildFiltrosActivos(filtros, campanias, responsables)).toEqual([
+      { campo: "busqueda", etiqueta: "Búsqueda", valorLegible: "roberto" },
+      { campo: "etapa", etiqueta: "Etapa", valorLegible: "Contactado" },
+      { campo: "fechaDesde", etiqueta: "Ingreso desde", valorLegible: "01/08/2026" },
+    ]);
+  });
+
+  it("resuelve campaña y responsable por nombre a partir de sus catálogos", () => {
+    const filtros: LeadsFiltrosState = {
+      ...FILTROS_LEADS_VACIOS,
+      campaniaId: "camp-1",
+      responsableId: "asesor-1",
+    };
+
+    expect(buildFiltrosActivos(filtros, campanias, responsables)).toEqual([
+      { campo: "campaniaId", etiqueta: "Campaña", valorLegible: "Campaña Verano" },
+      { campo: "responsableId", etiqueta: "Responsable", valorLegible: "Marta Herrera" },
+    ]);
+  });
+
+  it("nunca devuelve más de un chip por campo", () => {
+    const filtros: LeadsFiltrosState = {
+      ...FILTROS_LEADS_VACIOS,
+      etapa: "CITA",
+      semaforo: "VERDE",
+      redSocial: "FACEBOOK",
+      estadoSla: "EN_RIESGO",
+    };
+
+    const chips = buildFiltrosActivos(filtros, campanias, responsables);
+    const campos = chips.map((c) => c.campo);
+    expect(new Set(campos).size).toBe(campos.length);
   });
 });
