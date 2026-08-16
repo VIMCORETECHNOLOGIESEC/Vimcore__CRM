@@ -127,7 +127,7 @@ export function CierreVentaForm({ leadId }: CierreVentaFormProps) {
           <Textarea id="observaciones" {...register("observaciones")} />
         </div>
 
-        <Button type="submit" className="w-fit">
+        <Button type="submit" variant="success" className="w-fit">
           Cerrar como Venta
         </Button>
       </form>

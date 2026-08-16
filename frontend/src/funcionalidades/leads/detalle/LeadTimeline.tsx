@@ -133,7 +133,7 @@ export function LeadTimeline({ lead }: LeadTimelineProps) {
           <span className="mr-1 text-sm font-medium text-foreground">Cerrar lead</span>
           <Button
             size="sm"
-            variant={cierreAbierto === "VENTA" ? "secondary" : "default"}
+            variant={cierreAbierto === "VENTA" ? "secondary" : "success"}
             onClick={() => setCierreAbierto((actual) => (actual === "VENTA" ? null : "VENTA"))}
           >
             Cerrar como venta

@@ -34,6 +34,11 @@
     --border: #E8E8E8;
     --input: #E8E8E8;
     --ring: #111113;
+    /* Token de éxito para acciones (ej. cierre de venta), separado de
+       --semaforo-frio: ese verde está reservado al chip de semáforo con
+       etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
+    --success: #16A34A;
+    --success-foreground: #FFFFFF;
     --chart-1: #4F46E5;
     --chart-2: #2563EB;
     --chart-3: #0D9488;
