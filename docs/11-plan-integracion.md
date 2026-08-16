@@ -29,9 +29,25 @@ Marca cada casilla al reemplazar el mock correspondiente por la llamada real
 
 ## Fase 1 — Leads (F3 + F4 → M5/M6/M7) — [issue #6](https://github.com/DinnZart/crm_comercial/issues/6)
 
-Cero trabajo de backend: los tres módulos que sostienen esta fase ya están
-completos y probados (312 tests backend). Es puro reemplazo de mock por
-llamada real en el frontend.
+> **Corrección (exploración SDD, `sdd/integracion-leads-f3-f4/explore`):** la
+> premisa original de "cero trabajo de backend" era incorrecta.
+> `GET /leads`/`GET /leads/:id` devuelven el `Lead` plano (sin `include` de
+> Prisma) — sin nombre/teléfono/correo del cliente ni nombre de
+> asesor/vendedor, solo IDs. Tampoco existe `busqueda` en
+> `listLeadsQuerySchema`, y `GET /usuarios` es exclusivo de
+> `ADMINISTRADOR` (bloquea a Supervisor como catálogo de responsables,
+> pese a que M6/DD10 lo autoriza a elegir destino explícito). Se decidió
+> una rebanada chica de backend (`include` de relaciones + filtro
+> `busqueda` + `GET /usuarios/responsables` accesible a Admin/Supervisor)
+> antes de integrar el frontend, para no degradar la UX de F3/F4.
+
+- [ ] Backend: agregar `include: { cliente, asesor, vendedor }` en
+      `lead.repository.ts::findById/findMany`, mapear al shape que ya
+      espera el frontend
+- [ ] Backend: agregar `busqueda` opcional (ILIKE sobre datos de cliente) a
+      `listLeadsQuerySchema`
+- [ ] Backend: `GET /usuarios/responsables?rol=` accesible a
+      Admin/Supervisor, devuelve solo `{id, nombre, rol}[]`
 
 - [ ] `frontend/src/funcionalidades/leads/leads.api.ts::fetchLeadsApi` →
       `httpClient.get<LeadsResponse>("/leads", { params })`
