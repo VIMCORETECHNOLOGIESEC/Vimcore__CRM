@@ -78,6 +78,11 @@ const VENDEDORES = [
 const CAMPANIA_VERANO = { id: "camp-1", nombre: "Verano 2026" };
 const CAMPANIA_LANZAMIENTO = { id: "camp-2", nombre: "Lanzamiento Q3" };
 const CAMPANIA_CREDITOS = { id: "camp-3", nombre: "Campaña Créditos" };
+/** Nombre deliberadamente largo (lead-11) para probar el truncado + tooltip de `campania` en `LeadsTable.tsx`. */
+const CAMPANIA_EXPANSION_REGIONAL = {
+  id: "camp-4",
+  nombre: "Campaña de Expansión Regional Costa-Sierra Segundo Semestre 2026",
+};
 
 const CUENTA_ADS_PRINCIPAL = { id: "cuenta-1", nombre: "Cuenta Ads Principal" };
 const CUENTA_ADS_CREDITOS = { id: "cuenta-2", nombre: "Cuenta Ads Créditos" };
@@ -339,6 +344,35 @@ export const LEADS_MOCK: Lead[] = [
     ingresadoEn: hoursAgo(20),
     cerradoEn: null,
   },
+  {
+    id: "lead-11",
+    // Nombre, correo y campaña deliberadamente largos + `origen: "REINGRESO"`
+    // (chip "Reingreso"): caso de prueba para el truncado + tooltip de
+    // `LeadsTable.tsx` -- confirma que el chip sigue visible/sin achicarse
+    // (`shrink-0`) cuando el nombre de al lado se trunca.
+    cliente: {
+      id: "cliente-11",
+      nombre: "Ana Sofía Alejandra Betancourt Quiñónez de la Torre",
+      telefonoOriginal: "0991234599",
+      telefonoNormalizado: "+593991234599",
+      correoPrincipal:
+        "ana.sofia.alejandra.betancourt.quinonez.delatorre@corporativo-financiero-ejemplo.com",
+    },
+    campania: CAMPANIA_EXPANSION_REGIONAL,
+    origen: "REINGRESO",
+    redSocial: "FACEBOOK",
+    etapa: "NUEVO",
+    semaforo: "AMARILLO",
+    puntuacion: 50,
+    // asesor-2 (no asesor-1): evita perturbar los conteos de cartera activa
+    // que `leads.api.test.ts`/`usuarios.api.test.ts` fijan como valor exacto
+    // para asesor-1.
+    asesor: ASESORES[1],
+    vendedor: null,
+    slaInicioEn: hoursAgo(2),
+    ingresadoEn: hoursAgo(2),
+    cerradoEn: null,
+  },
 ];
 
 function matchesBusqueda(lead: Lead, busqueda: string): boolean {
@@ -478,7 +512,7 @@ export function getCatalogoResponsables(
 }
 
 export function getCatalogoCampanias(): { id: string; nombre: string }[] {
-  return [CAMPANIA_VERANO, CAMPANIA_LANZAMIENTO, CAMPANIA_CREDITOS];
+  return [CAMPANIA_VERANO, CAMPANIA_LANZAMIENTO, CAMPANIA_CREDITOS, CAMPANIA_EXPANSION_REGIONAL];
 }
 
 /**

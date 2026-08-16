@@ -27,6 +27,25 @@ function formatFechaIngreso(iso: string): string {
 
 const columnHelper = createColumnHelper<Lead>();
 
+/**
+ * Anchos fijos por columna (`table-fixed`, ver el `<Table>` de abajo) --
+ * mismo criterio que `usuarios/UsuariosTable.tsx`: Cliente y Campaña son
+ * texto libre sin tope y se reparten el resto con `truncate` + `Tooltip`;
+ * el resto tiene contenido acotado (catálogo, badge o formato fijo), así que
+ * alcanza un ancho chico y determinístico.
+ */
+const COLUMN_WIDTHS: Record<string, string> = {
+  cliente: "w-[26%]",
+  telefono: "w-32",
+  redSocial: "w-28",
+  campania: "w-[18%]",
+  etapa: "w-28",
+  semaforo: "w-32",
+  responsable: "w-32",
+  sla: "w-36",
+  ingreso: "w-36",
+};
+
 interface LeadsTableProps {
   leads: Lead[];
   mostrarColumnaResponsable: boolean;
@@ -58,18 +77,23 @@ export function LeadsTable({
         id: "cliente",
         header: "Cliente",
         cell: ({ row }) => (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <Link
-                to={`/leads/${row.original.id}`}
-                className="font-medium text-foreground underline-offset-2 hover:underline"
-              >
-                {row.original.cliente.nombre}
-              </Link>
+          <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to={`/leads/${row.original.id}`}
+                    className="min-w-0 truncate font-medium text-foreground underline-offset-2 hover:underline"
+                  >
+                    {row.original.cliente.nombre}
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>{row.original.cliente.nombre}</TooltipContent>
+              </Tooltip>
               {row.original.origen === "REINGRESO" ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
                       <RotateCcw className="size-2.5" aria-hidden="true" />
                       Reingreso
                     </span>
@@ -82,9 +106,14 @@ export function LeadsTable({
               ) : null}
             </div>
             {row.original.cliente.correoPrincipal ? (
-              <span className="text-xs text-muted-foreground">
-                {row.original.cliente.correoPrincipal}
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {row.original.cliente.correoPrincipal}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{row.original.cliente.correoPrincipal}</TooltipContent>
+              </Tooltip>
             ) : null}
           </div>
         ),
@@ -102,6 +131,17 @@ export function LeadsTable({
       columnHelper.accessor((lead) => lead.campania?.nombre ?? "—", {
         id: "campania",
         header: "Campaña",
+        cell: ({ getValue }) => {
+          const nombre = getValue();
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="block truncate">{nombre}</span>
+              </TooltipTrigger>
+              <TooltipContent>{nombre}</TooltipContent>
+            </Tooltip>
+          );
+        },
       }),
       columnHelper.accessor((lead) => lead.etapa, {
         id: "etapa",
@@ -122,7 +162,10 @@ export function LeadsTable({
     const responsable = columnHelper.display({
       id: "responsable",
       header: "Responsable",
-      cell: ({ row }) => getResponsable(row.original)?.nombre ?? "Sin asignar",
+      cell: ({ row }) => {
+        const nombre = getResponsable(row.original)?.nombre ?? "Sin asignar";
+        return <span className="block truncate">{nombre}</span>;
+      },
     });
 
     const sla = columnHelper.display({
@@ -152,7 +195,7 @@ export function LeadsTable({
   const table = useReactTable({ data: leads, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
-    <Table>
+    <Table className="table-fixed">
       <TableHeader>
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
@@ -166,7 +209,7 @@ export function LeadsTable({
               </TableHead>
             ) : null}
             {headerGroup.headers.map((header) => (
-              <TableHead key={header.id}>
+              <TableHead key={header.id} className={COLUMN_WIDTHS[header.id]}>
                 {flexRender(header.column.columnDef.header, header.getContext())}
               </TableHead>
             ))}
@@ -189,7 +232,7 @@ export function LeadsTable({
               </TableCell>
             ) : null}
             {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id}>
+              <TableCell key={cell.id} className={COLUMN_WIDTHS[cell.column.id]}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>
             ))}
