@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLES_USUARIO } from "@/tipos/usuario";
 import { ROL_ETIQUETAS } from "./catalogos";
-import type { CrearUsuarioInput } from "./usuarios.api";
+import type { CreateUsuarioInput } from "./usuarios.api";
 
 /**
  * Sin schema equivalente en `packages/schemas` para reutilizar completo:
@@ -39,7 +39,7 @@ type CrearUsuarioValues = z.infer<typeof crearUsuarioSchema>;
 interface CrearUsuarioDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (valores: CrearUsuarioInput) => void;
+  onSubmit: (valores: CreateUsuarioInput) => void;
   enviando: boolean;
 }
 

@@ -21,6 +21,35 @@ export const updateUsuarioBodySchema = createUsuarioBodySchema
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
+/**
+ * F7 (admin de usuarios): mismo patrón de `leads.schema.ts::listLeadsQuerySchema`
+ * — `z.object` descarta claves desconocidas del query string, `pagina`/`limite`
+ * comparten el mismo tope (100) que Leads. Orden por defecto: `creadoEn`, el
+ * mismo campo que ya usaba `usuario.repository.findAllUsers` (`orderBy:
+ * { creadoEn: "asc" }") antes de este cambio — no hay otro campo de fecha en
+ * el modelo `Usuario` y cambiar el default de orden sería una regresión
+ * silenciosa para el listado ya existente.
+ */
+export const listUsuariosQuerySchema = z.object({
+  // Texto libre contra `nombre` O `correo` (ILIKE — ver `usuarios.service.ts`:
+  // ambos campos necesitan `mode: "insensitive"` explícito en el `where`,
+  // incluido `correo` pese a ser `@db.Citext`, porque `contains` de Prisma
+  // sin `mode` no usa el camino que activa la insensibilidad de citext).
+  busqueda: z.string().trim().min(1).optional(),
+  rol: z.enum(RolUsuario).optional(),
+  // `z.coerce.boolean()` NO sirve acá: `Boolean("false")` es `true` — un
+  // `?activo=false` literal se leería como `true`. `z.enum` + `transform`
+  // acepta solo los dos literales de texto que puede mandar un query string.
+  activo: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  pagina: z.coerce.number().int().min(1).default(1),
+  limite: z.coerce.number().int().min(1).max(100).default(20),
+  direccion: z.enum(["asc", "desc"]).default("asc"),
+});
+
 export type CreateUsuarioBody = z.infer<typeof createUsuarioBodySchema>;
 export type UpdateUsuarioBody = z.infer<typeof updateUsuarioBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
+export type ListUsuariosQuery = z.infer<typeof listUsuariosQuerySchema>;

@@ -3,8 +3,8 @@
  *
  * Cobertura de TDD (AGENTS.md §5): este módulo contiene lógica no trivial
  * (inyección de JWT, cola de refresco ante 401, deduplicación de refrescos
- * concurrentes, mapeo de errores, persistencia de sesión) -- ver
- * `frontend/tests/httpClient.test.ts`.
+ * concurrentes, mapeo de errores, persistencia de sesión, serialización de
+ * query params) -- ver `frontend/tests/httpClient.test.ts`.
  *
  * Contrato verificado contra `backend/src/controllers/auth.controller.ts`,
  * `backend/src/services/auth.service.ts` y
@@ -167,8 +167,18 @@ export async function restoreSession(): Promise<boolean> {
   return newAccessToken !== null;
 }
 
+/**
+ * Valores admitidos en `RequestOptions.params` -- `undefined` se omite (no
+ * manda `campo=undefined`), el resto se serializa con `String()` (así un
+ * booleano como `activo: true` viaja como `"true"`, el formato exacto que
+ * espera `GET /usuarios` -- ver `usuarios.api.ts::UsuariosQueryParams`).
+ */
+export type QueryParamValue = string | number | boolean | undefined;
+
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
+  /** Query params de un GET, serializados a `?clave=valor` (F7, listado con filtro y paginación real). */
+  params?: Record<string, QueryParamValue>;
   /** No adjunta ni espera `Authorization` (login, refresh). */
   skipAuth?: boolean;
   /** Uso interno: evita reintentar refrescos infinitamente. */
@@ -180,8 +190,19 @@ interface ApiErrorBody {
   message?: string;
 }
 
+function buildQueryString(params?: Record<string, QueryParamValue>): string {
+  if (!params) return "";
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+    searchParams.set(key, String(value));
+  }
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuth, isRetry, headers, ...rest } = options;
+  const { body, skipAuth, isRetry, headers, params, ...rest } = options;
 
   const finalHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -193,7 +214,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, {
       ...rest,
       headers: finalHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,

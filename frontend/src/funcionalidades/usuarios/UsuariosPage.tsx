@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
@@ -11,7 +11,14 @@ import { BajaUsuarioDialog } from "./BajaUsuarioDialog";
 import { CrearUsuarioDialog } from "./CrearUsuarioDialog";
 import { EditarUsuarioDialog } from "./EditarUsuarioDialog";
 import { RestablecerPasswordDialog } from "./RestablecerPasswordDialog";
+import { UsuariosFiltros } from "./UsuariosFiltros";
 import { UsuariosTable } from "./UsuariosTable";
+import {
+  FILTRO_TODOS,
+  FILTROS_USUARIOS_VACIOS,
+  buildUsuariosQueryParams,
+  type UsuariosFiltrosState,
+} from "./usuarios.utils";
 import {
   useCreateUsuario,
   useDeactivateUsuario,
@@ -20,19 +27,32 @@ import {
   useUsuarios,
 } from "./useUsuarios";
 
-const USUARIOS_POR_ESQUELETO = 5;
+/**
+ * Sin selector de tamaño de página todavía, mismo criterio que
+ * `leads/LeadsPage.tsx::LEADS_POR_PAGINA`.
+ */
+const USUARIOS_POR_PAGINA = 10;
 
 /**
  * Administración de usuarios (F7, docs/07 -- solo administrador, ruta
  * protegida en `router.tsx`). Backend real para listado/alta/edición/
- * restablecimiento de contraseña/baja lógica (`usuarios.api.ts`); la
+ * restablecimiento de contraseña/baja lógica (`usuarios.api.ts`), con
+ * filtro (búsqueda, rol, estado) y paginación reales desde el backend; la
  * columna "carga activa de leads" y la reasignación obligatoria de cartera
  * en la baja son mock -- ver el comentario de brecha ahí.
  */
 export function UsuariosPage() {
   usePageHeader({ title: "Usuarios" });
 
-  const { data, isLoading, isError, error, refetch } = useUsuarios();
+  const [filtros, setFiltros] = useState<UsuariosFiltrosState>(FILTROS_USUARIOS_VACIOS);
+  const [pagina, setPagina] = useState(1);
+
+  const params = useMemo(
+    () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA),
+    [filtros, pagina],
+  );
+
+  const { data, isLoading, isError, error, refetch } = useUsuarios(params);
   const crear = useCreateUsuario();
   const actualizar = useUpdateUsuario();
   const restablecer = useResetPassword();
@@ -43,6 +63,20 @@ export function UsuariosPage() {
   const [usuarioParaPassword, setUsuarioParaPassword] = useState<AdminUsuario | null>(null);
   const [usuarioParaBaja, setUsuarioParaBaja] = useState<AdminUsuario | null>(null);
 
+  function updateFiltros(nuevos: UsuariosFiltrosState) {
+    setFiltros(nuevos);
+    setPagina(1);
+  }
+
+  const hayFiltrosActivos =
+    filtros.busqueda !== "" || filtros.rol !== FILTRO_TODOS || filtros.estado !== "TODOS";
+
+  const usuarios = data?.users ?? [];
+  const total = data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(total / USUARIOS_POR_PAGINA));
+  const desde = total === 0 ? 0 : (pagina - 1) * USUARIOS_POR_PAGINA + 1;
+  const hasta = Math.min(pagina * USUARIOS_POR_PAGINA, total);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
@@ -52,22 +86,61 @@ export function UsuariosPage() {
         </Button>
       </div>
 
+      <UsuariosFiltros filtros={filtros} onChange={updateFiltros} />
+
       {isLoading ? (
-        <LoadingState rows={USUARIOS_POR_ESQUELETO} rowHeight="h-12" />
+        <LoadingState rows={USUARIOS_POR_PAGINA} rowHeight="h-12" />
       ) : isError ? (
         <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
-      ) : !data || data.length === 0 ? (
+      ) : usuarios.length === 0 ? (
         <EmptyState
-          title="Todavía no hay usuarios registrados"
-          description="Creá el primero con el botón «Nuevo usuario»."
+          title={
+            hayFiltrosActivos
+              ? "No hay usuarios que coincidan con estos filtros"
+              : "Todavía no hay usuarios registrados"
+          }
+          description={
+            hayFiltrosActivos
+              ? "Probá ajustar o limpiar los filtros aplicados."
+              : "Creá el primero con el botón «Nuevo usuario»."
+          }
         />
       ) : (
-        <UsuariosTable
-          usuarios={data}
-          onEditar={setUsuarioEnEdicion}
-          onRestablecerPassword={setUsuarioParaPassword}
-          onDarDeBaja={setUsuarioParaBaja}
-        />
+        <>
+          <UsuariosTable
+            usuarios={usuarios}
+            onEditar={setUsuarioEnEdicion}
+            onRestablecerPassword={setUsuarioParaPassword}
+            onDarDeBaja={setUsuarioParaBaja}
+          />
+
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              Mostrando {desde}–{hasta} de {total} usuarios
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagina <= 1}
+                onClick={() => setPagina((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span>
+                Página {pagina} de {totalPaginas}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagina >= totalPaginas}
+                onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </>
       )}
 
       {dialogAltaAbierto ? (

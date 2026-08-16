@@ -680,9 +680,31 @@ Solo administrador.
 > Fuera de alcance: conexión real de "carga activa de leads" y
 > reasignación a un backend de leads (no existe, M5) y reactivación de
 > usuario (no hay endpoint, ni pedido por el checklist).
+>
+> **Actualización (filtro y paginación real del listado):** el listado
+> traía TODOS los usuarios de una sola vez sin filtro ni paginación -- se
+> volvía "extremadamente extenso" en la práctica. `GET /api/v1/usuarios` se
+> extendió en el mismo worktree (fuera del alcance de este agente, hecho
+> aparte) con `busqueda` (nombre O correo, insensible a mayúsculas), `rol`,
+> `activo`, `pagina`/`limite` y `direccion`, devolviendo
+> `{ users, total, pagina, limite }`. El frontend replica el mismo patrón ya
+> usado en F3 (`leads/LeadsFiltros.tsx`, `leads/LeadsPage.tsx`,
+> `leads.utils.ts::buildLeadsQueryParams`): `usuarios.utils.ts` (nuevo,
+> `UsuariosFiltrosState`/`buildUsuariosQueryParams`, con test dedicado),
+> `UsuariosFiltros.tsx` (nuevo -- búsqueda + `<Select>` de rol y de estado,
+> sin el `Popover` de filtros avanzados de Leads: solo dos filtros extra no
+> lo justifican), y controles Anterior/Siguiente + "Mostrando X–Y de Z
+> usuarios" en `UsuariosPage.tsx`, igual que `LeadsPage.tsx`. Cambiar
+> cualquier filtro reinicia la página a 1. `httpClient.ts` ganó soporte real
+> de `params` (`get(path, { params })` → query string, con test dedicado en
+> `httpClient.test.ts`) -- antes solo existía como comentario aspiracional
+> en varios mocks (`leads.api.ts`, `bridges.api.ts`, `metricas.api.ts`), acá
+> se implementó por primera vez porque F7 es el único módulo que pega contra
+> un backend real hoy.
 
 - [x] Listado con rol, estado y carga activa de leads (carga activa: mock
-      de F3, ver nota de brecha arriba)
+      de F3, ver nota de brecha arriba; filtro y paginación real desde F7,
+      ver nota de actualización arriba)
 - [x] Alta y edición de usuario
 - [x] Baja lógica con reasignación obligatoria de la cartera activa
       (reasignación: mock de F3, ver nota de brecha arriba; la baja lógica

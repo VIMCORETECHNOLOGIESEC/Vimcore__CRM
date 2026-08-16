@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   createUsuarioApi,
@@ -7,15 +7,24 @@ import {
   reassignCarteraActiva,
   resetPasswordApi,
   updateUsuarioApi,
-  type ActualizarUsuarioInput,
-  type CrearUsuarioInput,
+  type UpdateUsuarioInput,
+  type CreateUsuarioInput,
+  type UsuariosQueryParams,
 } from "./usuarios.api";
 
 const USUARIOS_QUERY_KEY = "usuarios";
 
-/** Listado de usuarios (F7). Backend real -- ver `usuarios.api.ts`. */
-export function useUsuarios() {
-  return useQuery({ queryKey: [USUARIOS_QUERY_KEY], queryFn: fetchUsuariosApi });
+/**
+ * Listado de usuarios paginado y filtrado (F7). Backend real -- ver
+ * `usuarios.api.ts`. `keepPreviousData` evita el parpadeo a "cargando" al
+ * cambiar de página o filtro, mismo criterio que `leads/useLeads.ts::useLeads`.
+ */
+export function useUsuarios(params: UsuariosQueryParams) {
+  return useQuery({
+    queryKey: [USUARIOS_QUERY_KEY, params],
+    queryFn: () => fetchUsuariosApi(params),
+    placeholderData: keepPreviousData,
+  });
 }
 
 /**
@@ -28,7 +37,7 @@ export function useUsuarios() {
 export function useCreateUsuario() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: CrearUsuarioInput) => createUsuarioApi(input),
+    mutationFn: (input: CreateUsuarioInput) => createUsuarioApi(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
       toast.success("Usuario creado correctamente.");
@@ -40,7 +49,7 @@ export function useCreateUsuario() {
 export function useUpdateUsuario() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: ActualizarUsuarioInput }) =>
+    mutationFn: ({ id, input }: { id: string; input: UpdateUsuarioInput }) =>
       updateUsuarioApi(id, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });

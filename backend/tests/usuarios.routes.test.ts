@@ -145,6 +145,125 @@ describe("GET /api/v1/usuarios y GET /api/v1/usuarios/:id", () => {
   });
 });
 
+describe("GET /api/v1/usuarios — filtros y paginación", () => {
+  let filtroBusquedaId: string;
+
+  beforeAll(async () => {
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Filtro Buscable Ñandú",
+        correo: "filtro-buscable@integracion.test",
+        passwordHash: await hashPassword("clave-filtro-123456"),
+        rol: "SUPERVISOR",
+        activo: false,
+      },
+    });
+    filtroBusquedaId = usuario.id;
+  });
+
+  it("200 devuelve total/pagina/limite junto con users", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(Array.isArray(respuesta.body.users)).toBe(true);
+    expect(typeof respuesta.body.total).toBe("number");
+    expect(respuesta.body.pagina).toBe(1);
+    expect(respuesta.body.limite).toBe(20);
+  });
+
+  it("200 filtra por busqueda contra el nombre (insensible a mayúsculas)", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ busqueda: "buscable ñandú" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(1);
+    expect(respuesta.body.users[0].id).toBe(filtroBusquedaId);
+  });
+
+  it("200 filtra por busqueda contra el correo (correo es citext)", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ busqueda: "FILTRO-BUSCABLE@integracion.test" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(1);
+    expect(respuesta.body.users[0].id).toBe(filtroBusquedaId);
+  });
+
+  it("200 filtra por rol exacto", async () => {
+    // Combinado con `busqueda` para aislar el resultado a nuestro usuario de
+    // prueba — corriendo la suite completa puede haber otros SUPERVISOR
+    // creados por fixtures de otros archivos, y el `limite` por defecto (20)
+    // no garantiza que el nuestro caiga en la primera página.
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ rol: "SUPERVISOR", busqueda: "Filtro Buscable" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(1);
+    expect(respuesta.body.users[0].id).toBe(filtroBusquedaId);
+    expect(respuesta.body.users[0].rol).toBe("SUPERVISOR");
+  });
+
+  it("200 filtra por activo=false", async () => {
+    // Mismo aislamiento por `busqueda` que el test anterior (ver comentario).
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ activo: "false", busqueda: "Filtro Buscable" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(1);
+    expect(respuesta.body.users[0].id).toBe(filtroBusquedaId);
+    expect(respuesta.body.users[0].activo).toBe(false);
+  });
+
+  it("200 pagina el listado respetando limite", async () => {
+    const primeraPagina = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ pagina: 1, limite: 1 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(primeraPagina.status).toBe(200);
+    expect(primeraPagina.body.users).toHaveLength(1);
+    expect(primeraPagina.body.pagina).toBe(1);
+    expect(primeraPagina.body.limite).toBe(1);
+
+    const segundaPagina = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ pagina: 2, limite: 1 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(segundaPagina.status).toBe(200);
+    expect(segundaPagina.body.users).toHaveLength(1);
+    expect(segundaPagina.body.users[0].id).not.toBe(primeraPagina.body.users[0].id);
+  });
+
+  it("400 con pagina fuera de rango (menor a 1)", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ pagina: 0 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("400 con limite fuera de rango (mayor a 100)", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ limite: 101 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(400);
+  });
+});
+
 describe("PATCH /api/v1/usuarios/:id", () => {
   it("200 actualiza campos parciales sin exponer passwordHash", async () => {
     const respuesta = await request(app)

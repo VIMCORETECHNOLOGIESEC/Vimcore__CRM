@@ -1,8 +1,9 @@
-import type { RolUsuario } from "@prisma/client";
+import type { Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { hashPassword } from "../lib/password.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
-import type { AdminUserView, UpdateUserData } from "../repositories/usuario.repository.js";
+import type { AdminUsuarioView, UpdateUsuarioData } from "../repositories/usuario.repository.js";
+import type { ListUsuariosQuery } from "../schemas/usuarios.schema.js";
 
 function userNotFound(): AppError {
   return new AppError("usuario_no_encontrado", 404, "Usuario no encontrado");
@@ -21,14 +22,14 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
-export interface CreateUserInput {
+export interface CreateUsuarioInput {
   nombre: string;
   correo: string;
   password: string;
   rol: RolUsuario;
 }
 
-export interface UpdateUserInput {
+export interface UpdateUsuarioInput {
   nombre?: string;
   correo?: string;
   password?: string;
@@ -36,11 +37,11 @@ export interface UpdateUserInput {
 }
 
 /** Alta de usuario (D9: solo `ADMINISTRADOR` llega hasta acá vía `requireRole`). */
-export async function createUser(input: CreateUserInput): Promise<AdminUserView> {
+export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsuarioView> {
   const passwordHash = await hashPassword(input.password);
 
   try {
-    return await usuarioRepository.createUser({
+    return await usuarioRepository.createUsuario({
       nombre: input.nombre,
       correo: input.correo,
       passwordHash,
@@ -54,11 +55,53 @@ export async function createUser(input: CreateUserInput): Promise<AdminUserView>
   }
 }
 
-export async function findAllUsers(): Promise<AdminUserView[]> {
-  return usuarioRepository.findAllUsers();
+export interface FindUsuariosResult {
+  usuarios: AdminUsuarioView[];
+  total: number;
+  pagina: number;
+  limite: number;
 }
 
-export async function findUserById(id: string): Promise<AdminUserView> {
+/**
+ * F7 (admin de usuarios): mismo patrón de `leads.service.ts::buildWhere` +
+ * `findLeads` — `where` armado acá, paginación/orden resueltos por el
+ * repositorio con `skip`/`take`/`count` en paralelo.
+ */
+function buildWhere(query: ListUsuariosQuery): Prisma.UsuarioWhereInput {
+  const where: Prisma.UsuarioWhereInput = {};
+
+  if (query.busqueda) {
+    // Verificado empíricamente contra la BD de test: aunque `correo` es
+    // `@db.Citext` y un `LIKE` crudo en SQL ya es insensible a mayúsculas
+    // (el operador está sobrecargado por la extensión citext), el `contains`
+    // de Prisma SIN `mode: "insensitive"` NO usa ese camino — devuelve 0
+    // resultados con un patrón en mayúsculas. `mode: "insensitive"` es
+    // obligatorio en ambos campos, no solo en `nombre`.
+    where.OR = [
+      { nombre: { contains: query.busqueda, mode: "insensitive" } },
+      { correo: { contains: query.busqueda, mode: "insensitive" } },
+    ];
+  }
+
+  if (query.rol) where.rol = query.rol;
+  if (query.activo !== undefined) where.activo = query.activo;
+
+  return where;
+}
+
+export async function findUsuarios(query: ListUsuariosQuery): Promise<FindUsuariosResult> {
+  const where = buildWhere(query);
+
+  const { usuarios, total } = await usuarioRepository.findUsuarios(where, {
+    skip: (query.pagina - 1) * query.limite,
+    take: query.limite,
+    orderBy: { creadoEn: query.direccion },
+  });
+
+  return { usuarios, total, pagina: query.pagina, limite: query.limite };
+}
+
+export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
   const user = await usuarioRepository.findPublicById(id);
   if (!user) {
     throw userNotFound();
@@ -66,8 +109,8 @@ export async function findUserById(id: string): Promise<AdminUserView> {
   return user;
 }
 
-export async function updateUser(id: string, input: UpdateUserInput): Promise<AdminUserView> {
-  const data: UpdateUserData = {
+export async function updateUsuario(id: string, input: UpdateUsuarioInput): Promise<AdminUsuarioView> {
+  const data: UpdateUsuarioData = {
     nombre: input.nombre,
     correo: input.correo,
     rol: input.rol,
@@ -77,7 +120,7 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Ad
   }
 
   try {
-    const updated = await usuarioRepository.updateUser(id, data);
+    const updated = await usuarioRepository.updateUsuario(id, data);
     if (!updated) {
       throw userNotFound();
     }
@@ -90,9 +133,9 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Ad
   }
 }
 
-/** D3: baja lógica — ver `usuario.repository.deactivateUser` para la transacción. */
-export async function deactivateUser(id: string): Promise<void> {
-  const deactivated = await usuarioRepository.deactivateUser(id);
+/** D3: baja lógica — ver `usuario.repository.deactivateUsuario` para la transacción. */
+export async function deactivateUsuario(id: string): Promise<void> {
+  const deactivated = await usuarioRepository.deactivateUsuario(id);
   if (!deactivated) {
     throw userNotFound();
   }

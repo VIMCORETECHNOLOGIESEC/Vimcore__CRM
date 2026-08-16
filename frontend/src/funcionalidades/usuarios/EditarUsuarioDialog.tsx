@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLES_USUARIO, type AdminUsuario } from "@/tipos/usuario";
 import { ROL_ETIQUETAS } from "./catalogos";
-import type { ActualizarUsuarioInput } from "./usuarios.api";
+import type { UpdateUsuarioInput } from "./usuarios.api";
 
 /** Mismos campos que `CrearUsuarioDialog`, sin `password` -- ver `RestablecerPasswordDialog.tsx`. */
 const editarUsuarioSchema = z.object({
@@ -30,7 +30,7 @@ interface EditarUsuarioDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   usuario: AdminUsuario;
-  onSubmit: (valores: ActualizarUsuarioInput) => void;
+  onSubmit: (valores: UpdateUsuarioInput) => void;
   enviando: boolean;
 }
 

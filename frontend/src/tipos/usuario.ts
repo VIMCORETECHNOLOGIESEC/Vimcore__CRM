@@ -29,8 +29,8 @@ export interface AuthenticatedUser {
 
 /**
  * Vista administrativa de un usuario (F7, `GET/POST/PATCH /usuarios`).
- * Forma de `AdminUserView` en `backend/src/repositories/usuario.repository.ts`
- * (`adminUserSelect`) -- nunca incluye `passwordHash`. `creadoEn`/`actualizadoEn`
+ * Forma de `AdminUsuarioView` en `backend/src/repositories/usuario.repository.ts`
+ * (`adminUsuarioSelect`) -- nunca incluye `passwordHash`. `creadoEn`/`actualizadoEn`
  * llegan como ISO 8601 (`Date` de Prisma serializado por `res.json`), igual
  * criterio que `Lead.ingresadoEn`.
  */

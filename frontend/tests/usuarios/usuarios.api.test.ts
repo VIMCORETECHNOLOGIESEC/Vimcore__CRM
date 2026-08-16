@@ -53,14 +53,39 @@ afterEach(() => {
 });
 
 describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
-  it("fetchUsuariosApi llama a GET /usuarios y devuelve el arreglo `users`", async () => {
+  it("fetchUsuariosApi llama a GET /usuarios con los params dados y devuelve la respuesta completa", async () => {
     const usuarios = [usuarioFake(), usuarioFake({ id: "u2" })];
-    getMock.mockResolvedValue({ users: usuarios });
+    const respuesta = { users: usuarios, total: 2, pagina: 1, limite: 20 };
+    getMock.mockResolvedValue(respuesta);
 
-    const resultado = await fetchUsuariosApi();
+    const resultado = await fetchUsuariosApi({ pagina: 1, limite: 20 });
 
-    expect(getMock).toHaveBeenCalledWith("/usuarios");
-    expect(resultado).toEqual(usuarios);
+    expect(getMock).toHaveBeenCalledWith("/usuarios", { params: { pagina: 1, limite: 20 } });
+    expect(resultado).toEqual(respuesta);
+  });
+
+  it("fetchUsuariosApi manda busqueda/rol/activo/dirección tal cual se le pasan", async () => {
+    getMock.mockResolvedValue({ users: [], total: 0, pagina: 2, limite: 10 });
+
+    await fetchUsuariosApi({
+      pagina: 2,
+      limite: 10,
+      busqueda: "ana",
+      rol: "ASESOR",
+      activo: true,
+      direccion: "desc",
+    });
+
+    expect(getMock).toHaveBeenCalledWith("/usuarios", {
+      params: {
+        pagina: 2,
+        limite: 10,
+        busqueda: "ana",
+        rol: "ASESOR",
+        activo: true,
+        direccion: "desc",
+      },
+    });
   });
 
   it("createUsuarioApi llama a POST /usuarios con el cuerpo dado y devuelve `user`", async () => {

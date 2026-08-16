@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getErrorMessage } from "@/api/httpClient";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import type { UsuariosResponse } from "@/funcionalidades/usuarios/usuarios.api";
 import type { AdminUsuario } from "@/tipos/usuario";
 
 vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
@@ -46,6 +47,14 @@ function usuarioFake(overrides: Partial<AdminUsuario> = {}): AdminUsuario {
   };
 }
 
+/** Envoltura de la respuesta paginada real (F7) -- por defecto asume que `users` es la página completa. */
+function usuariosResponse(
+  users: AdminUsuario[],
+  overrides: Partial<Omit<UsuariosResponse, "users">> = {},
+): UsuariosResponse {
+  return { users, total: users.length, pagina: 1, limite: 10, ...overrides };
+}
+
 /** Mismo `mutationCache` que `api/queryClient.ts` -- así las pruebas de error de mutaciones son fieles al comportamiento real. */
 function renderUsuariosPage() {
   const queryClient = new QueryClient({
@@ -84,7 +93,7 @@ afterEach(() => {
 
 describe("UsuariosPage — estados de carga, vacío y error", () => {
   it("muestra un esqueleto de carga mientras llega la respuesta", async () => {
-    let resolver: (value: AdminUsuario[]) => void = () => {};
+    let resolver: (value: UsuariosResponse) => void = () => {};
     fetchUsuariosApiMock.mockReturnValue(
       new Promise((resolve) => {
         resolver = resolve;
@@ -95,14 +104,14 @@ describe("UsuariosPage — estados de carga, vacío y error", () => {
 
     expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
 
-    resolver([usuarioFake()]);
+    resolver(usuariosResponse([usuarioFake()]));
     await waitFor(() =>
       expect(screen.queryByRole("status", { name: "Cargando" })).not.toBeInTheDocument(),
     );
   });
 
   it("muestra un estado vacío honesto cuando no hay usuarios registrados", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
 
     renderUsuariosPage();
 
@@ -123,7 +132,7 @@ describe("UsuariosPage — estados de carga, vacío y error", () => {
 
 describe("UsuariosPage — listado con rol, estado y carga activa de leads", () => {
   it("muestra nombre, correo, la etiqueta en español del rol, el estado con texto y la carga activa", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     getCargaActivaDeUsuarioMock.mockReturnValue(3);
 
     renderUsuariosPage();
@@ -136,9 +145,9 @@ describe("UsuariosPage — listado con rol, estado y carga activa de leads", () 
   });
 
   it("muestra «No aplica» en carga activa para administrador/supervisor, sin consultar el mock de leads", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([
-      usuarioFake({ id: "u2", nombre: "Root Admin", rol: "ADMINISTRADOR" }),
-    ]);
+    fetchUsuariosApiMock.mockResolvedValue(
+      usuariosResponse([usuarioFake({ id: "u2", nombre: "Root Admin", rol: "ADMINISTRADOR" })]),
+    );
 
     renderUsuariosPage();
 
@@ -148,12 +157,138 @@ describe("UsuariosPage — listado con rol, estado y carga activa de leads", () 
   });
 
   it("un usuario inactivo se muestra con la etiqueta «Inactivo» y «Dar de baja» deshabilitado", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake({ activo: false })]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake({ activo: false })]));
 
     renderUsuariosPage();
 
     expect(await screen.findByText("Inactivo")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dar de baja" })).toBeDisabled();
+  });
+});
+
+describe("UsuariosPage — filtro (búsqueda, rol, estado, F7)", () => {
+  it("escribir en el buscador manda `busqueda` a fetchUsuariosApi y reinicia la página a 1", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await user.type(screen.getByLabelText("Buscar usuarios"), "marta");
+
+    await waitFor(() => {
+      const ultimaLlamada = fetchUsuariosApiMock.mock.calls.at(-1)?.[0];
+      expect(ultimaLlamada?.busqueda).toBe("marta");
+      expect(ultimaLlamada?.pagina).toBe(1);
+    });
+  });
+
+  it("elegir un rol manda `rol` a fetchUsuariosApi", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(await screen.findByRole("option", { name: "Supervisor" }));
+
+    await waitFor(() => {
+      const ultimaLlamada = fetchUsuariosApiMock.mock.calls.at(-1)?.[0];
+      expect(ultimaLlamada?.rol).toBe("SUPERVISOR");
+    });
+  });
+
+  it("elegir 'Activos' manda `activo: true`, y 'Inactivos' manda `activo: false`", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await user.click(screen.getByRole("combobox", { name: "Estado" }));
+    await user.click(await screen.findByRole("option", { name: "Activos" }));
+    await waitFor(() => {
+      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.activo).toBe(true);
+    });
+
+    await user.click(screen.getByRole("combobox", { name: "Estado" }));
+    await user.click(await screen.findByRole("option", { name: "Inactivos" }));
+    await waitFor(() => {
+      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.activo).toBe(false);
+    });
+  });
+
+  it("sin resultados con filtros activos, muestra un estado vacío distinto al de 'sin usuarios registrados'", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    await user.type(screen.getByLabelText("Buscar usuarios"), "nadie-coincide");
+
+    expect(
+      await screen.findByText("No hay usuarios que coincidan con estos filtros"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("UsuariosPage — paginación (F7)", () => {
+  it("muestra «Mostrando X–Y de Z usuarios» según el total real devuelto por el backend", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()], { total: 25, pagina: 1 }));
+
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    expect(screen.getByText("Mostrando 1–10 de 25 usuarios")).toBeInTheDocument();
+  });
+
+  it("«Anterior» está deshabilitado en la página 1", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()], { total: 25, pagina: 1 }));
+
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    expect(screen.getByRole("button", { name: "Anterior" })).toBeDisabled();
+  });
+
+  it("«Siguiente» avanza de página y manda `pagina: 2` a fetchUsuariosApi", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()], { total: 25, pagina: 1 }));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+
+    await waitFor(() => {
+      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2);
+    });
+  });
+
+  it("«Siguiente» está deshabilitado en la última página", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()], { total: 5, pagina: 1 }));
+
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+  });
+
+  it("cambiar el rol filtrado reinicia la paginación a la página 1", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()], { total: 25, pagina: 1 }));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await waitFor(() => expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2));
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(await screen.findByRole("option", { name: "Vendedor" }));
+
+    await waitFor(() => {
+      const ultimaLlamada = fetchUsuariosApiMock.mock.calls.at(-1)?.[0];
+      expect(ultimaLlamada?.rol).toBe("VENDEDOR");
+      expect(ultimaLlamada?.pagina).toBe(1);
+    });
   });
 });
 
@@ -167,7 +302,7 @@ describe("UsuariosPage — alta de usuario", () => {
   }
 
   it("rechaza una contraseña inicial de menos de 12 caracteres antes de llamar al backend", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     const user = userEvent.setup();
     renderUsuariosPage();
     await screen.findByText("Todavía no hay usuarios registrados");
@@ -183,7 +318,7 @@ describe("UsuariosPage — alta de usuario", () => {
   });
 
   it("con datos válidos, llama a createUsuarioApi, avisa éxito y cierra el diálogo", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     createUsuarioApiMock.mockResolvedValue(usuarioFake());
     const user = userEvent.setup();
     renderUsuariosPage();
@@ -206,7 +341,7 @@ describe("UsuariosPage — alta de usuario", () => {
   });
 
   it("si el correo ya está en uso, muestra el mensaje accionable del backend (409 correo_en_uso)", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     createUsuarioApiMock.mockRejectedValue(
       new ApiError("correo_en_uso", 409, "El correo ya está en uso"),
     );
@@ -224,7 +359,7 @@ describe("UsuariosPage — alta de usuario", () => {
 
 describe("UsuariosPage — edición de usuario", () => {
   it("precarga los datos actuales y llama a updateUsuarioApi con los cambios (sin contraseña)", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     updateUsuarioApiMock.mockResolvedValue(usuarioFake({ nombre: "Marta H. Editada" }));
     const user = userEvent.setup();
     renderUsuariosPage();
@@ -253,7 +388,7 @@ describe("UsuariosPage — edición de usuario", () => {
 
 describe("UsuariosPage — restablecimiento de contraseña (F7, sin brecha de backend)", () => {
   it("con contraseñas válidas y coincidentes, llama a resetPasswordApi sin pedir la contraseña actual", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     resetPasswordApiMock.mockResolvedValue(undefined);
     const user = userEvent.setup();
     renderUsuariosPage();
@@ -277,7 +412,7 @@ describe("UsuariosPage — restablecimiento de contraseña (F7, sin brecha de ba
   });
 
   it("rechaza cuando la confirmación no coincide", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     const user = userEvent.setup();
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
@@ -295,7 +430,7 @@ describe("UsuariosPage — restablecimiento de contraseña (F7, sin brecha de ba
 
 describe("UsuariosPage — baja lógica con reasignación obligatoria de la cartera activa (F7)", () => {
   it("sin cartera activa: la baja se confirma directo, sin reasignar nada", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     getCargaActivaDeUsuarioMock.mockReturnValue(0);
     deactivateUsuarioApiMock.mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -316,7 +451,7 @@ describe("UsuariosPage — baja lógica con reasignación obligatoria de la cart
   });
 
   it("con cartera activa: no deja confirmar sin elegir antes un nuevo responsable", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     getCargaActivaDeUsuarioMock.mockReturnValue(2);
     getCandidatosReasignacionMock.mockReturnValue([{ id: "asesor-2", nombre: "Julián Peña" }]);
     const user = userEvent.setup();
@@ -331,7 +466,7 @@ describe("UsuariosPage — baja lógica con reasignación obligatoria de la cart
   });
 
   it("con cartera activa: al elegir el nuevo responsable, reasigna primero y solo después da de baja", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     getCargaActivaDeUsuarioMock.mockReturnValue(2);
     getCandidatosReasignacionMock.mockReturnValue([{ id: "asesor-2", nombre: "Julián Peña" }]);
     reassignCarteraActivaMock.mockResolvedValue(undefined);
@@ -353,7 +488,7 @@ describe("UsuariosPage — baja lógica con reasignación obligatoria de la cart
   });
 
   it("si la reasignación falla, nunca se llega a llamar a deactivateUsuarioApi (no atómico, brecha documentada)", async () => {
-    fetchUsuariosApiMock.mockResolvedValue([usuarioFake()]);
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     getCargaActivaDeUsuarioMock.mockReturnValue(2);
     getCandidatosReasignacionMock.mockReturnValue([{ id: "asesor-2", nombre: "Julián Peña" }]);
     reassignCarteraActivaMock.mockRejectedValue(new Error("boom"));

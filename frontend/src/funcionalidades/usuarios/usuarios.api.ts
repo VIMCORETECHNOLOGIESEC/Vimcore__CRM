@@ -1,4 +1,4 @@
-import { httpClient } from "@/api/httpClient";
+import { httpClient, type QueryParamValue } from "@/api/httpClient";
 import {
   assignLeadsMasivoApi,
   getCatalogoResponsablesConRol,
@@ -21,14 +21,14 @@ import type { AdminUsuario, RolUsuario } from "@/tipos/usuario";
  * reasignarla.
  */
 
-export interface CrearUsuarioInput {
+export interface CreateUsuarioInput {
   nombre: string;
   correo: string;
   password: string;
   rol: RolUsuario;
 }
 
-export interface ActualizarUsuarioInput {
+export interface UpdateUsuarioInput {
   nombre: string;
   correo: string;
   rol: RolUsuario;
@@ -38,18 +38,54 @@ interface UsuarioResponse {
   user: AdminUsuario;
 }
 
-interface UsuariosResponse {
-  users: AdminUsuario[];
+/**
+ * Query params de `GET /usuarios` (F7, listado con filtro y paginación
+ * real). Contrato confirmado contra
+ * `backend/src/schemas/usuarios.schema.ts`: `busqueda` filtra por nombre O
+ * correo (insensible a mayúsculas), `activo` viaja como booleano y
+ * `httpClient` lo serializa a `"true"|"false"` (ver
+ * `api/httpClient.ts::buildQueryString`), `direccion` ordena por
+ * `creadoEn` (default `"asc"` en el backend si se omite).
+ */
+export interface UsuariosQueryParams {
+  /** 1-based, default 1 en el backend. */
+  pagina: number;
+  /** Default 20 en el backend, máximo 100. */
+  limite: number;
+  busqueda?: string;
+  rol?: RolUsuario;
+  activo?: boolean;
+  direccion?: "asc" | "desc";
 }
 
-/** `GET /usuarios` -- backend real, ver `backend/src/controllers/usuarios.controller.ts::getUsers`. */
-export async function fetchUsuariosApi(): Promise<AdminUsuario[]> {
-  const { users } = await httpClient.get<UsuariosResponse>("/usuarios");
-  return users;
+export interface UsuariosResponse {
+  users: AdminUsuario[];
+  total: number;
+  pagina: number;
+  limite: number;
+}
+
+/**
+ * `GET /usuarios` -- backend real, ver
+ * `backend/src/controllers/usuarios.controller.ts::getUsers`. Filtro y
+ * paginación reales desde el backend (no un slice hecho en el frontend):
+ * `total`/`pagina`/`limite` vienen de la misma respuesta para construir los
+ * controles "Anterior/Siguiente" y "Mostrando X–Y de Z" (`UsuariosPage.tsx`),
+ * mismo criterio que `leads.api.ts::fetchLeadsApi` (F3).
+ */
+export async function fetchUsuariosApi(params: UsuariosQueryParams): Promise<UsuariosResponse> {
+  // El cast es solo de tipos: `UsuariosQueryParams` no declara un índice de
+  // string explícito (TS lo exige para asignar una interfaz a
+  // `Record<string, QueryParamValue>`), pero sus valores ya cumplen
+  // `QueryParamValue` uno por uno -- `buildQueryString` en runtime no
+  // depende de nada más que `Object.entries`.
+  return httpClient.get<UsuariosResponse>("/usuarios", {
+    params: params as unknown as Record<string, QueryParamValue>,
+  });
 }
 
 /** `POST /usuarios` -- backend real (D9: alta exclusiva de ADMINISTRADOR). */
-export async function createUsuarioApi(input: CrearUsuarioInput): Promise<AdminUsuario> {
+export async function createUsuarioApi(input: CreateUsuarioInput): Promise<AdminUsuario> {
   const { user } = await httpClient.post<UsuarioResponse>("/usuarios", input);
   return user;
 }
@@ -57,7 +93,7 @@ export async function createUsuarioApi(input: CrearUsuarioInput): Promise<AdminU
 /** `PATCH /usuarios/:id` -- backend real, edita nombre/correo/rol (sin contraseña). */
 export async function updateUsuarioApi(
   id: string,
-  input: ActualizarUsuarioInput,
+  input: UpdateUsuarioInput,
 ): Promise<AdminUsuario> {
   const { user } = await httpClient.patch<UsuarioResponse>(`/usuarios/${id}`, input);
   return user;
