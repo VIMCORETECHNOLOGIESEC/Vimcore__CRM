@@ -120,9 +120,25 @@ correo se persiste con marca de dato incompleto.
 
 - [x] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
       responsable, rango de fechas, estado de SLA), paginación y orden
+      > **Pendiente (validación server-side faltante):** `leads.schema.ts::listLeadsQuerySchema`
+      > (línea 54) valida `limite` como `z.coerce.number().int().min(1).max(100).default(20)`
+      > — un rango abierto, no la whitelist acotada (10/25/50/100) que pide el
+      > contrato de frontend (`leads.api.ts::LeadsQueryParams.porPagina`). Hoy
+      > cualquier entero entre 1 y 100 pasa (p. ej. `limite=37`), así que el
+      > servidor no impone el mismo conjunto fijo que usa el cliente. Falta
+      > acotar `limite` a esos 4 valores exactos en `leads.schema.ts`.
 - [x] Filtrado automático por rol: asesor y vendedor solo ven su cartera
 - [x] `GET /api/v1/leads/:id` con verificación de acceso
 - [x] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
+      > **Pendiente (validación server-side faltante):** `leads.service.ts::transitionEtapa`
+      > (líneas 134-201) solo rechaza reabrir una etapa terminal (línea 147,
+      > `ETAPAS_TERMINALES.includes(lead.etapa)`) pero no valida que `body.etapa`
+      > sea una transición válida desde `lead.etapa` — no hay chequeo equivalente
+      > a la whitelist de `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`
+      > (progreso lineal Nuevo → Contactado → Cita, nunca se retrocede, más salto
+      > directo a cierre desde cualquier etapa no terminal — docs/02-reglas-negocio.md
+      > §6). Hoy el endpoint acepta, por ejemplo, `CITA → NUEVO`. Falta agregar esa
+      > validación server-side antes de `leadRepository.updateEtapa` (línea 185).
 - [x] Validación de campos obligatorios en etapas terminales
 - [x] Escritura de `lead_eventos` en la misma transacción que cada cambio
 - [x] `GET /api/v1/formularios/:etapa` — definición de formulario

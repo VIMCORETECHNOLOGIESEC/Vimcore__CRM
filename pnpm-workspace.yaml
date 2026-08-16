@@ -1,6 +1,7 @@
 packages:
   - backend
   - frontend
+  - packages/schemas
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true

@@ -1,3 +1,124 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Línea gráfica aprobada (docs/09-linea-grafica-frontend.md §3).
+ * Paleta de dos colores base (blanco/negro) sin manual de marca, más el
+ * semáforo (fuera de esta paleta, nunca decorativo) y la serie categórica
+ * de gráficas. Variables en hex plano -- shadcn/ui v3 admite cualquier
+ * formato de color siempre que `tailwind.config.js` la referencie sin un
+ * envoltorio `hsl()`/`oklch()` incompatible (ver Colores por AGENT en el
+ * commit que instaló shadcn: la salida por defecto de la CLI mezclaba
+ * variables `oklch()` con un `tailwind.config.js` que las envolvía en
+ * `hsl()`, una combinación inválida).
+ */
+@layer base {
+  :root {
+    --background: #FFFFFF;
+    --foreground: #18181B;
+    --card: #FFFFFF;
+    --card-foreground: #18181B;
+    --popover: #FFFFFF;
+    --popover-foreground: #18181B;
+    --primary: #111113;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F5F5F5;
+    --secondary-foreground: #18181B;
+    --muted: #F5F5F5;
+    --muted-foreground: #71717A;
+    --accent: #F5F5F5;
+    --accent-foreground: #18181B;
+    --destructive: #DC2626;
+    --destructive-foreground: #FFFFFF;
+    --border: #E8E8E8;
+    --input: #E8E8E8;
+    --ring: #111113;
+    /* Token de éxito para acciones (ej. cierre de venta), separado de
+       --semaforo-frio: ese verde está reservado al chip de semáforo con
+       etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
+    --success: #16A34A;
+    --success-foreground: #FFFFFF;
+    --chart-1: #4F46E5;
+    --chart-2: #2563EB;
+    --chart-3: #0D9488;
+    --chart-4: #7C3AED;
+    --chart-5: #71717A;
+    --radius: 0.5rem;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #18181B;
+    --sidebar-primary: #111113;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #F5F5F5;
+    --sidebar-accent-foreground: #18181B;
+    --sidebar-border: #E8E8E8;
+    --sidebar-ring: #111113;
+
+    /* Semáforo -- siempre acompañado de etiqueta de texto (ver F3, F4). */
+    --semaforo-frio: #16A34A;
+    --semaforo-frio-foreground: #FFFFFF;
+    --semaforo-tibio: #D97706;
+    --semaforo-tibio-foreground: #FFFFFF;
+    --semaforo-caliente: #DC2626;
+    --semaforo-caliente-foreground: #FFFFFF;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /*
+   * Ancla la contención de scroll en la raíz real del documento, no solo en
+   * el div de AppLayout. Sin esto, un redondeo de subpíxel en la cadena de
+   * flex anidados (aside + columna + main) puede dejar ese div un pelo más
+   * alto que el viewport; Chromium expone esa diferencia como scroll del
+   * documento (espacio en blanco scrolleable debajo del shell), mientras
+   * que Firefox la absorbe en silencio. Clampeando html/body/#root acá, el
+   * documento nunca puede scrollear -- solo main, por diseño.
+   */
+  html,
+  body,
+  #root {
+    @apply h-full overflow-hidden;
+  }
+}
+
+/*
+ * Scrollbar personalizada (docs/09 §3): fuera de la paleta de acento
+ * (semáforo, chart), usa exclusivamente los tokens neutros ya definidos
+ * arriba. En reposo, thumb en --muted-foreground (gris identificable, no
+ * el --border casi invisible) -- al pasar el mouse, arrastrar, o mientras
+ * `main` está efectivamente scrolleando (clase `is-scrolling` que pone
+ * AppLayout.tsx), pasa a --primary (negro) para marcar movimiento.
+ * Firefox solo soporta el color base de `scrollbar-color`, sin estado por
+ * interacción -- limitación real del motor, no un bug nuestro.
+ */
+@layer utilities {
+  .scrollbar-themed {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+  .scrollbar-themed::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .scrollbar-themed::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-themed::-webkit-scrollbar-thumb {
+    background-color: var(--muted-foreground);
+    border-radius: var(--radius);
+    border: 2px solid var(--background);
+    background-clip: padding-box;
+    transition: background-color 0.15s ease;
+  }
+  .scrollbar-themed::-webkit-scrollbar-thumb:hover,
+  .scrollbar-themed::-webkit-scrollbar-thumb:active,
+  .scrollbar-themed.is-scrolling::-webkit-scrollbar-thumb {
+    background-color: var(--primary);
+  }
+}
