@@ -136,6 +136,19 @@ La reasignación **reinicia el reloj SLA** del lead y notifica al nuevo responsa
 lógica de SLA, notificaciones y permisos usa esta definición, no las columnas
 por separado.
 
+> **Pendiente de aclarar con el cliente (extiende riesgo R4, ver
+> `01-alcance-mvp.md`).** Con bajo volumen de leads es probable que la misma
+> persona sea asesor y vendedor a la vez — el modelo de roles actual
+> (`RolUsuario` único por usuario en `schema.prisma`) no lo soporta. Diseño
+> evaluado y no implementado: campo `rolSecundario` acotado únicamente al par
+> asesor/vendedor (no un sistema de roles múltiples genérico), más una
+> advertencia no bloqueante — y registro de auditoría en
+> `DetalleEventoLead` — cuando alguien se traspasa un lead a sí mismo, y
+> exclusión del propio actor en el algoritmo de menor carga activa. **No
+> implementar hasta que el cliente confirme si esta combinación de roles es
+> real en su operación y si el conflicto de interés amerita algo más
+> estricto que una advertencia.** Validar junto con R4 antes de iniciar M6.
+
 ---
 
 ## 6. Etapas del embudo

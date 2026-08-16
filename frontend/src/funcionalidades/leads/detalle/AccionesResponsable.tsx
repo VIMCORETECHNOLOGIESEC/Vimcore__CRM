@@ -1,15 +1,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { Lead } from "@/tipos/lead";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 import { getCatalogoResponsables, getCatalogoVendedores } from "../leads.api";
+import { ResponsableCombobox } from "../ResponsableCombobox";
 import { canHandoffToVendedor, canReassignLead } from "./leadDetalle.guards";
 import { useHandoffToVendedor, useReassignLead } from "./useLeadDetalle";
 
@@ -23,6 +17,14 @@ interface AccionesResponsableProps {
  * `canHandoffToVendedor`/`canReassignLead` (`leadDetalle.guards.ts`) deciden
  * qué botón se muestra -- son guards de UX, la autorización real es
  * responsabilidad del backend cuando exista M6/M7.
+ *
+ * Cada buscador restringe su propio listado (`getCatalogoResponsables`,
+ * `leads.api.ts`): "Reasignar" busca solo entre `ASESORES` -- el responsable
+ * del primer contacto -- y "Traspasar"/"Traspasar a vendedor" busca solo
+ * entre `VENDEDORES` -- el responsable del proceso de venta. Nunca mezclan
+ * ambas poblaciones, a diferencia del catálogo general
+ * (`getCatalogoResponsables()` sin argumento) que usan a propósito el
+ * dashboard y la tabla de leads.
  */
 export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
   const [vendedorElegido, setVendedorElegido] = useState("");
@@ -45,18 +47,15 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
         <div className="flex flex-wrap items-center gap-2">
           {eligeVendedorManualmente ? (
             <>
-              <Select value={vendedorElegido} onValueChange={setVendedorElegido}>
-                <SelectTrigger className="w-56" aria-label="Vendedor a traspasar">
-                  <SelectValue placeholder="Elegir vendedor…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getCatalogoVendedores().map((vendedor) => (
-                    <SelectItem key={vendedor.id} value={vendedor.id}>
-                      {vendedor.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ResponsableCombobox
+                valor={vendedorElegido}
+                onChange={setVendedorElegido}
+                responsables={getCatalogoVendedores()}
+                ariaLabel="Vendedor a traspasar"
+                placeholder="Elegir vendedor…"
+                placeholderBusqueda="Buscar vendedor…"
+                className="w-56"
+              />
               <Button
                 size="sm"
                 disabled={!vendedorElegido || handoff.isPending}
@@ -75,18 +74,15 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
 
       {puedeReasignar ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={responsableElegido} onValueChange={setResponsableElegido}>
-            <SelectTrigger className="w-56" aria-label="Nuevo responsable">
-              <SelectValue placeholder="Elegir responsable…" />
-            </SelectTrigger>
-            <SelectContent>
-              {getCatalogoResponsables().map((responsable) => (
-                <SelectItem key={responsable.id} value={responsable.id}>
-                  {responsable.nombre}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ResponsableCombobox
+            valor={responsableElegido}
+            onChange={setResponsableElegido}
+            responsables={getCatalogoResponsables("ASESORES")}
+            ariaLabel="Nuevo asesor"
+            placeholder="Elegir asesor…"
+            placeholderBusqueda="Buscar asesor…"
+            className="w-56"
+          />
           <Button
             size="sm"
             variant="outline"

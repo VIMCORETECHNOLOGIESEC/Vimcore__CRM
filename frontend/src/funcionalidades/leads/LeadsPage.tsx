@@ -45,7 +45,7 @@ export function LeadsPage() {
   const assignMasivo = useAssignLeadsMasivo();
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
-  const responsables = useMemo(() => getCatalogoResponsables(), []);
+  const responsables = useMemo(() => getCatalogoResponsables("TODOS"), []);
 
   function updateFiltros(nuevos: LeadsFiltrosState) {
     setFiltros(nuevos);

@@ -56,7 +56,7 @@ export function DashboardPage() {
   const filtros = useMemo(() => buildMetricasFiltros(filtrosDashboard, rango), [filtrosDashboard, rango]);
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
-  const responsables = useMemo(() => getCatalogoResponsables(), []);
+  const responsables = useMemo(() => getCatalogoResponsables("TODOS"), []);
 
   const resumen = useResumenMetricas(filtros);
   const porRedSocial = useMetricasPorRedSocial(filtros);

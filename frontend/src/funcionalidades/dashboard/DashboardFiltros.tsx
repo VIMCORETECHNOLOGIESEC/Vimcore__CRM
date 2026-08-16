@@ -2,6 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RED_SOCIAL_ETIQUETAS } from "@/funcionalidades/leads/catalogos";
 import { FILTRO_TODOS } from "@/funcionalidades/leads/leads.utils";
+import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
 import type { RedSocial } from "@/tipos/lead";
 import type { DashboardFiltrosState } from "./dashboard.utils";
 
@@ -43,11 +44,16 @@ export function DashboardFiltros({
         opciones={campanias.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
       />
       {mostrarFiltroResponsable ? (
-        <CampoSelect
+        <ResponsableCombobox
           etiqueta="Responsable"
+          ariaLabel="Responsable"
           valor={filtros.responsableId}
           onChange={(v) => update("responsableId", v)}
-          opciones={responsables.map((r) => ({ valor: r.id, etiqueta: r.nombre }))}
+          responsables={responsables}
+          mostrarOpcionTodos
+          valorOpcionTodos={FILTRO_TODOS}
+          etiquetaOpcionTodos="Todos los responsables"
+          etiquetaBotonOpcionTodos="Todos"
         />
       ) : null}
     </div>

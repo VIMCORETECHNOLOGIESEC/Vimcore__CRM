@@ -446,9 +446,35 @@ export async function assignLeadsMasivoApi(
   }
 }
 
-/** Catálogos derivados del fixture, para poblar los `<select>` de filtros. */
-export function getCatalogoResponsables(): { id: string; nombre: string }[] {
-  return [...ASESORES, ...VENDEDORES].map(({ id, nombre }) => ({ id, nombre }));
+/**
+ * Población contra la que busca `ResponsableCombobox`. `"TODOS"` es el
+ * comportamiento de los filtros generales (dashboard F5, tabla de leads F3):
+ * buscan indistintamente entre asesores y vendedores. El detalle de lead
+ * (F4) restringe el listado según qué campo del lead está asignando cada
+ * buscador: `"ASESORES"` para el responsable del primer contacto,
+ * `"VENDEDORES"` para el responsable del proceso de venta.
+ */
+export type ListadoResponsables = "TODOS" | "ASESORES" | "VENDEDORES";
+
+/**
+ * Catálogo de responsables para los buscadores. `listado` es el parámetro
+ * que la petición manda para acotar contra qué población buscar (ver
+ * `ListadoResponsables`) -- por defecto no restringe, igual que antes.
+ *
+ * INTEGRACION-BACKEND: reemplazar por
+ * `httpClient.get<{id;nombre}[]>("/usuarios/responsables", { params: { listado } })`
+ * cuando exista (M6/M7). Si se aprueba la propuesta de `rolSecundario`
+ * (multi-rol asesor/vendedor, pendiente de validar con el cliente -- riesgo
+ * R6 en `01-alcance-mvp.md`), `"VENDEDORES"` pasa a resolver contra el rol
+ * *efectivo* (`rol === "VENDEDOR"` o `rolSecundario === "VENDEDOR"`), no solo
+ * `rol` -- ese cambio queda contenido acá, ningún llamador necesita tocarse.
+ */
+export function getCatalogoResponsables(
+  listado: ListadoResponsables = "TODOS",
+): { id: string; nombre: string }[] {
+  const fuente =
+    listado === "ASESORES" ? ASESORES : listado === "VENDEDORES" ? VENDEDORES : [...ASESORES, ...VENDEDORES];
+  return fuente.map(({ id, nombre }) => ({ id, nombre }));
 }
 
 export function getCatalogoCampanias(): { id: string; nombre: string }[] {
@@ -465,13 +491,14 @@ export function getCatalogoResponsablesConRol(): ResponsableLead[] {
 }
 
 /**
- * Solo vendedores, para el traspaso (F4). Cuando el asesor traspasa su
+ * Solo vendedores, para el traspaso (F4) -- atajo de
+ * `getCatalogoResponsables("VENDEDORES")`. Cuando el asesor traspasa su
  * propio lead sin elegir vendedor, `handoffToVendedorApi` usa el primero de
  * esta lista como simplificación de "algoritmo de menor carga" -- ver el
  * comentario ahí.
  */
 export function getCatalogoVendedores(): { id: string; nombre: string }[] {
-  return VENDEDORES.map(({ id, nombre }) => ({ id, nombre }));
+  return getCatalogoResponsables("VENDEDORES");
 }
 
 /**

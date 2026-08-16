@@ -374,6 +374,52 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 > criterio que `leadDetalle.guards.ts`). `tsc --noEmit` y `vitest run` sin
 > errores (409 tests en verde).
 
+> **Actualización (combobox de responsable reutilizable, dev-front):** el
+> combobox buscable con tope de coincidencias que F3 introdujo para el
+> filtro de Responsable (`LeadsFiltros.tsx`) vivía como una función local no
+> reutilizable. Se extrajo a `funcionalidades/leads/ResponsableCombobox.tsx`
+> (Popover + Command de shadcn/cmdk, mismo comportamiento de búsqueda y
+> accesibilidad), parametrizado: la opción fija "Todos" es opcional
+> (`mostrarOpcionTodos`, con textos independientes para el botón y para la
+> opción de la lista -- el botón dice "Todos", la opción de lista dice "Todos
+> los responsables", igual que antes) y el tope de coincidencias es
+> configurable (`maxResultados`, sigue en 5 por defecto). `LeadsFiltros.tsx`
+> ahora consume el componente extraído sin cambiar su comportamiento. Los dos
+> `<Select>` planos de `detalle/AccionesResponsable.tsx` (elegir vendedor al
+> traspasar, elegir responsable al reasignar) pasan a usar el mismo
+> combobox, sin la opción "Todos" -- lógica de guards (`canHandoffToVendedor`,
+> `canReassignLead`) y hooks (`useHandoffToVendedor`, `useReassignLead`) sin
+> tocar. De paso, corrección de comportamiento real (no solo refactor de UI):
+> `getCatalogoResponsables()` (`leads.api.ts`) ahora acepta un parámetro
+> `listado: "TODOS" | "ASESORES" | "VENDEDORES"` (`ListadoResponsables`,
+> `"TODOS"` por defecto -- los llamadores existentes en `LeadsPage.tsx` y
+> `DashboardPage.tsx` pasan `"TODOS"` explícito y no cambian de
+> comportamiento). El combobox de "Reasignar" en `AccionesResponsable.tsx`
+> pasa a llamar `getCatalogoResponsables("ASESORES")` en vez de la lista
+> combinada de asesores+vendedores que usaba antes -- alineado con el
+> criterio real del botón (el responsable que se reasigna ahí es el del
+> primer contacto, no el del proceso de venta); `aria-label` y placeholder
+> se actualizaron de "Nuevo responsable"/"Elegir responsable…" a "Nuevo
+> asesor"/"Elegir asesor…" para que el texto no mienta sobre el universo de
+> búsqueda. El combobox de "Traspasar a vendedor" ya restringía a
+> `VENDEDORES` antes del refactor (`getCatalogoVendedores()`), ahora
+> reescrito como atajo de `getCatalogoResponsables("VENDEDORES")` -- sin
+> cambio de comportamiento ahí. `getCatalogoResponsables()` sin argumento
+> (dashboard F5, tabla de leads F3) sigue devolviendo la lista combinada,
+> sin cambios. Riesgo relacionado documentado como R6 en
+> `01-alcance-mvp.md` y ampliado en `02-reglas-negocio.md` §5: si se
+> aprueba a futuro que una misma persona sea asesor y vendedor
+> (`rolSecundario`), `"VENDEDORES"` tendría que resolver contra el rol
+> *efectivo*, no solo `rol` -- diseño evaluado, no implementado, pendiente
+> de validar con el cliente antes de M6. `tsc --noEmit` limpio para los
+> archivos tocados; `vitest run` no
+> pudo ejecutarse en este worktree (`node_modules/vitest/vitest.mjs` no se
+> resuelve pese a que el paquete figura instalado -- mismo síntoma que
+> `@radix-ui/*`, aparenta ser un problema de symlinks del store de pnpm en
+> este worktree puntual, no algo introducido por este cambio); se verificó a
+> mano que el nuevo componente reproduce exactamente las aserciones de
+> `tests/leads/LeadsFiltros.test.tsx`.
+
 - [x] Encabezado: nombre, semáforo, etapa, responsable, contador de SLA
 - [x] Datos de contacto: teléfono, correos asociados, marca de dato inválido
 - [x] Origen: red social, campaña, cuenta publicitaria, fecha de ingreso

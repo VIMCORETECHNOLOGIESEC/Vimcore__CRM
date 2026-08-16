@@ -1,9 +1,8 @@
 import { Search, SlidersHorizontal, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRedesSocialesActivas } from "@/funcionalidades/bridges/useBridges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -27,6 +26,7 @@ import {
   FILTROS_LEADS_VACIOS,
   type LeadsFiltrosState,
 } from "./leads.utils";
+import { ResponsableCombobox } from "./ResponsableCombobox";
 
 interface LeadsFiltrosProps {
   filtros: LeadsFiltrosState;
@@ -40,8 +40,6 @@ interface LeadsFiltrosProps {
 const ETAPAS: EtapaLead[] = ["NUEVO", "CONTACTADO", "CITA", "VENTA", "NO_VENTA"];
 const SEMAFOROS: SemaforoLead[] = ["VERDE", "AMARILLO", "ROJO"];
 const ESTADOS_SLA: EstadoSla[] = ["A_TIEMPO", "EN_RIESGO", "ATRASADO"];
-
-const MAX_RESULTADOS_RESPONSABLE = 5;
 
 /** Barra de filtros combinables y búsqueda del listado de leads (docs/07 F3). */
 export function LeadsFiltros({
@@ -164,6 +162,12 @@ export function LeadsFiltros({
                     valor={filtros.responsableId}
                     onChange={(v) => update("responsableId", v)}
                     responsables={responsables}
+                    etiqueta="Responsable"
+                    ariaLabel="Responsable"
+                    mostrarOpcionTodos
+                    valorOpcionTodos={FILTRO_TODOS}
+                    etiquetaOpcionTodos="Todos los responsables"
+                    placeholderBusqueda="Buscar asesor…"
                   />
                 ) : null}
                 <CampoSelect
@@ -258,89 +262,6 @@ function CampoSelect({ etiqueta, valor, onChange, opciones, disabled }: CampoSel
           ))}
         </SelectContent>
       </Select>
-    </div>
-  );
-}
-
-interface ResponsableComboboxProps {
-  valor: string;
-  onChange: (valor: string) => void;
-  responsables: { id: string; nombre: string }[];
-}
-
-/** Combobox buscable del filtro de Responsable, máximo 5 coincidencias mostradas (docs/07 F3). */
-function ResponsableCombobox({ valor, onChange, responsables }: ResponsableComboboxProps) {
-  const [abierto, setAbierto] = useState(false);
-  const [busqueda, setBusqueda] = useState("");
-
-  const seleccionado = responsables.find((r) => r.id === valor);
-
-  const coincidencias = useMemo(() => {
-    const termino = busqueda.toLocaleLowerCase();
-    return responsables
-      .filter((r) => r.nombre.toLocaleLowerCase().includes(termino))
-      .slice(0, MAX_RESULTADOS_RESPONSABLE);
-  }, [responsables, busqueda]);
-
-  function selectResponsable(id: string) {
-    onChange(id);
-    setAbierto(false);
-  }
-
-  return (
-    <div className="flex flex-col gap-1">
-      <Label className="text-xs text-muted-foreground">Responsable</Label>
-      <Popover
-        open={abierto}
-        onOpenChange={(open) => {
-          setAbierto(open);
-          if (!open) setBusqueda("");
-        }}
-      >
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            role="combobox"
-            aria-expanded={abierto}
-            aria-label="Responsable"
-            className="justify-start font-normal"
-          >
-            {valor !== FILTRO_TODOS ? (seleccionado?.nombre ?? valor) : "Todos"}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-          {/* shouldFilter=false: ya filtramos y limitamos `coincidencias` a mano,
-              no hace falta que cmdk vuelva a filtrar por su cuenta. */}
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder="Buscar asesor…"
-              value={busqueda}
-              onValueChange={setBusqueda}
-            />
-            <CommandList>
-              {/* cmdk decide si renderizar `Command.Empty` según su propio conteo
-                  interno de ítems registrados, no según si lo montamos o no --
-                  con "Todos los responsables" siempre presente, ese conteo nunca
-                  da cero y el mensaje quedaría mudo aunque `coincidencias` esté
-                  vacío. Se reemplaza por texto plano con el mismo estilo visual. */}
-              {coincidencias.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">Sin coincidencias.</p>
-              ) : null}
-              <CommandGroup>
-                <CommandItem value={FILTRO_TODOS} onSelect={() => selectResponsable(FILTRO_TODOS)}>
-                  Todos los responsables
-                </CommandItem>
-                {coincidencias.map((r) => (
-                  <CommandItem key={r.id} value={r.id} onSelect={() => selectResponsable(r.id)}>
-                    {r.nombre}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
     </div>
   );
 }
