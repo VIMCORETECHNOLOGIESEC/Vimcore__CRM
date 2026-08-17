@@ -1,18 +1,18 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import {
-  createUserBodySchema,
+  createUsuarioBodySchema,
   idParamSchema,
   listResponsablesQuerySchema,
-  updateUserBodySchema,
+  updateUsuarioBodySchema,
 } from "../schemas/usuarios.schema.js";
 import {
-  createUser,
-  deactivateUser,
-  findAllUsers,
+  createUsuario,
+  deactivateUsuario,
   findResponsables,
-  findUserById,
-  updateUser,
+  findUsuarioById,
+  findUsuarios,
+  updateUsuario,
 } from "../services/usuarios.service.js";
 
 function zodValidationError(): AppError {
@@ -23,18 +23,18 @@ function invalidIdParam(): AppError {
   return new AppError("validacion_invalida", 400, "El identificador de usuario es inválido");
 }
 
-export async function postUser(req: Request, res: Response): Promise<void> {
-  const parsed = createUserBodySchema.safeParse(req.body);
+export async function postUsuario(req: Request, res: Response): Promise<void> {
+  const parsed = createUsuarioBodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw zodValidationError();
   }
 
-  const user = await createUser(parsed.data);
+  const user = await createUsuario(parsed.data);
   res.status(201).json({ user });
 }
 
-export async function getUsers(_req: Request, res: Response): Promise<void> {
-  const users = await findAllUsers();
+export async function getUsuarios(_req: Request, res: Response): Promise<void> {
+  const users = await findUsuarios();
   res.status(200).json({ users });
 }
 
@@ -43,7 +43,7 @@ export async function getUsers(_req: Request, res: Response): Promise<void> {
  * ADMINISTRADOR/SUPERVISOR (`requireRole`) — el servicio no reaplica la
  * regla, sigue el mismo patrón que `postLeadAsignar`.
  */
-export async function getUsersResponsables(req: Request, res: Response): Promise<void> {
+export async function getUsuariosResponsables(req: Request, res: Response): Promise<void> {
   const parsed = listResponsablesQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     throw zodValidationError();
@@ -53,37 +53,37 @@ export async function getUsersResponsables(req: Request, res: Response): Promise
   res.status(200).json({ responsables });
 }
 
-export async function getUserById(req: Request, res: Response): Promise<void> {
+export async function getUsuarioById(req: Request, res: Response): Promise<void> {
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const user = await findUserById(parsedId.data.id);
+  const user = await findUsuarioById(parsedId.data.id);
   res.status(200).json({ user });
 }
 
-export async function patchUser(req: Request, res: Response): Promise<void> {
+export async function patchUsuario(req: Request, res: Response): Promise<void> {
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const parsedBody = updateUserBodySchema.safeParse(req.body);
+  const parsedBody = updateUsuarioBodySchema.safeParse(req.body);
   if (!parsedBody.success) {
     throw zodValidationError();
   }
 
-  const user = await updateUser(parsedId.data.id, parsedBody.data);
+  const user = await updateUsuario(parsedId.data.id, parsedBody.data);
   res.status(200).json({ user });
 }
 
-export async function deleteUser(req: Request, res: Response): Promise<void> {
+export async function deleteUsuario(req: Request, res: Response): Promise<void> {
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  await deactivateUser(parsedId.data.id);
+  await deactivateUsuario(parsedId.data.id);
   res.status(204).send();
 }

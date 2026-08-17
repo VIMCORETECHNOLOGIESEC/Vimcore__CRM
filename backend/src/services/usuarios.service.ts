@@ -3,9 +3,9 @@ import { AppError } from "../lib/app-error.js";
 import { hashPassword } from "../lib/password.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import type {
-  AdminUserView,
+  AdminUsuarioView,
   ResponsableView,
-  UpdateUserData,
+  UpdateUsuarioData,
 } from "../repositories/usuario.repository.js";
 
 function userNotFound(): AppError {
@@ -25,14 +25,14 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
-export interface CreateUserInput {
+export interface CreateUsuarioInput {
   nombre: string;
   correo: string;
   password: string;
   rol: RolUsuario;
 }
 
-export interface UpdateUserInput {
+export interface UpdateUsuarioInput {
   nombre?: string;
   correo?: string;
   password?: string;
@@ -40,11 +40,11 @@ export interface UpdateUserInput {
 }
 
 /** Alta de usuario (D9: solo `ADMINISTRADOR` llega hasta acá vía `requireRole`). */
-export async function createUser(input: CreateUserInput): Promise<AdminUserView> {
+export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsuarioView> {
   const passwordHash = await hashPassword(input.password);
 
   try {
-    return await usuarioRepository.createUser({
+    return await usuarioRepository.createUsuario({
       nombre: input.nombre,
       correo: input.correo,
       passwordHash,
@@ -58,11 +58,11 @@ export async function createUser(input: CreateUserInput): Promise<AdminUserView>
   }
 }
 
-export async function findAllUsers(): Promise<AdminUserView[]> {
-  return usuarioRepository.findAllUsers();
+export async function findUsuarios(): Promise<AdminUsuarioView[]> {
+  return usuarioRepository.findUsuarios();
 }
 
-export async function findUserById(id: string): Promise<AdminUserView> {
+export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
   const user = await usuarioRepository.findPublicById(id);
   if (!user) {
     throw userNotFound();
@@ -70,8 +70,8 @@ export async function findUserById(id: string): Promise<AdminUserView> {
   return user;
 }
 
-export async function updateUser(id: string, input: UpdateUserInput): Promise<AdminUserView> {
-  const data: UpdateUserData = {
+export async function updateUsuario(id: string, input: UpdateUsuarioInput): Promise<AdminUsuarioView> {
+  const data: UpdateUsuarioData = {
     nombre: input.nombre,
     correo: input.correo,
     rol: input.rol,
@@ -81,7 +81,7 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Ad
   }
 
   try {
-    const updated = await usuarioRepository.updateUser(id, data);
+    const updated = await usuarioRepository.updateUsuario(id, data);
     if (!updated) {
       throw userNotFound();
     }
@@ -103,9 +103,9 @@ export async function findResponsables(rol: RolUsuario): Promise<ResponsableView
   return usuarioRepository.findResponsablesActivosPorRol(rol);
 }
 
-/** D3: baja lógica — ver `usuario.repository.deactivateUser` para la transacción. */
-export async function deactivateUser(id: string): Promise<void> {
-  const deactivated = await usuarioRepository.deactivateUser(id);
+/** D3: baja lógica — ver `usuario.repository.deactivateUsuario` para la transacción. */
+export async function deactivateUsuario(id: string): Promise<void> {
+  const deactivated = await usuarioRepository.deactivateUsuario(id);
   if (!deactivated) {
     throw userNotFound();
   }

@@ -5,7 +5,7 @@ import { revokeAllForUser } from "./refresh-token.repository.js";
 /**
  * Lecturas usadas por `auth.service.ts` (PR1). `passwordHash` se incluye
  * porque `login` necesita compararlo; los endpoints de `usuarios` (PR2) usan
- * `select` explícito sin este campo — ver `adminUserSelect` abajo.
+ * `select` explícito sin este campo — ver `adminUsuarioSelect` abajo.
  */
 export async function findById(id: string): Promise<Usuario | null> {
   return prisma.usuario.findUnique({ where: { id } });
@@ -20,7 +20,7 @@ export async function findByEmail(correo: string): Promise<Usuario | null> {
  * explícito (no spread del modelo completo) por diseño — evita que un futuro
  * campo sensible se filtre por accidente.
  */
-const adminUserSelect = {
+const adminUsuarioSelect = {
   id: true,
   nombre: true,
   correo: true,
@@ -30,16 +30,16 @@ const adminUserSelect = {
   actualizadoEn: true,
 } satisfies Prisma.UsuarioSelect;
 
-export type AdminUserView = Prisma.UsuarioGetPayload<{ select: typeof adminUserSelect }>;
+export type AdminUsuarioView = Prisma.UsuarioGetPayload<{ select: typeof adminUsuarioSelect }>;
 
-export interface CreateUserData {
+export interface CreateUsuarioData {
   nombre: string;
   correo: string;
   passwordHash: string;
   rol: RolUsuario;
 }
 
-export interface UpdateUserData {
+export interface UpdateUsuarioData {
   nombre?: string;
   correo?: string;
   passwordHash?: string;
@@ -55,27 +55,27 @@ function isRecordNotFoundError(error: unknown): boolean {
   );
 }
 
-export async function createUser(data: CreateUserData): Promise<AdminUserView> {
-  return prisma.usuario.create({ data, select: adminUserSelect });
+export async function createUsuario(data: CreateUsuarioData): Promise<AdminUsuarioView> {
+  return prisma.usuario.create({ data, select: adminUsuarioSelect });
 }
 
-export async function findAllUsers(): Promise<AdminUserView[]> {
+export async function findUsuarios(): Promise<AdminUsuarioView[]> {
   return prisma.usuario.findMany({
-    select: adminUserSelect,
+    select: adminUsuarioSelect,
     orderBy: { creadoEn: "asc" },
   });
 }
 
-export async function findPublicById(id: string): Promise<AdminUserView | null> {
-  return prisma.usuario.findUnique({ where: { id }, select: adminUserSelect });
+export async function findPublicById(id: string): Promise<AdminUsuarioView | null> {
+  return prisma.usuario.findUnique({ where: { id }, select: adminUsuarioSelect });
 }
 
-export async function updateUser(
+export async function updateUsuario(
   id: string,
-  data: UpdateUserData,
-): Promise<AdminUserView | null> {
+  data: UpdateUsuarioData,
+): Promise<AdminUsuarioView | null> {
   try {
-    return await prisma.usuario.update({ where: { id }, data, select: adminUserSelect });
+    return await prisma.usuario.update({ where: { id }, data, select: adminUsuarioSelect });
   } catch (error) {
     if (isRecordNotFoundError(error)) {
       return null;
@@ -154,13 +154,13 @@ export async function updateUltimaAsignacion(
  * `refresh-token.repository.ts` pasándole el cliente de transacción — no
  * duplica la lógica de revocación en cascada (D-D ya la implementa).
  */
-export async function deactivateUser(id: string): Promise<AdminUserView | null> {
+export async function deactivateUsuario(id: string): Promise<AdminUsuarioView | null> {
   try {
     return await prisma.$transaction(async (tx) => {
       const updated = await tx.usuario.update({
         where: { id },
         data: { activo: false },
-        select: adminUserSelect,
+        select: adminUsuarioSelect,
       });
       await revokeAllForUser(id, tx);
       return updated;
