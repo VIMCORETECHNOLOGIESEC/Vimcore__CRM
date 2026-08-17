@@ -111,19 +111,44 @@ descartable; los cambios de comportamiento real (como el rework de M6) se
 portean de vuelta a `dev-back`/`dev-front` a medida que se confirman,
 en vez de dejar que `test/integration` se convierta en el nuevo tronco.
 
-**Backend (`dev-back`) ya tiene Unit A1 + A2 + A3 completas**, porteadas
-en commits separados (`982e481`+`c3f1b1b` A1, `f7e08f8`+`7a0b4f4` A2,
-`ae2c923`+`7681685` A3). Al portear A2 se descubrió que `test/integration`
-había regresado a nomenclatura en español en `usuarios.*`
-(`postUsuario`/`getUsuarios`) por un commit F7 no relacionado, divergiendo
-del fix en inglés ya establecido en `dev-back`
-(`postUser`/`getUsers`, commit `ce33902`) — se corrigió `test/integration`
-hacia adelante (commit `627a997`, sin reescribir historia) y se implementó
-el catálogo de responsables directo en `dev-back` con la nomenclatura
-correcta, en vez de arrastrar el cherry-pick con nombres en español.
+**Backend (`dev-back`) tiene Unit A1 + A2 + A3 completas**, porteadas en
+commits separados (`982e481`+`c3f1b1b` A1, `f7e08f8`+`7a0b4f4` A2,
+`ae2c923`+`7681685` A3). **Frontend (`dev-front`) tiene Unit B1 + B2
+completas** (`c4378b7` mock replacement, `04fae7a` fix cancelar cita,
+`45918d7` docs), incluyendo el soporte de `params`/`buildQueryString` en
+`httpClient.ts` que ese port necesitó (portado desde `test/integration`,
+sin acoplarse al feature de paginación de usuarios que lo introdujo
+originalmente).
 
-**`dev-front` sigue sin recibir Unit B1/B2** (reemplazo de mocks +
-fix de cancelar cita) — queda como decisión futura.
+**Nomenclatura de `usuarios.*` — corregida hacia el patrón real del
+proyecto.** Durante el port de A2 se descubrió que `test/integration`
+había regresado a nombres en español (`postUsuario`/`getUsuarios`) por un
+commit F7 no relacionado, mientras `dev-back` ya tenía un fix a inglés
+puro (`postUser`/`getUsers`, commit `ce33902`, de un hook de revisión
+anterior). Se asumió inicialmente que inglés puro era la convención
+correcta y se corrigió en ese sentido — **decisión revertida tras releer
+`AGENTS.md` directamente**: la regla real exige un híbrido (verbo en
+inglés + sustantivo de dominio en español cuando ya está establecido en
+`docs/`, ej. `usuarioId`), confirmado por el patrón sin excepciones en el
+resto del backend (`assignLead`, `scheduleCita`, `cancelCita`,
+`rescheduleCita`). Nomenclatura final: `postUsuario`/`getUsuarios`/
+`getUsuarioById`/`patchUsuario`/`deleteUsuario` (controller),
+`createUsuario`/`findUsuarios`/`findUsuarioById`/`updateUsuario`/
+`deactivateUsuario` (service), `createUsuarioBodySchema`/
+`updateUsuarioBodySchema` (schema) — aplicada en `test/integration`
+(`8d9d105`) y `dev-back` (`6da487f`). El frontend no se ve afectado
+(rutas HTTP y shape de JSON sin cambios).
+
+**Hallazgo abierto, no urgente:** las respuestas JSON de
+`usuarios.controller.ts` usan `{user}`/`{users}` en inglés mientras
+`citas.controller.ts` usa `{cita}` en español — inconsistencia real de
+contrato de API, requiere coordinación cross-stack (rompe el contrato con
+el frontend si se corrige sin avisar), queda pendiente de decisión.
+
+**Estado al 2026-08-17: `test/integration`, `dev-back` y `dev-front`
+están alineados** (Fase 1 completa en las tres ramas, mismos nombres,
+sin deuda de sincronización pendiente). Listas para continuar con
+Fase 2 (bridges) en paralelo, en `dev-back`/`dev-front` directamente.
 
 ## Fase 2 — Bridges (M4 backend + F8) — [issue #7](https://github.com/DinnZart/crm_comercial/issues/7)
 
