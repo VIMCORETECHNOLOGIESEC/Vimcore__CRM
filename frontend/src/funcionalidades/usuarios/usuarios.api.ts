@@ -1,9 +1,10 @@
 import { httpClient } from "@/api/httpClient";
 import {
   assignLeadsMasivoApi,
+  fetchLeadsApi,
   getCatalogoResponsablesConRol,
-  getLeadsActivosDeUsuario,
 } from "@/funcionalidades/leads/leads.api";
+import { ETAPAS_TERMINALES } from "@/funcionalidades/leads/etapas";
 import type { AdminUsuario, RolUsuario } from "@/tipos/usuario";
 
 /**
@@ -14,11 +15,11 @@ import type { AdminUsuario, RolUsuario } from "@/tipos/usuario";
  * edición, restablecimiento de contraseña y baja lógica llaman al backend
  * real, no a un mock.
  *
- * La única pieza que sigue siendo mock es la "carga activa de leads"
- * (listado) y la reasignación obligatoria de cartera en la baja lógica --
- * ver el comentario de brecha en `getCargaActivaDeUsuario` más abajo:
- * no existe ningún backend real de leads (M5) contra el cual consultarla o
- * reasignarla.
+ * "Carga activa de leads" y la reasignación obligatoria de cartera en la
+ * baja lógica (integración F3/F4) ya llaman al backend real de leads
+ * (`GET /leads?responsableId=`, `POST /leads/asignar-lote`) -- ver la nota
+ * INTEGRACION-BACKEND-GAP en `getCargaActivaDeUsuario` más abajo sobre el
+ * límite de 100 leads activos por falta de un endpoint de agregación.
  */
 
 export interface CrearUsuarioInput {
@@ -93,66 +94,66 @@ export async function deactivateUsuarioApi(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Brecha documentada: "carga activa de leads" y reasignación obligatoria de
-// cartera (F7, checklist). No existe ningún backend real de leads -- se
-// verificó explícitamente antes de escribir este archivo: `backend/src/
-// {routes,controllers,services}` no tiene ningún archivo de leads, solo
-// `usuarios`, `auth`, `salud` y `deduplicacion` (M5, docs/06-modulos-backend.md,
-// no está implementado ni siquiera como esqueleto). No hay forma de
-// consultar la cartera de un usuario real ni de reasignarla contra un
-// backend real hoy.
+// "Carga activa de leads" y reasignación obligatoria de cartera (F7,
+// checklist) -- backend real de leads (integración F3/F4, D-A1/D-A2), ya no
+// dependen del mock en memoria que usaba `leads.api.ts::LEADS_MOCK`.
 //
-// Para no inventar un segundo mock paralelo, se reutiliza el mismo fixture
-// en memoria que ya usan F3/F4/F5 (`leads.api.ts::LEADS_MOCK`) a través de
-// `getLeadsActivosDeUsuario`/`getCatalogoResponsablesConRol`/
-// `assignLeadsMasivoApi`. Esos mocks usan ids sintéticos fijos (`asesor-1`,
-// `asesor-2`, `vendedor-1`, `vendedor-2`), no los UUID que genera el backend
-// real de usuarios -- en un ambiente real, salvo coincidencia, cualquier
-// usuario mostrará "0 leads activos" no porque no tenga cartera, sino
-// porque no hay ningún dato real contra el cual contarla. Cuando exista
-// `GET /leads` (M5) o un endpoint de agregación por usuario, reemplazar el
-// cuerpo de las tres funciones de esta sección.
+// INTEGRACION-BACKEND-GAP (documentado, no resuelto en este cambio): no
+// existe un endpoint de agregación dedicado ("cantidad de leads activos por
+// usuario") -- se deriva de `GET /leads?responsableId=` con el límite
+// máximo permitido por el schema (100, `listLeadsQuerySchema.limite.max`).
+// A la escala del MVP (~500 leads/mes, AGENTS.md §1) es correcto en la
+// práctica, pero un usuario con más de 100 leads activos simultáneos
+// subcontaría (no hay agregación server-side ni paginación completa acá).
 // ---------------------------------------------------------------------------
 
-/** Cantidad de leads activos (no en etapa terminal) de los que `usuarioId` es responsable. */
-export function getCargaActivaDeUsuario(usuarioId: string): number {
-  return getLeadsActivosDeUsuario(usuarioId).length;
+async function fetchLeadsActivosIdsDeUsuario(usuarioId: string): Promise<string[]> {
+  const { datos } = await fetchLeadsApi({ pagina: 1, porPagina: 100, responsableId: usuarioId });
+  return datos.filter((lead) => !ETAPAS_TERMINALES.includes(lead.etapa)).map((lead) => lead.id);
+}
+
+/** Cantidad de leads activos (no en etapa terminal) de los que `usuarioId` es responsable. Backend real. */
+export async function getCargaActivaDeUsuario(usuarioId: string): Promise<number> {
+  const ids = await fetchLeadsActivosIdsDeUsuario(usuarioId);
+  return ids.length;
 }
 
 /**
  * Candidatos válidos para recibir la cartera de un usuario dado de baja: del
  * mismo rol operativo (un asesor solo puede traspasar a otro asesor, un
  * vendedor solo a otro vendedor -- administrador/supervisor no cargan
- * cartera propia en este modelo), excluyendo al propio usuario.
+ * cartera propia en este modelo), excluyendo al propio usuario. Backend real.
  */
-export function getCandidatosReasignacion(
+export async function getCandidatosReasignacion(
   rol: RolUsuario,
   excluirUsuarioId: string,
-): { id: string; nombre: string }[] {
+): Promise<{ id: string; nombre: string }[]> {
   if (rol !== "ASESOR" && rol !== "VENDEDOR") {
     return [];
   }
-  return getCatalogoResponsablesConRol()
+  const responsables = await getCatalogoResponsablesConRol();
+  return responsables
     .filter((responsable) => responsable.rol === rol && responsable.id !== excluirUsuarioId)
     .map(({ id, nombre }) => ({ id, nombre }));
 }
 
 /**
- * Reasigna la cartera activa de un usuario antes de darlo de baja.
+ * Reasigna la cartera activa de un usuario antes de darlo de baja. Backend
+ * real: `assignLeadsMasivoApi` llama a `POST /leads/asignar-lote` (D-A1).
  *
  * IMPORTANTE (limitación conocida, no resuelta en silencio): esto y
- * `deactivateUsuarioApi` **no son una transacción atómica** -- uno muta un
- * mock en memoria, el otro es una llamada real al backend. Si
- * `deactivateUsuarioApi` fallara después de una reasignación exitosa, la
- * cartera ya se movió pero el usuario seguiría activo. Cuando exista el
- * backend real de leads, esta reasignación debería vivir en la misma
- * transacción que `deactivateUser` (`usuario.repository.ts`), igual que ya
- * hace hoy con `revokeAllForUser`.
+ * `deactivateUsuarioApi` **no son una transacción atómica** -- son dos
+ * llamadas HTTP independientes. Si `deactivateUsuarioApi` fallara después de
+ * una reasignación exitosa, la cartera ya se movió pero el usuario seguiría
+ * activo. Debería vivir en la misma transacción que `deactivateUser`
+ * (`usuario.repository.ts`), igual que ya hace hoy con `revokeAllForUser` --
+ * cambio de backend fuera del alcance de esta unidad (frontend-only).
  */
-export function reassignCarteraActiva(
+export async function reassignCarteraActiva(
   usuarioId: string,
   nuevoResponsableId: string,
 ): Promise<void> {
-  const leadIds = getLeadsActivosDeUsuario(usuarioId).map((lead) => lead.id);
-  return assignLeadsMasivoApi(leadIds, nuevoResponsableId);
+  const leadIds = await fetchLeadsActivosIdsDeUsuario(usuarioId);
+  if (leadIds.length === 0) return;
+  await assignLeadsMasivoApi(leadIds, nuevoResponsableId);
 }

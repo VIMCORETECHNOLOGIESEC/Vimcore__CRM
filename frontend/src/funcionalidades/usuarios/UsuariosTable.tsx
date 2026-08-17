@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { AdminUsuario } from "@/tipos/usuario";
 import { ROL_ETIQUETAS } from "./catalogos";
 import { EstadoUsuarioBadge } from "./EstadoUsuarioBadge";
-import { getCargaActivaDeUsuario } from "./usuarios.api";
+import { useCargaActivaDeUsuario } from "./useUsuarios";
 
 interface UsuariosTableProps {
   usuarios: AdminUsuario[];
@@ -18,9 +18,22 @@ interface UsuariosTableProps {
 const columnHelper = createColumnHelper<AdminUsuario>();
 
 /**
+ * Celda de "carga activa de leads" (F7): backend real, una consulta por
+ * fila (`useCargaActivaDeUsuario`) -- ver la nota INTEGRACION-BACKEND-GAP en
+ * `usuarios.api.ts::getCargaActivaDeUsuario` sobre el límite de 100.
+ * Extraída como componente propio (no una función inline en `cell`) para
+ * que el hook tenga una identidad de React estable por fila.
+ */
+function CeldaCargaActiva({ usuarioId }: { usuarioId: string }) {
+  const { data: cargaActiva, isLoading } = useCargaActivaDeUsuario(usuarioId);
+  if (isLoading) return <span className="text-muted-foreground">…</span>;
+  return <span className="tabular-nums">{cargaActiva ?? 0}</span>;
+}
+
+/**
  * Tabla del listado de usuarios (F7, "Listado con rol, estado y carga
- * activa de leads"). La columna de carga activa es un mock -- ver el
- * comentario de brecha en `usuarios.api.ts::getCargaActivaDeUsuario`.
+ * activa de leads"). La columna de carga activa es backend real -- ver
+ * `usuarios.api.ts::getCargaActivaDeUsuario`.
  */
 export function UsuariosTable({
   usuarios,
@@ -56,7 +69,7 @@ export function UsuariosTable({
           if (usuario.rol !== "ASESOR" && usuario.rol !== "VENDEDOR") {
             return <span className="text-muted-foreground">No aplica</span>;
           }
-          return <span className="tabular-nums">{getCargaActivaDeUsuario(usuario.id)}</span>;
+          return <CeldaCargaActiva usuarioId={usuario.id} />;
         },
       }),
       columnHelper.display({

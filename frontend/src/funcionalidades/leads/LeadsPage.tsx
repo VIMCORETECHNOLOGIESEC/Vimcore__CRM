@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
@@ -45,7 +46,12 @@ export function LeadsPage() {
   const assignMasivo = useAssignLeadsMasivo();
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
-  const responsables = useMemo(() => getCatalogoResponsables("TODOS"), []);
+  // `getCatalogoResponsables` es backend real (D-A2): a diferencia de
+  // `getCatalogoCampanias` (mock local, sin backend), necesita `useQuery`.
+  const { data: responsables = [] } = useQuery({
+    queryKey: ["catalogo-responsables", "TODOS"],
+    queryFn: () => getCatalogoResponsables("TODOS"),
+  });
 
   function updateFiltros(nuevos: LeadsFiltrosState) {
     setFiltros(nuevos);

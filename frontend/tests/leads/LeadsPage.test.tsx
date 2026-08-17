@@ -15,10 +15,14 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   fetchLeadsApi: vi.fn(),
   assignLeadsMasivoApi: vi.fn(),
   getCatalogoCampanias: vi.fn(() => [{ id: "camp-1", nombre: "Verano 2026" }]),
-  getCatalogoResponsables: vi.fn(() => [
-    { id: "asesor-1", nombre: "Marta Herrera" },
-    { id: "vendedor-1", nombre: "Sofía Vintimilla" },
-  ]),
+  // `getCatalogoResponsables` es backend real (D-A2) -- async en la app real,
+  // pero `useQuery` acepta igual un `queryFn` síncrono en tests.
+  getCatalogoResponsables: vi.fn(() =>
+    Promise.resolve([
+      { id: "asesor-1", nombre: "Marta Herrera" },
+      { id: "vendedor-1", nombre: "Sofía Vintimilla" },
+    ]),
+  ),
 }));
 
 /**

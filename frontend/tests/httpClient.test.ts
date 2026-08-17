@@ -69,6 +69,48 @@ describe("httpClient — inyección de JWT", () => {
   });
 });
 
+describe("httpClient — serialización de query params (F7, GET /usuarios con filtro y paginación)", () => {
+  it("serializa `params` a query string, en el orden en que se declaran las claves", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpClient.get("/usuarios", { params: { pagina: 2, limite: 10, busqueda: "ana" } });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe("http://localhost:3000/api/v1/usuarios?pagina=2&limite=10&busqueda=ana");
+  });
+
+  it("omite claves con valor `undefined`, sin mandar `campo=undefined`", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpClient.get("/usuarios", { params: { pagina: 1, limite: 20, rol: undefined } });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe("http://localhost:3000/api/v1/usuarios?pagina=1&limite=20");
+  });
+
+  it("serializa un booleano como el string 'true'/'false' (contrato de `activo` en GET /usuarios)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpClient.get("/usuarios", { params: { activo: true } });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe("http://localhost:3000/api/v1/usuarios?activo=true");
+  });
+
+  it("sin `params`, no agrega un '?' a la URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpClient.get("/usuarios");
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe("http://localhost:3000/api/v1/usuarios");
+  });
+});
+
 describe("httpClient — reintento automático ante 401", () => {
   it("refresca el token y reintenta la petición original una sola vez", async () => {
     setTokens({ accessToken: "token-viejo", refreshToken: "refresh-1" });
