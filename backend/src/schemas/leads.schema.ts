@@ -79,6 +79,24 @@ export const asignarBodySchema = z.object({ asesorId: z.uuid().optional() });
 export const reasignarBodySchema = z.object({ asesorId: z.uuid().optional() });
 export const traspasarBodySchema = z.object({ vendedorId: z.uuid().optional() });
 
+/**
+ * design D-A1 ("Tamaño máximo = 100"): derivado estructuralmente de
+ * `listLeadsQuerySchema.limite.max(100)` arriba — así "seleccionar toda la
+ * página visible" siempre cabe en un único request (decisión 2 del diseño:
+ * un solo request, sin chunking en cliente). `asesorId` (no `responsableId`
+ * del spec — el diseño lo corrige por simetría estructural con
+ * `asignarBodySchema`, mismo pool ASESOR) es opcional: activa
+ * `selectResponsable` por lead cuando se omite.
+ */
+export const asignarLoteBodySchema = z.object({
+  leadIds: z
+    .array(z.uuid())
+    .min(1)
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, "leadIds no debe contener duplicados"),
+  asesorId: z.uuid().optional(),
+});
+
 export type PatchEtapaBody = z.infer<typeof patchEtapaBodySchema>;
 export type ListLeadsQuery = z.infer<typeof listLeadsQuerySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
@@ -86,3 +104,4 @@ export type PostFormularioBody = z.infer<typeof postFormularioBodySchema>;
 export type AsignarBody = z.infer<typeof asignarBodySchema>;
 export type ReasignarBody = z.infer<typeof reasignarBodySchema>;
 export type TraspasarBody = z.infer<typeof traspasarBodySchema>;
+export type AsignarLoteBody = z.infer<typeof asignarLoteBodySchema>;

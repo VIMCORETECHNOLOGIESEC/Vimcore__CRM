@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
-import { assignAutomatically } from "../src/services/asignacion.service.js";
+import { assignAutomatically, assignLeadsBatch } from "../src/services/asignacion.service.js";
+import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
 /**
  * Mismo truco de inyección de fallos que `ingesta.service.test.ts` (M4):
@@ -43,6 +44,8 @@ async function crearAsesorActivo(): Promise<{ id: string }> {
     },
   });
 }
+
+const SUPERVISOR: UsuarioAcceso = { id: "00000000-0000-4000-8000-000000000001", rol: "SUPERVISOR" };
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -162,5 +165,31 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
 
     const totalEventos = await prisma.leadEvento.count({ where: { leadId: lead.id } });
     expect(totalEventos).toBe(0);
+  });
+});
+
+describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infraestructura abortan el lote)", () => {
+  it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const asesor = await crearAsesorActivo();
+    const leadUno = await crearLeadSinAsignar();
+    const leadDos = await crearLeadSinAsignar();
+
+    // Mismo truco de inyección que la prueba obligatoria 12 arriba: el
+    // primer `createEvento` de este test (dentro del `assignLead` de
+    // `leadUno`) falla con un Error genérico (no `AppError`) — simula un
+    // fallo de infraestructura, no un fallo de negocio del lead.
+    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo de infraestructura simulado"));
+
+    await expect(
+      assignLeadsBatch(SUPERVISOR, { leadIds: [leadUno.id, leadDos.id], asesorId: asesor.id }),
+    ).rejects.toThrow("fallo de infraestructura simulado");
+
+    // El lote se abortó ANTES de procesar leadDos — no quedó reportado como
+    // "fallidos[]", ni tampoco se asignó (D-A1: un error de infra no debe
+    // reportarse como "estos leads son inválidos").
+    const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
+    expect(leadDosTrasFallo.asesorId).toBeNull();
   });
 });
