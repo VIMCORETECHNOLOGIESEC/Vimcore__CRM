@@ -16,6 +16,9 @@ import type {
 import { canReassign, canTransfer, type MotivoDenegacion, type UsuarioAcceso } from "./leads.access.js";
 import type { LeadConSla } from "./leads.service.js";
 import { calculateEstadoSla } from "./sla.calculator.js";
+import * as notificacionRepository from "../repositories/notificacion.repository.js";
+import { createForActiveSupervisorsAndAdmins } from "./notificaciones.service.js";
+import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
 
@@ -154,7 +157,7 @@ interface ApplyAsignacionInput {
 async function applyAsignacion(
   input: ApplyAsignacionInput,
   tx: Prisma.TransactionClient,
-): Promise<Lead> {
+): Promise<{ lead: Lead; events: CommittedEvent[] }> {
   const lead = await leadRepository.assignResponsable(
     input.leadId,
     { pool: input.pool, responsableId: input.receptorId, slaInicioEn: input.ahora },
@@ -182,7 +185,9 @@ async function applyAsignacion(
     tx,
   );
 
-  return lead;
+  const tipo = input.tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
+  const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId }, tx);
+  return { lead, events: [...notificationEvents(notification), { userId: input.receptorId, type: "lead.asignado", data: { leadId: input.leadId, responsableId: input.receptorId } }] };
 }
 
 /**
@@ -210,9 +215,9 @@ export async function assignAutomatically(
   leadId: string,
   ahora: Date,
   tx: Prisma.TransactionClient,
-): Promise<void> {
+): Promise<CommittedEvent[]> {
   const leadActual = await leadRepository.findById(leadId, tx);
-  if (leadActual === null || leadActual.asesorId !== null) return;
+  if (leadActual === null || leadActual.asesorId !== null) return [];
 
   const candidato = await selectResponsable("ASESOR", tx);
 
@@ -233,10 +238,11 @@ export async function assignAutomatically(
       },
       tx,
     );
-    return;
+    const notifications = await createForActiveSupervisorsAndAdmins({ tipo: "LEAD_SIN_ASIGNAR", titulo: "Lead sin asignar", mensaje: "No hay asesores activos disponibles", leadId }, tx);
+    return notifications.flatMap(notificationEvents);
   }
 
-  await applyAsignacion(
+  const assigned = await applyAsignacion(
     {
       leadId,
       pool: "ASESOR",
@@ -249,6 +255,7 @@ export async function assignAutomatically(
     },
     tx,
   );
+  return assigned.events;
 }
 
 /** D-A2 (revisión 2): 3 intentos, backoff 250ms/1000ms, presupuesto total <=5s. */
@@ -301,11 +308,12 @@ export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<vo
 
   for (let intento = 1; intento <= ASIGNACION_POST_COMMIT_MAX_INTENTOS; intento++) {
     try {
-      await runInTransaction(
+      const events = await runInTransaction(
         undefined,
         (tx) => assignAutomatically(leadId, ahora, tx),
         ASIGNACION_TRANSACTION_BOUNDS,
       );
+      publishCommittedEvents(events);
       return;
     } catch (error) {
       ultimoError = error;
@@ -451,7 +459,7 @@ export async function assignLead(
   leadId: string,
   body: AsignarBody,
 ): Promise<LeadConSla> {
-  return runInTransaction(
+  const result = await runInTransaction(
     undefined,
     async (tx) => {
       const ahora = new Date();
@@ -462,7 +470,7 @@ export async function assignLead(
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
       const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
 
-      const leadActualizado = await applyAsignacion(
+      const assigned = await applyAsignacion(
         {
           leadId,
           pool: "ASESOR",
@@ -476,10 +484,12 @@ export async function assignLead(
         tx,
       );
 
-      return withEstadoSla(leadActualizado, ahora);
+      return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
     },
     ASIGNACION_TRANSACTION_BOUNDS,
   );
+  publishCommittedEvents(result.events);
+  return result.lead;
 }
 
 export interface ResultadoLoteExitoso {
@@ -552,7 +562,7 @@ export async function reassignLead(
   leadId: string,
   body: ReasignarBody,
 ): Promise<LeadConSla> {
-  return runInTransaction(
+  const result = await runInTransaction(
     undefined,
     async (tx) => {
       const ahora = new Date();
@@ -570,7 +580,7 @@ export async function reassignLead(
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
       const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
 
-      const leadActualizado = await applyAsignacion(
+      const assigned = await applyAsignacion(
         {
           leadId,
           pool: "ASESOR",
@@ -584,10 +594,12 @@ export async function reassignLead(
         tx,
       );
 
-      return withEstadoSla(leadActualizado, ahora);
+      return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
     },
     ASIGNACION_TRANSACTION_BOUNDS,
   );
+  publishCommittedEvents(result.events);
+  return result.lead;
 }
 
 /**
@@ -600,7 +612,7 @@ export async function transferLead(
   leadId: string,
   body: TraspasarBody,
 ): Promise<LeadConSla> {
-  return runInTransaction(
+  const result = await runInTransaction(
     undefined,
     async (tx) => {
       const ahora = new Date();
@@ -618,7 +630,7 @@ export async function transferLead(
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
       const receptorId = await resolveReceptor("VENDEDOR", tx, lead.vendedorId ?? undefined, destino);
 
-      const leadActualizado = await applyAsignacion(
+      const assigned = await applyAsignacion(
         {
           leadId,
           pool: "VENDEDOR",
@@ -632,8 +644,10 @@ export async function transferLead(
         tx,
       );
 
-      return withEstadoSla(leadActualizado, ahora);
+      return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
     },
     ASIGNACION_TRANSACTION_BOUNDS,
   );
+  publishCommittedEvents(result.events);
+  return result.lead;
 }
