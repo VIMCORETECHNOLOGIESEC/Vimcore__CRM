@@ -19,6 +19,16 @@ export const updateUserBodySchema = createUserBodySchema
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
+/**
+ * F3/F4 (diseño D-A1, catálogo de responsables): `rol` es obligatorio — el
+ * catálogo siempre se consulta acotado a un pool (ASESOR para asignación
+ * individual/lote). Sin filtro por equipo (spec: "sin filtro por equipo").
+ */
+export const listResponsablesQuerySchema = z.object({
+  rol: z.enum(RolUsuario),
+});
+
 export type CreateUserBody = z.infer<typeof createUserBodySchema>;
 export type UpdateUserBody = z.infer<typeof updateUserBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
+export type ListResponsablesQuery = z.infer<typeof listResponsablesQuerySchema>;

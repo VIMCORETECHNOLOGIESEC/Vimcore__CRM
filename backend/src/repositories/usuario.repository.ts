@@ -84,6 +84,33 @@ export async function updateUser(
   }
 }
 
+/**
+ * F3/F4 (diseño D-A1, catálogo de responsables): proyección estricta
+ * `{id,nombre,rol}` — deliberadamente MÁS angosta que `CandidatoRol`
+ * (que expone `ultimaAsignacionEn`, un detalle interno del algoritmo de
+ * asignación que el catálogo de UI no necesita ni debe filtrar).
+ */
+const responsableSelect = {
+  id: true,
+  nombre: true,
+  rol: true,
+} satisfies Prisma.UsuarioSelect;
+
+export type ResponsableView = Prisma.UsuarioGetPayload<{ select: typeof responsableSelect }>;
+
+/**
+ * F3/F4 (diseño D-A1): activos únicamente, sin filtro por equipo (spec).
+ * No reusa `findActivosPorRol` porque ese select es específico del algoritmo
+ * de asignación (`ultimaAsignacionEn`, sin `nombre`) — dos consumidores con
+ * proyecciones distintas, mismo filtro `where`.
+ */
+export async function findResponsablesActivosPorRol(rol: RolUsuario): Promise<ResponsableView[]> {
+  return prisma.usuario.findMany({
+    where: { rol, activo: true },
+    select: responsableSelect,
+  });
+}
+
 /** M6 (diseño, "Cálculo de menor carga activa — consulta exacta"). */
 export interface CandidatoRol {
   id: string;

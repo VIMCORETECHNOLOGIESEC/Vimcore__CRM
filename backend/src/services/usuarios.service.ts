@@ -2,7 +2,11 @@ import type { RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { hashPassword } from "../lib/password.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
-import type { AdminUserView, UpdateUserData } from "../repositories/usuario.repository.js";
+import type {
+  AdminUserView,
+  ResponsableView,
+  UpdateUserData,
+} from "../repositories/usuario.repository.js";
 
 function userNotFound(): AppError {
   return new AppError("usuario_no_encontrado", 404, "Usuario no encontrado");
@@ -88,6 +92,15 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Ad
     }
     throw error;
   }
+}
+
+/**
+ * F3/F4 (diseño D-A1): catálogo de responsables activos para un pool de rol
+ * — consumido por `GET /usuarios/responsables` y (indirectamente, vía el
+ * frontend) por el selector de destinatario del lote de asignación.
+ */
+export async function findResponsables(rol: RolUsuario): Promise<ResponsableView[]> {
+  return usuarioRepository.findResponsablesActivosPorRol(rol);
 }
 
 /** D3: baja lógica — ver `usuario.repository.deactivateUser` para la transacción. */

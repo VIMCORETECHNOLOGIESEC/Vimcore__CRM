@@ -3,6 +3,7 @@ import {
   deleteUser,
   getUserById,
   getUsers,
+  getUsersResponsables,
   patchUser,
   postUser,
 } from "../controllers/usuarios.controller.js";
@@ -23,6 +24,16 @@ usuariosRouter.get(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   getUsers,
+);
+// F3/F4 (diseño D-A1): DEBE registrarse ANTES de `/usuarios/:id` — si no,
+// "responsables" sería capturado como `:id` por esa ruta (ADMINISTRADOR-only,
+// distinta autorización) en lugar de llegar acá. Accesible a ADMINISTRADOR Y
+// SUPERVISOR, a diferencia del resto del CRUD (D9, solo ADMINISTRADOR).
+usuariosRouter.get(
+  "/usuarios/responsables",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR", "SUPERVISOR"),
+  getUsersResponsables,
 );
 usuariosRouter.get(
   "/usuarios/:id",
