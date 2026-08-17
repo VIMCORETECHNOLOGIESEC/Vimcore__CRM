@@ -91,6 +91,67 @@ describe("GET /api/v1/leads", () => {
   });
 });
 
+describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de cliente)", () => {
+  it("filtra por teléfono del cliente vía busqueda, sin devolver leads de otros clientes", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    contador += 1;
+    const clienteMatch = await prisma.cliente.create({
+      data: {
+        nombre: `Cliente Busqueda Match ${contador}`,
+        telefonoOriginal: "3011234567",
+        telefonoValido: true,
+      },
+    });
+    const clienteNoMatch = await prisma.cliente.create({
+      data: {
+        nombre: `Cliente Busqueda NoMatch ${contador}`,
+        telefonoOriginal: "3029876543",
+        telefonoValido: true,
+      },
+    });
+    await prisma.lead.create({
+      data: { clienteId: clienteMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    });
+    await prisma.lead.create({
+      data: { clienteId: clienteNoMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    });
+
+    const respuesta = await request(app)
+      .get("/api/v1/leads")
+      .query({ busqueda: "3011234567" })
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.leads).toHaveLength(1);
+    expect(respuesta.body.leads[0].cliente.id).toBe(clienteMatch.id);
+  });
+
+  it("campaña queda fuera de la búsqueda libre: un lead cuya campaña matchea pero cuyo cliente no, no aparece", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    contador += 1;
+    const clienteAjeno = await prisma.cliente.create({
+      data: { nombre: `Cliente Busqueda Camp ${contador}`, telefonoValido: false },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: clienteAjeno.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        ingresadoEn: new Date(),
+        payloadOriginal: { nombreCampania: "Campania Verano Unica" },
+      },
+    });
+
+    const respuesta = await request(app)
+      .get("/api/v1/leads")
+      .query({ busqueda: "Campania Verano Unica" })
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.leads).toHaveLength(0);
+  });
+});
+
 describe("GET /api/v1/leads/:id — mandatory test (docs/06 §M5): un asesor no puede LEER un lead ajeno", () => {
   it("403 directo contra el endpoint cuando el asesor no tiene relación con el lead", async () => {
     const asesorAjeno = await crearUsuarioConToken("ASESOR");

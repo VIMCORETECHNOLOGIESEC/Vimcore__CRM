@@ -115,11 +115,39 @@ export interface FindManyLeadsOptions {
   skip: number;
   take: number;
   orderBy: Prisma.LeadOrderByWithRelationInput;
+  /**
+   * spec ("Búsqueda libre sobre datos de cliente"): texto libre aplicado
+   * como OR ILIKE sobre datos del cliente, nunca sobre campaña (D-2).
+   */
+  busqueda?: string;
 }
 
 export interface FindManyLeadsResult {
   leads: LeadConRelaciones[];
   total: number;
+}
+
+/**
+ * spec ("Búsqueda libre sobre datos de cliente"): OR ILIKE sobre
+ * `cliente.nombre`/`telefonoOriginal`/`telefonoNormalizado`/correo
+ * principal. Vive en el repositorio (no en `leads.service.ts::buildWhere`)
+ * porque expresa un filtro sobre la relación `cliente`, no una columna
+ * propia de `Lead`. Campaña queda deliberadamente fuera — ya tiene su propio
+ * filtro (`campania`) contra `payloadOriginal`.
+ */
+function buildBusquedaClienteWhere(busqueda: string): Prisma.ClienteWhereInput {
+  return {
+    OR: [
+      { nombre: { contains: busqueda, mode: "insensitive" } },
+      { telefonoOriginal: { contains: busqueda, mode: "insensitive" } },
+      { telefonoNormalizado: { contains: busqueda, mode: "insensitive" } },
+      {
+        correos: {
+          some: { esPrincipal: true, correoNormalizado: { contains: busqueda, mode: "insensitive" } },
+        },
+      },
+    ],
+  };
 }
 
 /**
@@ -133,15 +161,19 @@ export async function findMany(
   options: FindManyLeadsOptions,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<FindManyLeadsResult> {
+  const whereFinal: Prisma.LeadWhereInput = options.busqueda
+    ? { ...where, cliente: buildBusquedaClienteWhere(options.busqueda) }
+    : where;
+
   const [leads, total] = await Promise.all([
     client.lead.findMany({
-      where,
+      where: whereFinal,
       skip: options.skip,
       take: options.take,
       orderBy: options.orderBy,
       include: LEAD_RELACIONES_INCLUDE,
     }),
-    client.lead.count({ where }),
+    client.lead.count({ where: whereFinal }),
   ]);
   return { leads, total };
 }
