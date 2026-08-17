@@ -98,6 +98,13 @@ enum TipoEventoLead {
   // no hubo candidatos activos del rol requerido al momento de la
   // asignación automática (docs/02 §3.5).
   SIN_ASIGNAR
+  // F3/F4 (diseño D-A2, revisión 2): agregado AL FINAL, mismo criterio que
+  // SIN_ASIGNAR arriba. Señala que la asignación automática POST-COMMIT
+  // agotó sus 3 reintentos — distinto de SIN_ASIGNAR ("no había candidatos",
+  // estado de negocio) porque este es un fallo de infraestructura/operación;
+  // sobrecargar SIN_ASIGNAR ocultaría el incidente y dispararía una
+  // notificación falsa. Ver docs/06-modulos-backend.md §M6.
+  ASIGNACION_FALLIDA
 
   @@map("tipo_evento_lead")
 }
