@@ -20,6 +20,7 @@ const {
   scheduleCitaApi,
   rescheduleCitaApi,
   markCitaResultApi,
+  cancelCitaApi,
 } = await import("@/funcionalidades/leads/detalle/leadDetalle.api");
 
 const getMock = vi.mocked(httpClient.get);
@@ -297,17 +298,70 @@ describe("citas: agendar, reprogramar y marcar resultado (backend real, M7)", ()
     expect(cita.estado).toBe("CUMPLIDA");
   });
 
-  /**
-   * Bug preexistente, deliberadamente NO corregido en esta unidad (B1) --
-   * ver `sdd/integracion-leads-f3-f4/spec` (Requirement "Cancelación de cita
-   * separada del resultado") y el work unit B2. El tipo sigue aceptando
-   * "CANCELADA" a propósito; el backend real lo rechaza con 400 porque
-   * `marcarResultadoCitaBodySchema` solo admite CUMPLIDA|NO_ASISTIO.
-   */
-  it('markCitaResultApi con "CANCELADA" propaga el 400 del backend real (bug preexistente, fix es responsabilidad de B2)', async () => {
+});
+
+describe("cancelCitaApi (POST /citas/:citaId/cancelar real, design D-B1 -- unidad B2)", () => {
+  it("llama a POST /citas/:citaId/cancelar sin body y mapea la respuesta", async () => {
+    postMock.mockResolvedValue({
+      cita: {
+        id: "cita-01",
+        leadId: "lead-01",
+        usuarioId: "asesor-1",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        modalidad: "VIRTUAL",
+        estado: "CANCELADA",
+        notas: null,
+      },
+    });
+
+    const cita = await cancelCitaApi("cita-01");
+
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/cancelar");
+    expect(postMock).not.toHaveBeenCalledWith("/citas/cita-01/resultado", expect.anything());
+    expect(cita.estado).toBe("CANCELADA");
+  });
+
+  it("propaga el error del backend si la cita no existe", async () => {
+    postMock.mockRejectedValue(new Error("cita_no_encontrada"));
+
+    await expect(cancelCitaApi("cita-no-existe")).rejects.toThrow();
+  });
+});
+
+/**
+ * Escenario negativo del spec (`sdd/integracion-leads-f3-f4/spec`, Requirement
+ * "Cancelación de cita separada del resultado"): ningún path de la API de
+ * citas puede enviar `estado: "CANCELADA"` a `/resultado`. `markCitaResultApi`
+ * ya no acepta `"CANCELADA"` en su tipo (design D-B1, unidad B2) -- este test
+ * lo prueba también en runtime, esquivando el chequeo de tipos con `as never`
+ * a propósito: si alguien reabre el tipo (o llama la función desde JS puro),
+ * el backend real seguiría rechazando con 400 y `markCitaResultApi` nunca
+ * hace de cuenta que tuvo éxito.
+ */
+describe('escenario negativo -- "CANCELADA" nunca llega a /citas/:id/resultado', () => {
+  it("si se fuerza el envío de CANCELADA vía cast de tipo, la llamada real sigue apuntando a /resultado (no /cancelar) y el backend la rechaza", async () => {
     postMock.mockRejectedValue(new Error("validacion_invalida"));
 
-    await expect(markCitaResultApi("cita-01", "CANCELADA")).rejects.toThrow();
+    await expect(markCitaResultApi("cita-01", "CANCELADA" as never)).rejects.toThrow();
     expect(postMock).toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "CANCELADA" });
+  });
+
+  it("la cancelación real de cita usa un endpoint separado (/cancelar), nunca /resultado con CANCELADA", async () => {
+    postMock.mockResolvedValue({
+      cita: {
+        id: "cita-01",
+        leadId: "lead-01",
+        usuarioId: "asesor-1",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        modalidad: "VIRTUAL",
+        estado: "CANCELADA",
+        notas: null,
+      },
+    });
+
+    await cancelCitaApi("cita-01");
+
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/cancelar");
+    expect(postMock).not.toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "CANCELADA" });
   });
 });

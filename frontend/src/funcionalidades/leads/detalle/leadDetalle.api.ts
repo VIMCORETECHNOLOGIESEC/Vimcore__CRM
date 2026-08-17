@@ -182,18 +182,29 @@ export async function rescheduleCitaApi(citaId: string, programadaPara: string):
 }
 
 /**
- * `POST /citas/:citaId/resultado` (backend real -- verbo POST, no PATCH).
- * El tipo de `estado` sigue aceptando `"CANCELADA"` a propósito: el backend
- * real SOLO acepta `CUMPLIDA|NO_ASISTIO` en este endpoint (`marcarResultadoCitaBodySchema`)
- * y rechazaría `CANCELADA` con 400 -- el fix de ese bug (separar cancelar en
- * su propio hook contra `POST /citas/:citaId/cancelar`, D-B1 del diseño) es
- * responsabilidad de la unidad B2, deliberadamente fuera de este cambio.
+ * `POST /citas/:citaId/resultado` (backend real -- verbo POST, no PATCH). El
+ * tipo de `estado` se estrecha a `"CUMPLIDA" | "NO_ASISTIO"` (design D-B1,
+ * unidad B2): el backend real SOLO acepta esos dos valores en este endpoint
+ * (`marcarResultadoCitaBodySchema`) y rechazaría `"CANCELADA"` con 400. El
+ * estrechamiento hace que el bug (enviar `CANCELADA` acá) sea irrepresentable
+ * en TypeScript -- ver `cancelCitaApi` para la cancelación real.
  */
 export async function markCitaResultApi(
   citaId: string,
-  estado: Extract<EstadoCita, "CUMPLIDA" | "NO_ASISTIO" | "CANCELADA">,
+  estado: Extract<EstadoCita, "CUMPLIDA" | "NO_ASISTIO">,
 ): Promise<Cita> {
   const { cita } = await httpClient.post<{ cita: BackendCita }>(`/citas/${citaId}/resultado`, { estado });
+  return mapCitaFromApi(cita);
+}
+
+/**
+ * `POST /citas/:citaId/cancelar` (backend real, sin body -- design D-B1,
+ * unidad B2). Endpoint dedicado (`postCancelarCita` -> `cancelCita`) distinto
+ * de `/resultado`; no requiere `estado` porque el propio endpoint ES la
+ * cancelación.
+ */
+export async function cancelCitaApi(citaId: string): Promise<Cita> {
+  const { cita } = await httpClient.post<{ cita: BackendCita }>(`/citas/${citaId}/cancelar`);
   return mapCitaFromApi(cita);
 }
 
