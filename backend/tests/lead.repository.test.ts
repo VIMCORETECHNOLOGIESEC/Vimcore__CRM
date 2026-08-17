@@ -97,6 +97,84 @@ describe("repositories/lead — findMany (PR3, listado filtrado)", () => {
   });
 });
 
+describe("repositories/lead — findById/findMany incluyen relaciones anidadas (spec: Listado/Detalle con relaciones)", () => {
+  it("findById devuelve cliente/asesor/vendedor como objetos anidados, no solo IDs", async () => {
+    contador += 1;
+    const cliente = await prisma.cliente.create({
+      data: { nombre: `Cliente Rel ${contador}`, telefonoValido: false },
+    });
+    const asesor = await prisma.usuario.create({
+      data: {
+        nombre: `Asesor Rel ${contador}`,
+        correo: `asesor-rel-${contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    const vendedor = await prisma.usuario.create({
+      data: {
+        nombre: `Vendedor Rel ${contador}`,
+        correo: `vendedor-rel-${contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "VENDEDOR",
+        activo: true,
+      },
+    });
+    const lead = await prisma.lead.create({
+      data: {
+        clienteId: cliente.id,
+        asesorId: asesor.id,
+        vendedorId: vendedor.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        ingresadoEn: new Date(),
+      },
+    });
+
+    const encontrado = await leadRepository.findById(lead.id);
+
+    expect(encontrado?.cliente.nombre).toBe(`Cliente Rel ${contador}`);
+    expect(encontrado?.asesor?.nombre).toBe(`Asesor Rel ${contador}`);
+    expect(encontrado?.vendedor?.nombre).toBe(`Vendedor Rel ${contador}`);
+  });
+
+  it("findMany devuelve cliente/asesor/vendedor anidados para cada item del listado", async () => {
+    contador += 1;
+    const cliente = await prisma.cliente.create({
+      data: { nombre: `Cliente Rel FM ${contador}`, telefonoValido: false },
+    });
+    const asesor = await prisma.usuario.create({
+      data: {
+        nombre: `Asesor Rel FM ${contador}`,
+        correo: `asesor-rel-fm-${contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: cliente.id,
+        asesorId: asesor.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        ingresadoEn: new Date(),
+      },
+    });
+
+    const resultado = await leadRepository.findMany(
+      { clienteId: cliente.id },
+      { skip: 0, take: 10, orderBy: { ingresadoEn: "desc" } },
+    );
+
+    expect(resultado.leads).toHaveLength(1);
+    expect(resultado.leads[0]?.cliente.nombre).toBe(`Cliente Rel FM ${contador}`);
+    expect(resultado.leads[0]?.asesor?.nombre).toBe(`Asesor Rel FM ${contador}`);
+    expect(resultado.leads[0]?.vendedor).toBeNull();
+  });
+});
+
 describe("repositories/lead — updateEtapa (PR3)", () => {
   it("actualiza etapa y campos de cierre de VENTA en la misma llamada", async () => {
     const { leadId } = await crearClienteYLead();
