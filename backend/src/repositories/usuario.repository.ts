@@ -5,7 +5,7 @@ import { revokeAllForUser } from "./refresh-token.repository.js";
 /**
  * Lecturas usadas por `auth.service.ts` (PR1). `passwordHash` se incluye
  * porque `login` necesita compararlo; los endpoints de `usuarios` (PR2) usan
- * `select` explícito sin este campo — ver `adminUsuarioSelect` abajo.
+ * `select` explícito sin este campo — ver `adminUserSelect` abajo.
  */
 export async function findById(id: string): Promise<Usuario | null> {
   return prisma.usuario.findUnique({ where: { id } });
@@ -20,7 +20,7 @@ export async function findByEmail(correo: string): Promise<Usuario | null> {
  * explícito (no spread del modelo completo) por diseño — evita que un futuro
  * campo sensible se filtre por accidente.
  */
-const adminUsuarioSelect = {
+const adminUserSelect = {
   id: true,
   nombre: true,
   correo: true,
@@ -30,16 +30,16 @@ const adminUsuarioSelect = {
   actualizadoEn: true,
 } satisfies Prisma.UsuarioSelect;
 
-export type AdminUsuarioView = Prisma.UsuarioGetPayload<{ select: typeof adminUsuarioSelect }>;
+export type AdminUserView = Prisma.UsuarioGetPayload<{ select: typeof adminUserSelect }>;
 
-export interface CreateUsuarioData {
+export interface CreateUserData {
   nombre: string;
   correo: string;
   passwordHash: string;
   rol: RolUsuario;
 }
 
-export interface UpdateUsuarioData {
+export interface UpdateUserData {
   nombre?: string;
   correo?: string;
   passwordHash?: string;
@@ -55,18 +55,18 @@ function isRecordNotFoundError(error: unknown): boolean {
   );
 }
 
-export async function createUsuario(data: CreateUsuarioData): Promise<AdminUsuarioView> {
-  return prisma.usuario.create({ data, select: adminUsuarioSelect });
+export async function createUser(data: CreateUserData): Promise<AdminUserView> {
+  return prisma.usuario.create({ data, select: adminUserSelect });
 }
 
-export interface FindUsuariosOptions {
+export interface FindUsersOptions {
   skip: number;
   take: number;
   orderBy: Prisma.UsuarioOrderByWithRelationInput;
 }
 
-export interface FindUsuariosResult {
-  usuarios: AdminUsuarioView[];
+export interface FindUsersResult {
+  usuarios: AdminUserView[];
   total: number;
 }
 
@@ -75,14 +75,14 @@ export interface FindUsuariosResult {
  * `lead.repository.findMany` — página + conteo total en paralelo, un único
  * `where` compartido entre ambas consultas.
  */
-export async function findUsuarios(
+export async function findUsers(
   where: Prisma.UsuarioWhereInput,
-  options: FindUsuariosOptions,
-): Promise<FindUsuariosResult> {
+  options: FindUsersOptions,
+): Promise<FindUsersResult> {
   const [usuarios, total] = await Promise.all([
     prisma.usuario.findMany({
       where,
-      select: adminUsuarioSelect,
+      select: adminUserSelect,
       skip: options.skip,
       take: options.take,
       orderBy: options.orderBy,
@@ -92,16 +92,16 @@ export async function findUsuarios(
   return { usuarios, total };
 }
 
-export async function findPublicById(id: string): Promise<AdminUsuarioView | null> {
-  return prisma.usuario.findUnique({ where: { id }, select: adminUsuarioSelect });
+export async function findPublicById(id: string): Promise<AdminUserView | null> {
+  return prisma.usuario.findUnique({ where: { id }, select: adminUserSelect });
 }
 
-export async function updateUsuario(
+export async function updateUser(
   id: string,
-  data: UpdateUsuarioData,
-): Promise<AdminUsuarioView | null> {
+  data: UpdateUserData,
+): Promise<AdminUserView | null> {
   try {
-    return await prisma.usuario.update({ where: { id }, data, select: adminUsuarioSelect });
+    return await prisma.usuario.update({ where: { id }, data, select: adminUserSelect });
   } catch (error) {
     if (isRecordNotFoundError(error)) {
       return null;
@@ -180,13 +180,13 @@ export async function updateUltimaAsignacion(
  * `refresh-token.repository.ts` pasándole el cliente de transacción — no
  * duplica la lógica de revocación en cascada (D-D ya la implementa).
  */
-export async function deactivateUsuario(id: string): Promise<AdminUsuarioView | null> {
+export async function deactivateUser(id: string): Promise<AdminUserView | null> {
   try {
     return await prisma.$transaction(async (tx) => {
       const updated = await tx.usuario.update({
         where: { id },
         data: { activo: false },
-        select: adminUsuarioSelect,
+        select: adminUserSelect,
       });
       await revokeAllForUser(id, tx);
       return updated;

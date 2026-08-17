@@ -4,7 +4,7 @@ import { passwordPolicySchema } from "schemas";
 
 // Zod 4.4.3: formatos de string en el nivel superior (`z.email()`, `z.uuid()`).
 // D9: exactamente los 4 roles del enum nativo de Prisma.
-export const createUsuarioBodySchema = z.object({
+export const createUserBodySchema = z.object({
   nombre: z.string().trim().min(1).max(120),
   // Sin `.toLowerCase()`: `correo` es `@db.Citext`, la comparación ya es
   // insensible a mayúsculas en la base de datos (mismo patrón que auth.schema.ts).
@@ -15,7 +15,7 @@ export const createUsuarioBodySchema = z.object({
   rol: z.enum(RolUsuario),
 });
 
-export const updateUsuarioBodySchema = createUsuarioBodySchema
+export const updateUserBodySchema = createUserBodySchema
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Debes enviar al menos un campo");
 
@@ -30,7 +30,7 @@ export const idParamSchema = z.object({ id: z.uuid() });
  * el modelo `Usuario` y cambiar el default de orden sería una regresión
  * silenciosa para el listado ya existente.
  */
-export const listUsuariosQuerySchema = z.object({
+export const listUsersQuerySchema = z.object({
   // Texto libre contra `nombre` O `correo` (ILIKE — ver `usuarios.service.ts`:
   // ambos campos necesitan `mode: "insensitive"` explícito en el `where`,
   // incluido `correo` pese a ser `@db.Citext`, porque `contains` de Prisma
@@ -58,8 +58,8 @@ export const listResponsablesQuerySchema = z.object({
   rol: z.enum(RolUsuario),
 });
 
-export type CreateUsuarioBody = z.infer<typeof createUsuarioBodySchema>;
-export type UpdateUsuarioBody = z.infer<typeof updateUsuarioBodySchema>;
+export type CreateUserBody = z.infer<typeof createUserBodySchema>;
+export type UpdateUserBody = z.infer<typeof updateUserBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
-export type ListUsuariosQuery = z.infer<typeof listUsuariosQuerySchema>;
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type ListResponsablesQuery = z.infer<typeof listResponsablesQuerySchema>;

@@ -18,7 +18,7 @@ export const ETAPAS_CERRADAS = [EtapaLead.VENTA, EtapaLead.NO_VENTA] as const;
  * spec (Integración F3/F4, "Respuesta enriquecida con relaciones"): `GET
  * /leads` y `GET /leads/:id` MUST incluir `cliente`/`asesor`/`vendedor`
  * anidados. Un único `include` compartido por `findById`/`findMany` — mismo
- * patrón `satisfies` que `usuario.repository.ts::adminUsuarioSelect`.
+ * patrón `satisfies` que `usuario.repository.ts::adminUserSelect`.
  */
 const LEAD_RELACIONES_INCLUDE = {
   cliente: true,

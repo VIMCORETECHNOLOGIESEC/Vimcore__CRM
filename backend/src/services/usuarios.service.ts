@@ -3,11 +3,11 @@ import { AppError } from "../lib/app-error.js";
 import { hashPassword } from "../lib/password.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import type {
-  AdminUsuarioView,
+  AdminUserView,
   ResponsableView,
-  UpdateUsuarioData,
+  UpdateUserData,
 } from "../repositories/usuario.repository.js";
-import type { ListUsuariosQuery } from "../schemas/usuarios.schema.js";
+import type { ListUsersQuery } from "../schemas/usuarios.schema.js";
 
 function userNotFound(): AppError {
   return new AppError("usuario_no_encontrado", 404, "Usuario no encontrado");
@@ -26,14 +26,14 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
-export interface CreateUsuarioInput {
+export interface CreateUserInput {
   nombre: string;
   correo: string;
   password: string;
   rol: RolUsuario;
 }
 
-export interface UpdateUsuarioInput {
+export interface UpdateUserInput {
   nombre?: string;
   correo?: string;
   password?: string;
@@ -41,11 +41,11 @@ export interface UpdateUsuarioInput {
 }
 
 /** Alta de usuario (D9: solo `ADMINISTRADOR` llega hasta acá vía `requireRole`). */
-export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsuarioView> {
+export async function createUser(input: CreateUserInput): Promise<AdminUserView> {
   const passwordHash = await hashPassword(input.password);
 
   try {
-    return await usuarioRepository.createUsuario({
+    return await usuarioRepository.createUser({
       nombre: input.nombre,
       correo: input.correo,
       passwordHash,
@@ -59,8 +59,8 @@ export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsu
   }
 }
 
-export interface FindUsuariosResult {
-  usuarios: AdminUsuarioView[];
+export interface FindUsersResult {
+  usuarios: AdminUserView[];
   total: number;
   pagina: number;
   limite: number;
@@ -71,7 +71,7 @@ export interface FindUsuariosResult {
  * `findLeads` — `where` armado acá, paginación/orden resueltos por el
  * repositorio con `skip`/`take`/`count` en paralelo.
  */
-function buildWhere(query: ListUsuariosQuery): Prisma.UsuarioWhereInput {
+function buildWhere(query: ListUsersQuery): Prisma.UsuarioWhereInput {
   const where: Prisma.UsuarioWhereInput = {};
 
   if (query.busqueda) {
@@ -93,10 +93,10 @@ function buildWhere(query: ListUsuariosQuery): Prisma.UsuarioWhereInput {
   return where;
 }
 
-export async function findUsuarios(query: ListUsuariosQuery): Promise<FindUsuariosResult> {
+export async function findUsers(query: ListUsersQuery): Promise<FindUsersResult> {
   const where = buildWhere(query);
 
-  const { usuarios, total } = await usuarioRepository.findUsuarios(where, {
+  const { usuarios, total } = await usuarioRepository.findUsers(where, {
     skip: (query.pagina - 1) * query.limite,
     take: query.limite,
     orderBy: { creadoEn: query.direccion },
@@ -105,7 +105,7 @@ export async function findUsuarios(query: ListUsuariosQuery): Promise<FindUsuari
   return { usuarios, total, pagina: query.pagina, limite: query.limite };
 }
 
-export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
+export async function findUserById(id: string): Promise<AdminUserView> {
   const user = await usuarioRepository.findPublicById(id);
   if (!user) {
     throw userNotFound();
@@ -113,8 +113,8 @@ export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
   return user;
 }
 
-export async function updateUsuario(id: string, input: UpdateUsuarioInput): Promise<AdminUsuarioView> {
-  const data: UpdateUsuarioData = {
+export async function updateUser(id: string, input: UpdateUserInput): Promise<AdminUserView> {
+  const data: UpdateUserData = {
     nombre: input.nombre,
     correo: input.correo,
     rol: input.rol,
@@ -124,7 +124,7 @@ export async function updateUsuario(id: string, input: UpdateUsuarioInput): Prom
   }
 
   try {
-    const updated = await usuarioRepository.updateUsuario(id, data);
+    const updated = await usuarioRepository.updateUser(id, data);
     if (!updated) {
       throw userNotFound();
     }
@@ -146,9 +146,9 @@ export async function findResponsables(rol: RolUsuario): Promise<ResponsableView
   return usuarioRepository.findResponsablesActivosPorRol(rol);
 }
 
-/** D3: baja lógica — ver `usuario.repository.deactivateUsuario` para la transacción. */
-export async function deactivateUsuario(id: string): Promise<void> {
-  const deactivated = await usuarioRepository.deactivateUsuario(id);
+/** D3: baja lógica — ver `usuario.repository.deactivateUser` para la transacción. */
+export async function deactivateUser(id: string): Promise<void> {
+  const deactivated = await usuarioRepository.deactivateUser(id);
   if (!deactivated) {
     throw userNotFound();
   }
