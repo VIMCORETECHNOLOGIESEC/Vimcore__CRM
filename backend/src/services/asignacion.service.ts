@@ -7,7 +7,12 @@ import * as leadEventoRepository from "../repositories/lead-evento.repository.js
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
-import type { AsignarBody, ReasignarBody, TraspasarBody } from "../schemas/leads.schema.js";
+import type {
+  AsignarBody,
+  AsignarLoteBody,
+  ReasignarBody,
+  TraspasarBody,
+} from "../schemas/leads.schema.js";
 import { canReassign, canTransfer, type MotivoDenegacion, type UsuarioAcceso } from "./leads.access.js";
 import type { LeadConSla } from "./leads.service.js";
 import { calculateEstadoSla } from "./sla.calculator.js";
@@ -475,6 +480,66 @@ export async function assignLead(
     },
     ASIGNACION_TRANSACTION_BOUNDS,
   );
+}
+
+export interface ResultadoLoteExitoso {
+  leadId: string;
+  asesorId: string;
+}
+
+export interface ResultadoLoteFallido {
+  leadId: string;
+  codigo: string;
+  mensaje: string;
+}
+
+export interface ResultadoAsignacionLote {
+  exitosos: ResultadoLoteExitoso[];
+  fallidos: ResultadoLoteFallido[];
+  resumen: { solicitados: number; exitosos: number; fallidos: number };
+}
+
+/**
+ * `POST /api/v1/leads/asignar-lote` (diseño D-A1). N llamadas SECUENCIALES a
+ * `assignLead` — nunca `Promise.all` ni un `$transaction` único sobre los N
+ * leads (ver tabla de opciones del diseño): `Promise.all` haría que
+ * `selectResponsable` lea cargas obsoletas entre llamadas concurrentes
+ * (apilaría leads en el mismo asesor), y un único `$transaction` sería
+ * all-or-nothing, contradiciendo el requisito de reporte por lead. Cada
+ * llamada reusa el ÚNICO punto de escritura/autorización ya probado de
+ * `assignLead` — cero lógica de negocio nueva.
+ *
+ * Solo `AppError` se captura por lead (`lead_no_encontrado`, `lead_cerrado`,
+ * `destinatario_invalido`, `sin_candidatos`, `permiso_denegado`). Un error
+ * NO-`AppError` (infra: conexión caída, etc.) se relanza y aborta el
+ * request completo — un fallo de infraestructura no debe reportarse como
+ * "estos leads son inválidos".
+ */
+export async function assignLeadsBatch(
+  usuario: UsuarioAcceso,
+  body: AsignarLoteBody,
+): Promise<ResultadoAsignacionLote> {
+  const exitosos: ResultadoLoteExitoso[] = [];
+  const fallidos: ResultadoLoteFallido[] = [];
+
+  for (const leadId of body.leadIds) {
+    try {
+      const lead = await assignLead(usuario, leadId, { asesorId: body.asesorId });
+      exitosos.push({ leadId, asesorId: lead.asesorId as string });
+    } catch (error) {
+      if (error instanceof AppError) {
+        fallidos.push({ leadId, codigo: error.code, mensaje: error.message });
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return {
+    exitosos,
+    fallidos,
+    resumen: { solicitados: body.leadIds.length, exitosos: exitosos.length, fallidos: fallidos.length },
+  };
 }
 
 /**

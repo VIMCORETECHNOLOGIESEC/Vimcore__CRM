@@ -4,6 +4,7 @@ import * as leadEventoRepository from "../src/repositories/lead-evento.repositor
 import {
   assignAutomatically,
   assignLead,
+  assignLeadsBatch,
   asignarTrasCommit,
 } from "../src/services/asignacion.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
@@ -315,4 +316,30 @@ describe("asignacion.service — degradación tras agotar reintentos (D-A2 revis
     const leadListable = await prisma.lead.findFirst({ where: { id: lead.id, asesorId: null } });
     expect(leadListable).not.toBeNull();
   }, 10_000);
+});
+
+describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infraestructura abortan el lote)", () => {
+  it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const asesor = await crearAsesorActivo();
+    const leadUno = await crearLeadSinAsignar();
+    const leadDos = await crearLeadSinAsignar();
+
+    // Mismo truco de inyección que la prueba obligatoria 12 arriba: el
+    // primer `createEvento` de este test (dentro del `assignLead` de
+    // `leadUno`) falla con un Error genérico (no `AppError`) — simula un
+    // fallo de infraestructura, no un fallo de negocio del lead.
+    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo de infraestructura simulado"));
+
+    await expect(
+      assignLeadsBatch(SUPERVISOR, { leadIds: [leadUno.id, leadDos.id], asesorId: asesor.id }),
+    ).rejects.toThrow("fallo de infraestructura simulado");
+
+    // El lote se abortó ANTES de procesar leadDos — no quedó reportado como
+    // "fallidos[]", ni tampoco se asignó (D-A1: un error de infra no debe
+    // reportarse como "estos leads son inválidos").
+    const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
+    expect(leadDosTrasFallo.asesorId).toBeNull();
+  });
 });
