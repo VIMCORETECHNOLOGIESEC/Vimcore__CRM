@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authRouter } from "./auth.routes.js";
 import { citasRouter } from "./citas.routes.js";
+import { eventsRouter } from "./eventos.routes.js";
 import { formulariosRouter } from "./formularios.routes.js";
 import { ingestaRouter } from "./ingesta.routes.js";
 import { leadsRouter } from "./leads.routes.js";
@@ -18,4 +19,4 @@ apiRouter.use(leadsRouter);
 apiRouter.use(formulariosRouter);
 apiRouter.use(citasRouter);
 apiRouter.use(notificationsRouter);
-
+apiRouter.use(eventsRouter);
