@@ -110,9 +110,20 @@ tomada: `test/integration` sigue siendo el carril de validación
 descartable; los cambios de comportamiento real (como el rework de M6) se
 portean de vuelta a `dev-back`/`dev-front` a medida que se confirman,
 en vez de dejar que `test/integration` se convierta en el nuevo tronco.
-El resto de Unit A1/A2 (`include`/`busqueda`/catálogo/lote) todavía **no**
-está porteado a `dev-back` — queda como decisión futura, no urgente porque
-son aditivos y no cambian comportamiento existente.
+
+**Backend (`dev-back`) ya tiene Unit A1 + A2 + A3 completas**, porteadas
+en commits separados (`982e481`+`c3f1b1b` A1, `f7e08f8`+`7a0b4f4` A2,
+`ae2c923`+`7681685` A3). Al portear A2 se descubrió que `test/integration`
+había regresado a nomenclatura en español en `usuarios.*`
+(`postUsuario`/`getUsuarios`) por un commit F7 no relacionado, divergiendo
+del fix en inglés ya establecido en `dev-back`
+(`postUser`/`getUsers`, commit `ce33902`) — se corrigió `test/integration`
+hacia adelante (commit `627a997`, sin reescribir historia) y se implementó
+el catálogo de responsables directo en `dev-back` con la nomenclatura
+correcta, en vez de arrastrar el cherry-pick con nombres en español.
+
+**`dev-front` sigue sin recibir Unit B1/B2** (reemplazo de mocks +
+fix de cancelar cita) — queda como decisión futura.
 
 ## Fase 2 — Bridges (M4 backend + F8) — [issue #7](https://github.com/DinnZart/crm_comercial/issues/7)
 
