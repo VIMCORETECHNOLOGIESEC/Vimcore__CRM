@@ -110,6 +110,7 @@ export async function findLeads(usuario: UsuarioAcceso, query: ListLeadsQuery): 
     skip: (query.pagina - 1) * query.limite,
     take: query.limite,
     orderBy: { ingresadoEn: query.direccion },
+    busqueda: query.busqueda,
   });
 
   return {
