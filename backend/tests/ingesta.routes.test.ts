@@ -1,8 +1,24 @@
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import * as usuarioRepository from "../src/repositories/usuario.repository.js";
+
+/**
+ * D-A2 (revisión 2, tests 3.9/3.10): solo se mockea `findActivosPorRol`
+ * — el ÚNICO punto que `assignAutomatically`/`selectResponsable` tocan
+ * durante el intento de asignación POST-commit. A propósito NO se mockea
+ * `createEvento` aquí (a diferencia de `asignacion.service.test.ts`):
+ * `createEvento` también lo usa `deduplicacion.service.ts` para el evento
+ * INGRESO *dentro* de la transacción de ingesta, antes del commit — mockear
+ * ese punto haría fallar la transacción completa (recepción+dedupe) en vez
+ * de simular específicamente un fallo de la asignación POST-commit.
+ */
+vi.mock("../src/repositories/usuario.repository.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/repositories/usuario.repository.js")>();
+  return { ...actual, findActivosPorRol: vi.fn(actual.findActivosPorRol) };
+});
 
 const app = createApp();
 const CLAVE_API = "clave-http-integracion-096";
@@ -144,4 +160,77 @@ describe("POST /api/v1/ingesta/generico", () => {
     });
     expect(totalRecepciones).toBe(1);
   });
+
+  it("200 con el leadId committeado aunque la asignación automática post-commit agote sus 3 reintentos (Scenario negativo: fallo de asignación no produce 500)", async () => {
+    const cuerpo = cuerpoBase();
+
+    const mockFindActivos = vi.mocked(usuarioRepository.findActivosPorRol);
+    mockFindActivos.mockRejectedValueOnce(new Error("fallo asignacion post-commit 1"));
+    mockFindActivos.mockRejectedValueOnce(new Error("fallo asignacion post-commit 2"));
+    mockFindActivos.mockRejectedValueOnce(new Error("fallo asignacion post-commit 3"));
+
+    const respuesta = await request(app)
+      .post("/api/v1/ingesta/generico")
+      .set("X-Bridge-Key", CLAVE_API)
+      .send(cuerpo);
+
+    expect(respuesta.status).toBe(200);
+    expect(typeof respuesta.body.leadId).toBe("string");
+    expect(respuesta.body.duplicado).toBe(false);
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: respuesta.body.leadId } });
+    expect(lead.asesorId).toBeNull();
+
+    const eventoFallido = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "ASIGNACION_FALLIDA" },
+    });
+    expect(eventoFallido).not.toBeNull();
+  }, 10_000);
+
+  it("el reintento del bridge tras un fallo de asignación entra por deduplicación y NO reintenta la asignación (Scenario: el reintento del bridge no repararía el fallo de asignación)", async () => {
+    const cuerpo = cuerpoBase();
+
+    const mockFindActivos = vi.mocked(usuarioRepository.findActivosPorRol);
+    mockFindActivos.mockRejectedValueOnce(new Error("fallo asignacion post-commit 1"));
+    mockFindActivos.mockRejectedValueOnce(new Error("fallo asignacion post-commit 2"));
+    mockFindActivos.mockRejectedValueOnce(new Error("fallo asignacion post-commit 3"));
+
+    // Delta, no total acumulado: otras pruebas de este archivo también
+    // disparan ingesta -> asignarTrasCommit -> findActivosPorRol en el
+    // camino feliz, así que el mock compartido ya trae llamadas previas.
+    const llamadasAntesDePrimera = mockFindActivos.mock.calls.length;
+
+    const primera = await request(app)
+      .post("/api/v1/ingesta/generico")
+      .set("X-Bridge-Key", CLAVE_API)
+      .send(cuerpo);
+    expect(primera.status).toBe(200);
+    expect(primera.body.duplicado).toBe(false);
+
+    const eventosTrasPrimera = await prisma.leadEvento.count({
+      where: { leadId: primera.body.leadId, tipo: "ASIGNACION_FALLIDA" },
+    });
+    expect(eventosTrasPrimera).toBe(1);
+    expect(mockFindActivos.mock.calls.length - llamadasAntesDePrimera).toBe(3);
+
+    const llamadasAntesDeSegunda = mockFindActivos.mock.calls.length;
+
+    const segunda = await request(app)
+      .post("/api/v1/ingesta/generico")
+      .set("X-Bridge-Key", CLAVE_API)
+      .send(cuerpo);
+
+    expect(segunda.status).toBe(200);
+    expect(segunda.body.duplicado).toBe(true);
+    expect(segunda.body.leadId).toBe(primera.body.leadId);
+
+    // Sin cambios: el reingreso entró por ON CONFLICT (duplicado: true) y
+    // nunca volvió a invocar la asignación automática — cero llamadas
+    // nuevas a findActivosPorRol y cero eventos ASIGNACION_FALLIDA nuevos.
+    const eventosTrasSegunda = await prisma.leadEvento.count({
+      where: { leadId: primera.body.leadId, tipo: "ASIGNACION_FALLIDA" },
+    });
+    expect(eventosTrasSegunda).toBe(1);
+    expect(mockFindActivos.mock.calls.length - llamadasAntesDeSegunda).toBe(0);
+  }, 10_000);
 });

@@ -1,6 +1,8 @@
 import type { EtapaLead, Lead, Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
+import { logger } from "../lib/logger.js";
 import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
@@ -179,17 +181,34 @@ async function applyAsignacion(
 }
 
 /**
- * D1 (diseño M6) — el hook de ingesta. Nunca abre transacción: recibe la
- * viva de `ingesta.service::procesarEnTransaccion`. Sin candidatos activos
- * del pool `ASESOR`, el lead queda intacto (`asesorId`/`slaInicioEn` siguen
- * `null`, D3) y solo se escribe un evento `SIN_ASIGNAR` con
- * `requiereNotificacion: true` (D5/D6) para que M8 lo consuma.
+ * D1 (diseño M6, revisado por D-A2 revisión 2) — el motor de asignación
+ * automática. Nunca abre transacción propia: desde F3/F4 recibe la `tx`
+ * viva de `asignacion.service::asignarTrasCommit` (antes recibía la `tx` de
+ * `ingesta.service::procesarEnTransaccion` — ver nota en ese archivo, la
+ * invariante "nunca abre su propia transacción" se preserva, solo cambió
+ * QUIÉN abre la transacción externa). Sin candidatos activos del pool
+ * `ASESOR`, el lead queda intacto (`asesorId`/`slaInicioEn` siguen `null`,
+ * D3) y solo se escribe un evento `SIN_ASIGNAR` con `requiereNotificacion:
+ * true` (D5/D6) para que M8 lo consuma.
+ *
+ * Guarda de idempotencia OBLIGATORIA (D-A2 revisión 2, no opcional): si el
+ * lead ya tiene `asesorId` no-nulo, no-opea en silencio sin escribir ningún
+ * evento. Cubre dos casos reales que el disparo dentro-de-la-transacción de
+ * ingesta no necesitaba cubrir: (1) un Supervisor asigna a mano en la
+ * ventana entre el commit de ingesta y el intento automático post-commit;
+ * (2) un reintento de `asignarTrasCommit` cuyo intento anterior sí llegó a
+ * confirmar pero cuya excepción se disparó después (p. ej. al reportar el
+ * resultado) — el reintento ve el lead ya asignado y no duplica asignación
+ * ni evento.
  */
 export async function assignAutomatically(
   leadId: string,
   ahora: Date,
   tx: Prisma.TransactionClient,
 ): Promise<void> {
+  const leadActual = await leadRepository.findById(leadId, tx);
+  if (leadActual === null || leadActual.asesorId !== null) return;
+
   const candidato = await selectResponsable("ASESOR", tx);
 
   if (candidato === null) {
@@ -224,6 +243,125 @@ export async function assignAutomatically(
       ahora,
     },
     tx,
+  );
+}
+
+/** D-A2 (revisión 2): 3 intentos, backoff 250ms/1000ms, presupuesto total <=5s. */
+const ASIGNACION_POST_COMMIT_MAX_INTENTOS = 3;
+const ASIGNACION_POST_COMMIT_BACKOFF_MS: readonly number[] = [250, 1000];
+
+/**
+ * D5 (diseño M6, revisión F3/F4) — detalle del evento de fallo POST-COMMIT.
+ * NO reusa `DetalleEventoAsignacion`: `SIN_ASIGNAR` significa "no había
+ * candidatos activos" (estado de negocio, M8 lo notifica); esto significa
+ * "la asignación automática agotó sus reintentos por una excepción real"
+ * (incidente de infraestructura/operación). Sobrecargar `SIN_ASIGNAR`
+ * ocultaría el incidente y dispararía una notificación falsa al Supervisor.
+ */
+export interface DetalleEventoAsignacionFallida {
+  version: 1;
+  requiereNotificacion: true;
+  motivo: "fallo_asignacion_postcommit";
+  intentos: number;
+  errorFinal: string;
+}
+
+function esperarMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * D-A2 (diseño, revisión 2) — seam invocado por `ingesta.service.ts`
+ * DESPUÉS de que la transacción de ingesta ya hizo commit, nunca antes
+ * (ver nota D1 arriba y la de `ingesta.service.ts::procesarEnTransaccion`).
+ * Abre su PROPIA transacción por intento (`ASIGNACION_TRANSACTION_BOUNDS` —
+ * el mismo bound que `assignLead`/`reassignLead`/`transferLead`: "flujo de
+ * escritura propio"; `assignAutomatically` en sí sigue sin abrir
+ * transacción, D1 se preserva). Reintenta hasta
+ * `ASIGNACION_POST_COMMIT_MAX_INTENTOS` veces ante CUALQUIER excepción
+ * lanzada, con backoff `ASIGNACION_POST_COMMIT_BACKOFF_MS` entre intentos, y
+ * **nunca lanza** hacia el llamador — un fallo aquí no puede convertirse en
+ * un 500 del webhook de ingesta: el reintento del bridge ante un 5xx
+ * entraría por `ON CONFLICT` de `upsertLeadRecibido` y cortocircuitaría como
+ * `duplicado: true` sin volver a intentar la asignación (no repararía nada,
+ * solo reportaría un fallo de ingesta falso).
+ *
+ * "Sin candidatos" NO es un fallo reintentable: `assignAutomatically`
+ * escribe `SIN_ASIGNAR` y retorna normalmente (sin lanzar), así que el
+ * bucle de abajo solo reintenta ante una excepción real — un único intento
+ * cubre ese camino.
+ */
+export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<void> {
+  let ultimoError: unknown;
+
+  for (let intento = 1; intento <= ASIGNACION_POST_COMMIT_MAX_INTENTOS; intento++) {
+    try {
+      await runInTransaction(
+        undefined,
+        (tx) => assignAutomatically(leadId, ahora, tx),
+        ASIGNACION_TRANSACTION_BOUNDS,
+      );
+      return;
+    } catch (error) {
+      ultimoError = error;
+      const quedanReintentos = intento < ASIGNACION_POST_COMMIT_MAX_INTENTOS;
+      if (quedanReintentos) {
+        await esperarMs(ASIGNACION_POST_COMMIT_BACKOFF_MS[intento - 1] as number);
+      }
+    }
+  }
+
+  await registrarDegradacionAsignacion(leadId, ASIGNACION_POST_COMMIT_MAX_INTENTOS, ultimoError);
+}
+
+/**
+ * D-A2 (diseño, revisión 2) — cascada degradante tras agotar los reintentos.
+ * Cada paso es best-effort y corre en su propio `try/catch` fuera de
+ * cualquier transacción viva (mismo criterio que `registrarLogSeguro` de
+ * `ingesta.service.ts`, DD5/M4): un fallo al reportar el incidente nunca
+ * debe enmascarar ni interrumpir el reporte de los pasos siguientes.
+ *   1. `lead_eventos` tipo `ASIGNACION_FALLIDA` — canal futuro de M8.
+ *   2. `bridge_logs` ERROR — canal de operador interino (M8 no existe aún).
+ *   3. `logger.error` estructurado — último recurso si la BD está caída.
+ */
+async function registrarDegradacionAsignacion(
+  leadId: string,
+  intentos: number,
+  ultimoError: unknown,
+): Promise<void> {
+  const errorFinal = ultimoError instanceof Error ? ultimoError.message : "Error desconocido";
+
+  try {
+    const detalle: DetalleEventoAsignacionFallida = {
+      version: 1,
+      requiereNotificacion: true,
+      motivo: "fallo_asignacion_postcommit",
+      intentos,
+      errorFinal,
+    };
+    await leadEventoRepository.createEvento({
+      leadId,
+      tipo: "ASIGNACION_FALLIDA",
+      detalle: detalle as unknown as Prisma.InputJsonValue,
+    });
+  } catch (error) {
+    logger.error({ err: error, leadId }, "asignacion: fallo al registrar evento ASIGNACION_FALLIDA");
+  }
+
+  try {
+    await bridgeLogRepository.registrarLog({
+      bridgeId: null,
+      nivel: "ERROR",
+      mensaje: `Asignación automática post-commit agotó ${intentos} intentos para el lead ${leadId}`,
+      payload: { leadId, intentos, errorFinal },
+    });
+  } catch (error) {
+    logger.error({ err: error, leadId }, "asignacion: fallo al registrar bridge_logs ERROR");
+  }
+
+  logger.error(
+    { leadId, intentos, errorFinal },
+    "asignacion: agotados los reintentos de asignación automática post-commit",
   );
 }
 
