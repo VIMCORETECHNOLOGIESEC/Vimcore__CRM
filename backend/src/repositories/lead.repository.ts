@@ -14,6 +14,20 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
  */
 export const ETAPAS_CERRADAS = [EtapaLead.VENTA, EtapaLead.NO_VENTA] as const;
 
+/**
+ * spec (Integración F3/F4, "Respuesta enriquecida con relaciones"): `GET
+ * /leads` y `GET /leads/:id` MUST incluir `cliente`/`asesor`/`vendedor`
+ * anidados. Un único `include` compartido por `findById`/`findMany` — mismo
+ * patrón `satisfies` que `usuario.repository.ts::adminUsuarioSelect`.
+ */
+const LEAD_RELACIONES_INCLUDE = {
+  cliente: true,
+  asesor: true,
+  vendedor: true,
+} as const satisfies Prisma.LeadInclude;
+
+export type LeadConRelaciones = Prisma.LeadGetPayload<{ include: typeof LEAD_RELACIONES_INCLUDE }>;
+
 export async function findLeadAbierto(
   clienteId: string,
   client: PrismaClientOrTransaction = prisma,
@@ -93,8 +107,8 @@ export async function updateSemaforo(
 export async function findById(
   id: string,
   client: PrismaClientOrTransaction = prisma,
-): Promise<Lead | null> {
-  return client.lead.findUnique({ where: { id } });
+): Promise<LeadConRelaciones | null> {
+  return client.lead.findUnique({ where: { id }, include: LEAD_RELACIONES_INCLUDE });
 }
 
 export interface FindManyLeadsOptions {
@@ -104,7 +118,7 @@ export interface FindManyLeadsOptions {
 }
 
 export interface FindManyLeadsResult {
-  leads: Lead[];
+  leads: LeadConRelaciones[];
   total: number;
 }
 
@@ -120,7 +134,13 @@ export async function findMany(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<FindManyLeadsResult> {
   const [leads, total] = await Promise.all([
-    client.lead.findMany({ where, skip: options.skip, take: options.take, orderBy: options.orderBy }),
+    client.lead.findMany({
+      where,
+      skip: options.skip,
+      take: options.take,
+      orderBy: options.orderBy,
+      include: LEAD_RELACIONES_INCLUDE,
+    }),
     client.lead.count({ where }),
   ]);
   return { leads, total };
