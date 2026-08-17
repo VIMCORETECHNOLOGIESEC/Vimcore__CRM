@@ -5,7 +5,7 @@ import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
-import { assignAutomatically } from "./asignacion.service.js";
+import { asignarTrasCommit } from "./asignacion.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 
 export interface IngestaResultado {
@@ -15,6 +15,13 @@ export interface IngestaResultado {
 
 interface ResultadoTransaccion extends IngestaResultado {
   datosIncompletos: boolean;
+  /**
+   * D-A2 (diseño, revisión 2): propagado desde `DeduplicacionResult` para que
+   * `ingestarLead` sepa, YA FUERA de la transacción, si corresponde disparar
+   * `asignarTrasCommit`. `false` en el camino de recepción duplicada
+   * (`ON CONFLICT`) — un reingreso nunca reintenta la asignación.
+   */
+  leadCreado: boolean;
 }
 
 /**
@@ -40,12 +47,26 @@ interface ResultadoTransaccion extends IngestaResultado {
  * Cada escritura de log corre en su propio `try/catch` degradando a
  * `logger.error` — un fallo al loguear nunca debe enmascarar el error
  * original que se intentaba registrar.
+ *
+ * D-A2 (diseño, revisión 2 — cambio consciente de M6 D1): la asignación
+ * automática YA NO corre dentro de la transacción de ingesta. `ahoraIngesta`
+ * se captura ANTES de abrir la transacción y es el mismo valor que se
+ * propaga a `asignarTrasCommit` tras el commit — así `slaInicioEn` queda
+ * fijado con el instante de ingesta, nunca con el instante (posiblemente
+ * retrasado por reintentos) en que la asignación automática efectivamente
+ * concluye. `asignarTrasCommit` se AWAIT-ea (no es una promesa flotante:
+ * DD3 del diseño la rechaza — un rechazo no capturado se perdería en
+ * silencio) pero **nunca lanza**, así que esta respuesta HTTP es SIEMPRE
+ * 200 con el `leadId` committeado, independientemente del resultado de la
+ * asignación (Requirement: La respuesta HTTP de ingesta nunca depende del
+ * resultado de la asignación).
  */
 export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResultado> {
+  const ahoraIngesta = new Date();
   try {
     const resultado = await runInTransaction(
       undefined,
-      (tx) => procesarEnTransaccion(entrada, tx),
+      (tx) => procesarEnTransaccion(entrada, ahoraIngesta, tx),
       INGESTA_TRANSACTION_BOUNDS,
     );
 
@@ -61,6 +82,10 @@ export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResult
         duplicado: resultado.duplicado,
       },
     });
+
+    if (resultado.leadCreado) {
+      await asignarTrasCommit(resultado.leadId, ahoraIngesta);
+    }
 
     return { leadId: resultado.leadId, duplicado: resultado.duplicado };
   } catch (error) {
@@ -84,10 +109,9 @@ export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResult
  */
 async function procesarEnTransaccion(
   entrada: LeadEntrante,
+  ahora: Date,
   tx: Prisma.TransactionClient,
 ): Promise<ResultadoTransaccion> {
-  const ahora = new Date();
-
   const recepcion = await leadRecibidoRepository.upsertLeadRecibido(
     {
       bridgeId: entrada.bridgeId,
@@ -110,24 +134,30 @@ async function procesarEnTransaccion(
         "Recepción duplicada sin lead asociado: invariante de idempotencia violada",
       );
     }
-    return { leadId: recepcion.leadId, duplicado: true, datosIncompletos: recepcion.datosIncompletos };
+    return {
+      leadId: recepcion.leadId,
+      duplicado: true,
+      datosIncompletos: recepcion.datosIncompletos,
+      leadCreado: false,
+    };
   }
 
   const dedupResultado = await deduplicateLead(entrada, ahora, tx);
   await leadRecibidoRepository.marcarProcesado(recepcion.id, dedupResultado.leadId, tx);
 
-  // M6 (D1): la asignación automática corre en la MISMA transacción de
-  // ingesta, con el `tx` vivo, y SOLO si el lead es realmente nuevo.
-  // `deduplicacion.service.ts` no se toca — el hook vive aquí, del lado del
-  // consumidor de `DeduplicacionResult.leadCreado`.
-  if (dedupResultado.leadCreado) {
-    await assignAutomatically(dedupResultado.leadId, ahora, tx);
-  }
-
+  // D-A2 (diseño, revisión 2 — cambio consciente de M6 D1): la asignación
+  // automática YA NO corre en esta transacción. Este cuerpo solo persiste
+  // (recepción + dedupe) y propaga `leadCreado`; `ingestarLead` dispara
+  // `asignarTrasCommit` DESPUÉS de que esta transacción haga commit (ver
+  // nota en `ingestarLead` arriba). `deduplicacion.service.ts` no se toca —
+  // el hook sigue viviendo del lado del consumidor de
+  // `DeduplicacionResult.leadCreado`, solo que ahora ese consumidor es
+  // `ingestarLead`, no este cuerpo transaccional.
   return {
     leadId: dedupResultado.leadId,
     duplicado: false,
     datosIncompletos: recepcion.datosIncompletos,
+    leadCreado: dedupResultado.leadCreado,
   };
 }
 

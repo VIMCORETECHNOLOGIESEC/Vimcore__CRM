@@ -1,7 +1,12 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
-import { assignAutomatically, assignLeadsBatch } from "../src/services/asignacion.service.js";
+import {
+  assignAutomatically,
+  assignLead,
+  assignLeadsBatch,
+  asignarTrasCommit,
+} from "../src/services/asignacion.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
 /**
@@ -40,6 +45,26 @@ async function crearAsesorActivo(): Promise<{ id: string }> {
       correo: `asesor-asignacion-${contador}@integracion.test`,
       passwordHash: "hash-no-usado",
       rol: "ASESOR",
+      activo: true,
+    },
+  });
+}
+
+/**
+ * D-A2 (revisión 2, test de guarda de idempotencia): a diferencia del
+ * `SUPERVISOR` fijo de abajo (usado solo como actor en pruebas donde el
+ * `createEvento` real nunca llega a persistir por el mock de fallo
+ * inyectado), esta prueba SÍ escribe `lead_eventos.usuario_id` de verdad —
+ * necesita una fila `usuarios` real para no violar la FK.
+ */
+async function crearSupervisorActivo(): Promise<{ id: string }> {
+  contador += 1;
+  return prisma.usuario.create({
+    data: {
+      nombre: `Supervisor asignacion ${contador}`,
+      correo: `supervisor-asignacion-${contador}@integracion.test`,
+      passwordHash: "hash-no-usado",
+      rol: "SUPERVISOR",
       activo: true,
     },
   });
@@ -192,4 +217,130 @@ describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infra
     const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
     expect(leadDosTrasFallo.asesorId).toBeNull();
   });
+});
+
+describe("asignacion.service — asignarTrasCommit (D-A2 revisión 2: post-commit con reintento acotado)", () => {
+  it("reintenta hasta 3 veces ante fallos transitorios, con backoff, y nunca lanza — éxito en el tercer intento", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const lead = await crearLeadSinAsignar();
+    const asesor = await crearAsesorActivo();
+
+    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo transitorio 1"));
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo transitorio 2"));
+
+    await expect(asignarTrasCommit(lead.id, new Date())).resolves.toBeUndefined();
+
+    const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadActualizado.asesorId).toBe(asesor.id);
+    expect(leadActualizado.slaInicioEn).not.toBeNull();
+
+    const eventoAsignacion = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "ASIGNACION" },
+    });
+    expect(eventoAsignacion).not.toBeNull();
+
+    const eventoFallido = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "ASIGNACION_FALLIDA" },
+    });
+    expect(eventoFallido).toBeNull();
+  }, 10_000);
+
+  it('"sin candidatos" cuenta como 1 solo intento (no reintentable) y no escribe ASIGNACION_FALLIDA', async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const lead = await crearLeadSinAsignar();
+
+    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
+    const llamadasAntes = mockCreateEvento.mock.calls.length;
+
+    await expect(asignarTrasCommit(lead.id, new Date())).resolves.toBeUndefined();
+
+    const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadActualizado.asesorId).toBeNull();
+
+    const eventoSinAsignar = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "SIN_ASIGNAR" },
+    });
+    expect(eventoSinAsignar).not.toBeNull();
+
+    const eventoFallido = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "ASIGNACION_FALLIDA" },
+    });
+    expect(eventoFallido).toBeNull();
+
+    // "Sin candidatos" no lanza, así que el bucle de asignarTrasCommit
+    // retorna tras el primer intento — un único createEvento (SIN_ASIGNAR).
+    const llamadasDespues = mockCreateEvento.mock.calls.length;
+    expect(llamadasDespues - llamadasAntes).toBe(1);
+  });
+});
+
+describe("asignacion.service — guarda de idempotencia obligatoria (D-A2 revisión 2)", () => {
+  it("lead ya asignado manualmente antes del intento automático: assignAutomatically no-opea sin sobrescribir ni generar eventos nuevos", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const lead = await crearLeadSinAsignar();
+    const asesorManual = await crearAsesorActivo();
+    // Un segundo asesor activo: si la guarda no existiera, sería un
+    // candidato válido y el intento automático lo asignaría, pisando la
+    // asignación manual del Supervisor.
+    await crearAsesorActivo();
+    const supervisor = await crearSupervisorActivo();
+
+    await assignLead(
+      { id: supervisor.id, rol: "SUPERVISOR" },
+      lead.id,
+      { asesorId: asesorManual.id },
+    );
+
+    const eventosAntes = await prisma.leadEvento.count({ where: { leadId: lead.id } });
+
+    await prisma.$transaction(async (tx) => {
+      await assignAutomatically(lead.id, new Date(), tx);
+    });
+
+    const leadTrasIntentoAutomatico = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadTrasIntentoAutomatico.asesorId).toBe(asesorManual.id);
+
+    const eventosDespues = await prisma.leadEvento.count({ where: { leadId: lead.id } });
+    expect(eventosDespues).toBe(eventosAntes);
+  });
+});
+
+describe("asignacion.service — degradación tras agotar reintentos (D-A2 revisión 2)", () => {
+  it("agota los 3 intentos: escribe ASIGNACION_FALLIDA (requiereNotificacion: true) + bridge_logs ERROR, lead queda sin asesor y listable", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const lead = await crearLeadSinAsignar();
+    await crearAsesorActivo();
+
+    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo persistente 1"));
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo persistente 2"));
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo persistente 3"));
+
+    await expect(asignarTrasCommit(lead.id, new Date())).resolves.toBeUndefined();
+
+    const leadTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadTrasFallo.asesorId).toBeNull();
+    expect(leadTrasFallo.slaInicioEn).toBeNull();
+
+    const eventoFallido = await prisma.leadEvento.findFirst({
+      where: { leadId: lead.id, tipo: "ASIGNACION_FALLIDA" },
+    });
+    expect(eventoFallido).not.toBeNull();
+    expect(eventoFallido?.detalle).toMatchObject({
+      requiereNotificacion: true,
+      motivo: "fallo_asignacion_postcommit",
+      intentos: 3,
+    });
+
+    const logError = await prisma.bridgeLog.findFirst({
+      where: { bridgeId: null, nivel: "ERROR", mensaje: { contains: lead.id } },
+      orderBy: { ocurridoEn: "desc" },
+    });
+    expect(logError).not.toBeNull();
+
+    // Sigue visible/filtrable en el listado de leads sin asignar.
+    const leadListable = await prisma.lead.findFirst({ where: { id: lead.id, asesorId: null } });
+    expect(leadListable).not.toBeNull();
+  }, 10_000);
 });
