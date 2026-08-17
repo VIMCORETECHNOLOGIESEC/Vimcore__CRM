@@ -6,6 +6,7 @@ import {
   postLeadAsignar,
   postLeadFormulario,
   postLeadReasignar,
+  postLeadsAsignarLote,
   postLeadTraspasar,
 } from "../controllers/leads.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
@@ -33,3 +34,15 @@ leadsRouter.post(
 );
 leadsRouter.post("/leads/:id/reasignar", requireAuthentication, postLeadReasignar);
 leadsRouter.post("/leads/:id/traspasar", requireAuthentication, postLeadTraspasar);
+
+// Diseño D-A1: mismo requireRole que /leads/:id/asignar (Admin/Supervisor).
+// Sin colisión de rutas — "/leads/asignar-lote" (2 segmentos, POST) no
+// matchea "/leads/:id/asignar" (3 segmentos) ni "GET /leads/:id" (otro
+// verbo). El orden de registro es indiferente para este caso, pero se
+// coloca junto al resto de endpoints de asignación por legibilidad.
+leadsRouter.post(
+  "/leads/asignar-lote",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR", "SUPERVISOR"),
+  postLeadsAsignarLote,
+);

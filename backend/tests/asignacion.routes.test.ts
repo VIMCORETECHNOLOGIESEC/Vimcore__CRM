@@ -219,6 +219,94 @@ describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 13 (D13, regre
   });
 });
 
+describe("POST /api/v1/leads/asignar-lote — asignación masiva (design D-A1)", () => {
+  it("200: lote mixto (válido + inexistente + cerrado) reporta exitosos[] y fallidos[] con codigo, sin bloquear el lote", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const supervisor = await crearUsuarioConToken("SUPERVISOR");
+    const asesorDestino = await crearUsuarioConToken("ASESOR");
+    const leadValido = await crearLead();
+    const leadCerrado = await crearLead({ etapa: "VENTA", semaforo: "VERDE" });
+    const leadInexistente = "00000000-0000-0000-0000-000000000000";
+
+    const respuesta = await request(app)
+      .post("/api/v1/leads/asignar-lote")
+      .set("Authorization", `Bearer ${supervisor.token}`)
+      .send({ leadIds: [leadValido.id, leadInexistente, leadCerrado.id], asesorId: asesorDestino.id });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.exitosos).toEqual([{ leadId: leadValido.id, asesorId: asesorDestino.id }]);
+    expect(respuesta.body.fallidos).toHaveLength(2);
+    const codigos = respuesta.body.fallidos.map((f: { codigo: string }) => f.codigo).sort();
+    expect(codigos).toEqual(["lead_cerrado", "lead_no_encontrado"]);
+    expect(respuesta.body.resumen).toEqual({ solicitados: 3, exitosos: 1, fallidos: 2 });
+
+    const leadValidoActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadValido.id } });
+    expect(leadValidoActualizado.asesorId).toBe(asesorDestino.id);
+  });
+
+  it("200: un lead inválido en un lote de 20 no bloquea la asignación de los otros 19", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const supervisor = await crearUsuarioConToken("SUPERVISOR");
+    const asesorDestino = await crearUsuarioConToken("ASESOR");
+    const leadsValidos = await Promise.all(Array.from({ length: 19 }, () => crearLead()));
+    const leadCerrado = await crearLead({ etapa: "VENTA", semaforo: "VERDE" });
+
+    const respuesta = await request(app)
+      .post("/api/v1/leads/asignar-lote")
+      .set("Authorization", `Bearer ${supervisor.token}`)
+      .send({
+        leadIds: [...leadsValidos.map((l) => l.id), leadCerrado.id],
+        asesorId: asesorDestino.id,
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.exitosos).toHaveLength(19);
+    expect(respuesta.body.fallidos).toHaveLength(1);
+    expect(respuesta.body.fallidos[0].leadId).toBe(leadCerrado.id);
+
+    const asignados = await prisma.lead.count({
+      where: { id: { in: leadsValidos.map((l) => l.id) }, asesorId: asesorDestino.id },
+    });
+    expect(asignados).toBe(19);
+  });
+
+  it("403: un ASESOR no puede usar el lote (misma barrera que /asignar individual)", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const asesorActor = await crearUsuarioConToken("ASESOR");
+    const lead = await crearLead();
+
+    const respuesta = await request(app)
+      .post("/api/v1/leads/asignar-lote")
+      .set("Authorization", `Bearer ${asesorActor.token}`)
+      .send({ leadIds: [lead.id] });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("403: un VENDEDOR no puede usar el lote", async () => {
+    const vendedorActor = await crearUsuarioConToken("VENDEDOR");
+    const lead = await crearLead();
+
+    const respuesta = await request(app)
+      .post("/api/v1/leads/asignar-lote")
+      .set("Authorization", `Bearer ${vendedorActor.token}`)
+      .send({ leadIds: [lead.id] });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("400: leadIds vacío es rechazado por el schema antes de llegar al servicio", async () => {
+    const supervisor = await crearUsuarioConToken("SUPERVISOR");
+
+    const respuesta = await request(app)
+      .post("/api/v1/leads/asignar-lote")
+      .set("Authorization", `Bearer ${supervisor.token}`)
+      .send({ leadIds: [] });
+
+    expect(respuesta.status).toBe(400);
+  });
+});
+
 describe("POST /api/v1/leads/:id/asignar|reasignar|traspasar — casos de error comunes", () => {
   it("404 cuando el lead no existe", async () => {
     const admin = await crearUsuarioConToken("ADMINISTRADOR");

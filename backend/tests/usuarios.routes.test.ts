@@ -339,6 +339,79 @@ describe("DELETE /api/v1/usuarios/:id — baja lógica (D3)", () => {
   });
 });
 
+describe("GET /api/v1/usuarios/responsables — catálogo de responsables activos por rol (F3/F4, D-A1)", () => {
+  it("200 un SUPERVISOR consulta el catálogo y recibe {id,nombre,rol}[] de asesores activos", async () => {
+    const supervisorPassword = "clave-supervisor-123456";
+    const supervisor = await prisma.usuario.create({
+      data: {
+        nombre: "Supervisor Catálogo",
+        correo: "supervisor-catalogo@integracion.test",
+        passwordHash: await hashPassword(supervisorPassword),
+        rol: "SUPERVISOR",
+        activo: true,
+      },
+    });
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: supervisor.correo, password: supervisorPassword });
+    const supervisorToken = login.body.accessToken as string;
+
+    const asesorActivo = await prisma.usuario.create({
+      data: {
+        nombre: "Asesor Catálogo Activo",
+        correo: "asesor-catalogo-activo@integracion.test",
+        passwordHash: await hashPassword("clave-asesor-123456"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios/responsables")
+      .query({ rol: "ASESOR" })
+      .set("Authorization", `Bearer ${supervisorToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(Array.isArray(respuesta.body.responsables)).toBe(true);
+    const encontrado = respuesta.body.responsables.find(
+      (r: { id: string }) => r.id === asesorActivo.id,
+    );
+    expect(encontrado).toEqual({ id: asesorActivo.id, nombre: "Asesor Catálogo Activo", rol: "ASESOR" });
+  });
+
+  it("200 un usuario inactivo del rol consultado NO aparece en el catálogo", async () => {
+    const asesorInactivo = await prisma.usuario.create({
+      data: {
+        nombre: "Asesor Catálogo Inactivo",
+        correo: "asesor-catalogo-inactivo@integracion.test",
+        passwordHash: await hashPassword("clave-asesor-123456"),
+        rol: "ASESOR",
+        activo: false,
+      },
+    });
+
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios/responsables")
+      .query({ rol: "ASESOR" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    const encontrado = respuesta.body.responsables.find(
+      (r: { id: string }) => r.id === asesorInactivo.id,
+    );
+    expect(encontrado).toBeUndefined();
+  });
+
+  it("403 cuando un ASESOR o VENDEDOR intenta consultar el catálogo", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios/responsables")
+      .query({ rol: "ASESOR" })
+      .set("Authorization", `Bearer ${vendedorAccessToken}`);
+
+    expect(respuesta.status).toBe(403);
+  });
+});
+
 describe("Matriz de roles — solo ADMINISTRADOR opera el CRUD (D9)", () => {
   it("403 cuando un VENDEDOR intenta listar usuarios", async () => {
     const respuesta = await request(app)

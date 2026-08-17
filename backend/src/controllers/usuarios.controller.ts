@@ -3,12 +3,14 @@ import { AppError } from "../lib/app-error.js";
 import {
   createUsuarioBodySchema,
   idParamSchema,
+  listResponsablesQuerySchema,
   listUsuariosQuerySchema,
   updateUsuarioBodySchema,
 } from "../schemas/usuarios.schema.js";
 import {
   createUsuario,
   deactivateUsuario,
+  findResponsables,
   findUsuarioById,
   findUsuarios,
   updateUsuario,
@@ -42,6 +44,21 @@ export async function getUsuarios(req: Request, res: Response): Promise<void> {
   res
     .status(200)
     .json({ users: resultado.usuarios, total: resultado.total, pagina: resultado.pagina, limite: resultado.limite });
+}
+
+/**
+ * F3/F4 (diseño D-A1): traducción HTTP pura. La ruta ya restringe el rol a
+ * ADMINISTRADOR/SUPERVISOR (`requireRole`) — el servicio no reaplica la
+ * regla, sigue el mismo patrón que `postLeadAsignar`.
+ */
+export async function getUsuariosResponsables(req: Request, res: Response): Promise<void> {
+  const parsed = listResponsablesQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw zodValidationError();
+  }
+
+  const responsables = await findResponsables(parsed.data.rol);
+  res.status(200).json({ responsables });
 }
 
 export async function getUsuarioById(req: Request, res: Response): Promise<void> {

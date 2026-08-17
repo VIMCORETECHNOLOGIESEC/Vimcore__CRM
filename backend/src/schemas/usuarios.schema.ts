@@ -49,7 +49,17 @@ export const listUsuariosQuerySchema = z.object({
   direccion: z.enum(["asc", "desc"]).default("asc"),
 });
 
+/**
+ * F3/F4 (diseño D-A1, catálogo de responsables): `rol` es obligatorio — el
+ * catálogo siempre se consulta acotado a un pool (ASESOR para asignación
+ * individual/lote). Sin filtro por equipo (spec: "sin filtro por equipo").
+ */
+export const listResponsablesQuerySchema = z.object({
+  rol: z.enum(RolUsuario),
+});
+
 export type CreateUsuarioBody = z.infer<typeof createUsuarioBodySchema>;
 export type UpdateUsuarioBody = z.infer<typeof updateUsuarioBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
 export type ListUsuariosQuery = z.infer<typeof listUsuariosQuerySchema>;
+export type ListResponsablesQuery = z.infer<typeof listResponsablesQuerySchema>;

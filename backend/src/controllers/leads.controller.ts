@@ -3,6 +3,7 @@ import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   asignarBodySchema,
+  asignarLoteBodySchema,
   idParamSchema,
   listLeadsQuerySchema,
   patchEtapaBodySchema,
@@ -10,7 +11,7 @@ import {
   reasignarBodySchema,
   traspasarBodySchema,
 } from "../schemas/leads.schema.js";
-import { assignLead, reassignLead, transferLead } from "../services/asignacion.service.js";
+import { assignLead, assignLeadsBatch, reassignLead, transferLead } from "../services/asignacion.service.js";
 import { findLeadById, findLeads, recalificarLead, transitionEtapa } from "../services/leads.service.js";
 
 function zodValidationError(): AppError {
@@ -81,6 +82,22 @@ export async function postLeadAsignar(req: Request, res: Response): Promise<void
 
   const lead = await assignLead(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ lead });
+}
+
+/**
+ * `POST /api/v1/leads/asignar-lote` (diseño D-A1): calco de `postLeadAsignar`
+ * — traducción HTTP pura. Siempre 200 si el request pasó Zod: el reporte por
+ * lead (`exitosos`/`fallidos`) NO es all-or-nothing, así que un fallo
+ * individual no cambia el código HTTP del batch.
+ */
+export async function postLeadsAsignarLote(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedBody = asignarLoteBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const resultado = await assignLeadsBatch(usuario, parsedBody.data);
+  res.status(200).json(resultado);
 }
 
 export async function postLeadReasignar(req: Request, res: Response): Promise<void> {
