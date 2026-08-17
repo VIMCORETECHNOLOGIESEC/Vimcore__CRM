@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
 import type { ResumenMetricas } from "@/tipos/metricas";
@@ -56,7 +57,11 @@ export function DashboardPage() {
   const filtros = useMemo(() => buildMetricasFiltros(filtrosDashboard, rango), [filtrosDashboard, rango]);
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
-  const responsables = useMemo(() => getCatalogoResponsables("TODOS"), []);
+  // `getCatalogoResponsables` es backend real (D-A2, integración F3/F4).
+  const { data: responsables = [] } = useQuery({
+    queryKey: ["catalogo-responsables", "TODOS"],
+    queryFn: () => getCatalogoResponsables("TODOS"),
+  });
 
   const resumen = useResumenMetricas(filtros);
   const porRedSocial = useMetricasPorRedSocial(filtros);

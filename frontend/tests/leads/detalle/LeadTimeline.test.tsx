@@ -8,9 +8,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock("@/funcionalidades/leads/detalle/leadDetalle.api", () => ({
   fetchFormularioEtapaApi: vi.fn(),
-  submitFormularioEtapaApi: vi.fn(),
-  submitCierreVentaApi: vi.fn(),
-  submitCierreNoVentaApi: vi.fn(),
+  transicionEtapaApi: vi.fn(),
 }));
 
 const { fetchFormularioEtapaApi } = await import("@/funcionalidades/leads/detalle/leadDetalle.api");

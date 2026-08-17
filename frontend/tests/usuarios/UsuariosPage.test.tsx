@@ -141,7 +141,9 @@ describe("UsuariosPage — listado con rol, estado y carga activa de leads", () 
     expect(screen.getByText("marta@crm.test")).toBeInTheDocument();
     expect(screen.getByText("Asesor")).toBeInTheDocument();
     expect(screen.getByText("Activo")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    // Backend real vía `useCargaActivaDeUsuario` (integración F3/F4): la
+    // celda arranca en "…" (isLoading) y resuelve async -- `findByText`.
+    expect(await screen.findByText("3")).toBeInTheDocument();
   });
 
   it("muestra «No aplica» en carga activa para administrador/supervisor, sin consultar el mock de leads", async () => {

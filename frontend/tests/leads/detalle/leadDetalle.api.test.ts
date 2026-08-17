@@ -1,171 +1,313 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import {
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/api/httpClient", () => ({
+  httpClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+const { httpClient } = await import("@/api/httpClient");
+const {
   fetchLeadDetalleApi,
+  fetchFormularioEtapaApi,
+  transicionEtapaApi,
   handoffToVendedorApi,
-  markCitaResultApi,
   reassignApi,
-  rescheduleCitaApi,
+  fetchCitasLeadApi,
   scheduleCitaApi,
-  submitCierreNoVentaApi,
-  submitCierreVentaApi,
-  submitFormularioEtapaApi,
-} from "@/funcionalidades/leads/detalle/leadDetalle.api";
+  rescheduleCitaApi,
+  markCitaResultApi,
+} = await import("@/funcionalidades/leads/detalle/leadDetalle.api");
 
-const LEAD_NUEVO_ID = "lead-08"; // etapa NUEVO en el fixture de leads.api.ts
-const LEAD_CONTACTADO_ID = "lead-01"; // etapa CONTACTADO, asesor asesor-1
+const getMock = vi.mocked(httpClient.get);
+const postMock = vi.mocked(httpClient.post);
+const patchMock = vi.mocked(httpClient.patch);
 
-describe("fetchLeadDetalleApi", () => {
-  it("devuelve el lead por id", async () => {
-    const lead = await fetchLeadDetalleApi(LEAD_NUEVO_ID);
-    expect(lead.id).toBe(LEAD_NUEVO_ID);
+function leadBackendFake(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "lead-01",
+    clienteId: "cliente-01",
+    cliente: {
+      id: "cliente-01",
+      nombre: "Roberto Salazar",
+      telefonoOriginal: "0991234567",
+      telefonoNormalizado: "+593991234567",
+      telefonoValido: true,
+    },
+    origen: "NUEVO",
+    redSocial: "INSTAGRAM",
+    etapa: "NUEVO",
+    semaforo: "AMARILLO",
+    puntuacion: 40,
+    asesorId: "asesor-1",
+    asesor: { id: "asesor-1", nombre: "Marta Herrera", rol: "ASESOR" },
+    vendedorId: null,
+    vendedor: null,
+    slaInicioEn: new Date().toISOString(),
+    ingresadoEn: new Date().toISOString(),
+    cerradoEn: null,
+    montoVenta: null,
+    productoServicio: null,
+    formaPago: null,
+    observacionCierre: null,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  getMock.mockReset();
+  postMock.mockReset();
+  patchMock.mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("fetchLeadDetalleApi (GET /leads/:id real)", () => {
+  it("devuelve el lead mapeado a la forma del frontend", async () => {
+    getMock.mockResolvedValue({ lead: leadBackendFake() });
+
+    const lead = await fetchLeadDetalleApi("lead-01");
+
+    expect(getMock).toHaveBeenCalledWith("/leads/lead-01");
+    expect(lead.id).toBe("lead-01");
+    expect(lead.cliente.nombre).toBe("Roberto Salazar");
   });
 
-  it("rechaza cuando el lead no existe", async () => {
+  it("propaga el error del backend (404/403) sin envolverlo", async () => {
+    getMock.mockRejectedValue(new Error("lead_no_encontrado"));
+
     await expect(fetchLeadDetalleApi("lead-no-existe")).rejects.toThrow();
   });
 });
 
-describe("submitFormularioEtapaApi — 'sin formulario no hay transición' (docs/02-reglas-negocio.md §6)", () => {
-  it("cambiar de etapa solo ocurre al enviar el formulario de la etapa destino", async () => {
-    const antes = await fetchLeadDetalleApi(LEAD_NUEVO_ID);
-    expect(antes.etapa).toBe("NUEVO");
-
-    const despues = await submitFormularioEtapaApi(LEAD_NUEVO_ID, "CONTACTADO", {
-      medioContacto: "SI",
-      resultadoConversacion: "POSITIVA",
-      necesidadIdentificada: "SI",
-      capacidadPago: "SI",
-      objecionPrincipal: "SI",
-      proximaAccionAcordada: "SI",
+describe("fetchFormularioEtapaApi (GET /formularios/:etapa real) — remapeo clave/valor", () => {
+  it("remapea `clave`(backend)→`valor`(frontend) y `valor`(backend, 0-10)→`puntaje`(frontend)", async () => {
+    getMock.mockResolvedValue({
+      formulario: {
+        etapa: "CONTACTADO",
+        preguntas: [
+          {
+            clave: "contacto_logrado",
+            etiqueta: "¿Se logró contactar al lead?",
+            peso: 3,
+            opciones: [{ clave: "si_respondio", etiqueta: "Sí, respondió", valor: 10 }],
+          },
+        ],
+      },
     });
 
-    expect(despues.etapa).toBe("CONTACTADO");
-    expect(despues.puntuacion).toBe(100);
-    expect(despues.semaforo).toBe("VERDE");
-  });
+    const formulario = await fetchFormularioEtapaApi("CONTACTADO");
 
-  it("el cambio de etapa persiste: una consulta posterior refleja la nueva etapa", async () => {
-    await submitFormularioEtapaApi(LEAD_NUEVO_ID, "CITA", {});
-    const releido = await fetchLeadDetalleApi(LEAD_NUEVO_ID);
-    expect(releido.etapa).toBe("CITA");
-    expect(releido.puntuacion).toBe(0);
-    expect(releido.semaforo).toBe("ROJO");
-  });
-
-  it("esta capa de datos no impone la regla de transición lineal por sí misma", async () => {
-    // La whitelist de transiciones válidas (docs/02 §6, "progreso lineal
-    // hacia adelante") vive en `funcionalidades/leads/etapas.ts` y la aplica
-    // el timeline (`detalle/LeadTimeline.tsx`) al construir qué formulario
-    // ofrecer -- es un guard de UX, igual criterio que
-    // `leadDetalle.guards.ts`. Esta función de mock, como el resto de la capa
-    // de datos, no valida el destino: una petición manipulada que se salte
-    // la UI llegaría igual hasta acá, así como llegaría al backend real
-    // (M5) si este no valida `getTransicionesValidas` del lado del
-    // servidor -- ver anotación en docs/06-modulos-backend.md.
-    const resultado = await submitFormularioEtapaApi(LEAD_NUEVO_ID, "NUEVO", { contactabilidad: "SI" });
-    expect(resultado.etapa).toBe("NUEVO");
+    expect(getMock).toHaveBeenCalledWith("/formularios/CONTACTADO");
+    expect(formulario.preguntas[0]?.clave).toBe("contacto_logrado");
+    expect(formulario.preguntas[0]?.opciones[0]).toEqual({
+      valor: "si_respondio",
+      etiqueta: "Sí, respondió",
+      puntaje: 10,
+    });
   });
 });
 
-describe("handoffToVendedorApi (docs/02 §5)", () => {
-  it("asigna el primer vendedor del catálogo cuando no se elige uno (simplificación de 'menor carga')", async () => {
-    const resultado = await handoffToVendedorApi(LEAD_CONTACTADO_ID);
-    expect(resultado.vendedor).not.toBeNull();
+describe("transicionEtapaApi (D-B2: PATCH /leads/:id/etapa, unión discriminada)", () => {
+  it("VENTA: manda etapa/montoVenta/productoServicio/formaPago", async () => {
+    patchMock.mockResolvedValue({ lead: leadBackendFake({ etapa: "VENTA" }) });
+
+    await transicionEtapaApi("lead-01", {
+      etapa: "VENTA",
+      montoVenta: 1200,
+      productoServicio: "Plan Estándar",
+      formaPago: "CONTADO",
+    });
+
+    expect(patchMock).toHaveBeenCalledWith("/leads/lead-01/etapa", {
+      etapa: "VENTA",
+      montoVenta: 1200,
+      productoServicio: "Plan Estándar",
+      formaPago: "CONTADO",
+    });
   });
 
-  it("asigna el vendedor indicado cuando se elige manualmente", async () => {
-    const resultado = await handoffToVendedorApi(LEAD_CONTACTADO_ID, "vendedor-2");
-    expect(resultado.vendedor?.id).toBe("vendedor-2");
+  it("NO_VENTA: manda etapa/observacionCierre", async () => {
+    patchMock.mockResolvedValue({ lead: leadBackendFake({ etapa: "NO_VENTA" }) });
+
+    await transicionEtapaApi("lead-01", {
+      etapa: "NO_VENTA",
+      observacionCierre: "El cliente decidió posponer la compra indefinidamente.",
+    });
+
+    expect(patchMock).toHaveBeenCalledWith("/leads/lead-01/etapa", {
+      etapa: "NO_VENTA",
+      observacionCierre: "El cliente decidió posponer la compra indefinidamente.",
+    });
   });
 
-  it("reinicia slaInicioEn al traspasar", async () => {
-    const antes = Date.now();
-    const resultado = await handoffToVendedorApi(LEAD_CONTACTADO_ID, "vendedor-1");
-    expect(new Date(resultado.slaInicioEn as string).getTime()).toBeGreaterThanOrEqual(antes);
+  it("NUEVO/CONTACTADO/CITA: manda etapa/respuestas", async () => {
+    patchMock.mockResolvedValue({ lead: leadBackendFake({ etapa: "CONTACTADO" }) });
+
+    await transicionEtapaApi("lead-01", { etapa: "CONTACTADO", respuestas: { contacto_logrado: "si_respondio" } });
+
+    expect(patchMock).toHaveBeenCalledWith("/leads/lead-01/etapa", {
+      etapa: "CONTACTADO",
+      respuestas: { contacto_logrado: "si_respondio" },
+    });
   });
 });
 
-describe("reassignApi (docs/02 §5)", () => {
-  it("reasigna a un asesor distinto y reinicia slaInicioEn", async () => {
-    const antes = Date.now();
-    const resultado = await reassignApi(LEAD_CONTACTADO_ID, "asesor-2");
-    expect(resultado.asesor?.id).toBe("asesor-2");
-    expect(new Date(resultado.slaInicioEn as string).getTime()).toBeGreaterThanOrEqual(antes);
+describe("handoffToVendedorApi (POST /leads/:id/traspasar real)", () => {
+  it("manda vendedorId cuando se elige manualmente", async () => {
+    postMock.mockResolvedValue({ lead: leadBackendFake() });
+
+    await handoffToVendedorApi("lead-01", "vendedor-2");
+
+    expect(postMock).toHaveBeenCalledWith("/leads/lead-01/traspasar", { vendedorId: "vendedor-2" });
   });
 
-  it("reasigna a un vendedor cuando el responsableId corresponde a uno", async () => {
-    const resultado = await reassignApi(LEAD_CONTACTADO_ID, "vendedor-1");
-    expect(resultado.vendedor?.id).toBe("vendedor-1");
-  });
+  it("manda vendedorId undefined cuando no se elige (backend aplica menor carga)", async () => {
+    postMock.mockResolvedValue({ lead: leadBackendFake() });
 
-  it("rechaza cuando el responsable no existe en el catálogo", async () => {
-    await expect(reassignApi(LEAD_CONTACTADO_ID, "no-existe")).rejects.toThrow();
+    await handoffToVendedorApi("lead-01");
+
+    expect(postMock).toHaveBeenCalledWith("/leads/lead-01/traspasar", { vendedorId: undefined });
   });
 });
 
-describe("citas: agendar, reprogramar y marcar resultado", () => {
-  let citaId: string;
+describe("reassignApi (POST /leads/:id/reasignar real, pool ASESOR)", () => {
+  it("manda el responsableId como asesorId", async () => {
+    postMock.mockResolvedValue({ lead: leadBackendFake() });
 
-  beforeEach(async () => {
+    await reassignApi("lead-01", "asesor-2");
+
+    expect(postMock).toHaveBeenCalledWith("/leads/lead-01/reasignar", { asesorId: "asesor-2" });
+  });
+
+  it("propaga el error del backend cuando el responsable no existe", async () => {
+    postMock.mockRejectedValue(new Error("usuario_no_encontrado"));
+
+    await expect(reassignApi("lead-01", "no-existe")).rejects.toThrow();
+  });
+});
+
+describe("citas: agendar, reprogramar y marcar resultado (backend real, M7)", () => {
+  it("scheduleCitaApi llama a POST /leads/:id/citas y mapea la respuesta", async () => {
+    postMock.mockResolvedValue({
+      cita: {
+        id: "cita-01",
+        leadId: "lead-01",
+        usuarioId: "asesor-1",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        modalidad: "VIRTUAL",
+        estado: "AGENDADA",
+        notas: null,
+      },
+    });
+
     const cita = await scheduleCitaApi({
-      leadId: LEAD_CONTACTADO_ID,
+      leadId: "lead-01",
       usuarioId: "asesor-1",
-      programadaPara: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      programadaPara: "2026-03-01T10:00:00.000Z",
       modalidad: "VIRTUAL",
     });
-    citaId = cita.id;
+
+    expect(postMock).toHaveBeenCalledWith("/leads/lead-01/citas", {
+      usuarioId: "asesor-1",
+      programadaPara: "2026-03-01T10:00:00.000Z",
+      modalidad: "VIRTUAL",
+      notas: undefined,
+    });
+    expect(cita.notas).toBeUndefined();
   });
 
-  it("agendar rechaza una fecha ya pasada", async () => {
+  it("scheduleCitaApi propaga el rechazo del backend ante una fecha ya pasada (422)", async () => {
+    postMock.mockRejectedValue(new Error("cita_en_pasado"));
+
     await expect(
       scheduleCitaApi({
-        leadId: LEAD_CONTACTADO_ID,
+        leadId: "lead-01",
         usuarioId: "asesor-1",
-        programadaPara: new Date(Date.now() - 1000).toISOString(),
+        programadaPara: "2020-01-01T00:00:00.000Z",
         modalidad: "TELEFONICA",
       }),
     ).rejects.toThrow();
   });
 
-  it("reprogramar cambia la fecha y pasa a estado REPROGRAMADA", async () => {
-    const nuevaFecha = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-    const resultado = await rescheduleCitaApi(citaId, nuevaFecha);
-    expect(resultado.programadaPara).toBe(nuevaFecha);
-    expect(resultado.estado).toBe("REPROGRAMADA");
-  });
-
-  it("reprogramar rechaza una fecha ya pasada", async () => {
-    await expect(rescheduleCitaApi(citaId, new Date(Date.now() - 1000).toISOString())).rejects.toThrow();
-  });
-
-  it("marcar resultado cambia el estado a CUMPLIDA", async () => {
-    const resultado = await markCitaResultApi(citaId, "CUMPLIDA");
-    expect(resultado.estado).toBe("CUMPLIDA");
-  });
-});
-
-describe("cierre — Venta y No Venta (docs/02, sin puntuación, semáforo fijo)", () => {
-  it("cierre en Venta fija semáforo verde y persiste los campos de cierre", async () => {
-    const resultado = await submitCierreVentaApi(LEAD_CONTACTADO_ID, {
-      fechaCierre: new Date().toISOString(),
-      montoVenta: 1200,
-      productoVendido: "Plan Estándar",
-      formaPago: "CONTADO",
+  it("rescheduleCitaApi llama a POST /citas/:citaId/reprogramar (verbo POST, no PATCH)", async () => {
+    postMock.mockResolvedValue({
+      cita: {
+        id: "cita-01",
+        leadId: "lead-01",
+        usuarioId: "asesor-1",
+        programadaPara: "2026-03-02T10:00:00.000Z",
+        modalidad: "VIRTUAL",
+        estado: "AGENDADA",
+        notas: null,
+      },
     });
-    expect(resultado.etapa).toBe("VENTA");
-    expect(resultado.semaforo).toBe("VERDE");
-    expect(resultado.montoVenta).toBe(1200);
-    expect(resultado.productoVendido).toBe("Plan Estándar");
-    expect(resultado.formaPago).toBe("CONTADO");
+
+    const cita = await rescheduleCitaApi("cita-01", "2026-03-02T10:00:00.000Z");
+
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/reprogramar", {
+      programadaPara: "2026-03-02T10:00:00.000Z",
+    });
+    expect(cita.programadaPara).toBe("2026-03-02T10:00:00.000Z");
   });
 
-  it("cierre en No Venta fija semáforo rojo y persiste la observación del motivo", async () => {
-    const resultado = await submitCierreNoVentaApi(LEAD_CONTACTADO_ID, {
-      fechaCierre: new Date().toISOString(),
-      observacionMotivo: "El cliente decidió posponer la compra indefinidamente por motivos personales.",
+  it("fetchCitasLeadApi llama a GET /leads/:id/citas y mapea la lista", async () => {
+    getMock.mockResolvedValue({
+      citas: [
+        {
+          id: "cita-01",
+          leadId: "lead-01",
+          usuarioId: "asesor-1",
+          programadaPara: "2026-03-01T10:00:00.000Z",
+          modalidad: "VIRTUAL",
+          estado: "AGENDADA",
+          notas: "Confirmar disponibilidad.",
+        },
+      ],
     });
-    expect(resultado.etapa).toBe("NO_VENTA");
-    expect(resultado.semaforo).toBe("ROJO");
-    expect(resultado.observacionCierre).toContain("posponer");
+
+    const citas = await fetchCitasLeadApi("lead-01");
+
+    expect(getMock).toHaveBeenCalledWith("/leads/lead-01/citas");
+    expect(citas).toHaveLength(1);
+    expect(citas[0]?.notas).toBe("Confirmar disponibilidad.");
+  });
+
+  it("markCitaResultApi llama a POST /citas/:citaId/resultado (verbo POST, no PATCH)", async () => {
+    postMock.mockResolvedValue({
+      cita: {
+        id: "cita-01",
+        leadId: "lead-01",
+        usuarioId: "asesor-1",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        modalidad: "VIRTUAL",
+        estado: "CUMPLIDA",
+        notas: null,
+      },
+    });
+
+    const cita = await markCitaResultApi("cita-01", "CUMPLIDA");
+
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "CUMPLIDA" });
+    expect(cita.estado).toBe("CUMPLIDA");
+  });
+
+  /**
+   * Bug preexistente, deliberadamente NO corregido en esta unidad (B1) --
+   * ver `sdd/integracion-leads-f3-f4/spec` (Requirement "Cancelación de cita
+   * separada del resultado") y el work unit B2. El tipo sigue aceptando
+   * "CANCELADA" a propósito; el backend real lo rechaza con 400 porque
+   * `marcarResultadoCitaBodySchema` solo admite CUMPLIDA|NO_ASISTIO.
+   */
+  it('markCitaResultApi con "CANCELADA" propaga el 400 del backend real (bug preexistente, fix es responsabilidad de B2)', async () => {
+    postMock.mockRejectedValue(new Error("validacion_invalida"));
+
+    await expect(markCitaResultApi("cita-01", "CANCELADA")).rejects.toThrow();
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "CANCELADA" });
   });
 });
