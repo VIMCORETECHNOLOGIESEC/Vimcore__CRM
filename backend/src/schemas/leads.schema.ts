@@ -44,6 +44,10 @@ export const listLeadsQuerySchema = z.object({
   redSocial: z.enum(RedSocial).optional(),
   // DD2: texto libre contra `payload_original ->> 'nombreCampania'` (ILIKE).
   campania: z.string().trim().min(1).optional(),
+  // spec ("Búsqueda libre sobre datos de cliente"): OR ILIKE sobre
+  // cliente.nombre/telefonoOriginal/telefonoNormalizado/correo principal —
+  // la campaña queda deliberadamente fuera (usa `campania` arriba).
+  busqueda: z.string().trim().min(1).optional(),
   // Filtro explícito por responsable operativo, solo útil para
   // Admin/Supervisor (D4) — para Asesor/Vendedor el where de rol ya acota.
   responsableId: z.uuid().optional(),

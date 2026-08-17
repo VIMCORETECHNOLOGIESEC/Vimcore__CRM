@@ -3,6 +3,7 @@ import { AppError } from "../lib/app-error.js";
 import { GESTION_LEAD_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
+import type { LeadConRelaciones } from "../repositories/lead.repository.js";
 import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js";
 import { applyFormulario } from "./formularios.service.js";
 import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
@@ -12,8 +13,22 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"
 const ETAPAS_TERMINALES: readonly EtapaLead[] = ["VENTA", "NO_VENTA"];
 
 export type LeadConSla = Lead & { estadoSla: EstadoSla };
+/**
+ * spec ("Respuesta enriquecida con relaciones"): forma real de `findLeads`/
+ * `findLeadById` desde que `lead.repository.ts::findById`/`findMany`
+ * incluyen `cliente`/`asesor`/`vendedor`. `LeadConSla` (arriba) se conserva
+ * sin tocar — `asignacion.service.ts` la importa y mantiene su propio
+ * `withEstadoSla` local sobre `Lead` plano (comentario en ese archivo: "no se
+ * modifica ese archivo").
+ */
+export type LeadDetalleConSla = LeadConRelaciones & { estadoSla: EstadoSla };
 
-function withEstadoSla(lead: Lead, ahora: Date): LeadConSla {
+/**
+ * Genérica en `T` a propósito: preserva la forma exacta de entrada (`Lead`
+ * plano o `LeadConRelaciones`) y solo añade `estadoSla` — así `findLeads`/
+ * `findLeadById` obtienen `LeadDetalleConSla` sin un segundo helper duplicado.
+ */
+function withEstadoSla<T extends Lead>(lead: T, ahora: Date): T & { estadoSla: EstadoSla } {
   return { ...lead, estadoSla: calculateEstadoSla(lead.slaInicioEn, lead.cerradoEn, ahora) };
 }
 
@@ -81,7 +96,7 @@ function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date):
 }
 
 export interface FindLeadsResult {
-  leads: LeadConSla[];
+  leads: LeadDetalleConSla[];
   total: number;
   pagina: number;
   limite: number;
@@ -95,6 +110,7 @@ export async function findLeads(usuario: UsuarioAcceso, query: ListLeadsQuery): 
     skip: (query.pagina - 1) * query.limite,
     take: query.limite,
     orderBy: { ingresadoEn: query.direccion },
+    busqueda: query.busqueda,
   });
 
   return {
@@ -110,7 +126,7 @@ export async function findLeads(usuario: UsuarioAcceso, query: ListLeadsQuery): 
  * usuario no tiene `canRead` — el asesor que traspasó un lead conserva
  * lectura (D4).
  */
-export async function findLeadById(usuario: UsuarioAcceso, id: string): Promise<LeadConSla> {
+export async function findLeadById(usuario: UsuarioAcceso, id: string): Promise<LeadDetalleConSla> {
   const lead = await leadRepository.findById(id);
   if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
   if (!canRead(usuario, lead)) {
