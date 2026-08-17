@@ -198,6 +198,12 @@ del producto.
 > para el modelo de columnas. Vitest + Testing Library, todos los tests en
 > verde; `tsc` + `vite build` sin errores.
 >
+> **Actualización (cambio SDD `integracion-leads-f3-f4`, portado desde
+> `test/integration`):** `fetchLeadsApi`/`assignLeadsMasivoApi` ya llaman al
+> backend real (`GET /leads`, `POST /leads/asignar-lote`, un único request
+> con reporte por lead). El bloque de arriba queda como registro histórico
+> de la decisión original de construir contra mock.
+>
 > Fuera de alcance de esta implementación: actualización por SSE (depende
 > de infraestructura de bridges/tiempo real que todavía no existe, F8) y el
 > contrato exacto de query params de `GET /api/v1/leads` (los nombres
@@ -275,6 +281,14 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 > mutable `LEADS_MOCK` con `leads.api.ts` (F3) para que listado y detalle
 > queden consistentes en una misma sesión. Cada punto de integración
 > pendiente está marcado con el token `INTEGRACION-BACKEND`.
+>
+> **Actualización (cambio SDD `integracion-leads-f3-f4`, portado desde
+> `test/integration`):** `leadDetalle.api.ts` ya llama al backend real
+> (`GET /leads/:id`, `PATCH /leads/:id/etapa` colapsando
+> formulario/cierre-venta/cierre-no-venta, endpoints reales de `M7 Citas`,
+> `POST /citas/:citaId/cancelar` dedicado separado de marcar resultado).
+> `LEADS_MOCK` sigue existiendo solo por F5/F6, que no son parte de este
+> cambio. El bloque de arriba queda como registro histórico.
 >
 > **Decisiones de diseño propias del frontend** (no fijadas por ningún
 > contrato de backend, documentadas para que quien conecte el backend real
