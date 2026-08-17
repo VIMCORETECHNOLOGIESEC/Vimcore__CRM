@@ -4,6 +4,7 @@ import type { EstadoCita, ModalidadCita } from "@/tipos/cita";
 import type { FormaPago } from "@/tipos/lead";
 import type { EtapaCalificable, RespuestasFormulario } from "@/tipos/formulario";
 import {
+  cancelCitaApi,
   fetchCitasLeadApi,
   fetchFormularioEtapaApi,
   fetchLeadDetalleApi,
@@ -121,11 +122,28 @@ export function useMarkCitaResult(leadId: string) {
       estado,
     }: {
       citaId: string;
-      estado: Extract<EstadoCita, "CUMPLIDA" | "NO_ASISTIO" | "CANCELADA">;
+      estado: Extract<EstadoCita, "CUMPLIDA" | "NO_ASISTIO">;
     }) => markCitaResultApi(citaId, estado),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [CITAS_LEAD_QUERY_KEY, leadId] });
       toast.success("Resultado de la cita registrado.");
+    },
+  });
+}
+
+/**
+ * Cancelar cita (design D-B1, unidad B2) -- hook dedicado, separado de
+ * `useMarkCitaResult`, contra `POST /citas/:citaId/cancelar` sin body. Antes
+ * `PanelCitas.tsx` reusaba `useMarkCitaResult` con `estado: "CANCELADA"`
+ * contra `/resultado`, que el backend real rechaza con 400.
+ */
+export function useCancelCita(leadId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (citaId: string) => cancelCitaApi(citaId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [CITAS_LEAD_QUERY_KEY, leadId] });
+      toast.success("Cita cancelada correctamente.");
     },
   });
 }

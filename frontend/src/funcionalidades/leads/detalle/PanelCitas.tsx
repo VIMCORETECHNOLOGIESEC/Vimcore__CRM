@@ -16,7 +16,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import type { Cita, ModalidadCita } from "@/tipos/cita";
 import { citaRescheduleSchema, citaScheduleSchema, type CitaScheduleFormValues } from "./cita.schemas";
-import { useCitasLead, useMarkCitaResult, useRescheduleCita, useScheduleCita } from "./useLeadDetalle";
+import { useCancelCita, useCitasLead, useMarkCitaResult, useRescheduleCita, useScheduleCita } from "./useLeadDetalle";
 
 const MODALIDAD_ETIQUETAS: Record<ModalidadCita, string> = {
   PRESENCIAL: "Presencial",
@@ -52,6 +52,7 @@ function CitaItem({ cita, onReschedule, reschedulingId }: CitaItemProps) {
   const [nuevaFecha, setNuevaFecha] = useState("");
   const [errorFecha, setErrorFecha] = useState<string | null>(null);
   const markResult = useMarkCitaResult(cita.leadId);
+  const cancelCita = useCancelCita(cita.leadId);
 
   const puedeAccionar = cita.estado === "AGENDADA" || cita.estado === "REPROGRAMADA";
 
@@ -100,8 +101,8 @@ function CitaItem({ cita, onReschedule, reschedulingId }: CitaItemProps) {
           <Button
             size="sm"
             variant="outline"
-            disabled={markResult.isPending}
-            onClick={() => markResult.mutate({ citaId: cita.id, estado: "CANCELADA" })}
+            disabled={cancelCita.isPending}
+            onClick={() => cancelCita.mutate(cita.id)}
           >
             Cancelar
           </Button>
@@ -135,8 +136,8 @@ interface PanelCitasProps {
 }
 
 /**
- * Panel de citas (F4): agendar, reprogramar, marcar resultado. Mock hasta
- * M7 -- ver `leadDetalle.api.ts`.
+ * Panel de citas (F4): agendar, reprogramar, marcar resultado, cancelar --
+ * backend real (M7), ver `leadDetalle.api.ts`.
  */
 export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
   const { data: citas, isLoading, isError } = useCitasLead(leadId);
