@@ -187,6 +187,44 @@ cerrado_en IS NULL` sobre `sla_inicio_en`) ya existía desde la migración de M5
 de detección de atrasados reutiliza la misma forma de consulta que
 `GET /leads?estadoSla=atrasado` de M5.
 
+> **Nota D1 revisada (F3/F4, diseño D-A2 revisión 2) — ruptura consciente de
+> la invariante original:** hasta esta revisión, la asignación automática
+> corría **dentro de la misma transacción** de ingesta
+> (`ingesta.service.ts::procesarEnTransaccion`). Esa invariante se rompió a
+> propósito: el lead debe estar **realmente committeado** antes de intentar
+> asignarlo. Ahora `procesarEnTransaccion` solo persiste recepción+dedupe y
+> propaga `leadCreado`; `ingesta.service.ts::ingestarLead` dispara
+> `asignacion.service.ts::asignarTrasCommit(leadId, ahoraIngesta)` **después**
+> del commit, en su propia transacción, con hasta 3 reintentos (backoff
+> 250ms/1000ms). `assignAutomatically` en sí **sigue sin abrir transacción
+> propia** — solo cambió quién le pasa la `tx` viva (antes `ingesta.service`,
+> ahora `asignarTrasCommit`).
+>
+> Efectos del cambio, todos deliberados:
+> - **Guarda de idempotencia obligatoria**: `assignAutomatically` no-opea en
+>   silencio si el lead ya tiene `asesorId` no-nulo — cubre tanto una
+>   asignación manual del Supervisor durante la ventana post-commit como un
+>   reintento sobre un intento anterior ya confirmado.
+> - **`slaInicioEn` = instante de ingesta**, no el instante en que la
+>   asignación automática efectivamente concluye (evita regalar minutos de
+>   SLA por un retraso de infraestructura propio).
+> - **Degradación tras agotar los 3 reintentos**: evento `ASIGNACION_FALLIDA`
+>   nuevo en `lead_eventos` (`requiereNotificacion: true`, distinto de
+>   `SIN_ASIGNAR` — este es un incidente de infraestructura, no la ausencia
+>   de candidatos) + ERROR en `bridge_logs` + `logger.error`. El lead queda
+>   `asesorId: null`, visible y filtrable, reparable manualmente vía
+>   `/leads/:id/asignar` o el lote `/leads/asignar-lote`.
+> - **La respuesta HTTP de ingesta nunca depende del resultado de la
+>   asignación**: `asignarTrasCommit` nunca lanza, así que el webhook
+>   siempre responde 200 con el `leadId` committeado. Un 5xx aquí sería
+>   activamente dañino: el reintento del bridge entraría por el `ON
+>   CONFLICT` de `upsertLeadRecibido` y cortocircuitaría como
+>   `duplicado: true` sin volver a intentar la asignación.
+>
+> Migración aditiva asociada: `20260816120000_asignacion_fallida_postcommit`
+> (`ALTER TYPE "tipo_evento_lead" ADD VALUE 'ASIGNACION_FALLIDA'`), mismo
+> patrón que la migración original de M6.
+
 ---
 
 ## M7 — Citas

@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
+import * as usuarioRepository from "../src/repositories/usuario.repository.js";
 import { ingestarLead } from "../src/services/ingesta.service.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
 
@@ -17,6 +18,18 @@ vi.mock("../src/repositories/lead-evento.repository.js", async (importOriginal) 
   const actual =
     await importOriginal<typeof import("../src/repositories/lead-evento.repository.js")>();
   return { ...actual, createEvento: vi.fn(actual.createEvento) };
+});
+
+/**
+ * D-A2 (revisión 2, test 3.11): mismo motivo de aislamiento que
+ * `ingesta.routes.test.ts` — mockear `findActivosPorRol` (no `createEvento`)
+ * para forzar un retraso real en la asignación POST-commit sin tocar la
+ * transacción de ingesta (INGRESO se escribe antes del commit, ajeno a este
+ * mock).
+ */
+vi.mock("../src/repositories/usuario.repository.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/repositories/usuario.repository.js")>();
+  return { ...actual, findActivosPorRol: vi.fn(actual.findActivosPorRol) };
 });
 
 let contador = 0;
@@ -186,4 +199,43 @@ describe("ingesta.service — ingestarLead (M4, PR3a)", () => {
     expect(logError).not.toBeNull();
     expect(logError?.mensaje).toContain("fallo forzado para probar log de error");
   });
+
+  it("slaInicioEn queda fijado con el instante de ingesta, no con el instante en que la asignación automática efectivamente concluye (Scenario: Reloj SLA no se corre por retraso)", async () => {
+    const { id: bridgeId } = await crearBridge();
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    contador += 1;
+    const asesor = await prisma.usuario.create({
+      data: {
+        nombre: `Asesor SLA postcommit ${contador}`,
+        correo: `asesor-postcommit-${contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    const entrada = entradaBase(bridgeId);
+
+    // Un único fallo transitorio en el primer intento fuerza el backoff real
+    // de 250ms antes del segundo (y exitoso) intento — así se distingue con
+    // certeza entre "instante de ingesta" y "instante en que la asignación
+    // efectivamente concluye".
+    const mockFindActivos = vi.mocked(usuarioRepository.findActivosPorRol);
+    mockFindActivos.mockRejectedValueOnce(new Error("retraso simulado del primer intento"));
+
+    const antes = Date.now();
+    const resultado = await ingestarLead(entrada);
+    const despues = Date.now();
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+    expect(lead.asesorId).toBe(asesor.id);
+    expect(lead.slaInicioEn).not.toBeNull();
+
+    const slaMs = lead.slaInicioEn!.getTime();
+    expect(slaMs).toBeGreaterThanOrEqual(antes);
+    expect(slaMs).toBeLessThan(antes + 200);
+
+    // Confirma que sí hubo un retraso real por el backoff (si no, la prueba
+    // no distinguiría nada) y que ese retraso NO se filtró a slaInicioEn.
+    expect(despues - antes).toBeGreaterThanOrEqual(250);
+  }, 10_000);
 });
