@@ -9,6 +9,18 @@ export interface NotificationInput {
   leadId?: string | null;
 }
 const UNASSIGNED_RECIPIENT_ROLES: readonly RolUsuario[] = ["SUPERVISOR", "ADMINISTRADOR"];
+export async function createForActiveRoles(
+  roles: readonly RolUsuario[],
+  input: NotificationInput,
+  client: PrismaClientOrTransaction = prisma,
+) {
+  const recipientIds = await notificationRepository.findActiveRecipientIds(roles, client);
+  const created = [];
+  for (const usuarioId of recipientIds) {
+    created.push(await notificationRepository.createNotificacion({ usuarioId, ...input }, client));
+  }
+  return created;
+}
 export async function listNotifications(usuarioId: string, soloNoLeidas: boolean) {
   return notificationRepository.listByUsuario(usuarioId, soloNoLeidas);
 }

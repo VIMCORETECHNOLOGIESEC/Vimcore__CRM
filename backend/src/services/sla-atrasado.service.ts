@@ -1,7 +1,10 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma, type RolUsuario } from "@prisma/client";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { DetalleEventoAsignacion } from "./asignacion.service.js";
+import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import * as notificationRepository from "../repositories/notificacion.repository.js";
+import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 import { slaFilterBoundaries } from "./sla.calculator.js";
 
 export interface ResultadoDeteccion {
@@ -36,38 +39,27 @@ export async function detectLeadsAtrasados(
   const candidatos = await leadRepository.findAtrasadosAbiertos(fronteraAtrasado);
   if (candidatos.length === 0) return { candidatos: 0, eventosCreados: 0 };
 
-  const previos = await leadEventoRepository.findPorLeadsYTipo(
-    candidatos.map((lead) => lead.id),
-    "SLA_INCUMPLIDO",
-  );
-
-  const ultimoPorLead = new Map<string, Date>();
-  for (const evento of previos) {
-    const actual = ultimoPorLead.get(evento.leadId);
-    if (!actual || evento.ocurridoEn > actual) ultimoPorLead.set(evento.leadId, evento.ocurridoEn);
-  }
-
   let eventosCreados = 0;
-  for (const lead of candidatos) {
-    const ultimo = ultimoPorLead.get(lead.id);
-    // `slaInicioEn` nunca es null aquí: Q1 filtra por `lte: fronteraAtrasado`.
-    if (ultimo && lead.slaInicioEn && ultimo >= lead.slaInicioEn) continue;
-
-    const detalle: DetalleEventoAsignacion = {
-      version: 1,
-      requiereNotificacion: true, // D5 — M8 lo consume
-      motivo: "sla_vencido",
-      responsableId: lead.vendedorId ?? lead.asesorId, // D13
-      responsableAnteriorId: null,
-      ejecutadoPorId: null,
-    };
-    await leadEventoRepository.createEvento({
-      leadId: lead.id,
-      tipo: "SLA_INCUMPLIDO",
-      usuarioId: null,
-      detalle: detalle as unknown as Prisma.InputJsonValue,
-    });
-    eventosCreados += 1;
+  const managementRoles: readonly RolUsuario[] = ["SUPERVISOR", "ADMINISTRADOR"];
+  for (const candidato of candidatos) {
+    const committed = await runInTransaction(undefined, async (tx) => {
+      await tx.$queryRawUnsafe("SELECT id FROM leads WHERE id = $1::uuid FOR UPDATE", candidato.id);
+      const lead = await tx.lead.findUniqueOrThrow({ where: { id: candidato.id } });
+      if (!lead.slaInicioEn || lead.slaInicioEn > fronteraAtrasado || lead.cerradoEn) return [];
+      const previous = await tx.leadEvento.findFirst({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO", ocurridoEn: { gte: lead.slaInicioEn } } });
+      if (previous) return [];
+      const responsableId = lead.vendedorId ?? lead.asesorId;
+      const detalle: DetalleEventoAsignacion = { version: 1, requiereNotificacion: true, motivo: "sla_vencido", responsableId, responsableAnteriorId: null, ejecutadoPorId: null };
+      await leadEventoRepository.createEvento({ leadId: lead.id, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
+      const managementIds = await notificationRepository.findActiveRecipientIds(managementRoles, tx);
+      const owner = responsableId ? await tx.usuario.findFirst({ where: { id: responsableId, activo: true }, select: { id: true } }) : null;
+      const recipientIds = [...new Set([...managementIds, ...(owner ? [owner.id] : [])])];
+      const notifications = [];
+      for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atenci�n del lead ha vencido", leadId: lead.id }, tx));
+      return notifications.flatMap(notificationEvents);
+    }, ASIGNACION_TRANSACTION_BOUNDS);
+    if (committed.length > 0) eventosCreados += 1;
+    publishCommittedEvents(committed);
   }
 
   return { candidatos: candidatos.length, eventosCreados };
