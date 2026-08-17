@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Lead } from "@/tipos/lead";
@@ -33,6 +34,17 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
   const handoff = useHandoffToVendedor(lead.id);
   const reassign = useReassignLead(lead.id);
 
+  // Backend real (D-A2, integración F3/F4): `getCatalogoVendedores`/
+  // `getCatalogoResponsables` ahora son async.
+  const { data: vendedores = [] } = useQuery({
+    queryKey: ["catalogo-responsables", "VENDEDORES"],
+    queryFn: () => getCatalogoVendedores(),
+  });
+  const { data: asesores = [] } = useQuery({
+    queryKey: ["catalogo-responsables", "ASESORES"],
+    queryFn: () => getCatalogoResponsables("ASESORES"),
+  });
+
   const puedeTraspasar = canHandoffToVendedor(lead, user);
   const puedeReasignar = canReassignLead(lead, user);
   const eligeVendedorManualmente = user.rol === "ADMINISTRADOR" || user.rol === "SUPERVISOR";
@@ -50,7 +62,7 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
               <ResponsableCombobox
                 valor={vendedorElegido}
                 onChange={setVendedorElegido}
-                responsables={getCatalogoVendedores()}
+                responsables={vendedores}
                 ariaLabel="Vendedor a traspasar"
                 placeholder="Elegir vendedor…"
                 placeholderBusqueda="Buscar vendedor…"
@@ -77,7 +89,7 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
           <ResponsableCombobox
             valor={responsableElegido}
             onChange={setResponsableElegido}
-            responsables={getCatalogoResponsables("ASESORES")}
+            responsables={asesores}
             ariaLabel="Nuevo asesor"
             placeholder="Elegir asesor…"
             placeholderBusqueda="Buscar asesor…"

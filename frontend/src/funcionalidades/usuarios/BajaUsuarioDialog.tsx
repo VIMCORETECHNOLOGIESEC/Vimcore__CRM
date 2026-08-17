@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,7 +11,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { AdminUsuario } from "@/tipos/usuario";
-import { getCandidatosReasignacion, getCargaActivaDeUsuario } from "./usuarios.api";
+import { useCandidatosReasignacion, useCargaActivaDeUsuario } from "./useUsuarios";
 
 interface BajaUsuarioDialogProps {
   open: boolean;
@@ -27,8 +27,8 @@ interface BajaUsuarioDialogProps {
  * criterio transversal), y si el usuario tiene leads activos en su cartera
  * no deja confirmar sin elegir antes a quién se le reasignan.
  *
- * La cartera activa y sus candidatos de reasignación son mock -- ver el
- * comentario de brecha en `usuarios.api.ts`.
+ * La cartera activa y sus candidatos de reasignación son backend real --
+ * ver `usuarios.api.ts::getCargaActivaDeUsuario`/`getCandidatosReasignacion`.
  */
 export function BajaUsuarioDialog({
   open,
@@ -37,11 +37,8 @@ export function BajaUsuarioDialog({
   onConfirm,
   confirmando,
 }: BajaUsuarioDialogProps) {
-  const cargaActiva = useMemo(() => getCargaActivaDeUsuario(usuario.id), [usuario.id]);
-  const candidatos = useMemo(
-    () => getCandidatosReasignacion(usuario.rol, usuario.id),
-    [usuario.rol, usuario.id],
-  );
+  const { data: cargaActiva = 0 } = useCargaActivaDeUsuario(usuario.id);
+  const { data: candidatos = [] } = useCandidatosReasignacion(usuario.rol, usuario.id);
   const [nuevoResponsableId, setNuevoResponsableId] = useState("");
 
   const requiereReasignacion = cargaActiva > 0;

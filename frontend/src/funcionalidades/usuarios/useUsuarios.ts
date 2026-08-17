@@ -1,9 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { RolUsuario } from "@/tipos/usuario";
 import {
   createUsuarioApi,
   deactivateUsuarioApi,
   fetchUsuariosApi,
+  getCandidatosReasignacion,
+  getCargaActivaDeUsuario,
   reassignCarteraActiva,
   resetPasswordApi,
   updateUsuarioApi,
@@ -13,6 +16,30 @@ import {
 } from "./usuarios.api";
 
 const USUARIOS_QUERY_KEY = "usuarios";
+const CARGA_ACTIVA_QUERY_KEY = "usuario-carga-activa";
+const CANDIDATOS_REASIGNACION_QUERY_KEY = "candidatos-reasignacion";
+
+/**
+ * Carga activa de leads de un usuario (F7, integración F3/F4). Backend real
+ * -- ver `usuarios.api.ts::getCargaActivaDeUsuario`.
+ */
+export function useCargaActivaDeUsuario(usuarioId: string) {
+  return useQuery({
+    queryKey: [CARGA_ACTIVA_QUERY_KEY, usuarioId],
+    queryFn: () => getCargaActivaDeUsuario(usuarioId),
+  });
+}
+
+/**
+ * Candidatos del mismo rol operativo para recibir la cartera de un usuario
+ * dado de baja (F7). Backend real -- ver `usuarios.api.ts::getCandidatosReasignacion`.
+ */
+export function useCandidatosReasignacion(rol: RolUsuario, excluirUsuarioId: string) {
+  return useQuery({
+    queryKey: [CANDIDATOS_REASIGNACION_QUERY_KEY, rol, excluirUsuarioId],
+    queryFn: () => getCandidatosReasignacion(rol, excluirUsuarioId),
+  });
+}
 
 /**
  * Listado de usuarios paginado y filtrado (F7). Backend real -- ver
