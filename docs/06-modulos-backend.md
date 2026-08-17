@@ -342,3 +342,4 @@ M1 → M2 → M3 → M4(parcial: genérico + Google Forms) → M5 → M6 → M7 
 Los adaptadores de Meta y LinkedIn se completan al final porque dependen de
 aprobaciones externas cuyo tiempo no controlamos. El resto del sistema no debe
 quedar bloqueado esperándolas.
+`n`n### Evidencia de finalizacion de M8`n`n- [x] Notificaciones durables por destinatario y API de lectura idempotente.`n- [x] SSE autenticado, replay acotado, resincronizacion, heartbeat y limpieza de conexiones.`n- [x] Productores transaccionales de asignacion, traspaso, sin asignar, interaccion repetida, SLA, cita y error de bridge.`n- [x] Las ejecuciones concurrentes de SLA y citas persisten un solo conjunto de evento/notificacion por ventana elegible.`n- [x] La publicacion SSE ocurre solo despues del commit.`n`nTOKEN_POR_EXPIRAR queda solo como contrato hasta que M4 implemente almacenamiento cifrado y metadatos persistidos de expiracion. M8 no incluye un productor ni un scheduler de expiracion de tokens.`n

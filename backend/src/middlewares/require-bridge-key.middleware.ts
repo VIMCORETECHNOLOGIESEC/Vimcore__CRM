@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { compareClaveBridge, hashClaveBridge } from "../lib/clave-bridge.js";
 import { logger } from "../lib/logger.js";
-import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
+import { registrarBridgeLog } from "../services/bridge-log.service.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 
 function bridgeNoAutenticado(mensaje: string): AppError {
@@ -52,7 +52,7 @@ export async function requireBridgeKey(
 
 async function registrarRechazo(bridgeId: string | null, mensaje: string): Promise<void> {
   try {
-    await bridgeLogRepository.registrarLog({ bridgeId, nivel: "ERROR", mensaje });
+    await registrarBridgeLog({ bridgeId, nivel: "ERROR", mensaje });
   } catch (error) {
     logger.error({ err: error, bridgeId }, "requireBridgeKey: fallo al registrar bridge_logs");
   }

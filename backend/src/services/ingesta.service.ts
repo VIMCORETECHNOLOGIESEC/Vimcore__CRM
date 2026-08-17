@@ -2,11 +2,12 @@ import type { Prisma } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
 import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
-import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
+import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
 import { asignarTrasCommit } from "./asignacion.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
+import { registrarBridgeLog } from "./bridge-log.service.js";
 
 export interface IngestaResultado {
   leadId: string;
@@ -161,9 +162,9 @@ async function procesarEnTransaccion(
   };
 }
 
-async function registrarLogSeguro(data: bridgeLogRepository.RegistrarLogData): Promise<void> {
+async function registrarLogSeguro(data: RegistrarLogData): Promise<void> {
   try {
-    await bridgeLogRepository.registrarLog(data);
+    await registrarBridgeLog(data);
   } catch (error) {
     logger.error({ err: error, bridgeId: data.bridgeId }, "ingesta: fallo al registrar bridge_logs");
   }

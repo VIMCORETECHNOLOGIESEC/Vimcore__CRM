@@ -262,7 +262,7 @@ reintentos de webhook, incluida entrega concurrente.
 |---|---|---|
 | `id` | uuid PK | |
 | `usuario_id` | uuid FK | |
-| `tipo` | enum | |
+| `tipo` | enum | `LEAD_ASIGNADO`, `LEAD_TRASPASADO`, `LEAD_SIN_ATENDER`, `LEAD_SIN_ASIGNAR`, `RECORDATORIO_CITA`, `ERROR_BRIDGE`, `TOKEN_POR_EXPIRAR`, `INTERACCION_REPETIDA` |
 | `canal` | enum | Único valor válido en MVP: `IN_APP` |
 | `titulo` / `mensaje` | text | |
 | `lead_id` | uuid FK NULL | Navegación directa |

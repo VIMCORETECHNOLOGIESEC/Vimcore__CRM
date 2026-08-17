@@ -2,7 +2,7 @@ import type { EtapaLead, Lead, Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
 import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
-import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
+import { registrarBridgeLog } from "./bridge-log.service.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
@@ -362,7 +362,7 @@ async function registrarDegradacionAsignacion(
   }
 
   try {
-    await bridgeLogRepository.registrarLog({
+    await registrarBridgeLog({
       bridgeId: null,
       nivel: "ERROR",
       mensaje: `Asignación automática post-commit agotó ${intentos} intentos para el lead ${leadId}`,
