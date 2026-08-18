@@ -23,6 +23,20 @@ const envSchema = z.object({
   TOKEN_ENCRYPTION_KEY: z
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, "TOKEN_ENCRYPTION_KEY debe ser hex de 64 caracteres (32 bytes)"),
+  // Adaptador Meta (docs/05-bridges.md §3): valor arbitrario elegido por el
+  // administrador al configurar la suscripción del webhook en el dashboard
+  // de Meta App — se compara contra `hub.verify_token` en el handshake
+  // (`GET`, una sola vez por app, no por Página). El proceso no arranca sin
+  // él — mismo patrón fail-fast que `TOKEN_ENCRYPTION_KEY`/`JWT_SECRET`.
+  META_WEBHOOK_VERIFY_TOKEN: z
+    .string()
+    .min(1, "META_WEBHOOK_VERIFY_TOKEN es obligatoria"),
+  // App Secret de la Meta App (dashboard de Meta, "Configuración básica").
+  // HMAC-SHA256 sobre el cuerpo crudo de cada notificación de webhook
+  // (`X-Hub-Signature-256`) — un solo secreto por app, no por Página (a
+  // diferencia del Page Access Token, que sí es por Página y vive cifrado en
+  // `CuentaPublicitaria.tokenCifrado`). Mismo patrón fail-fast.
+  META_APP_SECRET: z.string().min(1, "META_APP_SECRET es obligatoria"),
 });
 
 export type Env = z.infer<typeof envSchema>;
