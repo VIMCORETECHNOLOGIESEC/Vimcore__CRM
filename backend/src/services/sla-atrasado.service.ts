@@ -20,16 +20,12 @@ export interface ResultadoDeteccion {
  * services"). Todas las pruebas invocan esta función directo; ninguna
  * espera 15 minutos reales.
  *
- * D4/DD2 (idempotencia): dos consultas por tick, independientes del
- * volumen — Q1 trae los candidatos con la forma exacta de `idx_leads_sla`
- * (DD1), Q2 trae sus eventos `SLA_INCUMPLIDO` previos por lote. El filtro
- * `ocurridoEn >= slaInicioEn` (vigente) se resuelve en memoria: reasignar o
- * traspasar mueve `slaInicioEn` hacia adelante y el evento anterior queda
- * automáticamente fuera de la ventana, así el nuevo responsable vuelve a
- * ser alertable sin ninguna columna de reseteo.
- *
- * DD11: sin transacción envolvente — el tick no muta ningún `Lead`/`Usuario`,
- * solo escribe bitácora; un fallo parcial se autocorrige en el siguiente tick.
+ * La consulta inicial obtiene candidatos con la forma de `idx_leads_sla`.
+ * Cada candidato se procesa en una transacción independiente: se bloquea y
+ * relee el lead, se comprueba `SLA_INCUMPLIDO` en su ventana vigente y se
+ * persisten evento y notificaciones de forma atómica. El bloqueo serializa
+ * corridas concurrentes; mover `slaInicioEn` abre una nueva ventana sin una
+ * columna de reseteo. Los eventos SSE se publican solo después del commit.
  */
 export async function detectLeadsAtrasados(
   ahora: Date = new Date(),
@@ -42,24 +38,31 @@ export async function detectLeadsAtrasados(
   let eventosCreados = 0;
   const managementRoles: readonly RolUsuario[] = ["SUPERVISOR", "ADMINISTRADOR"];
   for (const candidato of candidatos) {
-    const committed = await runInTransaction(undefined, async (tx) => {
-      await tx.$queryRawUnsafe("SELECT id FROM leads WHERE id = $1::uuid FOR UPDATE", candidato.id);
-      const lead = await tx.lead.findUniqueOrThrow({ where: { id: candidato.id } });
-      if (!lead.slaInicioEn || lead.slaInicioEn > fronteraAtrasado || lead.cerradoEn) return [];
-      const previous = await tx.leadEvento.findFirst({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO", ocurridoEn: { gte: lead.slaInicioEn } } });
-      if (previous) return [];
+    const result = await runInTransaction(undefined, async (tx) => {
+      const lead = await leadRepository.findByIdForUpdate(candidato.id, tx);
+      if (!lead.slaInicioEn || lead.slaInicioEn > fronteraAtrasado || lead.cerradoEn) {
+        return { eventoCreado: false, committed: [] };
+      }
+      const previous = await leadEventoRepository.findSlaIncumplidoVigente(
+        lead.id,
+        lead.slaInicioEn,
+        tx,
+      );
+      if (previous) return { eventoCreado: false, committed: [] };
       const responsableId = lead.vendedorId ?? lead.asesorId;
       const detalle: DetalleEventoAsignacion = { version: 1, requiereNotificacion: true, motivo: "sla_vencido", responsableId, responsableAnteriorId: null, ejecutadoPorId: null };
       await leadEventoRepository.createEvento({ leadId: lead.id, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
       const managementIds = await notificationRepository.findActiveRecipientIds(managementRoles, tx);
-      const owner = responsableId ? await tx.usuario.findFirst({ where: { id: responsableId, activo: true }, select: { id: true } }) : null;
+      const owner = responsableId
+        ? await notificationRepository.findActiveRecipientById(responsableId, tx)
+        : null;
       const recipientIds = [...new Set([...managementIds, ...(owner ? [owner.id] : [])])];
       const notifications = [];
-      for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atenci�n del lead ha vencido", leadId: lead.id }, tx));
-      return notifications.flatMap(notificationEvents);
+      for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atención del lead ha vencido", leadId: lead.id }, tx));
+      return { eventoCreado: true, committed: notifications.flatMap(notificationEvents) };
     }, ASIGNACION_TRANSACTION_BOUNDS);
-    if (committed.length > 0) eventosCreados += 1;
-    publishCommittedEvents(committed);
+    if (result.eventoCreado) eventosCreados += 1;
+    publishCommittedEvents(result.committed);
   }
 
   return { candidatos: candidatos.length, eventosCreados };

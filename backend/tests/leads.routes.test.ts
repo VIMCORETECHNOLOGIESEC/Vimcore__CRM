@@ -35,10 +35,11 @@ async function crearLead(
     asesorId: string | null;
     vendedorId: string | null;
   }> = {},
-): Promise<{ id: string }> {
+): Promise<{ id: string; clienteNombre: string }> {
   contador += 1;
+  const clienteNombre = `Cliente LR ${contador}`;
   const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente LR ${contador}`, telefonoValido: false },
+    data: { nombre: clienteNombre, telefonoValido: false },
   });
   const lead = await prisma.lead.create({
     data: {
@@ -51,7 +52,7 @@ async function crearLead(
       ingresadoEn: new Date(),
     },
   });
-  return { id: lead.id };
+  return { id: lead.id, clienteNombre };
 }
 
 const RESPUESTAS_ALTAS_NUEVO = {
@@ -88,6 +89,35 @@ describe("GET /api/v1/leads", () => {
     for (const lead of respuesta.body.leads) {
       expect(lead.asesorId).toBe(asesor.id);
     }
+  });
+
+  it("200: expone solo la identidad pública requerida de asesor y vendedor", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const vendedor = await crearUsuarioConToken("VENDEDOR");
+    const lead = await crearLead({ asesorId: asesor.id, vendedorId: vendedor.id });
+
+    const respuesta = await request(app)
+      .get("/api/v1/leads")
+      .query({ busqueda: lead.clienteNombre })
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.leads).toHaveLength(1);
+    expect(respuesta.body.leads[0].asesor).toEqual({
+      id: asesor.id,
+      nombre: expect.any(String),
+      rol: "ASESOR",
+    });
+    expect(respuesta.body.leads[0].vendedor).toEqual({
+      id: vendedor.id,
+      nombre: expect.any(String),
+      rol: "VENDEDOR",
+    });
+    expect(respuesta.body.leads[0].asesor).not.toHaveProperty("passwordHash");
+    expect(respuesta.body.leads[0].asesor).not.toHaveProperty("refreshTokens");
+    expect(respuesta.body.leads[0].vendedor).not.toHaveProperty("passwordHash");
+    expect(respuesta.body.leads[0].vendedor).not.toHaveProperty("refreshTokens");
   });
 });
 
@@ -176,6 +206,45 @@ describe("GET /api/v1/leads/:id — mandatory test (docs/06 §M5): un asesor no 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.lead.id).toBe(lead.id);
     expect(respuesta.body.lead.estadoSla).toBeDefined();
+  });
+
+  it("200: un vendedor recibe identidades públicas sin secretos de autenticación", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const vendedor = await crearUsuarioConToken("VENDEDOR");
+    const lead = await crearLead({ asesorId: asesor.id, vendedorId: vendedor.id });
+
+    const respuesta = await request(app)
+      .get(`/api/v1/leads/${lead.id}`)
+      .set("Authorization", `Bearer ${vendedor.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.lead.asesor).toEqual({
+      id: asesor.id,
+      nombre: expect.any(String),
+      rol: "ASESOR",
+    });
+    expect(respuesta.body.lead.vendedor).toEqual({
+      id: vendedor.id,
+      nombre: expect.any(String),
+      rol: "VENDEDOR",
+    });
+    expect(respuesta.body.lead.asesor).not.toHaveProperty("passwordHash");
+    expect(respuesta.body.lead.asesor).not.toHaveProperty("refreshTokens");
+    expect(respuesta.body.lead.vendedor).not.toHaveProperty("passwordHash");
+    expect(respuesta.body.lead.vendedor).not.toHaveProperty("refreshTokens");
+  });
+
+  it("200: conserva relaciones nulas cuando el lead no tiene responsables", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    const lead = await crearLead();
+
+    const respuesta = await request(app)
+      .get(`/api/v1/leads/${lead.id}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.lead.asesor).toBeNull();
+    expect(respuesta.body.lead.vendedor).toBeNull();
   });
 
   it("404 cuando el lead no existe", async () => {

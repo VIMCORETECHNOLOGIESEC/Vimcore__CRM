@@ -281,17 +281,27 @@ idempotencia y la guarda de re-entrada (`citas-recordatorio.job.test.ts`).
 
 ## M8 — Notificaciones y tiempo real
 
-- [ ] Servicio de creación de notificaciones
-- [ ] `GET /api/v1/notificaciones` con filtro de no leídas
-- [ ] `PATCH /api/v1/notificaciones/:id/leer` y marcado masivo
-- [ ] Canal SSE `GET /api/v1/eventos` autenticado
-- [ ] Emisión por SSE de: lead asignado, cambio de etapa, notificación nueva
-- [ ] Gestión de conexiones SSE por usuario con limpieza al desconectar
-- [ ] Reconexión con `Last-Event-ID`
+- [x] Servicio de creación de notificaciones
+- [x] `GET /api/v1/notificaciones` con filtro de no leídas
+- [x] `PATCH /api/v1/notificaciones/:id/leer` y marcado masivo
+- [x] Canal SSE `GET /api/v1/eventos` autenticado
+- [x] Emisión por SSE de: lead asignado, cambio de etapa, notificación nueva
+- [x] Gestión de conexiones SSE por usuario con limpieza al desconectar
+- [x] Reconexión con `Last-Event-ID`
 
 **Nota de implementación:** mantén el registro de conexiones SSE en memoria del
 proceso. Con 100 concurrentes y un solo proceso Node no hace falta Redis ni
 sistema de mensajería; introducirlo sería complejidad sin beneficio.
+
+**Evidencia de finalización:** los productores transaccionales cubren asignación,
+traspaso, leads sin asignar, interacción repetida, SLA, citas y errores de bridge.
+Las ejecuciones concurrentes de SLA y citas persisten un solo conjunto de evento
+y notificación por ventana elegible, y la publicación SSE ocurre solo después
+del commit.
+
+`TOKEN_POR_EXPIRAR` queda solo como contrato hasta que M4 implemente
+almacenamiento cifrado y metadatos persistidos de expiración. M8 no incluye un
+productor ni un scheduler de expiración de tokens.
 
 ---
 
@@ -326,4 +336,3 @@ M1 → M2 → M3 → M4(parcial: genérico + Google Forms) → M5 → M6 → M7 
 Los adaptadores de Meta y LinkedIn se completan al final porque dependen de
 aprobaciones externas cuyo tiempo no controlamos. El resto del sistema no debe
 quedar bloqueado esperándolas.
-`n`n### Evidencia de finalizacion de M8`n`n- [x] Notificaciones durables por destinatario y API de lectura idempotente.`n- [x] SSE autenticado, replay acotado, resincronizacion, heartbeat y limpieza de conexiones.`n- [x] Productores transaccionales de asignacion, traspaso, sin asignar, interaccion repetida, SLA, cita y error de bridge.`n- [x] Las ejecuciones concurrentes de SLA y citas persisten un solo conjunto de evento/notificacion por ventana elegible.`n- [x] La publicacion SSE ocurre solo despues del commit.`n`nTOKEN_POR_EXPIRAR queda solo como contrato hasta que M4 implemente almacenamiento cifrado y metadatos persistidos de expiracion. M8 no incluye un productor ni un scheduler de expiracion de tokens.`n

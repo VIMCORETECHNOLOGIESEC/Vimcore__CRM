@@ -56,3 +56,15 @@ export async function findPorLeadsYTipo(
     select: { leadId: true, ocurridoEn: true },
   });
 }
+
+/** Consulta de idempotencia para la ventana SLA vigente de un lead bloqueado. */
+export async function findSlaIncumplidoVigente(
+  leadId: string,
+  slaInicioEn: Date,
+  client: PrismaClientOrTransaction,
+): Promise<Pick<LeadEvento, "id"> | null> {
+  return client.leadEvento.findFirst({
+    where: { leadId, tipo: "SLA_INCUMPLIDO", ocurridoEn: { gte: slaInicioEn } },
+    select: { id: true },
+  });
+}

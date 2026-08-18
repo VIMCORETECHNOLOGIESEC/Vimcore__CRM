@@ -1,5 +1,5 @@
-import type { Lead, Prisma } from "@prisma/client";
-import { EtapaLead } from "@prisma/client";
+import type { Lead } from "@prisma/client";
+import { EtapaLead, Prisma } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 /**
@@ -20,10 +20,16 @@ export const ETAPAS_CERRADAS = [EtapaLead.VENTA, EtapaLead.NO_VENTA] as const;
  * anidados. Un único `include` compartido por `findById`/`findMany` — mismo
  * patrón `satisfies` que `usuario.repository.ts::adminUsuarioSelect`.
  */
+const responsableLeadSelect = {
+  id: true,
+  nombre: true,
+  rol: true,
+} as const satisfies Prisma.UsuarioSelect;
+
 const LEAD_RELACIONES_INCLUDE = {
   cliente: true,
-  asesor: true,
-  vendedor: true,
+  asesor: { select: responsableLeadSelect },
+  vendedor: { select: responsableLeadSelect },
 } as const satisfies Prisma.LeadInclude;
 
 export type LeadConRelaciones = Prisma.LeadGetPayload<{ include: typeof LEAD_RELACIONES_INCLUDE }>;
@@ -275,6 +281,19 @@ export async function findAtrasadosAbiertos(
   return client.lead.findMany({
     where: { cerradoEn: null, slaInicioEn: { lte: fronteraAtrasado } },
   });
+}
+
+/**
+ * Bloquea el lead antes de releer su ventana SLA dentro de la transacción.
+ * La segunda lectura ocurre después del `FOR UPDATE`, por lo que una corrida
+ * concurrente observa el evento creado por la primera antes de decidir.
+ */
+export async function findByIdForUpdate(
+  id: string,
+  client: PrismaClientOrTransaction,
+): Promise<Lead> {
+  await client.$queryRaw(Prisma.sql`SELECT id FROM leads WHERE id = ${id}::uuid FOR UPDATE`);
+  return client.lead.findUniqueOrThrow({ where: { id } });
 }
 
 /**

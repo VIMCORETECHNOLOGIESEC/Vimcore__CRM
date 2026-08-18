@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger.js";
-import { detectLeadsAtrasados, type ResultadoDeteccion } from "../services/sla-atrasado.service.js";
+import type { ResultadoDeteccion } from "../services/sla-atrasado.service.js";
+import { scheduledNotificationProducers } from "./notificaciones-programadas.js";
 
 export const INTERVALO_SLA_MS = 15 * 60 * 1000;
 
@@ -25,7 +26,7 @@ export type { ResultadoDeteccion } from "../services/sla-atrasado.service.js";
  */
 export function startSlaAtrasadoJob(
   intervaloMs: number = INTERVALO_SLA_MS,
-  detectar: (ahora?: Date) => Promise<ResultadoDeteccion> = detectLeadsAtrasados,
+  detectar: (ahora?: Date) => Promise<ResultadoDeteccion> = scheduledNotificationProducers.sla,
 ): NodeJS.Timeout {
   let enCurso = false;
   const timer = setInterval(() => {

@@ -55,3 +55,10 @@ export async function findActiveRecipientIds(
   });
   return users.map(({ id }) => id);
 }
+
+export async function findActiveRecipientById(
+  id: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<{ id: string } | null> {
+  return client.usuario.findFirst({ where: { id, activo: true }, select: { id: true } });
+}
