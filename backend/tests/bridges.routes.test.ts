@@ -1,3 +1,4 @@
+import { RedSocial } from "@prisma/client";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
@@ -306,3 +307,293 @@ describe("Matriz de roles — solo ADMINISTRADOR opera /bridges (Requirement: Ev
     expect(respuesta.status).toBe(401);
   });
 });
+
+describe(
+  "GET /api/v1/bridges/catalogo/redes-soportadas (Requirement: Network catalogs are enum-derived and " +
+    "deduplicated; guarda de orden de rutas: segmento literal registrado antes de /bridges/:id)",
+  () => {
+    it("200 devuelve exactamente los valores del enum RedSocial, nunca un 400 por id-swallowing", async () => {
+      const respuesta = await request(app)
+        .get("/api/v1/bridges/catalogo/redes-soportadas")
+        .set("Authorization", `Bearer ${adminAccessToken}`);
+
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body.redesSociales).toHaveLength(Object.values(RedSocial).length);
+      expect(new Set(respuesta.body.redesSociales)).toEqual(new Set(Object.values(RedSocial)));
+    });
+
+    it("403 cuando un VENDEDOR intenta leer el catálogo", async () => {
+      const respuesta = await request(app)
+        .get("/api/v1/bridges/catalogo/redes-soportadas")
+        .set("Authorization", `Bearer ${vendedorAccessToken}`);
+
+      expect(respuesta.status).toBe(403);
+    });
+
+    it("401 sin token de acceso", async () => {
+      const respuesta = await request(app).get("/api/v1/bridges/catalogo/redes-soportadas");
+      expect(respuesta.status).toBe(401);
+    });
+  },
+);
+
+describe(
+  "GET /api/v1/bridges/redes-activas (Requirement: Network catalogs are enum-derived and deduplicated; " +
+    "guarda de orden de rutas: segmento literal registrado antes de /bridges/:id)",
+  () => {
+    it("200 devuelve redes distintas, nunca un 400 por id-swallowing (redes-activas no es un UUID)", async () => {
+      await crearBridgeDirecto();
+
+      const respuesta = await request(app)
+        .get("/api/v1/bridges/redes-activas")
+        .set("Authorization", `Bearer ${adminAccessToken}`);
+
+      expect(respuesta.status).toBe(200);
+      expect(Array.isArray(respuesta.body.redesSociales)).toBe(true);
+    });
+
+    it("403 cuando un VENDEDOR intenta leer las redes activas", async () => {
+      const respuesta = await request(app)
+        .get("/api/v1/bridges/redes-activas")
+        .set("Authorization", `Bearer ${vendedorAccessToken}`);
+
+      expect(respuesta.status).toBe(403);
+    });
+
+    it("401 sin token de acceso", async () => {
+      const respuesta = await request(app).get("/api/v1/bridges/redes-activas");
+      expect(respuesta.status).toBe(401);
+    });
+  },
+);
+
+describe("GET /api/v1/bridges/:id/logs (Requirement: Log reads are bounded by a server-side default cap)", () => {
+  it("200 sin límite explícito aplica el default del servidor y no rompe con filtros", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${id}/logs`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(Array.isArray(respuesta.body.logs)).toBe(true);
+  });
+
+  it("200 filtra por nivel cuando se provee", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${id}/logs`)
+      .query({ nivel: "ERROR" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    for (const log of respuesta.body.logs) {
+      expect(log.nivel).toBe("ERROR");
+    }
+  });
+
+  it("400 con un id de bridge que no es UUID", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/bridges/no-es-un-uuid/logs")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("404 con un bridge inexistente", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/bridges/00000000-0000-0000-0000-000000000000/logs")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("403 cuando un VENDEDOR intenta leer los logs", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${id}/logs`)
+      .set("Authorization", `Bearer ${vendedorAccessToken}`);
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401 sin token de acceso", async () => {
+    const { id } = await crearBridgeDirecto();
+    const respuesta = await request(app).get(`/api/v1/bridges/${id}/logs`);
+    expect(respuesta.status).toBe(401);
+  });
+});
+
+describe("POST /api/v1/bridges/:id/cuentas (Requirement: Admin can manually create a CuentaPublicitaria)", () => {
+  it("201 crea la cuenta con idExterno/nombre; instagramAccountId opcional y sin validar", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .post(`/api/v1/bridges/${id}/cuentas`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ idExterno: "page-rutas-1", nombre: "Cuenta Rutas", instagramAccountId: "ig-rutas-1" });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.cuenta.bridgeId).toBe(id);
+    expect(respuesta.body.cuenta.instagramAccountId).toBe("ig-rutas-1");
+    expect(respuesta.body.cuenta.idExternoVinculado).toBeUndefined();
+  });
+
+  it("400 cuando falta idExterno (Instagram id solo no es aceptado como identidad)", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .post(`/api/v1/bridges/${id}/cuentas`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Sin idExterno", instagramAccountId: "ig-solo" });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("404 con un bridge inexistente", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/bridges/00000000-0000-0000-0000-000000000000/cuentas")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ idExterno: "page-fantasma", nombre: "Fantasma" });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("403 cuando un VENDEDOR intenta crear una cuenta publicitaria", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .post(`/api/v1/bridges/${id}/cuentas`)
+      .set("Authorization", `Bearer ${vendedorAccessToken}`)
+      .send({ idExterno: "page-vendedor", nombre: "No debería crearse" });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401 sin token de acceso", async () => {
+    const { id } = await crearBridgeDirecto();
+    const respuesta = await request(app)
+      .post(`/api/v1/bridges/${id}/cuentas`)
+      .send({ idExterno: "page-sin-token", nombre: "Sin token" });
+    expect(respuesta.status).toBe(401);
+  });
+});
+
+describe("GET /api/v1/bridges/:id/cuentas (Requirement: Bridge detail embeds its accounts)", () => {
+  it("200 lista las cuentas del bridge exponiendo instagramAccountId", async () => {
+    const { id } = await crearBridgeDirecto();
+    await request(app)
+      .post(`/api/v1/bridges/${id}/cuentas`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ idExterno: "page-listado", nombre: "Cuenta Listado", instagramAccountId: "ig-listado" });
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${id}/cuentas`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.cuentas).toHaveLength(1);
+    expect(respuesta.body.cuentas[0].instagramAccountId).toBe("ig-listado");
+  });
+
+  it("404 con un bridge inexistente", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/bridges/00000000-0000-0000-0000-000000000000/cuentas")
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("403 cuando un VENDEDOR intenta listar cuentas", async () => {
+    const { id } = await crearBridgeDirecto();
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${id}/cuentas`)
+      .set("Authorization", `Bearer ${vendedorAccessToken}`);
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401 sin token de acceso", async () => {
+    const { id } = await crearBridgeDirecto();
+    const respuesta = await request(app).get(`/api/v1/bridges/${id}/cuentas`);
+    expect(respuesta.status).toBe(401);
+  });
+});
+
+describe(
+  "PATCH /api/v1/bridges/:id/cuentas/:cuentaId (Requirement: Bridge detail embeds its accounts; PATCH toggles " +
+    "only activation)",
+  () => {
+    async function crearCuentaDirecta(bridgeId: string): Promise<{ cuentaId: string }> {
+      const cuenta = await prisma.cuentaPublicitaria.create({
+        data: { bridgeId, idExterno: `page-patch-${Date.now()}-${Math.random()}`, nombre: "Cuenta a togglear" },
+      });
+      return { cuentaId: cuenta.id };
+    }
+
+    it("200 cambia solo activa", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .patch(`/api/v1/bridges/${id}/cuentas/${cuentaId}`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({ activa: false });
+
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body.cuenta.activa).toBe(false);
+      expect(respuesta.body.cuenta.nombre).toBe("Cuenta a togglear");
+    });
+
+    it("400 con un body sin el campo activa", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .patch(`/api/v1/bridges/${id}/cuentas/${cuentaId}`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({});
+
+      expect(respuesta.status).toBe(400);
+    });
+
+    it("404 cuando la cuenta no pertenece al bridge indicado", async () => {
+      const { id: bridgeA } = await crearBridgeDirecto();
+      const { id: bridgeB } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(bridgeA);
+
+      const respuesta = await request(app)
+        .patch(`/api/v1/bridges/${bridgeB}/cuentas/${cuentaId}`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({ activa: false });
+
+      expect(respuesta.status).toBe(404);
+    });
+
+    it("403 cuando un VENDEDOR intenta togglear una cuenta", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .patch(`/api/v1/bridges/${id}/cuentas/${cuentaId}`)
+        .set("Authorization", `Bearer ${vendedorAccessToken}`)
+        .send({ activa: false });
+
+      expect(respuesta.status).toBe(403);
+    });
+
+    it("401 sin token de acceso", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .patch(`/api/v1/bridges/${id}/cuentas/${cuentaId}`)
+        .send({ activa: false });
+
+      expect(respuesta.status).toBe(401);
+    });
+  },
+);

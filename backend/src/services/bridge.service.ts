@@ -1,9 +1,11 @@
-import type { Bridge, CuentaPublicitaria, EstadoBridge, RedSocial } from "@prisma/client";
+import { RedSocial, type Bridge, type BridgeLog, type EstadoBridge, type NivelBridgeLog } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { generarClaveBridge, hashClaveBridge } from "../lib/clave-bridge.js";
 import { BRIDGE_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import type { BridgeConCuentas } from "../repositories/bridge.repository.js";
+import { toCuentaPublicitariaDto, type CuentaPublicitariaDto } from "./cuenta-publicitaria.service.js";
 
 function bridgeNotFound(): AppError {
   return new AppError("bridge_no_encontrado", 404, "Bridge no encontrado");
@@ -26,13 +28,13 @@ export interface BridgeDto {
 }
 
 /**
- * Requirement: Bridge detail embeds its accounts. `cuentasPublicitarias`
- * pasa sin mapear (forma cruda del repositorio) en esta rebanada — el
- * boundary `idExternoVinculado` ↔ `instagramAccountId` es responsabilidad de
- * PR3 (tarea 3.5, `cuenta-publicitaria.service.ts`), inexistente todavía.
+ * Requirement: Bridge detail embeds its accounts. `cuentasPublicitarias` se
+ * mapea vía `cuenta-publicitaria.service.ts::toCuentaPublicitariaDto` —
+ * expone `instagramAccountId`, nunca el nombre de campo interno de Prisma
+ * `idExternoVinculado` (diseño m4-bridges-crud-fundacion, tarea PR3.3/3.5).
  */
 export interface BridgeDetalleDto extends BridgeDto {
-  cuentasPublicitarias: CuentaPublicitaria[];
+  cuentasPublicitarias: CuentaPublicitariaDto[];
 }
 
 function toBridgeDto(bridge: Bridge): BridgeDto {
@@ -49,7 +51,7 @@ function toBridgeDto(bridge: Bridge): BridgeDto {
 function toBridgeDetalleDto(bridge: BridgeConCuentas): BridgeDetalleDto {
   return {
     ...toBridgeDto(bridge),
-    cuentasPublicitarias: bridge.cuentasPublicitarias,
+    cuentasPublicitarias: bridge.cuentasPublicitarias.map(toCuentaPublicitariaDto),
   };
 }
 
@@ -161,4 +163,50 @@ export async function regenerarClave(id: string): Promise<ClaveApiResult> {
   const claveApi = generarClaveBridge();
   const bridge = await bridgeRepository.updateClaveApiHash(id, hashClaveBridge(claveApi));
   return { bridge: toBridgeDto(bridge), claveApi };
+}
+
+/**
+ * `GET /bridges/catalogo/redes-soportadas` (Requirement: Network catalogs
+ * are enum-derived and deduplicated). Función pura — no toca la BD, así que
+ * no es `async` (preferencia de funciones puras del ciclo TDD).
+ */
+export function redesSoportadas(): RedSocial[] {
+  return Object.values(RedSocial);
+}
+
+/** `GET /bridges/redes-activas`: redes con al menos un bridge no eliminado, sin duplicados (Requirement: Network catalogs are enum-derived and deduplicated). */
+export async function redesActivas(): Promise<RedSocial[]> {
+  return bridgeRepository.listRedesActivas();
+}
+
+const LOGS_LIMITE_DEFAULT = 100;
+const LOGS_LIMITE_CAP = 500;
+
+/**
+ * `GET /bridges/:id/logs` (diseño DD "log reads are capped server-side"):
+ * única fuente de verdad del clamp — default 100, cap duro 500. Función pura,
+ * testeable sin BD ni fixtures de 500 filas.
+ */
+export function resolverLimiteLogs(limiteSolicitado: number | undefined): number {
+  return Math.min(limiteSolicitado ?? LOGS_LIMITE_DEFAULT, LOGS_LIMITE_CAP);
+}
+
+export interface ListarLogsFiltros {
+  nivel?: NivelBridgeLog;
+  fechaDesde?: Date;
+  fechaHasta?: Date;
+  limite?: number;
+}
+
+export async function listarLogs(id: string, filtros: ListarLogsFiltros): Promise<BridgeLog[]> {
+  const existente = await bridgeRepository.findById(id);
+  if (!existente) {
+    throw bridgeNotFound();
+  }
+
+  const limite = resolverLimiteLogs(filtros.limite);
+  return bridgeLogRepository.listByBridge(
+    { bridgeId: id, nivel: filtros.nivel, fechaDesde: filtros.fechaDesde, fechaHasta: filtros.fechaHasta },
+    limite,
+  );
 }
