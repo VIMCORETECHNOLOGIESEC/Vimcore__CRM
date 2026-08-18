@@ -19,11 +19,13 @@ clientes ──┬──< correos_cliente
 campanias ──< leads
 cuentas_publicitarias ──< campanias
 bridges ──┬──< cuentas_publicitarias
-          └──< bridge_logs
+          ├──< bridge_logs
+          └──< leads_recibidos ──> leads (nulo hasta que la ingesta resuelve el lead)
 
 leads ──┬──< lead_eventos
         ├──< respuestas_formulario
-        └──< citas
+        ├──< citas
+        └──< leads_recibidos
 ```
 
 ---
@@ -199,10 +201,13 @@ UNIQUE (`cuenta_publicitaria_id`, `id_externo`)
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
-| `bridge_id` | uuid FK | |
-| `id_externo` | text | ID de la cuenta en la plataforma |
+| `bridge_id` | uuid FK | `onDelete: Cascade` |
+| `id_externo` | text | Unidad de suscripción de la plataforma. Para Meta: el ID de la **Página** de Facebook, nunca un Business Manager ni una cuenta publicitaria genérica — el webhook y el Page Access Token son por Página (`m4-bridges-crud-fundacion`, docs/05-bridges.md §3) |
 | `nombre` | text | |
+| `id_externo_vinculado` | text NULL | Cuenta profesional de Instagram vinculada a esa misma Página. Instagram no tiene suscripción ni token propios — sus leads llegan por el webhook de la Página, así que nunca es una fila aparte. NULL en el resto de las redes (`m4-bridges-crud-fundacion`) |
 | `activa` | boolean | |
+
+UNIQUE (`bridge_id`, `id_externo`) — target de upsert determinístico para el futuro adaptador y defensa contra filas de Página duplicadas (`m4-bridges-crud-fundacion`).
 
 ### `bridges`
 
@@ -211,20 +216,21 @@ Conexión con una red social.
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
-| `red_social` | enum | |
+| `red_social` | enum | `FACEBOOK`, `INSTAGRAM`, `X`, `LINKEDIN`, `GOOGLE_FORMS` |
 | `nombre` | text | Etiqueta del administrador |
-| `token_cifrado` | text | AES-256-GCM. **Nunca sale por la API** |
-| `token_expira_en` | timestamptz NULL | |
-| `estado` | enum | `ACTIVO`, `TOKEN_EXPIRADO`, `ERROR`, `INACTIVO` |
+| `clave_api_hash` | text UNIQUE | Hash sha256hex irreversible de `X-Bridge-Key` (`m4-ingesta-bridges-parcial`). La clave en claro nunca se persiste |
+| `estado` | enum | `ACTIVO`, `TOKEN_EXPIRADO`, `ERROR`, `INACTIVO`. Nuevo bridge nace `INACTIVO` |
 | `ultimo_lead_en` | timestamptz NULL | Detección de bridges mudos |
-| `secreto_webhook` | text | Verificación de firma |
+| `token_cifrado` | text | AES-256-GCM. **Nunca sale por la API**. Planificado para el adaptador Meta/LinkedIn, aún no implementado |
+| `token_expira_en` | timestamptz NULL | Planificado junto con `token_cifrado` |
+| `secreto_webhook` | text | Verificación de firma HMAC. Planificado para el adaptador Meta, aún no implementado |
 
 ### `bridge_logs`
 
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
-| `bridge_id` | uuid FK NULL | |
+| `bridge_id` | uuid FK NULL | Nulo cuando la autenticación falla antes de resolver un bridge |
 | `nivel` | enum | `INFO`, `ADVERTENCIA`, `ERROR` |
 | `mensaje` | text | |
 | `payload` | jsonb NULL | |
@@ -232,13 +238,39 @@ Conexión con una red social.
 
 Índice `(bridge_id, ocurrido_en DESC)`. Política de retención: 90 días.
 
+Se escribe siempre **fuera** de la transacción de ingesta, para que sobreviva
+a un rollback (`m4-ingesta-bridges-parcial`, DD5).
+
+### `leads_recibidos`
+
+Recepción cruda y buzón durable de cada lead entrante, previo a la deduplicación.
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | uuid PK | |
+| `bridge_id` | uuid FK | |
+| `id_externo_lead` | text | Identificador del lead en la plataforma de origen |
+| `lead_id` | uuid FK NULL | Nulo hasta que el worker completa el procesamiento |
+| `payload` | jsonb | Cuerpo crudo recibido, incluida la atribución de campaña sin resolver (`id_externo_campania`, `nombre_campania`, `id_externo_cuenta`) |
+| `datos_incompletos` | boolean | `true` si llegó sin teléfono ni correo |
+| `recibido_en` | timestamptz | |
+| `entrada_procesamiento` | jsonb | Sobre interno versionado; conserva la entrada y sus timestamps |
+| `estado` | enum | `PENDIENTE`, `PROCESANDO`, `REINTENTO`, `PROCESADO`, `FALLA_MANUAL` |
+| `intentos` / `disponible_en` | int / timestamptz | Reintentos automáticos acotados: 60 s y 300 s, máximo 3 intentos |
+| `lease_owner` / `lease_hasta` | text / timestamptz NULL | Propiedad temporal del claim; permite recuperar workers caídos |
+| `ultimo_error` / `procesado_en` | text / timestamptz NULL | Diagnóstico manual y finalización observable |
+
+UNIQUE (`bridge_id`, `id_externo_lead`) — defensa de idempotencia contra
+reintentos de webhook, incluida entrega concurrente.
+Los índices parciales de disponibilidad y lease vencido sostienen `FOR UPDATE SKIP LOCKED`.
+
 ### `notificaciones`
 
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
 | `usuario_id` | uuid FK | |
-| `tipo` | enum | |
+| `tipo` | enum | `LEAD_ASIGNADO`, `LEAD_TRASPASADO`, `LEAD_SIN_ATENDER`, `LEAD_SIN_ASIGNAR`, `RECORDATORIO_CITA`, `ERROR_BRIDGE`, `TOKEN_POR_EXPIRAR`, `INTERACCION_REPETIDA` |
 | `canal` | enum | Único valor válido en MVP: `IN_APP` |
 | `titulo` / `mensaje` | text | |
 | `lead_id` | uuid FK NULL | Navegación directa |

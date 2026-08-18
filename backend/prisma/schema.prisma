@@ -18,6 +18,25 @@ enum RolUsuario {
   @@map("rol_usuario")
 }
 
+enum TipoNotificacion {
+  LEAD_ASIGNADO
+  LEAD_TRASPASADO
+  LEAD_SIN_ATENDER
+  LEAD_SIN_ASIGNAR
+  RECORDATORIO_CITA
+  ERROR_BRIDGE
+  TOKEN_POR_EXPIRAR
+  INTERACCION_REPETIDA
+
+  @@map("tipo_notificacion")
+}
+
+enum CanalNotificacion {
+  IN_APP
+
+  @@map("canal_notificacion")
+}
+
 model Usuario {
   id                 String     @id @default(uuid()) @db.Uuid
   nombre             String     @db.Text
@@ -29,8 +48,17 @@ model Usuario {
   creadoEn           DateTime   @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn      DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
-  refreshTokens RefreshToken[]
-  leadEventos   LeadEvento[]
+  refreshTokens        RefreshToken[]
+  leadEventos          LeadEvento[]
+  // M5 (D1): las columnas se agregan y se leen en M5; M6 las puebla en
+  // producción (algoritmo de asignación). Dos relaciones nombradas porque
+  // ambas apuntan al mismo modelo `Usuario`.
+  leadsComoAsesor      Lead[]                @relation("LeadAsesor")
+  leadsComoVendedor    Lead[]                @relation("LeadVendedor")
+  respuestasFormulario RespuestaFormulario[]
+  // M7: citas donde este usuario es el responsable (`usuario_id`, "Responsable").
+  citas                Cita[]
+  notificaciones       Notificacion[]
 
   @@map("usuarios")
 }
@@ -84,6 +112,19 @@ enum TipoEventoLead {
   CITA_REPROGRAMADA
   SLA_INCUMPLIDO
   CIERRE
+  // M6 (D6/DD3): agregado AL FINAL — `ADD VALUE` sin BEFORE/AFTER lo anexa al
+  // final del orden físico de PG; declararlo en otra posición del DSL
+  // crearía deriva permanente entre `schema.prisma` y `pg_enum`. Señala que
+  // no hubo candidatos activos del rol requerido al momento de la
+  // asignación automática (docs/02 §3.5).
+  SIN_ASIGNAR
+  // F3/F4 (diseño D-A2, revisión 2): agregado AL FINAL, mismo criterio que
+  // SIN_ASIGNAR arriba. Señala que la asignación automática POST-COMMIT
+  // agotó sus 3 reintentos — distinto de SIN_ASIGNAR ("no había candidatos",
+  // estado de negocio) porque este es un fallo de infraestructura/operación;
+  // sobrecargar SIN_ASIGNAR ocultaría el incidente y dispararía una
+  // notificación falsa. Ver docs/06-modulos-backend.md §M6.
+  ASIGNACION_FALLIDA
 
   @@map("tipo_evento_lead")
 }
@@ -116,37 +157,103 @@ model CorreoCliente {
   @@map("correos_cliente")
 }
 
-// Rebanada M3 (D2): `campania_id`, `red_social`, `semaforo`, `puntuacion`,
-// `asesor_id`, `vendedor_id`, `campos_dinamicos`, `sla_inicio_en`,
-// `monto_venta`, `observacion_cierre` y `payload_original` los añade el
-// módulo que los puebla y los prueba (M4-M6), cada uno en su migración.
-model Lead {
-  id          String     @id @default(uuid()) @db.Uuid
-  clienteId   String     @map("cliente_id") @db.Uuid
-  origen      OrigenLead
-  etapa       EtapaLead  @default(NUEVO)
-  ingresadoEn DateTime   @map("ingresado_en") @db.Timestamptz(6)
-  cerradoEn   DateTime?  @map("cerrado_en") @db.Timestamptz(6)
+enum Semaforo {
+  ROJO
+  AMARILLO
+  VERDE
 
-  cliente Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
-  eventos LeadEvento[]
+  @@map("semaforo")
+}
+
+enum FormaPago {
+  CONTADO
+  CREDITO
+  FINANCIAMIENTO
+
+  @@map("forma_pago")
+}
+
+// Rebanada M3 (D2): `campania_id` sigue fuera de alcance (M5 filtra campaña
+// sobre el jsonb crudo de M4, D2 de la propuesta M5). `red_social`,
+// `campos_dinamicos` y `payload_original` los añadió M4 (ver abajo). M5
+// agrega semaforo/puntuacion (D14, nullable — sin backfill destructivo),
+// asesor_id/vendedor_id/sla_inicio_en (D1 — M5 los agrega y lee, M6 los
+// puebla en producción) y los campos de cierre (D13).
+model Lead {
+  id                String     @id @default(uuid()) @db.Uuid
+  clienteId         String     @map("cliente_id") @db.Uuid
+  origen            OrigenLead
+  etapa             EtapaLead  @default(NUEVO)
+  // M4: nulo en leads previos a esta rebanada o de orígenes que aún no
+  // reportan estos campos (docs/05-bridges.md §2). M5 DD1: la ausencia de
+  // `red_social`/`payload_original` en leads creados vía M4 antes de esta
+  // rebanada es un defecto de M4 (ver DD1 del diseño M5), no el estado
+  // esperado — la migración M5 hace un backfill NULL-only (D14-safe) para
+  // los que sí tienen recepción vinculada.
+  redSocial         RedSocial? @map("red_social")
+  camposDinamicos   Json?      @map("campos_dinamicos") @db.JsonB
+  payloadOriginal   Json?      @map("payload_original") @db.JsonB
+  // M5 (D14): nullable — los leads que M4 ya creó (sin calificar) quedan en
+  // `null`. "Sin calificar" es un cuarto valor de filtro explícito, nunca un
+  // default oculto.
+  semaforo          Semaforo?
+  puntuacion        Int?
+  // M5 (D1): M5 agrega y lee estas columnas; el algoritmo de asignación
+  // automática que las puebla en producción es de M6. Las pruebas de M5
+  // asignan por seed/fixture.
+  asesorId          String?    @map("asesor_id") @db.Uuid
+  vendedorId        String?    @map("vendedor_id") @db.Uuid
+  // M5 (D9): nulo mientras no haya asesor asignado — "sin_iniciar" (D15). El
+  // reinicio del reloj en cada reasignación es de M6.
+  slaInicioEn       DateTime?  @map("sla_inicio_en") @db.Timestamptz(6)
+  ingresadoEn       DateTime   @map("ingresado_en") @db.Timestamptz(6)
+  cerradoEn         DateTime?  @map("cerrado_en") @db.Timestamptz(6)
+  // M5 (D13): datos de cierre en columnas dedicadas — M9 los reporta por
+  // monto y por forma de pago con agregación SQL directa, no jsonb.
+  montoVenta        Decimal?   @map("monto_venta") @db.Decimal(12, 2)
+  observacionCierre String?    @map("observacion_cierre") @db.Text
+  productoServicio  String?    @map("producto_servicio") @db.Text
+  formaPago         FormaPago? @map("forma_pago")
+
+  cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
+  // borra, y un lead no debe quedar bloqueado por la baja de su asesor.
+  asesor               Usuario?              @relation("LeadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
+  vendedor             Usuario?              @relation("LeadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
+  eventos              LeadEvento[]
+  leadsRecibidos       LeadRecibido[]
+  respuestasFormulario RespuestaFormulario[]
+  citas                Cita[]
+  notificaciones       Notificacion[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
+  // D11 (docs/03-modelo-datos.md §leads): el listado filtrado es el endpoint
+  // más caliente del sistema — índices desde el primer día. El índice
+  // parcial `idx_leads_sla` (`WHERE cerrado_en IS NULL`) no es expresable en
+  // el DSL de Prisma (sin soporte de índices parciales/filtrados a la fecha)
+  // y se agrega a mano en la migración — ver `migration.sql` de este cambio.
+  @@index([asesorId, etapa], map: "idx_leads_asesor_etapa")
+  @@index([vendedorId, etapa], map: "idx_leads_vendedor_etapa")
+  @@index([etapa, ingresadoEn(sort: Desc)], map: "idx_leads_etapa_ingreso")
+  @@index([redSocial], map: "idx_leads_red_social")
   @@map("leads")
 }
 
-// `semaforo_anterior`/`semaforo_nuevo` requieren el enum `Semaforo`, que
-// pertenece a M5 (D2).
+// M5: `semaforo_anterior`/`semaforo_nuevo` (D17 — una fila `CAMBIO_SEMAFORO`
+// independiente de `CAMBIO_ETAPA` cuando ambos cambian juntos, misma
+// transacción).
 model LeadEvento {
-  id            String         @id @default(uuid()) @db.Uuid
-  leadId        String         @map("lead_id") @db.Uuid
-  usuarioId     String?        @map("usuario_id") @db.Uuid
-  tipo          TipoEventoLead
-  etapaAnterior EtapaLead?     @map("etapa_anterior")
-  etapaNueva    EtapaLead?     @map("etapa_nueva")
-  detalle       Json?          @db.JsonB
-  ocurridoEn    DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  id               String         @id @default(uuid()) @db.Uuid
+  leadId           String         @map("lead_id") @db.Uuid
+  usuarioId        String?        @map("usuario_id") @db.Uuid
+  tipo             TipoEventoLead
+  etapaAnterior    EtapaLead?     @map("etapa_anterior")
+  etapaNueva       EtapaLead?     @map("etapa_nueva")
+  semaforoAnterior Semaforo?      @map("semaforo_anterior")
+  semaforoNuevo    Semaforo?      @map("semaforo_nuevo")
+  detalle          Json?          @db.JsonB
+  ocurridoEn       DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
 
   lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
@@ -154,4 +261,263 @@ model LeadEvento {
   @@index([leadId, ocurridoEn])
   @@index([tipo, ocurridoEn])
   @@map("lead_eventos")
+}
+
+// M5 (D8, docs/03 §respuestas_formulario): historial, nunca sobrescritura —
+// una fila por cada envío de formulario, vía `PATCH /etapa` o
+// `POST /formulario` (D16). `versionRubrica` (D12) congela la versión de la
+// rúbrica vigente al momento del cálculo; un cambio posterior de rúbrica no
+// recalcula puntuaciones ya persistidas.
+model RespuestaFormulario {
+  id             String    @id @default(uuid()) @db.Uuid
+  leadId         String    @map("lead_id") @db.Uuid
+  usuarioId      String    @map("usuario_id") @db.Uuid
+  etapa          EtapaLead
+  respuestas     Json      @db.JsonB
+  puntuacion     Int
+  semaforo       Semaforo
+  versionRubrica String    @map("version_rubrica") @db.Text
+  registradoEn   DateTime  @default(now()) @map("registrado_en") @db.Timestamptz(6)
+
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([leadId, registradoEn])
+  @@map("respuestas_formulario")
+}
+
+model Notificacion {
+  id        String            @id @default(uuid()) @db.Uuid
+  usuarioId String            @map("usuario_id") @db.Uuid
+  tipo      TipoNotificacion
+  canal     CanalNotificacion @default(IN_APP)
+  titulo    String            @db.Text
+  mensaje   String            @db.Text
+  leadId    String?           @map("lead_id") @db.Uuid
+  leidaEn   DateTime?         @map("leida_en") @db.Timestamptz(6)
+  creadaEn  DateTime          @default(now()) @map("creada_en") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([usuarioId, creadaEn(sort: Desc)], map: "idx_notificaciones_usuario_creada")
+  @@index([leadId])
+  @@map("notificaciones")
+}
+
+enum ModalidadCita {
+  PRESENCIAL
+  VIRTUAL
+  TELEFONICA
+
+  @@map("modalidad_cita")
+}
+
+enum EstadoCita {
+  AGENDADA
+  CUMPLIDA
+  NO_ASISTIO
+  // M7 (diseño, decisión de reprogramación): el trabajo de recordatorio (§4,
+  // docs/06) filtra estrictamente `estado = AGENDADA` — para que una cita
+  // reprogramada siga recibiendo su recordatorio 1h antes de la NUEVA fecha,
+  // `citas.service.ts::rescheduleCita` deja el `estado` en `AGENDADA` tras
+  // reprogramar (mismo registro, `programadaPara` actualizada), nunca en
+  // `REPROGRAMADA`. Este valor se conserva en el enum por fidelidad exacta
+  // con `docs/03-modelo-datos.md` §citas, pero ningún camino de código actual
+  // lo persiste — queda disponible para un futuro estado transitorio propio
+  // sin requerir otra migración.
+  REPROGRAMADA
+  CANCELADA
+
+  @@map("estado_cita")
+}
+
+// M7 (docs/03-modelo-datos.md §citas): un registro por reunión agendada con
+// el lead. Es un registro ASOCIADO al lead, no un reemplazo del flujo de
+// etapa/formulario de M5 — marcar el resultado de una cita (`CUMPLIDA`/
+// `NO_ASISTIO`) nunca mueve `leads.etapa` ni escribe `respuestas_formulario`
+// por sí solo; el vendedor sigue completando el formulario de la etapa CITA
+// (docs/04-formularios-semaforo.md §5) por su propio flujo ya existente
+// (`PATCH /leads/:id/etapa` o `POST /leads/:id/formulario`, M5).
+model Cita {
+  id                  String        @id @default(uuid()) @db.Uuid
+  leadId              String        @map("lead_id") @db.Uuid
+  // "Responsable" (docs/03): quien la agenda por defecto (D-M7a, diseño M7);
+  // Admin/Supervisor pueden asignarla a otro usuario explícito.
+  usuarioId           String        @map("usuario_id") @db.Uuid
+  programadaPara      DateTime      @map("programada_para") @db.Timestamptz(6)
+  modalidad           ModalidadCita
+  estado              EstadoCita    @default(AGENDADA)
+  notas               String?       @db.Text
+  recordatorioEnviado Boolean       @default(false) @map("recordatorio_enviado")
+  creadoEn            DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  // Restrict (no SetNull): a diferencia de `Lead.asesorId`/`vendedorId`
+  // (M5 D1, columna nullable), `usuario_id` de `citas` es NOT NULL en el
+  // modelo de datos (docs/03) — mismo criterio que
+  // `RespuestaFormulario.usuario` (M5), que también es requerido.
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([leadId])
+  // M7: forma de consulta del trabajo de recordatorio (`estado = AGENDADA`,
+  // `recordatorioEnviado = false`, `programadaPara` en la ventana de 1h) —
+  // volumen de `citas` muy por debajo de `leads`, así que un índice compuesto
+  // regular basta; no se justifica el índice parcial a mano que sí requirió
+  // `idx_leads_sla` (DD1, M5/M6) para la tabla más caliente del sistema.
+  @@index([estado, programadaPara])
+  @@map("citas")
+}
+
+enum RedSocial {
+  FACEBOOK
+  INSTAGRAM
+  X
+  LINKEDIN
+  GOOGLE_FORMS
+
+  @@map("red_social")
+}
+
+enum EstadoBridge {
+  ACTIVO
+  TOKEN_EXPIRADO
+  ERROR
+  INACTIVO
+
+  @@map("estado_bridge")
+}
+
+enum NivelBridgeLog {
+  INFO
+  ADVERTENCIA
+  ERROR
+
+  @@map("nivel_bridge_log")
+}
+
+enum EstadoRecepcion {
+  PENDIENTE
+  PROCESANDO
+  REINTENTO
+  PROCESADO
+  FALLA_MANUAL
+
+  @@map("estado_recepcion")
+}
+
+// Conexión con una red social (docs/05-bridges.md §1, §7). D-M4: el cifrado
+// de token (`token_cifrado`, `secreto_webhook`) queda fuera de esta
+// rebanada — no hay token reversible que cifrar todavía, Meta/LinkedIn
+// quedan para un cambio SDD futuro — y lo añade el módulo que lo consuma.
+model Bridge {
+  id           String       @id @default(uuid()) @db.Uuid
+  redSocial    RedSocial    @map("red_social")
+  nombre       String       @db.Text
+  // F2: hash sha256hex irreversible de la clave de API (`X-Bridge-Key`,
+  // docs/05-bridges.md §5). La clave en claro nunca se persiste.
+  claveApiHash String       @unique @map("clave_api_hash") @db.Text
+  // Desactivado por defecto (docs/05-bridges.md §6): un bridge nuevo no
+  // recibe leads hasta activación explícita.
+  estado       EstadoBridge @default(INACTIVO)
+  ultimoLeadEn DateTime?    @map("ultimo_lead_en") @db.Timestamptz(6)
+
+  bridgeLogs          BridgeLog[]
+  leadsRecibidos      LeadRecibido[]
+  cuentasPublicitarias CuentaPublicitaria[]
+
+  @@map("bridges")
+}
+
+// Unidad de suscripción de la plataforma (D-M4-fundacion, diseño
+// m4-bridges-crud-fundacion). Para Meta, `idExterno` es el ID de la PÁGINA de
+// Facebook — el webhook y el Page Access Token son por Página, nunca por
+// Business Manager ni por cuenta publicitaria genérica (docs/05-bridges.md
+// §3). `@@unique([bridgeId, idExterno])` da al futuro adaptador un target de
+// upsert determinístico y bloquea filas de Página duplicadas.
+model CuentaPublicitaria {
+  id       String @id @default(uuid()) @db.Uuid
+  bridgeId String @map("bridge_id") @db.Uuid
+  idExterno String @map("id_externo") @db.Text
+  nombre   String @db.Text
+  // Cuenta profesional de Instagram vinculada a esa misma Página. Instagram
+  // no tiene suscripción ni token propios — sus leads llegan por el webhook
+  // de la Página vinculada, así que nunca es una fila aparte (docs/05-bridges.md
+  // §3). NULL en el resto de las redes.
+  idExternoVinculado String? @map("id_externo_vinculado") @db.Text
+  activa   Boolean @default(true)
+
+  bridge    Bridge     @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  campanias Campania[]
+
+  @@unique([bridgeId, idExterno])
+  @@map("cuentas_publicitarias")
+}
+
+// Campaña reportada por la plataforma de origen (docs/03-modelo-datos.md).
+// `redSocial` queda denormalizada a propósito (decisión de diseño
+// confirmada, docs/03 §campanias): una campaña pertenece a una sola red, no
+// se fusionan nombres homónimos entre plataformas.
+model Campania {
+  id                   String    @id @default(uuid()) @db.Uuid
+  cuentaPublicitariaId String    @map("cuenta_publicitaria_id") @db.Uuid
+  idExterno            String    @map("id_externo") @db.Text
+  nombre               String    @db.Text
+  redSocial            RedSocial @map("red_social")
+  activa               Boolean   @default(true)
+
+  cuentaPublicitaria CuentaPublicitaria @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+
+  @@unique([cuentaPublicitariaId, idExterno])
+  @@map("campanias")
+}
+
+// Bitácora de errores/eventos por bridge (docs/05-bridges.md §8). Se escribe
+// siempre fuera de la transacción de ingesta (DD5, diseño M4) para que
+// sobreviva a un rollback.
+model BridgeLog {
+  id         String         @id @default(uuid()) @db.Uuid
+  bridgeId   String?        @map("bridge_id") @db.Uuid
+  nivel      NivelBridgeLog
+  mensaje    String         @db.Text
+  payload    Json?          @db.JsonB
+  ocurridoEn DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+
+  bridge Bridge? @relation(fields: [bridgeId], references: [id], onDelete: SetNull)
+
+  @@index([bridgeId, ocurridoEn(sort: Desc)])
+  @@map("bridge_logs")
+}
+
+// Recepción cruda de cada lead entrante (F1: ausente hasta ahora de
+// docs/03-modelo-datos.md). `UNIQUE(bridge_id, id_externo_lead)` es la
+// defensa de idempotencia contra reintentos de webhook (docs/05-bridges.md
+// §2). `leadId` es nulo hasta que la transacción de ingesta lo resuelve —
+// no hay máquina de estados de recepción (D2, diseño M4, retirada).
+model LeadRecibido {
+  id               String   @id @default(uuid()) @db.Uuid
+  bridgeId         String   @map("bridge_id") @db.Uuid
+  idExternoLead    String   @map("id_externo_lead") @db.Text
+  leadId           String?  @map("lead_id") @db.Uuid
+  // Cuerpo crudo recibido; incluye la atribución de campaña sin resolver
+  // (`idExternoCampania`, `nombreCampania`, `idExternoCuenta` — D4, diseño
+  // M4: no se crean `campanias`/`cuentas_publicitarias` en esta rebanada).
+  payload          Json     @db.JsonB
+  datosIncompletos Boolean  @default(false) @map("datos_incompletos")
+  recibidoEn       DateTime @default(now()) @map("recibido_en") @db.Timestamptz(6)
+  entradaProcesamiento Json             @map("entrada_procesamiento") @db.JsonB
+  estado              EstadoRecepcion   @default(PENDIENTE)
+  intentos            Int               @default(0)
+  disponibleEn        DateTime          @default(now()) @map("disponible_en") @db.Timestamptz(6)
+  leaseOwner          String?           @map("lease_owner") @db.Text
+  leaseHasta          DateTime?         @map("lease_hasta") @db.Timestamptz(6)
+  ultimoError         String?           @map("ultimo_error") @db.Text
+  procesadoEn         DateTime?         @map("procesado_en") @db.Timestamptz(6)
+
+  bridge Bridge @relation(fields: [bridgeId], references: [id], onDelete: Restrict)
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([bridgeId, idExternoLead])
+  @@index([estado, disponibleEn], map: "idx_leads_recibidos_estado_disponible")
+  @@map("leads_recibidos")
 }

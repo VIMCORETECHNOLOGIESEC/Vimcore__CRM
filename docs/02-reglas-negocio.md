@@ -136,6 +136,19 @@ La reasignación **reinicia el reloj SLA** del lead y notifica al nuevo responsa
 lógica de SLA, notificaciones y permisos usa esta definición, no las columnas
 por separado.
 
+> **Pendiente de aclarar con el cliente (extiende riesgo R4, ver
+> `01-alcance-mvp.md`).** Con bajo volumen de leads es probable que la misma
+> persona sea asesor y vendedor a la vez — el modelo de roles actual
+> (`RolUsuario` único por usuario en `schema.prisma`) no lo soporta. Diseño
+> evaluado y no implementado: campo `rolSecundario` acotado únicamente al par
+> asesor/vendedor (no un sistema de roles múltiples genérico), más una
+> advertencia no bloqueante — y registro de auditoría en
+> `DetalleEventoLead` — cuando alguien se traspasa un lead a sí mismo, y
+> exclusión del propio actor en el algoritmo de menor carga activa. **No
+> implementar hasta que el cliente confirme si esta combinación de roles es
+> real en su operación y si el conflicto de interés amerita algo más
+> estricto que una advertencia.** Validar junto con R4 antes de iniciar M6.
+
 ---
 
 ## 6. Etapas del embudo
@@ -148,8 +161,11 @@ por separado.
 | 4 | Venta | Vendedor | Sí |
 | 5 | No Venta | Vendedor | Sí |
 
-- **El orden es sugerido, no obligatorio.** El sistema permite avanzar, saltar y
-  retroceder libremente. Toda transición queda registrada en `lead_eventos`.
+- **El progreso es lineal hacia adelante entre las etapas no terminales**
+  (Nuevo → Contactado → Cita): nunca se puede retroceder de una etapa no
+  terminal a otra anterior. Desde cualquier etapa no terminal se permite el
+  salto directo a cierre (Venta o No Venta). Toda transición queda registrada
+  en `lead_eventos`.
 - Cada cambio de etapa **exige completar el formulario** de la etapa destino
   (ver `04-formularios-semaforo.md`). Sin formulario no hay transición.
 - **Venta** exige fecha de cierre y monto.
@@ -224,3 +240,14 @@ que sigan visibles al iniciar sesión.
 | Gestionar bridges y tokens | ✅ | ❌ | ❌ | ❌ |
 
 Todo permiso se verifica en el backend por cada petición.
+
+### M8 — Garantías de entrega atómica
+
+Los productores de SLA y citas reclaman cada ventana de elegibilidad de forma
+atómica, persisten la notificación junto con el evento o marca que la origina y
+publican SSE solo después del commit. `ERROR_BRIDGE` se emite solo junto con una
+fila `bridge_logs.ERROR` confirmada.
+
+`TOKEN_POR_EXPIRAR` permanece en el contrato, pero su productor queda diferido
+al alcance restante de M4. M8 no infiere fechas de expiración mientras no
+existan almacenamiento cifrado y `token_expira_en`.

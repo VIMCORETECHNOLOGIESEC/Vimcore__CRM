@@ -1,12 +1,14 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, RedSocial } from "@prisma/client";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
-import { prisma } from "../lib/prisma.js";
+import { DEDUPLICACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import { normalizeTelefono } from "../lib/telefono.js";
 import * as clienteRepository from "../repositories/cliente.repository.js";
 import * as correoClienteRepository from "../repositories/correo-cliente.repository.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
+import * as notificacionRepository from "../repositories/notificacion.repository.js";
+import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import {
   decideAccionDeduplicacion,
   type DeduplicacionAction,
@@ -22,6 +24,16 @@ export interface DeduplicacionInput {
   telefono: string | null;
   correo: string | null;
   ingresadoEn: Date;
+  /**
+   * M5 (DD1, diseño M5, finding): opcionales — un `DeduplicacionInput`
+   * levantado a mano (p. ej. pruebas de M3 sin M4) no los trae, pero un
+   * `LeadEntrante` completo (M4) siempre los trae los tres juntos. Antes de
+   * esta rebanada, `createLead` los descartaba pese a estar disponibles
+   * aquí — quedaban NULL para siempre en `leads`.
+   */
+  redSocial?: RedSocial;
+  payloadOriginal?: unknown;
+  camposDinamicos?: Record<string, unknown>;
 }
 
 export interface DeduplicacionResult {
@@ -37,6 +49,8 @@ export interface DeduplicacionResult {
   leadCreado: boolean;
   eventoId: string;
   accion: DeduplicacionAction;
+  /** Intenciones que debe publicar el dueño de una transacción externa tras el commit. */
+  events: CommittedEvent[];
 }
 
 /**
@@ -68,15 +82,21 @@ export interface DetalleEventoLead {
  *   A. IDENTIDAD → B. ADJUNTAR CORREO → C. LEER ESTADO → D. DECIDIR → E. ESCRIBIR
  * `lead_eventos` se escribe en la MISMA transacción que su causa, siempre
  * (docs/03-modelo-datos.md §2, bitácora inmutable).
+ *
+ * `txExterna` (M4, DD1c): si el llamador (p. ej. `ingesta.service`) ya abrió
+ * una transacción, `deduplicateLead` corre dentro de ella en vez de abrir la
+ * suya propia — ver `runInTransaction` en `lib/prisma.ts`.
  */
-export async function deduplicarLead(
+export async function deduplicateLead(
   entrada: DeduplicacionInput,
   ahora: Date = new Date(),
+  txExterna?: Prisma.TransactionClient,
 ): Promise<DeduplicacionResult> {
   const telefono = normalizeTelefono(entrada.telefono);
   const correo = normalizeCorreo(entrada.correo);
 
-  return prisma.$transaction(
+  const outcome = await runInTransaction(
+    txExterna,
     async (tx) => {
       // A. IDENTIDAD — primera sentencia de la transacción, sin excepciones.
       let clienteId: string;
@@ -165,7 +185,20 @@ export async function deduplicarLead(
 
       if (accion.kind === "crear_lead") {
         const lead = await leadRepository.createLead(
-          { clienteId, origen: accion.origen, ingresadoEn: entrada.ingresadoEn },
+          {
+            clienteId,
+            origen: accion.origen,
+            ingresadoEn: entrada.ingresadoEn,
+            // M5 (DD1 fix): antes de esta rebanada estos tres campos nunca
+            // se pasaban pese a venir en `entrada` (LeadEntrante completo
+            // cuando el llamador es `ingesta.service.ts`) — quedaban NULL
+            // para siempre en `leads`. Cuando `entrada` no los trae (p. ej.
+            // pruebas de M3 que no simulan un `LeadEntrante` de M4) quedan
+            // `undefined` y `createLead` preserva el comportamiento previo.
+            redSocial: entrada.redSocial,
+            payloadOriginal: entrada.payloadOriginal as Prisma.InputJsonValue | undefined,
+            camposDinamicos: entrada.camposDinamicos as Prisma.InputJsonValue | undefined,
+          },
           tx,
         );
         leadId = lead.id;
@@ -208,6 +241,15 @@ export async function deduplicarLead(
         tx,
       );
 
+      const events: CommittedEvent[] = [];
+      if (tipoEvento === "INTERACCION_REPETIDA") {
+        const currentLead = await leadRepository.findById(leadId, tx);
+        const recipientId = currentLead?.vendedorId ?? currentLead?.asesorId;
+        if (recipientId) {
+          const notification = await notificacionRepository.createNotificacion({ usuarioId: recipientId, tipo: "INTERACCION_REPETIDA", titulo: "Interacción repetida", mensaje: "El lead registró una nueva interacción", leadId }, tx);
+          events.push(...notificationEvents(notification));
+        }
+      }
       return {
         clienteId,
         clienteCreado,
@@ -218,8 +260,14 @@ export async function deduplicarLead(
         leadCreado,
         eventoId: evento.id,
         accion,
+        events,
       };
     },
-    { maxWait: 10_000, timeout: 20_000 },
+    DEDUPLICACION_TRANSACTION_BOUNDS,
   );
+  if (txExterna === undefined) {
+    publishCommittedEvents(outcome.events);
+    return { ...outcome, events: [] };
+  }
+  return outcome;
 }

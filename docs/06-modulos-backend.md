@@ -82,86 +82,246 @@ reingreso, hace 91 días sí.
 
 ## M4 — Ingesta y bridges
 
-- [ ] Contrato `LeadEntrante` y normalizador compartido
-- [ ] Tabla `leads_recibidos` con índice único de idempotencia
-- [ ] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
-- [ ] Adaptador Google Forms
+> **Progreso:** rebanada parcial implementada en `m4-ingesta-bridges-parcial`
+> (endpoint genérico + adaptador Google Forms). Meta, LinkedIn, X, cifrado de
+> tokens, CRUD de bridges/cuentas publicitarias y los trabajos programados
+> quedan fuera de alcance de este cambio — llegan en un cambio SDD futuro.
+>
+> **Corrección retroactiva (M5, DD1):** `deduplicacion.service.ts::createLead`
+> no poblaba `redSocial`/`payloadOriginal`/`camposDinamicos` en `leads` pese a
+> que `LeadEntrante` ya los traía completos — quedaban NULL en todo lead nuevo.
+> Corregido en `m5-gestion-leads` PR1 (commit `79f95aa`), con backfill NULL-only
+> para leads previos (`camposDinamicos` queda fuera del backfill a propósito,
+> ver `migration.sql`). El contrato y los endpoints de M4 no cambiaron.
+
+- [x] Contrato `LeadEntrante` y normalizador compartido
+- [x] Buzón PostgreSQL `leads_recibidos` con idempotencia, lease y recuperación
+- [x] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
+- [x] Adaptador Google Forms
 - [ ] Adaptador Meta: handshake, verificación de firma, consulta de detalle
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
 - [ ] Cifrado y descifrado de tokens (AES-256-GCM)
-- [ ] CRUD de bridges y cuentas publicitarias
-- [ ] Registro en `bridge_logs` de todo error de recepción
+- [x] CRUD de bridges y cuentas publicitarias
+- [x] Registro en `bridge_logs` de todo error de recepción
+- [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
 - [ ] Trabajo programado: verificación de expiración de tokens
 - [ ] Trabajo programado: detección de bridge sin actividad por 72 h
 
-**Pruebas obligatorias:** webhook con firma inválida se rechaza; el mismo
-`idExternoLead` dos veces crea un solo lead; lead sin teléfono ni correo se
-persiste con marca de dato incompleto.
+**Pruebas obligatorias:** `X-Bridge-Key` ausente, malformada o que no coincide
+con ningún bridge activo se rechaza con 401 y registra una fila `bridge_logs`
+ERROR (control por clave de API, no firma HMAC — eso es específico del futuro
+adaptador Meta, fuera de esta rebanada); el mismo `idExternoLead` dos veces,
+incluida entrega concurrente, produce un solo lead; lead sin teléfono ni
+correo se persiste con marca de dato incompleto.
+
+La aceptación HTTP confirma solo el recibo durable. El worker completa deduplicación,
+eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del commit.
 
 ---
 
 ## M5 — Gestión de leads
 
-- [ ] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
+- [x] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
       responsable, rango de fechas, estado de SLA), paginación y orden
-- [ ] Filtrado automático por rol: asesor y vendedor solo ven su cartera
-- [ ] `GET /api/v1/leads/:id` con verificación de acceso
-- [ ] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
-- [ ] Validación de campos obligatorios en etapas terminales
-- [ ] Escritura de `lead_eventos` en la misma transacción que cada cambio
-- [ ] `GET /api/v1/formularios/:etapa` — definición de formulario
-- [ ] `POST /api/v1/leads/:id/formulario` — respuestas y cálculo de puntuación
-- [ ] Motor de cálculo del semáforo con versionado de rúbrica
+      > **Pendiente (validación server-side faltante):** `leads.schema.ts::listLeadsQuerySchema`
+      > (línea 54) valida `limite` como `z.coerce.number().int().min(1).max(100).default(20)`
+      > — un rango abierto, no la whitelist acotada (10/25/50/100) que pide el
+      > contrato de frontend (`leads.api.ts::LeadsQueryParams.porPagina`). Hoy
+      > cualquier entero entre 1 y 100 pasa (p. ej. `limite=37`), así que el
+      > servidor no impone el mismo conjunto fijo que usa el cliente. Falta
+      > acotar `limite` a esos 4 valores exactos en `leads.schema.ts`.
+- [x] Filtrado automático por rol: asesor y vendedor solo ven su cartera
+- [x] `GET /api/v1/leads/:id` con verificación de acceso
+- [x] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
+      > **Pendiente (validación server-side faltante):** `leads.service.ts::transitionEtapa`
+      > (líneas 134-201) solo rechaza reabrir una etapa terminal (línea 147,
+      > `ETAPAS_TERMINALES.includes(lead.etapa)`) pero no valida que `body.etapa`
+      > sea una transición válida desde `lead.etapa` — no hay chequeo equivalente
+      > a la whitelist de `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`
+      > (progreso lineal Nuevo → Contactado → Cita, nunca se retrocede, más salto
+      > directo a cierre desde cualquier etapa no terminal — docs/02-reglas-negocio.md
+      > §6). Hoy el endpoint acepta, por ejemplo, `CITA → NUEVO`. Falta agregar esa
+      > validación server-side antes de `leadRepository.updateEtapa` (línea 185).
+- [x] Validación de campos obligatorios en etapas terminales
+- [x] Escritura de `lead_eventos` en la misma transacción que cada cambio
+- [x] `GET /api/v1/formularios/:etapa` — definición de formulario
+- [x] `POST /api/v1/leads/:id/formulario` — respuestas y cálculo de puntuación
+- [x] Motor de cálculo del semáforo con versionado de rúbrica
 
 **Pruebas obligatorias:** un asesor no puede leer ni modificar un lead ajeno
 (prueba directa contra el endpoint, no contra la interfaz); cambio de etapa sin
 formulario se rechaza; cada combinación de respuestas produce la puntuación
 esperada; VENTA sin monto se rechaza.
 
+**Límite M5/M6 (cerrado):** `Lead.asesorId`/`vendedorId` ya existían en el
+esquema desde M5 y `leads.service.ts` los consume (filtro de cartera, D4).
+M6 aterrizó y es quien los escribe en producción: la asignación automática
+por menor carga, la reasignación y el traspaso.
+
 ---
 
 ## M6 — Asignación, traspaso y SLA
 
-- [ ] Algoritmo de asignación por menor carga activa con desempate FIFO
-- [ ] Asignación automática al persistir lead nuevo o de reingreso
-- [ ] Manejo del caso sin asesores activos
-- [ ] `POST /api/v1/leads/:id/asignar` (administrador y supervisor)
-- [ ] `POST /api/v1/leads/:id/reasignar` con regla de semáforo para el asesor
-- [ ] `POST /api/v1/leads/:id/traspasar` con selección automática de vendedor
-- [ ] Reinicio de `sla_inicio_en` en asignación, reasignación y traspaso
-- [ ] Cálculo derivado del estado de SLA (nunca persistido)
-- [ ] Trabajo programado cada 15 minutos: detección de leads atrasados
+- [x] Algoritmo de asignación por menor carga activa con desempate FIFO
+- [x] Asignación automática al persistir lead nuevo o de reingreso
+- [x] Manejo del caso sin asesores activos
+- [x] `POST /api/v1/leads/:id/asignar` (administrador y supervisor)
+- [x] `POST /api/v1/leads/:id/reasignar` con regla de semáforo para el asesor
+- [x] `POST /api/v1/leads/:id/traspasar` con selección automática de vendedor
+- [x] Reinicio de `sla_inicio_en` en asignación, reasignación y traspaso
+- [x] Cálculo derivado del estado de SLA (nunca persistido)
+- [x] Trabajo programado cada 15 minutos: detección de leads atrasados
 
 **Pruebas obligatorias:** con cargas 3/1/2 el lead va al asesor de carga 1; con
 cargas iguales gana el de asignación más antigua; asesor con lead verde no puede
 reasignarlo; el estado de SLA cambia a "En riesgo" exactamente a las 18 h.
 
+**Nota D3 (ancla del SLA):** el criterio de atraso ancla en `sla_inicio_en`, NO en
+`ingresado_en` — "24 horas desde su ingreso" en la redacción original de
+`docs/02-reglas-negocio.md` §7 es una paráfrasis suelta de "desde la primera
+asignación": el reloj arranca al asignar y **se reinicia** en cada reasignación
+o traspaso (`sla.calculator.ts` y `slaFilterBoundaries` ya estaban anclados así
+desde M5). Un lead sin asignar (`sla_inicio_en = null`) es `sin_iniciar`, nunca
+`atrasado` — el cron de M6 lo ignora por completo.
+
+**Nota DD1 (índice del cron):** `idx_leads_sla` (índice parcial `WHERE
+cerrado_en IS NULL` sobre `sla_inicio_en`) ya existía desde la migración de M5
+(`20260814050000_m5_gestion_leads`); M6 no agrega ningún índice nuevo — el job
+de detección de atrasados reutiliza la misma forma de consulta que
+`GET /leads?estadoSla=atrasado` de M5.
+
+> **Nota D1 revisada (F3/F4, diseño D-A2 revisión 2) — ruptura consciente de
+> la invariante original:** hasta esta revisión, la asignación automática
+> corría **dentro de la misma transacción** de ingesta
+> (`ingesta.service.ts::procesarEnTransaccion`). Esa invariante se rompió a
+> propósito: el lead debe estar **realmente committeado** antes de intentar
+> asignarlo. Ahora `procesarEnTransaccion` solo persiste recepción+dedupe y
+> propaga `leadCreado`; `ingesta.service.ts::ingestarLead` dispara
+> `asignacion.service.ts::asignarTrasCommit(leadId, ahoraIngesta)` **después**
+> del commit, en su propia transacción, con hasta 3 reintentos (backoff
+> 250ms/1000ms). `assignAutomatically` en sí **sigue sin abrir transacción
+> propia** — solo cambió quién le pasa la `tx` viva (antes `ingesta.service`,
+> ahora `asignarTrasCommit`).
+>
+> Efectos del cambio, todos deliberados:
+> - **Guarda de idempotencia obligatoria**: `assignAutomatically` no-opea en
+>   silencio si el lead ya tiene `asesorId` no-nulo — cubre tanto una
+>   asignación manual del Supervisor durante la ventana post-commit como un
+>   reintento sobre un intento anterior ya confirmado.
+> - **`slaInicioEn` = instante de ingesta**, no el instante en que la
+>   asignación automática efectivamente concluye (evita regalar minutos de
+>   SLA por un retraso de infraestructura propio).
+> - **Degradación tras agotar los 3 reintentos**: evento `ASIGNACION_FALLIDA`
+>   nuevo en `lead_eventos` (`requiereNotificacion: true`, distinto de
+>   `SIN_ASIGNAR` — este es un incidente de infraestructura, no la ausencia
+>   de candidatos) + ERROR en `bridge_logs` + `logger.error`. El lead queda
+>   `asesorId: null`, visible y filtrable, reparable manualmente vía
+>   `/leads/:id/asignar` o el lote `/leads/asignar-lote`.
+> - **La respuesta HTTP de ingesta nunca depende del resultado de la
+>   asignación**: `asignarTrasCommit` nunca lanza, así que el webhook
+>   siempre responde 200 con el `leadId` committeado. Un 5xx aquí sería
+>   activamente dañino: el reintento del bridge entraría por el `ON
+>   CONFLICT` de `upsertLeadRecibido` y cortocircuitaría como
+>   `duplicado: true` sin volver a intentar la asignación.
+>
+> Migración aditiva asociada: `20260816120000_asignacion_fallida_postcommit`
+> (`ALTER TYPE "tipo_evento_lead" ADD VALUE 'ASIGNACION_FALLIDA'`), mismo
+> patrón que la migración original de M6.
+
 ---
 
 ## M7 — Citas
 
-- [ ] CRUD de citas asociadas a un lead
-- [ ] Validación: no se agenda una cita en el pasado
-- [ ] Reprogramación con registro de evento
-- [ ] Estados de cita y su efecto en el formulario de la etapa Cita
-- [ ] Trabajo programado: recordatorio 1 hora antes
+- [x] CRUD de citas asociadas a un lead
+- [x] Validación: no se agenda una cita en el pasado
+- [x] Reprogramación con registro de evento
+- [x] Estados de cita y su efecto en el formulario de la etapa Cita
+- [x] Trabajo programado: recordatorio 1 hora antes
+
+**Pruebas obligatorias:** cobertura de integración para el CRUD de citas,
+reprogramación y máquina de estados (`citas.service.test.ts`,
+`citas.routes.test.ts`), y para el trabajo de recordatorio, incluida su
+idempotencia y la guarda de re-entrada (`citas-recordatorio.job.test.ts`).
+
+> **Progreso:** `model Cita` (enums `ModalidadCita`/`EstadoCita`) agregado por
+> migración (`20260814220844_m7_citas`), con relaciones a `Lead`/`Usuario`.
+> Endpoints: `POST/GET /leads/:id/citas`, `GET /citas/:citaId`,
+> `POST /citas/:citaId/cancelar|reprogramar|resultado`. Autorización por
+> recurso reutiliza `canRead`/`canEdit` de `leads.access.ts` (D4, M5) sin
+> duplicar la regla — mismo criterio que reasignar/traspasar en M6, sin
+> `requireRole` fijo en las rutas.
+>
+> **D-M7a (responsable por defecto):** no existe algoritmo de selección
+> automática de responsable para citas (distinto de
+> `asignacion.service.ts::selectResponsable`, M6) — fuera del alcance del
+> checklist M7. Por defecto, quien agenda es su propio responsable;
+> Administrador/Supervisor pueden asignarla a otro usuario explícito
+> (mismo patrón DD10 de M6).
+>
+> **D-M7b (reprogramación, decisión dejada abierta por el diseño del
+> cambio):** tras reprogramar, `citas.estado` vuelve a `AGENDADA` con la
+> nueva `programadaPara` — **nunca** queda persistido en `REPROGRAMADA` —
+> porque el trabajo de recordatorio filtra estrictamente `estado =
+> AGENDADA`; dejarlo en `REPROGRAMADA` excluiría para siempre la cita
+> reprogramada del recordatorio de la nueva fecha. El valor `REPROGRAMADA`
+> se mantiene en el enum por fidelidad exacta con
+> `docs/03-modelo-datos.md` §citas, pero ningún camino de código actual lo
+> persiste. El historial de reprogramaciones (una o varias) vive en
+> `lead_eventos` (`CITA_REPROGRAMADA`, uno por evento), no en `estado`.
+>
+> **D-M7c (límite con el formulario de etapa CITA, decisión de integración
+> pedida explícitamente por el diseño del cambio):** `POST
+> /citas/:citaId/resultado` marca `CUMPLIDA`/`NO_ASISTIO` como un registro
+> **asociado** al lead — nunca mueve `leads.etapa` ni escribe
+> `respuestas_formulario`. El formulario de la etapa CITA
+> (`docs/04-formularios-semaforo.md` §5, "¿Asistió a la cita?") lo sigue
+> completando el vendedor por su flujo ya existente de M5 (`PATCH
+> /leads/:id/etapa` o `POST /leads/:id/formulario`,
+> `formularios.service.ts::applyFormulario`) — no se duplica esa lógica ni
+> se inventa una segunda fuente de verdad para la misma pregunta. Tampoco
+> escribe `lead_eventos`: `TipoEventoLead` solo reserva `CITA_AGENDADA`/
+> `CITA_REPROGRAMADA` para M7, `citas.estado` ya es su propio registro
+> auditable para el resultado.
+>
+> **D-M7d (recordatorio, límite explícito con M8):** `citas-recordatorio.job.ts`
+> corre cada 15 minutos (mismo patrón de guarda de re-entrada que
+> `sla-atrasado.job.ts` de M6) e invoca `enviarRecordatoriosCita`, que marca
+> `recordatorio_enviado = true` de forma atómica (`UPDATE ... WHERE
+> recordatorio_enviado = false`) para citas `AGENDADA` cuya
+> `programada_para` cae en `[ahora, ahora + 1h]`. La emisión real de la
+> notificación al responsable y su entrega por SSE son de M8
+> (`docs/06-modulos-backend.md` M8, "Servicio de creación de
+> notificaciones" / canal SSE), que todavía no existe en el código — este
+> job solo deja la marca anti-duplicado y un log estructurado por cita
+> (`citas-recordatorio.service.ts`) como punto de enganche documentado, sin
+> inventar infraestructura de notificaciones.
 
 ---
 
 ## M8 — Notificaciones y tiempo real
 
-- [ ] Servicio de creación de notificaciones
-- [ ] `GET /api/v1/notificaciones` con filtro de no leídas
-- [ ] `PATCH /api/v1/notificaciones/:id/leer` y marcado masivo
-- [ ] Canal SSE `GET /api/v1/eventos` autenticado
-- [ ] Emisión por SSE de: lead asignado, cambio de etapa, notificación nueva
-- [ ] Gestión de conexiones SSE por usuario con limpieza al desconectar
-- [ ] Reconexión con `Last-Event-ID`
+- [x] Servicio de creación de notificaciones
+- [x] `GET /api/v1/notificaciones` con filtro de no leídas
+- [x] `PATCH /api/v1/notificaciones/:id/leer` y marcado masivo
+- [x] Canal SSE `GET /api/v1/eventos` autenticado
+- [x] Emisión por SSE de: lead asignado, cambio de etapa, notificación nueva
+- [x] Gestión de conexiones SSE por usuario con limpieza al desconectar
+- [x] Reconexión con `Last-Event-ID`
 
 **Nota de implementación:** mantén el registro de conexiones SSE en memoria del
 proceso. Con 100 concurrentes y un solo proceso Node no hace falta Redis ni
 sistema de mensajería; introducirlo sería complejidad sin beneficio.
+
+**Evidencia de finalización:** los productores transaccionales cubren asignación,
+traspaso, leads sin asignar, interacción repetida, SLA, citas y errores de bridge.
+Las ejecuciones concurrentes de SLA y citas persisten un solo conjunto de evento
+y notificación por ventana elegible, y la publicación SSE ocurre solo después
+del commit.
+
+`TOKEN_POR_EXPIRAR` queda solo como contrato hasta que M4 implemente
+almacenamiento cifrado y metadatos persistidos de expiración. M8 no incluye un
+productor ni un scheduler de expiración de tokens.
 
 ---
 

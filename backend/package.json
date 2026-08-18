@@ -16,14 +16,17 @@
   "dependencies": {
     "@node-rs/argon2": "2.0.2",
     "@prisma/client": "6.19.3",
+    "cors": "^2.8.6",
     "express": "5.2.1",
     "jose": "6.2.8",
     "libphonenumber-js": "1.13.10",
     "pino": "10.3.1",
     "pino-http": "11.0.0",
+    "schemas": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "5.0.6",
     "@types/node": "26.2.0",
     "@types/supertest": "7.2.1",

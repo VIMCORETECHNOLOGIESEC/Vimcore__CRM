@@ -89,6 +89,26 @@ describe("POST /api/v1/auth/login", () => {
 
     expect(respuesta.status).toBe(400);
   });
+
+  it("responde con Access-Control-Allow-Origin para el origen del frontend (CORS)", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/auth/login")
+      .set("Origin", env.CORS_ORIGIN)
+      .send({ correo: correoActivo, password: PASSWORD_ACTIVO });
+
+    expect(respuesta.headers["access-control-allow-origin"]).toBe(env.CORS_ORIGIN);
+  });
+
+  it("resuelve el preflight OPTIONS del login sin llegar a la lógica de negocio", async () => {
+    const respuesta = await request(app)
+      .options("/api/v1/auth/login")
+      .set("Origin", env.CORS_ORIGIN)
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "Content-Type");
+
+    expect(respuesta.status).toBe(204);
+    expect(respuesta.headers["access-control-allow-origin"]).toBe(env.CORS_ORIGIN);
+  });
 });
 
 describe("POST /api/v1/auth/refresh", () => {

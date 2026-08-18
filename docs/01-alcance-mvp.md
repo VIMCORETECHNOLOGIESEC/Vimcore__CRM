@@ -68,6 +68,7 @@ la fecha de entrega del núcleo.
 | R3 | Meta exige App Review con permisos `leads_retrieval` y `pages_manage_ads` | Igual que R2 | Iniciar App Review en paralelo; desarrollar contra cuentas de prueba mientras tanto |
 | R4 | La regla de traspaso asesor→vendedor no fue definida con precisión por el cliente | Puede requerir rehacer el flujo de asignación | Se adopta la regla del documento `02-reglas-negocio.md` §5 como supuesto explícito. **Validar con el cliente antes de la fase `apply`** |
 | R5 | La rúbrica de puntuación del semáforo se construyó sobre práctica estándar de embudos comerciales, no sobre reglas dictadas por el cliente | Los umbrales pueden no reflejar su realidad comercial | Los umbrales viven en constantes aisladas. Revisar con el cliente tras las primeras dos semanas de uso real |
+| R6 | Con bajo volumen de leads, es probable que la misma persona sea asesor y vendedor a la vez; el modelo de roles actual (`RolUsuario` único) no lo soporta y el traspaso asesor→vendedor podría convertirse en una autoasignación | Bloquea el diseño final de M6 hasta resolver el conflicto de interés (relacionado con R4) | Diseño evaluado, no implementado: `rolSecundario` acotado al par asesor/vendedor + advertencia no bloqueante y auditoría de autoasignación (ver nota en `02-reglas-negocio.md` §5). **Validar con el cliente junto con R4 antes de iniciar M6** |
 
 ---
 

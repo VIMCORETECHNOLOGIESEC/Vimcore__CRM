@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import {
-  deduplicarLead,
+  deduplicateLead,
   type DeduplicacionInput,
 } from "../src/services/deduplicacion.service.js";
 
@@ -43,10 +43,10 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("deduplicacion.service — deduplicarLead", () => {
+describe("deduplicacion.service — deduplicateLead", () => {
   it("1. crea cliente y lead nuevos cuando no existe cliente con ese teléfono", async () => {
     const entrada = entradaBase();
-    const resultado = await deduplicarLead(entrada);
+    const resultado = await deduplicateLead(entrada);
 
     expect(resultado.clienteCreado).toBe(true);
     expect(resultado.leadCreado).toBe(true);
@@ -66,7 +66,7 @@ describe("deduplicacion.service — deduplicarLead", () => {
   it("2. N=5 webhooks concurrentes con el mismo teléfono producen exactamente 1 cliente y 1 lead", async () => {
     const telefono = telefonoUnico();
     const llamadas = Array.from({ length: 5 }, () =>
-      deduplicarLead(entradaBase({ telefono, correo: null })),
+      deduplicateLead(entradaBase({ telefono, correo: null })),
     );
 
     const resultados = await Promise.all(llamadas);
@@ -93,9 +93,9 @@ describe("deduplicacion.service — deduplicarLead", () => {
 
   it("3. D7: teléfono inválido + correo que coincide con cliente existente resuelve a ese cliente", async () => {
     const correo = `existente-${randomUUID()}@correo.test`;
-    const primero = await deduplicarLead(entradaBase({ correo }));
+    const primero = await deduplicateLead(entradaBase({ correo }));
 
-    const segundo = await deduplicarLead(
+    const segundo = await deduplicateLead(
       entradaBase({ telefono: "abc-no-es-telefono", correo }),
     );
 
@@ -111,7 +111,7 @@ describe("deduplicacion.service — deduplicarLead", () => {
   });
 
   it("4. teléfono inválido sin coincidencia de correo crea cliente nuevo con telefonoValido=false", async () => {
-    const resultado = await deduplicarLead(
+    const resultado = await deduplicateLead(
       entradaBase({
         telefono: "no-es-un-telefono",
         correo: `sin-match-${randomUUID()}@correo.test`,
@@ -131,7 +131,7 @@ describe("deduplicacion.service — deduplicarLead", () => {
 
   it("5. reingreso — límite exacto: 89 días no reabre, 91 días crea REINGRESO en etapa NUEVO", async () => {
     const telefono = telefonoUnico();
-    const ingreso = await deduplicarLead(entradaBase({ telefono }));
+    const ingreso = await deduplicateLead(entradaBase({ telefono }));
 
     const hace89 = new Date(Date.now() - 89 * 24 * 60 * 60 * 1000);
     await prisma.lead.update({
@@ -139,7 +139,7 @@ describe("deduplicacion.service — deduplicarLead", () => {
       data: { etapa: "VENTA", cerradoEn: hace89 },
     });
 
-    const contacto89 = await deduplicarLead(entradaBase({ telefono }));
+    const contacto89 = await deduplicateLead(entradaBase({ telefono }));
     expect(contacto89.leadCreado).toBe(false);
     expect(contacto89.accion.kind).toBe("interaccion_repetida");
     expect(contacto89.leadId).toBe(ingreso.leadId);
@@ -150,7 +150,7 @@ describe("deduplicacion.service — deduplicarLead", () => {
       data: { cerradoEn: hace91 },
     });
 
-    const contacto91 = await deduplicarLead(entradaBase({ telefono }));
+    const contacto91 = await deduplicateLead(entradaBase({ telefono }));
     expect(contacto91.leadCreado).toBe(true);
     expect(contacto91.accion.kind).toBe("crear_lead");
     if (contacto91.accion.kind === "crear_lead") {
@@ -166,9 +166,9 @@ describe("deduplicacion.service — deduplicarLead", () => {
 
   it("6. lead abierto existente registra interacción repetida y no crea lead nuevo aunque cambie otro dato", async () => {
     const telefono = telefonoUnico();
-    const primero = await deduplicarLead(entradaBase({ telefono, correo: null }));
+    const primero = await deduplicateLead(entradaBase({ telefono, correo: null }));
 
-    const segundo = await deduplicarLead(
+    const segundo = await deduplicateLead(
       entradaBase({ telefono, correo: `nuevo-correo-${randomUUID()}@correo.test` }),
     );
 
@@ -185,9 +185,9 @@ describe("deduplicacion.service — deduplicarLead", () => {
 
   it("7. D8: el nombre almacenado no se sobrescribe en un contacto repetido con nombre distinto", async () => {
     const telefono = telefonoUnico();
-    await deduplicarLead(entradaBase({ telefono, nombre: "Juan Perez" }));
+    await deduplicateLead(entradaBase({ telefono, nombre: "Juan Perez" }));
 
-    const resultado = await deduplicarLead(entradaBase({ telefono, nombre: "J. Perez G." }));
+    const resultado = await deduplicateLead(entradaBase({ telefono, nombre: "J. Perez G." }));
 
     const cliente = await prisma.cliente.findUniqueOrThrow({
       where: { id: resultado.clienteId },
@@ -198,8 +198,8 @@ describe("deduplicacion.service — deduplicarLead", () => {
   it("D9: ambas ramas de interaccion_repetida marcan detalle.requiereNotificacion=true", async () => {
     // Rama lead_abierto.
     const telefonoAbierto = telefonoUnico();
-    await deduplicarLead(entradaBase({ telefono: telefonoAbierto }));
-    const repetidaAbierto = await deduplicarLead(entradaBase({ telefono: telefonoAbierto }));
+    await deduplicateLead(entradaBase({ telefono: telefonoAbierto }));
+    const repetidaAbierto = await deduplicateLead(entradaBase({ telefono: telefonoAbierto }));
 
     const eventoAbierto = await prisma.leadEvento.findUniqueOrThrow({
       where: { id: repetidaAbierto.eventoId },
@@ -210,12 +210,12 @@ describe("deduplicacion.service — deduplicarLead", () => {
 
     // Rama lead_cerrado_en_ventana.
     const telefonoCerrado = telefonoUnico();
-    const ingresoCerrado = await deduplicarLead(entradaBase({ telefono: telefonoCerrado }));
+    const ingresoCerrado = await deduplicateLead(entradaBase({ telefono: telefonoCerrado }));
     await prisma.lead.update({
       where: { id: ingresoCerrado.leadId },
       data: { etapa: "VENTA", cerradoEn: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
     });
-    const repetidaCerrado = await deduplicarLead(entradaBase({ telefono: telefonoCerrado }));
+    const repetidaCerrado = await deduplicateLead(entradaBase({ telefono: telefonoCerrado }));
 
     const eventoCerrado = await prisma.leadEvento.findUniqueOrThrow({
       where: { id: repetidaCerrado.eventoId },
@@ -234,7 +234,7 @@ describe("deduplicacion.service — deduplicarLead", () => {
     // no solo la escritura del evento.
     mockCreateEvento.mockRejectedValueOnce(new Error("fallo forzado para probar rollback"));
 
-    await expect(deduplicarLead(entradaBase({ telefono }))).rejects.toThrow(
+    await expect(deduplicateLead(entradaBase({ telefono }))).rejects.toThrow(
       "fallo forzado para probar rollback",
     );
 
@@ -253,5 +253,34 @@ describe("deduplicacion.service — deduplicarLead", () => {
       where: { lead: { cliente: { telefonoNormalizado: normalizado } } },
     });
     expect(eventosHuerfanos).toBe(0);
+  });
+
+  it("M5 DD1: crea lead con redSocial/payloadOriginal/camposDinamicos poblados cuando la entrada los trae", async () => {
+    const payloadOriginal = { idExternoLead: `dd1-${randomUUID()}`, campo: "valor crudo" };
+    const camposDinamicos = { presupuesto: "10000-20000" };
+    const entrada: DeduplicacionInput = {
+      ...entradaBase(),
+      redSocial: "GOOGLE_FORMS",
+      payloadOriginal,
+      camposDinamicos,
+    };
+
+    const resultado = await deduplicateLead(entrada);
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+    expect(lead.redSocial).toBe("GOOGLE_FORMS");
+    expect(lead.payloadOriginal).toEqual(payloadOriginal);
+    expect(lead.camposDinamicos).toEqual(camposDinamicos);
+  });
+
+  it("M5 DD1: sin esos tres campos en la entrada (compatibilidad M3), el lead los deja NULL como antes", async () => {
+    const entrada = entradaBase();
+
+    const resultado = await deduplicateLead(entrada);
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+    expect(lead.redSocial).toBeNull();
+    expect(lead.payloadOriginal).toBeNull();
+    expect(lead.camposDinamicos).toBeNull();
   });
 });
