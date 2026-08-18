@@ -245,6 +245,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
         idExternoLead: payloadCrudo.idExternoLead,
         leadId: lead.id,
         payload: payloadCrudo,
+        entradaProcesamiento: { version: 0, payloadLegacy: payloadCrudo },
       },
     });
 
@@ -276,6 +277,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
         idExternoLead: `backfill-no-overwrite-${randomUUID()}`,
         leadId: lead.id,
         payload: { idExternoLead: "no-deberia-usarse" },
+        entradaProcesamiento: { version: 0, payloadLegacy: {} },
       },
     });
 

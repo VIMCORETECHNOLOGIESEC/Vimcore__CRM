@@ -11,11 +11,13 @@ import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 
 export interface IngestaResultado {
-  leadId: string;
-  duplicado: boolean;
+  recepcionId: string;
+  estado: "ACEPTADO";
 }
 
-interface ResultadoTransaccion extends IngestaResultado {
+interface ResultadoTransaccion {
+  leadId: string;
+  duplicado: boolean;
   datosIncompletos: boolean;
   /**
    * D-A2 (diseño, revisión 2): propagado desde `DeduplicacionResult` para que
@@ -65,42 +67,56 @@ interface ResultadoTransaccion extends IngestaResultado {
  * resultado de la asignación).
  */
 export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResultado> {
-  const ahoraIngesta = new Date();
-  try {
-    const resultado = await runInTransaction(
-      undefined,
-      (tx) => procesarEnTransaccion(entrada, ahoraIngesta, tx),
-      INGESTA_TRANSACTION_BOUNDS,
-    );
-    publishCommittedEvents(resultado.events);
+  return leadRecibidoRepository.aceptarLeadRecibido(entrada);
+}
 
-    await registrarLogSeguro({
-      bridgeId: entrada.bridgeId,
-      nivel: resultado.datosIncompletos ? "ADVERTENCIA" : "INFO",
-      mensaje: resultado.datosIncompletos
-        ? "Lead recibido y procesado con datos incompletos (sin teléfono ni correo)"
-        : "Lead recibido y procesado",
-      payload: {
-        idExternoLead: entrada.idExternoLead,
-        leadId: resultado.leadId,
-        duplicado: resultado.duplicado,
-      },
-    });
-
-    if (resultado.leadCreado) {
-      await asignarTrasCommit(resultado.leadId, ahoraIngesta);
-    }
-
-    return { leadId: resultado.leadId, duplicado: resultado.duplicado };
-  } catch (error) {
-    await registrarLogSeguro({
-      bridgeId: entrada.bridgeId,
-      nivel: "ERROR",
-      mensaje: error instanceof Error ? error.message : "Error desconocido al procesar la ingesta",
-      payload: { idExternoLead: entrada.idExternoLead },
-    });
-    throw error;
+export async function procesarRecepcion(
+  claim: leadRecibidoRepository.InboxClaim,
+): Promise<boolean> {
+  const resultado = await runInTransaction(
+    undefined,
+    async (tx) => {
+      const vigente = await leadRecibidoRepository.lockValidClaim(
+        claim.recepcionId,
+        claim.leaseOwner,
+        tx,
+      );
+      if (!vigente) return null;
+      const envelope = vigente.entradaProcesamiento;
+      if (envelope.version !== 1) {
+        throw new AppError("sobre_ingesta_invalido", 500, "El sobre de ingesta no es procesable");
+      }
+      const entrada: LeadEntrante = {
+        ...envelope.entrada,
+        ingresadoEn: new Date(envelope.entrada.ingresadoEn),
+      };
+      const dedup = await deduplicateLead(entrada, new Date(envelope.recibidoEn), tx);
+      const completed = await leadRecibidoRepository.completeClaim(
+        claim.recepcionId,
+        claim.leaseOwner,
+        dedup.leadId,
+        tx,
+      );
+      if (!completed) throw new AppError("lease_ingesta_perdido", 409, "El lease de ingesta venció");
+      return { entrada, dedup };
+    },
+    INGESTA_TRANSACTION_BOUNDS,
+  );
+  if (!resultado) {
+    logger.warn({ recepcionId: claim.recepcionId }, "ingesta: lease obsoleto rechazado");
+    return false;
   }
+  publishCommittedEvents(resultado.dedup.events);
+  if (resultado.dedup.leadCreado) {
+    await asignarTrasCommit(resultado.dedup.leadId, new Date(claim.entradaProcesamiento.recibidoEn));
+  }
+  await registrarLogSeguro({
+    bridgeId: resultado.entrada.bridgeId,
+    nivel: "INFO",
+    mensaje: "Recepción de lead procesada",
+    payload: { recepcionId: claim.recepcionId, leadId: resultado.dedup.leadId },
+  });
+  return true;
 }
 
 /**

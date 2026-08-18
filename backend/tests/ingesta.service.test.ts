@@ -84,7 +84,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("ingesta.service — ingestarLead (M4, PR3a)", () => {
+describe.skip("contrato sincrónico retirado: cubierto por aceptación HTTP y worker durable", () => {
   it("flujo feliz: recibe, dedupe crea cliente/lead, ancla la recepcion y registra INFO (Requirement: Atomic reception and deduplication, Synchronous processing)", async () => {
     const { id: bridgeId } = await crearBridge();
     const entrada = entradaBase(bridgeId);
@@ -343,5 +343,62 @@ describe("ingesta.service — ingestarLead (M4, PR3a)", () => {
       }),
     ).toBe(0);
     expect(recibidos).toEqual([]);
+  });
+});
+
+describe("buzón durable de ingesta", () => {
+  async function cerrarRecepcionesElegibles(): Promise<void> {
+    await prisma.$executeRawUnsafe(
+      `UPDATE leads_recibidos SET estado = 'PROCESADO', lease_owner = NULL, lease_hasta = NULL WHERE estado <> 'PROCESADO'`,
+    );
+  }
+
+  it("entrega un único lease bajo reclamos concurrentes y excluye el lease vigente", async () => {
+    await cerrarRecepcionesElegibles();
+    const { id: bridgeId } = await crearBridge();
+    const entrada = entradaBase(bridgeId);
+    const ahora = new Date("2026-08-18T00:00:00.000Z");
+    await leadRecibidoRepository.aceptarLeadRecibido(entrada, ahora);
+
+    const [primero, segundo] = await Promise.all([
+      leadRecibidoRepository.claimNext(ahora, "worker-a"),
+      leadRecibidoRepository.claimNext(ahora, "worker-b"),
+    ]);
+    const claims = [primero, segundo].filter((claim) => claim !== null);
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toEqual(
+      expect.objectContaining({ intento: 1, leaseOwner: expect.stringMatching(/^worker-[ab]$/) }),
+    );
+    expect(await leadRecibidoRepository.claimNext(ahora, "worker-c")).toBeNull();
+  });
+
+  it("recupera un lease vencido y rechaza al propietario anterior", async () => {
+    await cerrarRecepcionesElegibles();
+    const { id: bridgeId } = await crearBridge();
+    const entrada = entradaBase(bridgeId);
+    const inicio = new Date("2026-08-18T01:00:00.000Z");
+    const recepcion = await leadRecibidoRepository.aceptarLeadRecibido(entrada, inicio);
+    await leadRecibidoRepository.claimNext(inicio, "worker-vencido");
+
+    const recuperado = await leadRecibidoRepository.claimNext(
+      new Date(inicio.getTime() + 61_000),
+      "worker-recuperacion",
+    );
+    const propietarioAnteriorAceptado = await leadRecibidoRepository.marcarFallo(
+      recepcion.recepcionId,
+      "worker-vencido",
+      "error tardío",
+      new Date(inicio.getTime() + 62_000),
+    );
+
+    expect(recuperado).toEqual(
+      expect.objectContaining({
+        recepcionId: recepcion.recepcionId,
+        leaseOwner: "worker-recuperacion",
+        intento: 2,
+      }),
+    );
+    expect(propietarioAnteriorAceptado).toBe(false);
   });
 });
