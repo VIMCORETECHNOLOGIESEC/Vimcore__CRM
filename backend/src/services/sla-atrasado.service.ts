@@ -1,4 +1,4 @@
-import { Prisma, type RolUsuario } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { DetalleEventoAsignacion } from "./asignacion.service.js";
@@ -36,7 +36,6 @@ export async function detectLeadsAtrasados(
   if (candidatos.length === 0) return { candidatos: 0, eventosCreados: 0 };
 
   let eventosCreados = 0;
-  const managementRoles: readonly RolUsuario[] = ["SUPERVISOR", "ADMINISTRADOR"];
   for (const candidato of candidatos) {
     const result = await runInTransaction(undefined, async (tx) => {
       const lead = await leadRepository.findByIdForUpdate(candidato.id, tx);
@@ -52,11 +51,11 @@ export async function detectLeadsAtrasados(
       const responsableId = lead.vendedorId ?? lead.asesorId;
       const detalle: DetalleEventoAsignacion = { version: 1, requiereNotificacion: true, motivo: "sla_vencido", responsableId, responsableAnteriorId: null, ejecutadoPorId: null };
       await leadEventoRepository.createEvento({ leadId: lead.id, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
-      const managementIds = await notificationRepository.findActiveRecipientIds(managementRoles, tx);
+      const supervisorIds = await notificationRepository.findActiveRecipientIds(["SUPERVISOR"], tx);
       const owner = responsableId
         ? await notificationRepository.findActiveRecipientById(responsableId, tx)
         : null;
-      const recipientIds = [...new Set([...managementIds, ...(owner ? [owner.id] : [])])];
+      const recipientIds = [...new Set([...supervisorIds, ...(owner ? [owner.id] : [])])];
       const notifications = [];
       for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atención del lead ha vencido", leadId: lead.id }, tx));
       return { eventoCreado: true, committed: notifications.flatMap(notificationEvents) };

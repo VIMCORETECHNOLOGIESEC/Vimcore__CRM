@@ -117,6 +117,7 @@ describe("M8 scheduled and bridge producers", () => {
   it("crea un solo SLA bajo concurrencia y publica a destinatarios normales después del commit", async () => {
     const asesor = await createUsuario("ASESOR");
     const supervisor = await createUsuario("SUPERVISOR");
+    const administrador = await createUsuario("ADMINISTRADOR");
     const inactiveSupervisor = await createUsuario("SUPERVISOR", false);
     const lead = await createLead(asesor.id);
 
@@ -141,6 +142,7 @@ describe("M8 scheduled and bridge producers", () => {
     });
     expect(notifications.some(({ usuarioId }) => usuarioId === asesor.id)).toBe(true);
     expect(notifications.some(({ usuarioId }) => usuarioId === supervisor.id)).toBe(true);
+    expect(notifications.some(({ usuarioId }) => usuarioId === administrador.id)).toBe(false);
     expect(new Set(notifications.map(({ usuarioId }) => usuarioId)).size).toBe(notifications.length);
     expect(notifications.some(({ usuarioId }) => usuarioId === inactiveSupervisor.id)).toBe(false);
     expect(notifications.every(({ mensaje }) => mensaje === "El SLA de atención del lead ha vencido")).toBe(true);
@@ -151,6 +153,26 @@ describe("M8 scheduled and bridge producers", () => {
       ]),
     );
     expect(await Promise.all(visibilityChecks)).not.toContain(false);
+  });
+
+  it("excluye al responsable inactivo y no duplica a un supervisor que también es responsable", async () => {
+    const supervisorResponsable = await createUsuario("SUPERVISOR");
+    const responsableInactivo = await createUsuario("ASESOR", false);
+    const leadSupervisor = await createLead(supervisorResponsable.id);
+    const leadInactivo = await createLead(responsableInactivo.id);
+
+    await detectLeadsAtrasados();
+
+    expect(
+      await prisma.notificacion.count({
+        where: { leadId: leadSupervisor.id, usuarioId: supervisorResponsable.id },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.notificacion.count({
+        where: { leadId: leadInactivo.id, usuarioId: responsableInactivo.id },
+      }),
+    ).toBe(0);
   });
 
   it("revierte el evento SLA si falla una escritura de notificación en la misma transacción", async () => {
