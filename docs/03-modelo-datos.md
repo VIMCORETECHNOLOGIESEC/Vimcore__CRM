@@ -201,10 +201,13 @@ UNIQUE (`cuenta_publicitaria_id`, `id_externo`)
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
-| `bridge_id` | uuid FK | |
-| `id_externo` | text | ID de la cuenta en la plataforma |
+| `bridge_id` | uuid FK | `onDelete: Cascade` |
+| `id_externo` | text | Unidad de suscripción de la plataforma. Para Meta: el ID de la **Página** de Facebook, nunca un Business Manager ni una cuenta publicitaria genérica — el webhook y el Page Access Token son por Página (`m4-bridges-crud-fundacion`, docs/05-bridges.md §3) |
 | `nombre` | text | |
+| `id_externo_vinculado` | text NULL | Cuenta profesional de Instagram vinculada a esa misma Página. Instagram no tiene suscripción ni token propios — sus leads llegan por el webhook de la Página, así que nunca es una fila aparte. NULL en el resto de las redes (`m4-bridges-crud-fundacion`) |
 | `activa` | boolean | |
+
+UNIQUE (`bridge_id`, `id_externo`) — target de upsert determinístico para el futuro adaptador y defensa contra filas de Página duplicadas (`m4-bridges-crud-fundacion`).
 
 ### `bridges`
 
