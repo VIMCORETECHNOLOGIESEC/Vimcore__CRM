@@ -715,11 +715,16 @@ Solo administrador.
 > **Progreso:** implementado contra un **mock en memoria**
 > (`funcionalidades/bridges/bridges.api.ts`), mismo criterio ya autorizado
 > para F3-F6 (no el de F7, que sí tuvo backend real de usuarios) -- se
-> verificó explícitamente antes de escribir código que **no existe ningún
-> backend de bridges**: `backend/src/routes/` solo tiene `auth.routes.ts`,
-> `salud.routes.ts` y `usuarios.routes.ts`; M8 (`docs/06-modulos-backend.md`)
-> no está implementado ni siquiera como esqueleto, y no hay modelos Prisma de
-> `bridges`/`cuentas_publicitarias`/`bridge_logs`. Cada punto de integración
+> verificó explícitamente antes de escribir código que **no existía ningún
+> backend de bridges** en ese momento: `backend/src/routes/` solo tenía
+> `auth.routes.ts`, `salud.routes.ts` y `usuarios.routes.ts`, sin modelos
+> Prisma de `bridges`/`cuentas_publicitarias`/`bridge_logs`. **Actualización
+> posterior:** el backend real ya existe -- CRUD de bridges y de cuentas
+> publicitarias, catálogos y bitácora acotada, módulo **M4**
+> (`docs/06-modulos-backend.md`, no M8: M8 es Notificaciones y tiempo real)
+> -- pero F8 todavía **no está conectado** a él; sigue sirviendo el mock
+> descrito abajo hasta que se haga la integración aislada M4+F8 (mismo
+> patrón que M8+F6). Cada punto de integración
 > pendiente está marcado con el token `INTEGRACION-BACKEND` (grepeable en
 > todo el repo). A diferencia de F3-F6, acá el **modelo de datos y el
 > catálogo de estados/niveles sí están fijados** por
@@ -737,7 +742,7 @@ Solo administrador.
 >   del bridge, solo `cuentas_publicitarias`. Se interpretó "campañas
 >   activas" como "al menos una cuenta publicitaria activa" -- la señal más
 >   cercana disponible en el modelo de datos documentado, a confirmar contra
->   el backend real (M8) si existiera un concepto de campaña más granular. Un
+>   el backend real (M4) si existiera un concepto de campaña más granular. Un
 >   bridge `INACTIVO` nunca dispara este aviso a propósito (ej. Google Forms
 >   desactivado por defecto en producción, docs/05 §6): no recibir leads ahí
 >   es el comportamiento esperado, no un problema de configuración.
@@ -793,10 +798,11 @@ Solo administrador.
 > cuentas publicitarias, bitácora con filtro por nivel). `tsc` + `vite build`
 > sin errores.
 >
-> Fuera de alcance: conexión real a un backend de bridges (M8, no existe) y
-> el contrato exacto de sus futuros endpoints (nombres de rutas/parámetros
-> son una suposición razonable a validar contra la implementación real antes
-> de conectar).
+> Fuera de alcance: conexión real al backend de bridges (M4, ya implementado
+> pero no conectado desde F8 -- ver nota de actualización arriba) y el
+> contrato exacto de sus endpoints (nombres de rutas/parámetros son una
+> suposición razonable a validar contra la implementación real, hoy en
+> `backend/src/routes/bridges.routes.ts`, antes de conectar).
 >
 > **Actualización (bridge-lifecycle-management, Fase 1, dev-front, fases
 > 5-8 del plan de tareas):** se agregó administración completa del ciclo de
