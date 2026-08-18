@@ -75,6 +75,17 @@ export const CITAS_TRANSACTION_BOUNDS: TransactionBounds = {
 };
 
 /**
+ * Límites de la transacción de `bridge.service.ts` (m4-bridges-crud-fundacion,
+ * PR2): independiente, mismo criterio que `CITAS_TRANSACTION_BOUNDS` — la
+ * decisión de borrado (`deleteBridge`) es un flujo de escritura propio que
+ * nunca anida con dedup/ingesta/gestión de leads/asignación/citas.
+ */
+export const BRIDGE_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+/**
  * Seam D1 (diseño M4, DD1c): si el llamador ya trae una transacción externa
  * (`txExterna`), `fn` corre dentro de ella y `bounds` se ignora — nunca se
  * abre una segunda transacción/conexión (precondición de DD2). Si no,

@@ -102,7 +102,7 @@ reingreso, hace 91 días sí.
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
 - [ ] Cifrado y descifrado de tokens (AES-256-GCM)
-- [ ] CRUD de bridges y cuentas publicitarias
+- [x] CRUD de bridges y cuentas publicitarias
 - [x] Registro en `bridge_logs` de todo error de recepción
 - [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
 - [ ] Trabajo programado: verificación de expiración de tokens

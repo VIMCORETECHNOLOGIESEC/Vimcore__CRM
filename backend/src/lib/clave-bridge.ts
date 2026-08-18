@@ -1,4 +1,19 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+
+/** Prefijo de toda clave de API de bridge — permite reconocerla a simple vista en logs/config. */
+const PREFIJO_CLAVE_BRIDGE = "brg_";
+
+/**
+ * D-M4-fundacion (diseño m4-bridges-crud-fundacion, DD "generarClaveBridge()
+ * shape and lifecycle"): clave de API en claro para un bridge, formato
+ * `brg_${32 bytes en base64url}`. Solo existe en memoria durante el ciclo de
+ * creación/regeneración — el servicio persiste únicamente
+ * `hashClaveBridge(clave)` y la devuelve en la respuesta HTTP una única vez
+ * (nunca se re-lee ni se recupera del hash).
+ */
+export function generarClaveBridge(): string {
+  return `${PREFIJO_CLAVE_BRIDGE}${randomBytes(32).toString("base64url")}`;
+}
 
 /**
  * D-M4 (diseño, DD4): hash sha256hex irreversible de la clave de API de un
