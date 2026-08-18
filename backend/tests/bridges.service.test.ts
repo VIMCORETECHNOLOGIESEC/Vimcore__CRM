@@ -1,14 +1,25 @@
+import { RedSocial } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
+import * as bridgeLogRepository from "../src/repositories/bridge-log.repository.js";
 import { prisma } from "../src/lib/prisma.js";
 import {
   createBridge,
   deleteBridge,
   getBridgeById,
+  listarLogs,
   listBridges,
+  redesActivas,
+  redesSoportadas,
   regenerarClave,
+  resolverLimiteLogs,
   updateBridge,
 } from "../src/services/bridge.service.js";
+import {
+  create as crearCuentaPublicitaria,
+  listByBridge as listarCuentasPorBridge,
+  toggleActiva,
+} from "../src/services/cuenta-publicitaria.service.js";
 
 let contador = 0;
 
@@ -18,7 +29,7 @@ function claveApiUnica(): string {
 }
 
 async function crearBridgeDirecto(
-  overrides: Partial<{ estado: "ACTIVO" | "INACTIVO"; redSocial: "FACEBOOK" | "GOOGLE_FORMS" }> = {},
+  overrides: Partial<{ estado: "ACTIVO" | "INACTIVO"; redSocial: RedSocial }> = {},
 ): Promise<{ id: string; claveApi: string }> {
   contador += 1;
   const claveApi = claveApiUnica();
@@ -172,5 +183,160 @@ describe("bridge.service — regenerarClave (Requirement: Key regeneration never
     await expect(
       regenerarClave("00000000-0000-0000-0000-000000000000"),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
+  });
+});
+
+describe("bridge.service — redesSoportadas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
+  it("devuelve exactamente los valores del enum RedSocial", () => {
+    const redes = redesSoportadas();
+
+    expect(redes).toHaveLength(Object.values(RedSocial).length);
+    expect(new Set(redes)).toEqual(new Set(Object.values(RedSocial)));
+  });
+});
+
+describe("bridge.service — redesActivas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
+  it("no duplica una red social compartida por dos bridges no eliminados", async () => {
+    await crearBridgeDirecto({ redSocial: "X" });
+    await crearBridgeDirecto({ redSocial: "X" });
+
+    const redes = await redesActivas();
+
+    expect(redes.filter((r) => r === "X")).toHaveLength(1);
+  });
+});
+
+describe("bridge.service — resolverLimiteLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
+  it("sin argumento devuelve el default 100", () => {
+    expect(resolverLimiteLogs(undefined)).toBe(100);
+  });
+
+  it("recorta un valor mayor a 500 al cap duro", () => {
+    expect(resolverLimiteLogs(10_000)).toBe(500);
+  });
+
+  it("respeta un valor válido dentro del rango", () => {
+    expect(resolverLimiteLogs(10)).toBe(10);
+  });
+});
+
+describe("bridge.service — listarLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
+  it("filtra por bridge y nivel, respetando el límite resuelto", async () => {
+    const { id } = await crearBridgeDirecto();
+    await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "INFO", mensaje: "info listarLogs" });
+    await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "ERROR", mensaje: "error listarLogs" });
+
+    const logs = await listarLogs(id, { nivel: "ERROR" });
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.nivel).toBe("ERROR");
+  });
+
+  it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
+    await expect(
+      listarLogs("00000000-0000-0000-0000-000000000000", {}),
+    ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
+  });
+});
+
+describe("cuenta-publicitaria.service — create (Requirement: Admin can manually create a CuentaPublicitaria)", () => {
+  it("crea la cuenta bajo el bridge indicado con instagramAccountId sin validar (texto libre)", async () => {
+    const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "FACEBOOK" });
+
+    const cuenta = await crearCuentaPublicitaria(bridgeId, {
+      idExterno: "page-123",
+      nombre: "Cuenta Meta",
+      instagramAccountId: "ig-cualquier-cosa-no-validada",
+    });
+
+    expect(cuenta.bridgeId).toBe(bridgeId);
+    expect(cuenta.instagramAccountId).toBe("ig-cualquier-cosa-no-validada");
+
+    const filaPersistida = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.id } });
+    expect(filaPersistida.idExternoVinculado).toBe("ig-cualquier-cosa-no-validada");
+  });
+
+  it("instagramAccountId es opcional y persiste null cuando se omite", async () => {
+    const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "GOOGLE_FORMS" });
+
+    const cuenta = await crearCuentaPublicitaria(bridgeId, { idExterno: "form-1", nombre: "Cuenta Forms" });
+
+    expect(cuenta.instagramAccountId).toBeNull();
+  });
+
+  it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
+    await expect(
+      crearCuentaPublicitaria("00000000-0000-0000-0000-000000000000", { idExterno: "x", nombre: "y" }),
+    ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
+  });
+});
+
+describe("cuenta-publicitaria.service — listByBridge", () => {
+  it("mapea instagramAccountId y nunca expone idExternoVinculado", async () => {
+    const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "FACEBOOK" });
+    await crearCuentaPublicitaria(bridgeId, {
+      idExterno: "page-list-1",
+      nombre: "Cuenta Lista",
+      instagramAccountId: "ig-list-1",
+    });
+
+    const cuentas = await listarCuentasPorBridge(bridgeId);
+
+    expect(cuentas).toHaveLength(1);
+    expect(cuentas[0]?.instagramAccountId).toBe("ig-list-1");
+    expect(cuentas[0]).not.toHaveProperty("idExternoVinculado");
+  });
+
+  it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
+    await expect(
+      listarCuentasPorBridge("00000000-0000-0000-0000-000000000000"),
+    ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
+  });
+});
+
+describe("cuenta-publicitaria.service — toggleActiva (Requirement: Bridge detail embeds its accounts; PATCH toggles only activation)", () => {
+  it("cambia solo activa, dejando idExterno/nombre intactos", async () => {
+    const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "LINKEDIN" });
+    const cuenta = await crearCuentaPublicitaria(bridgeId, { idExterno: "page-toggle", nombre: "Cuenta Toggle" });
+
+    const actualizada = await toggleActiva(bridgeId, cuenta.id, false);
+
+    expect(actualizada.activa).toBe(false);
+    expect(actualizada.idExterno).toBe("page-toggle");
+    expect(actualizada.nombre).toBe("Cuenta Toggle");
+  });
+
+  it("con una cuenta que no pertenece al bridge lanza cuenta_no_encontrada (404)", async () => {
+    const { id: bridgeA } = await crearBridgeDirecto({ redSocial: "LINKEDIN" });
+    const { id: bridgeB } = await crearBridgeDirecto({ redSocial: "LINKEDIN" });
+    const cuentaDeA = await crearCuentaPublicitaria(bridgeA, { idExterno: "page-cross", nombre: "Cuenta Cruzada" });
+
+    await expect(toggleActiva(bridgeB, cuentaDeA.id, false)).rejects.toMatchObject({
+      code: "cuenta_publicitaria_no_encontrada",
+      statusHttp: 404,
+    });
+  });
+
+  it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
+    await expect(
+      toggleActiva("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", false),
+    ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
+  });
+});
+
+describe("bridge.service — getBridgeById embeds cuentasPublicitarias mapped to instagramAccountId (Requirement: Bridge detail embeds its accounts)", () => {
+  it("nunca expone idExternoVinculado en las cuentas embebidas", async () => {
+    const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "INSTAGRAM" });
+    await crearCuentaPublicitaria(bridgeId, {
+      idExterno: "page-embed",
+      nombre: "Cuenta Embebida",
+      instagramAccountId: "ig-embed",
+    });
+
+    const detalle = await getBridgeById(bridgeId);
+
+    expect(detalle.cuentasPublicitarias).toHaveLength(1);
+    expect(detalle.cuentasPublicitarias[0]?.instagramAccountId).toBe("ig-embed");
+    expect(detalle.cuentasPublicitarias[0]).not.toHaveProperty("idExternoVinculado");
   });
 });
