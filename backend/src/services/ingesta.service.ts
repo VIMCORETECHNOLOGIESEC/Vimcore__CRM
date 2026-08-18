@@ -9,6 +9,7 @@ import { asignarTrasCommit } from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
+import { resolverLeadgenMeta } from "./meta-webhook.service.js";
 
 export interface IngestaResultado {
   recepcionId: string;
@@ -47,9 +48,12 @@ interface ResultadoTransaccion {
  *
  * `bridge_logs` se escribe SIEMPRE fuera de esta transacción (DD5,
  * Requirement: Bridge log durability), para que sobreviva a un rollback:
- * ERROR tras rollback (respuesta honesta, deja reintentar), ADVERTENCIA si
- * `datosIncompletos` tras commit, INFO en cualquier otro caso tras commit.
- * Cada escritura de log corre en su propio `try/catch` degradando a
+ * ERROR tras rollback (respuesta honesta, deja reintentar), INFO tras commit
+ * para toda recepción exitosa, y además ADVERTENCIA tras commit cuando la
+ * recepción es un sobre v2 de Meta con `datosIncompletos` (sin teléfono ni
+ * correo) — la v1 genérica ya conoce ese dato en el `POST`, así que su log
+ * de completación no lleva esta condición (docs/05-bridges.md §8). Cada
+ * escritura de log corre en su propio `try/catch` degradando a
  * `logger.error` — un fallo al loguear nunca debe enmascarar el error
  * original que se intentaba registrar.
  *
@@ -70,9 +74,41 @@ export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResult
   return leadRecibidoRepository.aceptarLeadRecibido(entrada);
 }
 
+/**
+ * Resuelve el `LeadEntrante` consumible de un sobre de ingesta ANTES de abrir
+ * la transacción de dedupe (2026-08-18, cambio consciente: soporte del sobre
+ * `META_PENDIENTE_DETALLE` v2). Para un sobre v1 (ingesta genérica) es una
+ * traducción pura, sin I/O. Para un sobre v2 (webhook de Meta) implica la
+ * consulta a Graph API con sus reintentos (`meta-webhook.service.ts::
+ * resolverLeadgenMeta`) — I/O de red lento que NUNCA debe correr dentro de
+ * una transacción de Postgres abierta (conexión del pool retenida sin
+ * necesidad, más el riesgo de que el `statement_timeout`/`idle_in_transaction
+ * _session_timeout` de `INGESTA_TRANSACTION_BOUNDS` la corte a mitad de una
+ * llamada HTTP externa). El lease adquirido por `claimNext` (60 s,
+ * `INGESTA_LEASE_MS`) ya protege esta sección contra que otro worker reclame
+ * la misma fila mientras tanto — sobra margen frente a los ~750ms que tarda
+ * como máximo `resolverLeadgenMeta` en agotar sus 3 intentos.
+ */
+async function resolverEntradaProcesamiento(
+  envelope: leadRecibidoRepository.PersistedEntradaProcesamiento,
+): Promise<{ entrada: LeadEntrante; recibidoEn: Date }> {
+  if (envelope.version === 1) {
+    return {
+      entrada: { ...envelope.entrada, ingresadoEn: new Date(envelope.entrada.ingresadoEn) },
+      recibidoEn: new Date(envelope.recibidoEn),
+    };
+  }
+  if (envelope.version === 2 && envelope.tipo === "META_PENDIENTE_DETALLE") {
+    const entrada = await resolverLeadgenMeta({ leadgenId: envelope.leadgenId, pageId: envelope.pageId });
+    return { entrada, recibidoEn: new Date(envelope.recibidoEn) };
+  }
+  throw new AppError("sobre_ingesta_invalido", 500, "El sobre de ingesta no es procesable");
+}
+
 export async function procesarRecepcion(
   claim: leadRecibidoRepository.InboxClaim,
 ): Promise<boolean> {
+  const resuelto = await resolverEntradaProcesamiento(claim.entradaProcesamiento);
   const resultado = await runInTransaction(
     undefined,
     async (tx) => {
@@ -82,23 +118,18 @@ export async function procesarRecepcion(
         tx,
       );
       if (!vigente) return null;
-      const envelope = vigente.entradaProcesamiento;
-      if (envelope.version !== 1) {
-        throw new AppError("sobre_ingesta_invalido", 500, "El sobre de ingesta no es procesable");
-      }
-      const entrada: LeadEntrante = {
-        ...envelope.entrada,
-        ingresadoEn: new Date(envelope.entrada.ingresadoEn),
-      };
-      const dedup = await deduplicateLead(entrada, new Date(envelope.recibidoEn), tx);
+      const { entrada, recibidoEn } = resuelto;
+      const dedup = await deduplicateLead(entrada, recibidoEn, tx);
+      const datosIncompletos = entrada.telefono === null && entrada.correo === null;
       const completed = await leadRecibidoRepository.completeClaim(
         claim.recepcionId,
         claim.leaseOwner,
         dedup.leadId,
+        datosIncompletos,
         tx,
       );
       if (!completed) throw new AppError("lease_ingesta_perdido", 409, "El lease de ingesta venció");
-      return { entrada, dedup };
+      return { entrada, dedup, datosIncompletos };
     },
     INGESTA_TRANSACTION_BOUNDS,
   );
@@ -116,6 +147,23 @@ export async function procesarRecepcion(
     mensaje: "Recepción de lead procesada",
     payload: { recepcionId: claim.recepcionId, leadId: resultado.dedup.leadId },
   });
+  // (2026-08-18, fix acotado a Meta v2, docs/05-bridges.md §8 "Lead sin
+  // teléfono ni correo → ... notificar a supervisores"): la ruta genérica
+  // (v1) ya conoce teléfono/correo en el `POST` — su log de completación
+  // arriba se deja intacto, sin condicionar. La v2 de Meta solo conoce el
+  // detalle real DESPUÉS de este commit (Graph API resuelto en el worker),
+  // así que necesita su propio aviso ADVERTENCIA en este punto —
+  // reutilizando `registrarBridgeLog`, el mismo mecanismo que ya notifica a
+  // administradores/supervisores en el resto del pipeline (ver
+  // `meta-webhook.service.ts::resolverLeadgenMeta`), sin inventar uno nuevo.
+  if (claim.entradaProcesamiento.version === 2 && resultado.datosIncompletos) {
+    await registrarLogSeguro({
+      bridgeId: resultado.entrada.bridgeId,
+      nivel: "ADVERTENCIA",
+      mensaje: "Meta: lead recibido y procesado con datos incompletos (sin teléfono ni correo)",
+      payload: { recepcionId: claim.recepcionId, leadId: resultado.dedup.leadId },
+    });
+  }
   return true;
 }
 

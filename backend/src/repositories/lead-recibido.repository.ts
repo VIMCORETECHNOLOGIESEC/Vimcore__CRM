@@ -13,6 +13,24 @@ export interface PersistedLeadEntranteV1 {
   entrada: Omit<LeadEntrante, "ingresadoEn"> & { ingresadoEn: string };
 }
 
+/**
+ * Sobre del buzón para el webhook de Meta (2026-08-18, cambio consciente:
+ * webhook de Meta pasado al patrón durable). A diferencia de la ingesta
+ * genérica, el `POST` del webhook de Meta solo trae `leadgen_id`/`page_id` —
+ * el `LeadEntrante` completo recién existe después de que el worker consulte
+ * Graph API (`meta-webhook.service.ts::resolverLeadgenMeta`), así que este
+ * sobre NO contiene una `entrada` todavía, a diferencia de la v1.
+ */
+export interface PersistedMetaPendienteDetalleV2 {
+  version: 2;
+  tipo: "META_PENDIENTE_DETALLE";
+  recibidoEn: string;
+  leadgenId: string;
+  pageId: string;
+}
+
+export type PersistedEntradaProcesamiento = PersistedLeadEntranteV1 | PersistedMetaPendienteDetalleV2;
+
 export interface AceptacionLead {
   recepcionId: string;
   estado: "ACEPTADO";
@@ -23,7 +41,7 @@ export interface InboxClaim {
   leaseOwner: string;
   intento: number;
   leaseHasta: Date;
-  entradaProcesamiento: PersistedLeadEntranteV1;
+  entradaProcesamiento: PersistedEntradaProcesamiento;
 }
 
 interface InboxClaimRow {
@@ -65,6 +83,58 @@ export async function aceptarLeadRecibido(
   return { recepcionId: row.recepcionId, estado: "ACEPTADO" };
 }
 
+export interface AceptarLeadgenMetaData {
+  bridgeId: string;
+  leadgenId: string;
+  pageId: string;
+}
+
+/**
+ * Encolado idempotente del webhook de Meta (2026-08-18, cambio consciente):
+ * mismo idioma SQL que `aceptarLeadRecibido` (`ON CONFLICT (bridge_id,
+ * id_externo_lead) DO UPDATE` — nunca `upsert`/catch-P2002, misma garantía de
+ * una sola fila ante redelivery concurrente del mismo `leadgen_id`), pero acá
+ * `id_externo_lead = leadgenId` porque es el único identificador que trae el
+ * webhook — el `LeadEntrante` completo (con el `idExternoLead` que Graph API
+ * confirma en el detalle, que en la práctica es el mismo `leadgen_id`) recién
+ * lo arma el worker. `payload` guarda `{leadgenId, pageId}` — el cuerpo crudo
+ * recibido en este punto, igual que `aceptarLeadRecibido` guarda
+ * `entrada.payloadOriginal` — no hay nada más crudo que consultar todavía.
+ * `datos_incompletos` queda `false` en la inserción: se desconoce hasta que
+ * el worker resuelve el detalle. `completeClaim` (ver más abajo) corrige este
+ * campo con el valor real en el mismo `UPDATE` que cierra la recepción, así
+ * que el valor final ya refleja el detalle resuelto por Graph API, no el
+ * placeholder de encolado.
+ */
+export async function aceptarLeadgenMetaPendiente(
+  data: AceptarLeadgenMetaData,
+  recibidoEn: Date = new Date(),
+  client: PrismaClientOrTransaction = prisma,
+): Promise<AceptacionLead> {
+  const envelope: PersistedMetaPendienteDetalleV2 = {
+    version: 2,
+    tipo: "META_PENDIENTE_DETALLE",
+    recibidoEn: recibidoEn.toISOString(),
+    leadgenId: data.leadgenId,
+    pageId: data.pageId,
+  };
+  const [row] = await client.$queryRaw<Array<{ recepcionId: string }>>(Prisma.sql`
+    INSERT INTO leads_recibidos (
+      id, bridge_id, id_externo_lead, payload, datos_incompletos, recibido_en,
+      entrada_procesamiento, estado, disponible_en
+    ) VALUES (
+      ${randomUUID()}::uuid, ${data.bridgeId}::uuid, ${data.leadgenId},
+      ${JSON.stringify({ leadgenId: data.leadgenId, pageId: data.pageId })}::jsonb,
+      false, ${recibidoEn},
+      ${JSON.stringify(envelope)}::jsonb, 'PENDIENTE', ${recibidoEn}
+    )
+    ON CONFLICT (bridge_id, id_externo_lead)
+    DO UPDATE SET bridge_id = EXCLUDED.bridge_id
+    RETURNING id AS "recepcionId"
+  `);
+  return { recepcionId: row.recepcionId, estado: "ACEPTADO" };
+}
+
 export async function claimNext(
   now: Date,
   owner: string,
@@ -90,7 +160,7 @@ export async function claimNext(
       reception.intentos AS intento, reception.lease_hasta AS "leaseHasta",
       reception.entrada_procesamiento AS "entradaProcesamiento"
   `);
-  return row ? { ...row, entradaProcesamiento: row.entradaProcesamiento as unknown as PersistedLeadEntranteV1 } : null;
+  return row ? { ...row, entradaProcesamiento: row.entradaProcesamiento as unknown as PersistedEntradaProcesamiento } : null;
 }
 
 export async function lockValidClaim(
@@ -106,18 +176,32 @@ export async function lockValidClaim(
       AND lease_owner = ${owner} AND lease_hasta > clock_timestamp()
     FOR UPDATE
   `);
-  return row ? { ...row, entradaProcesamiento: row.entradaProcesamiento as unknown as PersistedLeadEntranteV1 } : null;
+  return row ? { ...row, entradaProcesamiento: row.entradaProcesamiento as unknown as PersistedEntradaProcesamiento } : null;
 }
 
+/**
+ * `datosIncompletos` (2026-08-18, fix): recalculado por el llamador
+ * (`ingesta.service.ts::procesarRecepcion`) a partir del `LeadEntrante` YA
+ * RESUELTO — para un sobre v1 es el mismo valor que `aceptarLeadRecibido` ya
+ * escribió al encolar (recompute inocuo, sin cambio de comportamiento), pero
+ * para un sobre v2 de Meta (`aceptarLeadgenMetaPendiente`, que solo conoce
+ * `leadgen_id`/`page_id` al encolar y siempre inserta `false`) es la primera
+ * vez que la fila refleja si el detalle resuelto por Graph API trajo
+ * teléfono/correo. Sin este parámetro, `leads_recibidos.datos_incompletos`
+ * quedaba `false` para siempre en toda recepción de Meta, sin importar el
+ * detalle real — bitácora de auditoría desalineada con el lead persistido.
+ */
 export async function completeClaim(
   recepcionId: string,
   owner: string,
   leadId: string,
+  datosIncompletos: boolean,
   client: PrismaClientOrTransaction,
 ): Promise<boolean> {
   const rows = await client.$executeRaw(Prisma.sql`
     UPDATE leads_recibidos SET lead_id = ${leadId}::uuid, estado = 'PROCESADO',
-      procesado_en = clock_timestamp(), lease_owner = NULL, lease_hasta = NULL, ultimo_error = NULL
+      procesado_en = clock_timestamp(), lease_owner = NULL, lease_hasta = NULL, ultimo_error = NULL,
+      datos_incompletos = ${datosIncompletos}
     WHERE id = ${recepcionId}::uuid AND estado = 'PROCESANDO'
       AND lease_owner = ${owner} AND lease_hasta > clock_timestamp()
   `);

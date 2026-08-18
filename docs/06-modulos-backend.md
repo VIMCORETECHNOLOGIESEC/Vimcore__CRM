@@ -83,9 +83,10 @@ reingreso, hace 91 días sí.
 ## M4 — Ingesta y bridges
 
 > **Progreso:** rebanada parcial implementada en `m4-ingesta-bridges-parcial`
-> (endpoint genérico + adaptador Google Forms). Meta, LinkedIn, X, cifrado de
-> tokens, CRUD de bridges/cuentas publicitarias y los trabajos programados
-> quedan fuera de alcance de este cambio — llegan en un cambio SDD futuro.
+> (endpoint genérico + adaptador Google Forms). LinkedIn, X, CRUD de
+> administración de token (carga/renovación contra `/debug_token`) y los
+> trabajos programados (verificación diaria de token, bridge sin actividad por
+> 72 h) quedan fuera de alcance — llegan en un cambio SDD futuro.
 >
 > **Corrección retroactiva (M5, DD1):** `deduplicacion.service.ts::createLead`
 > no poblaba `redSocial`/`payloadOriginal`/`camposDinamicos` en `leads` pese a
@@ -93,31 +94,99 @@ reingreso, hace 91 días sí.
 > Corregido en `m5-gestion-leads` PR1 (commit `79f95aa`), con backfill NULL-only
 > para leads previos (`camposDinamicos` queda fuera del backfill a propósito,
 > ver `migration.sql`). El contrato y los endpoints de M4 no cambiaron.
+>
+> **Adaptador Meta (2026-08-18):** handshake + verificación de firma + consulta
+> de detalle implementados (`GET`/`POST /api/v1/ingesta/meta`,
+> `adapters/meta.adapter.ts`, `services/meta-webhook.service.ts`,
+> `lib/firma-meta.ts`). Fuera de esta rebanada, explícitamente: endpoints de
+> administración de token (carga/renovación contra `/debug_token`) y el trabajo
+> programado de verificación diaria de token — ambos ya listados abajo, sin
+> marcar. `campaign_id` se agregó a la consulta de detalle
+> (`GET /{leadgen_id}?fields=...,campaign_id`) — `LeadEntrante.idExternoCampania`
+> ya no queda `null` a propósito; se resuelve desde ahí, `null` solo si Graph
+> API no lo devuelve para ese lead puntual.
+>
+> **Webhook de Meta pasado al patrón durable (2026-08-18, cambio consciente):**
+> el `POST` ya NO consulta Graph API de forma síncrona antes de responder.
+> Encola cada `leadgen_id` en el mismo buzón `leads_recibidos` que usa
+> `POST /api/v1/ingesta/generico` (`repositories/lead-recibido.repository.ts::
+> aceptarLeadgenMetaPendiente`, sobre `META_PENDIENTE_DETALLE` v2, idempotente
+> por `(bridgeId, leadgenId)`). La consulta de detalle (con sus 3 reintentos),
+> el mapeo a `LeadEntrante` y la actualización de `estadoToken` ante token
+> inválido corren en el worker, DESPUÉS del commit del recibo
+> (`meta-webhook.service.ts::resolverLeadgenMeta`, invocado desde
+> `ingesta.service.ts::procesarRecepcion` — resuelve el `LeadEntrante` ANTES de
+> abrir la transacción de dedupe, porque la llamada a Graph API es I/O lento
+> que nunca debe correr dentro de una transacción de Postgres abierta; el
+> lease de 60s adquirido por `claimNext` protege esa ventana). Reutiliza el
+> mecanismo de reintento/`FALLA_MANUAL` ya existente del worker genérico en
+> vez de inventar uno nuevo solo para Meta — un fallo irrecuperable (cuenta no
+> encontrada, token no vigente, Graph API agotando reintentos) lanza y deja
+> que el ciclo estándar de 60s/300s decida.
+>
+> **Fix (2026-08-18):** `aceptarLeadgenMetaPendiente` inserta
+> `leads_recibidos.datos_incompletos = false` siempre, porque al encolar el
+> webhook solo se conoce `leadgen_id`/`page_id` — el teléfono/correo real
+> recién se sabe tras resolver el detalle en el worker. `completeClaim`
+> ahora recibe `datosIncompletos` (calculado sobre el `LeadEntrante` YA
+> resuelto) y lo persiste en el mismo `UPDATE` que cierra la recepción, así
+> la bitácora de auditoría queda alineada con el lead real. `procesarRecepcion`
+> además registra `bridge_logs` ADVERTENCIA (docs/05-bridges.md §8,
+> "notificar a supervisores") cuando ese sobre es de Meta y el detalle
+> resuelto no trae teléfono ni correo — la v1 genérica no se tocó.
 
 - [x] Contrato `LeadEntrante` y normalizador compartido
 - [x] Buzón PostgreSQL `leads_recibidos` con idempotencia, lease y recuperación
 - [x] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
 - [x] Adaptador Google Forms
-- [ ] Adaptador Meta: handshake, verificación de firma, consulta de detalle
+- [x] Adaptador Meta — handshake: responder `hub.challenge` en la suscripción
+      inicial (`GET /api/v1/ingesta/meta`, `META_WEBHOOK_VERIFY_TOKEN`)
+- [x] Adaptador Meta — verificación de firma `X-Hub-Signature-256`
+      (HMAC-SHA256 con `META_APP_SECRET` sobre el cuerpo crudo, `lib/firma-meta.ts`)
+- [x] Adaptador Meta — consulta de detalle (ejecutada por el worker durable,
+      no por el `POST` del webhook): `GET /{leadgen_id}` con el Page Access
+      Token descifrado, `campaign_id` incluido en los `fields`, reintento con
+      backoff exponencial (3 intentos), y registro del `leadgen_id` en
+      `bridge_logs` para reproceso manual si se agotan; token ya
+      `TOKEN_EXPIRADO`/`ERROR` u error de Graph API que indica token
+      inválido/revocado (código 190) evita/corta los reintentos y marca la
+      cuenta `TOKEN_EXPIRADO`
+- [x] Adaptador Meta — webhook encolado en `leads_recibidos` (sobre
+      `META_PENDIENTE_DETALLE`, idempotente por `(bridgeId, leadgenId)`):
+      mismo patrón de buzón/lease/worker que el endpoint genérico
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
+- [ ] Endpoints de administración de token de Meta (`05-bridges.md` §7): carga
+      y renovación con verificación inmediata contra `/debug_token`; el token
+      nunca se devuelve por API
 - [x] Cifrado y descifrado de tokens (AES-256-GCM) — `lib/cifrado-token.ts`;
       migración additiva de `estado_token`/`token_cifrado`/`token_expira_en`/
       `secreto_webhook` en `CuentaPublicitaria` (decisión 2026-08-18, granularidad
-      por Página — ver `03-modelo-datos.md` §cuentas_publicitarias). El
-      adaptador Meta que consume estos campos sigue pendiente
+      por Página — ver `03-modelo-datos.md` §cuentas_publicitarias). Ahora
+      consumido por el adaptador Meta (descifrado del Page Access Token antes
+      de consultar Graph API)
 - [x] CRUD de bridges y cuentas publicitarias
 - [x] Registro en `bridge_logs` de todo error de recepción
 - [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
-- [ ] Trabajo programado: verificación de expiración de tokens
+- [ ] Trabajo programado: verificación diaria de token vigente por Página vía
+      `/debug_token` y notificación a administradores ante invalidez/revocación
 - [ ] Trabajo programado: detección de bridge sin actividad por 72 h
 
 **Pruebas obligatorias:** `X-Bridge-Key` ausente, malformada o que no coincide
 con ningún bridge activo se rechaza con 401 y registra una fila `bridge_logs`
-ERROR (control por clave de API, no firma HMAC — eso es específico del futuro
-adaptador Meta, fuera de esta rebanada); el mismo `idExternoLead` dos veces,
-incluida entrega concurrente, produce un solo lead; lead sin teléfono ni
-correo se persiste con marca de dato incompleto.
+ERROR; el mismo `idExternoLead` dos veces, incluida entrega concurrente,
+produce un solo lead; lead sin teléfono ni correo se persiste con marca de
+dato incompleto; firma `X-Hub-Signature-256` ausente o inválida en el webhook
+de Meta se rechaza con 401 y registra `bridge_logs` ERROR sin encolar nada;
+firma válida encola el `leadgen_id` en `leads_recibidos` (sobre
+`META_PENDIENTE_DETALLE`) de forma idempotente y responde 200 sin llamar a
+Graph API; el worker resuelve ese sobre — consulta de detalle exitosa mapea
+el `LeadEntrante` y completa el mismo recibo; fallo transitorio de Graph API
+reintenta con backoff hasta 3 veces, registra `bridge_logs` ERROR y propaga
+el rechazo (el ciclo estándar de reintento/`FALLA_MANUAL` del worker se
+encarga, no un mecanismo nuevo); token ya `TOKEN_EXPIRADO` o detectado como
+inválido por Graph API (código 190) evita/corta los reintentos y marca la
+cuenta.
 
 La aceptación HTTP confirma solo el recibo durable. El worker completa deduplicación,
 eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del commit.
