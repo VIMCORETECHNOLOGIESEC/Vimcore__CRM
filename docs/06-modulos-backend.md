@@ -130,10 +130,19 @@ reingreso, hace 91 días sí.
 > recién se sabe tras resolver el detalle en el worker. `completeClaim`
 > ahora recibe `datosIncompletos` (calculado sobre el `LeadEntrante` YA
 > resuelto) y lo persiste en el mismo `UPDATE` que cierra la recepción, así
-> la bitácora de auditoría queda alineada con el lead real. `procesarRecepcion`
-> además registra `bridge_logs` ADVERTENCIA (docs/05-bridges.md §8,
-> "notificar a supervisores") cuando ese sobre es de Meta y el detalle
-> resuelto no trae teléfono ni correo — la v1 genérica no se tocó.
+> la bitácora de auditoría queda alineada con el lead real.
+>
+> **Fix (2026-08-19):** al investigar el fix anterior se encontró que
+> `procesarRecepcion` (el worker durable que reemplazó al `ingestarLead`
+> síncrono retirado) registraba SIEMPRE `bridge_logs` nivel INFO al
+> completar, para **cualquier bridge** — v1 genérico incluido, no solo Meta.
+> Era una regresión de la migración al buzón durable: el contrato retirado
+> (`describe.skip` en `ingesta.service.test.ts`) sí distinguía
+> INFO/ADVERTENCIA según `datosIncompletos`, y esa distinción se perdió al
+> mover la lógica al worker. Corregido: `procesarRecepcion` unifica el nivel
+> para todos los bridges (`ADVERTENCIA` si `datosIncompletos`, `INFO` si no),
+> restaurando la regla de docs/05-bridges.md §8 ("notificar a supervisores")
+> sin distinguir v1/v2 — ya no hace falta una rama especial para Meta.
 
 - [x] Contrato `LeadEntrante` y normalizador compartido
 - [x] Buzón PostgreSQL `leads_recibidos` con idempotencia, lease y recuperación

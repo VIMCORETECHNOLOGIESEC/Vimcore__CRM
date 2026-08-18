@@ -80,6 +80,35 @@ describe("trabajador del buzón de ingesta", () => {
     expect(await prisma.leadRecibido.findUniqueOrThrow({ where: { id: expired.id } })).toMatchObject({ estado: "PROCESANDO", leadId: null, ultimoError: null });
   });
 
+  it("registra ADVERTENCIA en bridge_logs cuando el lead resuelto no tiene telefono ni correo (v1 generico, docs/05-bridges.md §8)", async () => {
+    const base = await entrada();
+    const input: LeadEntrante = { ...base, telefono: null, correo: null };
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-advertencia", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-advertencia", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" }, orderBy: { ocurridoEn: "desc" } });
+    expect(log?.mensaje).toContain("datos incompletos");
+  });
+
+  it("registra INFO en bridge_logs cuando el lead resuelto tiene telefono (v1 generico)", async () => {
+    const input = await entrada();
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-info", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-info", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    const advertencia = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" } });
+    expect(advertencia).toBeNull();
+    const info = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "INFO" }, orderBy: { ocurridoEn: "desc" } });
+    expect(info).not.toBeNull();
+  });
+
   it("detiene reclamos y espera el trabajo activo antes de resolver el drenaje", async () => {
     vi.useFakeTimers();
     let resolveWork!: () => void;
