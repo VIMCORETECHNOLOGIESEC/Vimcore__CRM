@@ -94,20 +94,31 @@ obtener los campos.
 
 | Aspecto | Detalle |
 |---|---|
-| Permisos requeridos | `leads_retrieval`, `pages_manage_ads`, `pages_show_list`, `business_management` |
+| Permisos requeridos | `leads_retrieval`, `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement`, `ads_management` (verificado contra la Webhooks for Leadgen Guide vigente; `business_management` solo aplica si la app además administra el Business Manager en sí, no para la suscripción de leads) |
 | Verificación | Firma `X-Hub-Signature-256` (HMAC-SHA256 con el App Secret) |
 | Handshake | Responder al `hub.challenge` en la suscripción inicial |
-| Token | Page Access Token de larga duración (~60 días), renovable |
-| Campaña | Disponible en el detalle del lead (`campaign_id`, `campaign_name`, `ad_id`, `form_id`) |
-| Instagram | Comparte infraestructura con Facebook; se distingue por la plataforma de origen del anuncio |
+| Suscripción y token | **Por Página de Facebook**, no por Business ni por cuenta publicitaria: cada Página se suscribe individualmente (`POST /{page-id}/subscribed_apps`) y tiene su propio Page Access Token |
+| Vigencia del token | Un Page Access Token de larga duración (derivado de un User Token de larga duración) **no caduca en un ciclo fijo de ~60 días** — eso aplica solo a los User Tokens. El Page Token permanece válido hasta que se revoca el permiso, se cambia la contraseña del usuario o se desautoriza la app |
+| Campaña | Disponible consultando `GET /{leadgen_id}?fields=field_data,ad_id,form_id,campaign_name,ad_name` — no viene en el payload del webhook ni por defecto en la consulta |
+| Instagram | **No opera de forma independiente**: toda cuenta profesional de Instagram debe estar vinculada a una Página de Facebook para correr Lead Ads. Sus leads llegan por el webhook de esa misma Página — no existe suscripción ni token separado para Instagram. La API no expone un campo `platform` que distinga el origen; si se necesita reportar FB vs. IG, hay que derivarlo de `ad_id`/`form_id`/metadata de campaña |
 
-> **Bloqueante de cronograma (R3):** los permisos exigen App Review de Meta.
-> Inicia el proceso el primer día. Mientras tanto, desarrolla contra la
-> herramienta de pruebas de Lead Ads, que permite generar leads de prueba sin
-> campaña activa.
+> **Bloqueante de cronograma (R3):** los permisos exigen App Review de Meta,
+> y la Business Verification es hoy un requisito duro para obtener Advanced
+> Access sobre `ads_management`/`business_management` contra Páginas reales
+> (Standard Access solo sirve contra Páginas de prueba propias). Inicia el
+> proceso el primer día. Mientras tanto, desarrolla contra la herramienta de
+> pruebas de Lead Ads, que permite generar leads de prueba sin campaña activa.
 
-**Renovación de token:** trabajo programado diario que verifica expiración y
-notifica a los administradores 7 días antes.
+**Verificación de token:** trabajo programado diario que valida el token
+vigente por página vía `/debug_token` (no una cuenta regresiva fija de días,
+dado que el Page Token no expira por calendario) y notifica a los
+administradores ante invalidez o revocación detectada.
+
+**Modelo de datos:** `CuentaPublicitaria` representa una Página de Facebook
+(un `pageId` de Meta, su propio Page Access Token cifrado y su propio estado
+de suscripción al webhook), con un `instagramAccountId` opcional en la misma
+fila para la cuenta de Instagram vinculada — nunca una fila separada por
+Instagram, porque no tiene suscripción ni token propios.
 
 ---
 

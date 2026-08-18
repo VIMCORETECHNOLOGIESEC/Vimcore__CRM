@@ -422,10 +422,54 @@ model Bridge {
   estado       EstadoBridge @default(INACTIVO)
   ultimoLeadEn DateTime?    @map("ultimo_lead_en") @db.Timestamptz(6)
 
-  bridgeLogs     BridgeLog[]
-  leadsRecibidos LeadRecibido[]
+  bridgeLogs          BridgeLog[]
+  leadsRecibidos      LeadRecibido[]
+  cuentasPublicitarias CuentaPublicitaria[]
 
   @@map("bridges")
+}
+
+// Unidad de suscripción de la plataforma (D-M4-fundacion, diseño
+// m4-bridges-crud-fundacion). Para Meta, `idExterno` es el ID de la PÁGINA de
+// Facebook — el webhook y el Page Access Token son por Página, nunca por
+// Business Manager ni por cuenta publicitaria genérica (docs/05-bridges.md
+// §3). `@@unique([bridgeId, idExterno])` da al futuro adaptador un target de
+// upsert determinístico y bloquea filas de Página duplicadas.
+model CuentaPublicitaria {
+  id       String @id @default(uuid()) @db.Uuid
+  bridgeId String @map("bridge_id") @db.Uuid
+  idExterno String @map("id_externo") @db.Text
+  nombre   String @db.Text
+  // Cuenta profesional de Instagram vinculada a esa misma Página. Instagram
+  // no tiene suscripción ni token propios — sus leads llegan por el webhook
+  // de la Página vinculada, así que nunca es una fila aparte (docs/05-bridges.md
+  // §3). NULL en el resto de las redes.
+  idExternoVinculado String? @map("id_externo_vinculado") @db.Text
+  activa   Boolean @default(true)
+
+  bridge    Bridge     @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  campanias Campania[]
+
+  @@unique([bridgeId, idExterno])
+  @@map("cuentas_publicitarias")
+}
+
+// Campaña reportada por la plataforma de origen (docs/03-modelo-datos.md).
+// `redSocial` queda denormalizada a propósito (decisión de diseño
+// confirmada, docs/03 §campanias): una campaña pertenece a una sola red, no
+// se fusionan nombres homónimos entre plataformas.
+model Campania {
+  id                   String    @id @default(uuid()) @db.Uuid
+  cuentaPublicitariaId String    @map("cuenta_publicitaria_id") @db.Uuid
+  idExterno            String    @map("id_externo") @db.Text
+  nombre               String    @db.Text
+  redSocial            RedSocial @map("red_social")
+  activa               Boolean   @default(true)
+
+  cuentaPublicitaria CuentaPublicitaria @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+
+  @@unique([cuentaPublicitariaId, idExterno])
+  @@map("campanias")
 }
 
 // Bitácora de errores/eventos por bridge (docs/05-bridges.md §8). Se escribe
