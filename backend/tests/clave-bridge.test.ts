@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { compareClaveBridge, hashClaveBridge } from "../src/lib/clave-bridge.js";
+import { compareClaveBridge, generarClaveBridge, hashClaveBridge } from "../src/lib/clave-bridge.js";
 
 const { timingSafeEqualMock } = vi.hoisted(() => ({ timingSafeEqualMock: vi.fn() }));
 
@@ -80,5 +80,36 @@ describe("lib/clave-bridge — compareClaveBridge (M4, PR1)", () => {
 
     expect(resultado).toBe(false);
     expect(timingSafeEqualMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("lib/clave-bridge — generarClaveBridge (m4-bridges-crud-fundacion, DD tarea PR1.5/1.6)", () => {
+  it("produce una clave con el prefijo brg_", () => {
+    const clave = generarClaveBridge();
+
+    expect(clave.startsWith("brg_")).toBe(true);
+  });
+
+  it("la porción posterior al prefijo son 32 bytes de entropía en base64url (sin '+', '/' ni '=')", () => {
+    const clave = generarClaveBridge();
+    const cuerpo = clave.slice("brg_".length);
+
+    // base64url de 32 bytes: 43 caracteres sin padding (RFC 4648 §5).
+    expect(cuerpo).toHaveLength(43);
+    expect(/^[A-Za-z0-9_-]+$/.test(cuerpo)).toBe(true);
+    expect(Buffer.from(cuerpo, "base64url")).toHaveLength(32);
+  });
+
+  it("dos llamadas sucesivas producen claves distintas (entropía real, no un valor fijo)", () => {
+    const claveA = generarClaveBridge();
+    const claveB = generarClaveBridge();
+
+    expect(claveA).not.toBe(claveB);
+  });
+
+  it("genera 100 claves sin colisiones (uniqueness práctica de la entropía de 32 bytes)", () => {
+    const claves = new Set(Array.from({ length: 100 }, () => generarClaveBridge()));
+
+    expect(claves.size).toBe(100);
   });
 });

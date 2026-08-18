@@ -1,4 +1,4 @@
-import { Prisma, type NivelBridgeLog } from "@prisma/client";
+import { Prisma, type BridgeLog, type NivelBridgeLog } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface RegistrarLogData {
@@ -34,5 +34,38 @@ export async function registrarLog(
           ? Prisma.JsonNull
           : (JSON.parse(JSON.stringify(data.payload)) as Prisma.InputJsonValue),
     },
+  });
+}
+
+export interface ListByBridgeFiltros {
+  bridgeId: string;
+  nivel?: NivelBridgeLog;
+  fechaDesde?: Date;
+  fechaHasta?: Date;
+}
+
+/**
+ * `GET /bridges/:id/logs` (diseño m4-bridges-crud-fundacion, DD "log reads
+ * are capped server-side"): el clamp `limite<=500` con default 100 vive en
+ * `bridge.service.ts` (PR3) — este repositorio recibe `limite` ya resuelto
+ * por el caller y solo lo aplica como `take`, montado sobre el índice
+ * existente `@@index([bridgeId, ocurridoEn(sort: Desc)])`.
+ */
+export async function listByBridge(
+  filtros: ListByBridgeFiltros,
+  limite: number,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<BridgeLog[]> {
+  return client.bridgeLog.findMany({
+    where: {
+      bridgeId: filtros.bridgeId,
+      nivel: filtros.nivel,
+      ocurridoEn: {
+        gte: filtros.fechaDesde,
+        lte: filtros.fechaHasta,
+      },
+    },
+    orderBy: { ocurridoEn: "desc" },
+    take: limite,
   });
 }
