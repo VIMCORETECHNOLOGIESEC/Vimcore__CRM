@@ -1,7 +1,10 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { DetalleEventoAsignacion } from "./asignacion.service.js";
+import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import * as notificationRepository from "../repositories/notificacion.repository.js";
+import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 import { slaFilterBoundaries } from "./sla.calculator.js";
 
 export interface ResultadoDeteccion {
@@ -17,16 +20,12 @@ export interface ResultadoDeteccion {
  * services"). Todas las pruebas invocan esta función directo; ninguna
  * espera 15 minutos reales.
  *
- * D4/DD2 (idempotencia): dos consultas por tick, independientes del
- * volumen — Q1 trae los candidatos con la forma exacta de `idx_leads_sla`
- * (DD1), Q2 trae sus eventos `SLA_INCUMPLIDO` previos por lote. El filtro
- * `ocurridoEn >= slaInicioEn` (vigente) se resuelve en memoria: reasignar o
- * traspasar mueve `slaInicioEn` hacia adelante y el evento anterior queda
- * automáticamente fuera de la ventana, así el nuevo responsable vuelve a
- * ser alertable sin ninguna columna de reseteo.
- *
- * DD11: sin transacción envolvente — el tick no muta ningún `Lead`/`Usuario`,
- * solo escribe bitácora; un fallo parcial se autocorrige en el siguiente tick.
+ * La consulta inicial obtiene candidatos con la forma de `idx_leads_sla`.
+ * Cada candidato se procesa en una transacción independiente: se bloquea y
+ * relee el lead, se comprueba `SLA_INCUMPLIDO` en su ventana vigente y se
+ * persisten evento y notificaciones de forma atómica. El bloqueo serializa
+ * corridas concurrentes; mover `slaInicioEn` abre una nueva ventana sin una
+ * columna de reseteo. Los eventos SSE se publican solo después del commit.
  */
 export async function detectLeadsAtrasados(
   ahora: Date = new Date(),
@@ -36,38 +35,33 @@ export async function detectLeadsAtrasados(
   const candidatos = await leadRepository.findAtrasadosAbiertos(fronteraAtrasado);
   if (candidatos.length === 0) return { candidatos: 0, eventosCreados: 0 };
 
-  const previos = await leadEventoRepository.findPorLeadsYTipo(
-    candidatos.map((lead) => lead.id),
-    "SLA_INCUMPLIDO",
-  );
-
-  const ultimoPorLead = new Map<string, Date>();
-  for (const evento of previos) {
-    const actual = ultimoPorLead.get(evento.leadId);
-    if (!actual || evento.ocurridoEn > actual) ultimoPorLead.set(evento.leadId, evento.ocurridoEn);
-  }
-
   let eventosCreados = 0;
-  for (const lead of candidatos) {
-    const ultimo = ultimoPorLead.get(lead.id);
-    // `slaInicioEn` nunca es null aquí: Q1 filtra por `lte: fronteraAtrasado`.
-    if (ultimo && lead.slaInicioEn && ultimo >= lead.slaInicioEn) continue;
-
-    const detalle: DetalleEventoAsignacion = {
-      version: 1,
-      requiereNotificacion: true, // D5 — M8 lo consume
-      motivo: "sla_vencido",
-      responsableId: lead.vendedorId ?? lead.asesorId, // D13
-      responsableAnteriorId: null,
-      ejecutadoPorId: null,
-    };
-    await leadEventoRepository.createEvento({
-      leadId: lead.id,
-      tipo: "SLA_INCUMPLIDO",
-      usuarioId: null,
-      detalle: detalle as unknown as Prisma.InputJsonValue,
-    });
-    eventosCreados += 1;
+  for (const candidato of candidatos) {
+    const result = await runInTransaction(undefined, async (tx) => {
+      const lead = await leadRepository.findByIdForUpdate(candidato.id, tx);
+      if (!lead.slaInicioEn || lead.slaInicioEn > fronteraAtrasado || lead.cerradoEn) {
+        return { eventoCreado: false, committed: [] };
+      }
+      const previous = await leadEventoRepository.findSlaIncumplidoVigente(
+        lead.id,
+        lead.slaInicioEn,
+        tx,
+      );
+      if (previous) return { eventoCreado: false, committed: [] };
+      const responsableId = lead.vendedorId ?? lead.asesorId;
+      const detalle: DetalleEventoAsignacion = { version: 1, requiereNotificacion: true, motivo: "sla_vencido", responsableId, responsableAnteriorId: null, ejecutadoPorId: null };
+      await leadEventoRepository.createEvento({ leadId: lead.id, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
+      const supervisorIds = await notificationRepository.findActiveRecipientIds(["SUPERVISOR"], tx);
+      const owner = responsableId
+        ? await notificationRepository.findActiveRecipientById(responsableId, tx)
+        : null;
+      const recipientIds = [...new Set([...supervisorIds, ...(owner ? [owner.id] : [])])];
+      const notifications = [];
+      for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atención del lead ha vencido", leadId: lead.id }, tx));
+      return { eventoCreado: true, committed: notifications.flatMap(notificationEvents) };
+    }, ASIGNACION_TRANSACTION_BOUNDS);
+    if (result.eventoCreado) eventosCreados += 1;
+    publishCommittedEvents(result.committed);
   }
 
   return { candidatos: candidatos.length, eventosCreados };

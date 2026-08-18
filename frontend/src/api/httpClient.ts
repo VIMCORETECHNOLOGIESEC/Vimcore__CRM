@@ -103,6 +103,11 @@ export function getRefreshToken(): string | null {
 type SessionExpiredHandler = () => void;
 let onSessionExpired: SessionExpiredHandler | null = null;
 
+function expireSession(): void {
+  setTokens(null);
+  onSessionExpired?.();
+}
+
 /** Registrado por `AuthProvider` para limpiar el estado de sesión en React. */
 export function setOnSessionExpired(handler: SessionExpiredHandler | null): void {
   onSessionExpired = handler;
@@ -138,8 +143,7 @@ async function refreshAccessToken(): Promise<string | null> {
         return data.accessToken;
       })
       .catch(() => {
-        setTokens(null);
-        onSessionExpired?.();
+        expireSession();
         return null;
       })
       .finally(() => {
@@ -181,8 +185,10 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   params?: Record<string, QueryParamValue>;
   /** No adjunta ni espera `Authorization` (login, refresh). */
   skipAuth?: boolean;
-  /** Uso interno: evita reintentar refrescos infinitamente. */
-  isRetry?: boolean;
+}
+
+export interface AuthenticatedFetchOptions extends RequestInit {
+  params?: Record<string, QueryParamValue>;
 }
 
 interface ApiErrorBody {
@@ -201,8 +207,59 @@ function buildQueryString(params?: Record<string, QueryParamValue>): string {
   return query ? `?${query}` : "";
 }
 
+async function fetchAuthenticatedResponse(
+  path: string,
+  options: AuthenticatedFetchOptions,
+  isRetry: boolean,
+): Promise<Response> {
+  const { headers, params, ...rest } = options;
+  const finalHeaders: Record<string, string> = {
+    ...(headers as Record<string, string> | undefined),
+  };
+  if (accessToken) {
+    finalHeaders.Authorization = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, {
+    ...rest,
+    headers: finalHeaders,
+  });
+
+  if (response.status !== 401) {
+    return response;
+  }
+
+  if (isRetry) {
+    expireSession();
+    return response;
+  }
+
+  const hadLocalSession = accessToken !== null || refreshTokenValue !== null;
+  const newAccessToken = await refreshAccessToken();
+  if (newAccessToken) {
+    return fetchAuthenticatedResponse(path, options, true);
+  }
+  if (hadLocalSession && (accessToken !== null || refreshTokenValue !== null)) {
+    expireSession();
+  }
+  return response;
+}
+
+/**
+ * Ejecuta una petición autenticada y devuelve la `Response` sin consumirla.
+ * Se usa tanto por el cliente JSON como por streams SSE: el bearer viaja solo
+ * en headers, un 401 admite como máximo un refresco y un segundo 401 expira la
+ * sesión antes de devolver la respuesta terminal al consumidor.
+ */
+export function authenticatedFetch(
+  path: string,
+  options: AuthenticatedFetchOptions = {},
+): Promise<Response> {
+  return fetchAuthenticatedResponse(path, options, false);
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuth, isRetry, headers, params, ...rest } = options;
+  const { body, skipAuth, headers, params, ...rest } = options;
 
   const finalHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -214,20 +271,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, {
+    const fetchOptions = {
       ...rest,
       headers: finalHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+      params,
+    };
+    response = skipAuth
+      ? await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, fetchOptions)
+      : await authenticatedFetch(path, fetchOptions);
   } catch {
     throw new ApiError("error_red", 0, NETWORK_ERROR_MESSAGE);
   }
 
-  if (response.status === 401 && !skipAuth && !isRetry) {
-    const newAccessToken = await refreshAccessToken();
-    if (newAccessToken) {
-      return request<T>(path, { ...options, isRetry: true });
-    }
+  if (response.status === 401 && !skipAuth) {
     throw new ApiError("sesion_expirada", 401, SESSION_EXPIRED_MESSAGE);
   }
 

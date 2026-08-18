@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  authenticatedFetch,
   getAccessToken,
   getErrorMessage,
   getRefreshToken,
@@ -144,8 +145,10 @@ describe("httpClient — reintento automático ante 401", () => {
     expect(getRefreshToken()).toBe("refresh-2");
   });
 
-  it("no reintenta un 401 recibido durante el reintento (evita loop infinito)", async () => {
+  it("expira la sesión ante un segundo 401 y no entra en un loop de refresco", async () => {
     setTokens({ accessToken: "token-viejo", refreshToken: "refresh-1" });
+    const onSessionExpired = vi.fn();
+    setOnSessionExpired(onSessionExpired);
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -157,15 +160,15 @@ describe("httpClient — reintento automático ante 401", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    // El reintento (isRetry: true) ya no dispara un segundo refresco: se
-    // propaga tal cual el error que trajo la respuesta 401 del reintento.
     await expect(httpClient.get("/protegido")).rejects.toMatchObject({
-      code: "no_autorizado",
+      code: "sesion_expirada",
       status: 401,
     });
 
     // original + refresh + un único reintento -- nunca un segundo refresco.
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    expect(getAccessToken()).toBeNull();
   });
 
   it("sin refresh token guardado, un 401 no intenta refrescar y falla directo", async () => {
@@ -179,6 +182,71 @@ describe("httpClient — reintento automático ante 401", () => {
       code: "sesion_expirada",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("authenticatedFetch — respuesta autenticada reutilizable", () => {
+  it("devuelve la respuesta sin consumirla y autentica solo con el header Bearer", async () => {
+    setTokens({ accessToken: "token-sse", refreshToken: "refresh-sse" });
+    const response = new Response("data: conectado\n\n", { status: 200 });
+    const fetchMock = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await authenticatedFetch("/eventos", {
+      headers: { Accept: "text/event-stream" },
+    });
+
+    expect(resultado).toBe(response);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3000/api/v1/eventos");
+    expect(url).not.toContain("token");
+    expect(init.headers).toMatchObject({
+      Accept: "text/event-stream",
+      Authorization: "Bearer token-sse",
+    });
+  });
+
+  it("ante un 401 refresca una vez y devuelve la segunda respuesta con el bearer nuevo", async () => {
+    setTokens({ accessToken: "token-viejo", refreshToken: "refresh-1" });
+    const streamResponse = new Response(null, { status: 200 });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { accessToken: "token-nuevo", refreshToken: "refresh-2" }),
+      )
+      .mockResolvedValueOnce(streamResponse);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await authenticatedFetch("/eventos");
+
+    expect(resultado).toBe(streamResponse);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [retryUrl, retryInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(retryUrl).toBe("http://localhost:3000/api/v1/eventos");
+    expect((retryInit.headers as Record<string, string>).Authorization).toBe("Bearer token-nuevo");
+  });
+
+  it("si el reintento también recibe 401, limpia la sesión y no refresca otra vez", async () => {
+    setTokens({ accessToken: "token-viejo", refreshToken: "refresh-1" });
+    const onSessionExpired = vi.fn();
+    setOnSessionExpired(onSessionExpired);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { accessToken: "token-nuevo", refreshToken: "refresh-2" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await authenticatedFetch("/eventos");
+
+    expect(resultado.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
   });
 });
 

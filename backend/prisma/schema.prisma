@@ -18,6 +18,25 @@ enum RolUsuario {
   @@map("rol_usuario")
 }
 
+enum TipoNotificacion {
+  LEAD_ASIGNADO
+  LEAD_TRASPASADO
+  LEAD_SIN_ATENDER
+  LEAD_SIN_ASIGNAR
+  RECORDATORIO_CITA
+  ERROR_BRIDGE
+  TOKEN_POR_EXPIRAR
+  INTERACCION_REPETIDA
+
+  @@map("tipo_notificacion")
+}
+
+enum CanalNotificacion {
+  IN_APP
+
+  @@map("canal_notificacion")
+}
+
 model Usuario {
   id                 String     @id @default(uuid()) @db.Uuid
   nombre             String     @db.Text
@@ -39,6 +58,7 @@ model Usuario {
   respuestasFormulario RespuestaFormulario[]
   // M7: citas donde este usuario es el responsable (`usuario_id`, "Responsable").
   citas                Cita[]
+  notificaciones       Notificacion[]
 
   @@map("usuarios")
 }
@@ -204,6 +224,7 @@ model Lead {
   leadsRecibidos       LeadRecibido[]
   respuestasFormulario RespuestaFormulario[]
   citas                Cita[]
+  notificaciones       Notificacion[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
@@ -263,6 +284,25 @@ model RespuestaFormulario {
 
   @@index([leadId, registradoEn])
   @@map("respuestas_formulario")
+}
+
+model Notificacion {
+  id        String            @id @default(uuid()) @db.Uuid
+  usuarioId String            @map("usuario_id") @db.Uuid
+  tipo      TipoNotificacion
+  canal     CanalNotificacion @default(IN_APP)
+  titulo    String            @db.Text
+  mensaje   String            @db.Text
+  leadId    String?           @map("lead_id") @db.Uuid
+  leidaEn   DateTime?         @map("leida_en") @db.Timestamptz(6)
+  creadaEn  DateTime          @default(now()) @map("creada_en") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([usuarioId, creadaEn(sort: Desc)], map: "idx_notificaciones_usuario_creada")
+  @@index([leadId])
+  @@map("notificaciones")
 }
 
 enum ModalidadCita {
@@ -356,6 +396,16 @@ enum NivelBridgeLog {
   @@map("nivel_bridge_log")
 }
 
+enum EstadoRecepcion {
+  PENDIENTE
+  PROCESANDO
+  REINTENTO
+  PROCESADO
+  FALLA_MANUAL
+
+  @@map("estado_recepcion")
+}
+
 // Conexión con una red social (docs/05-bridges.md §1, §7). D-M4: el cifrado
 // de token (`token_cifrado`, `secreto_webhook`) queda fuera de esta
 // rebanada — no hay token reversible que cifrar todavía, Meta/LinkedIn
@@ -411,10 +461,19 @@ model LeadRecibido {
   payload          Json     @db.JsonB
   datosIncompletos Boolean  @default(false) @map("datos_incompletos")
   recibidoEn       DateTime @default(now()) @map("recibido_en") @db.Timestamptz(6)
+  entradaProcesamiento Json             @map("entrada_procesamiento") @db.JsonB
+  estado              EstadoRecepcion   @default(PENDIENTE)
+  intentos            Int               @default(0)
+  disponibleEn        DateTime          @default(now()) @map("disponible_en") @db.Timestamptz(6)
+  leaseOwner          String?           @map("lease_owner") @db.Text
+  leaseHasta          DateTime?         @map("lease_hasta") @db.Timestamptz(6)
+  ultimoError         String?           @map("ultimo_error") @db.Text
+  procesadoEn         DateTime?         @map("procesado_en") @db.Timestamptz(6)
 
   bridge Bridge @relation(fields: [bridgeId], references: [id], onDelete: Restrict)
   lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@unique([bridgeId, idExternoLead])
+  @@index([estado, disponibleEn], map: "idx_leads_recibidos_estado_disponible")
   @@map("leads_recibidos")
 }

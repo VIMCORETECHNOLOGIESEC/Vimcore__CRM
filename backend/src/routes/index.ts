@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { authRouter } from "./auth.routes.js";
 import { citasRouter } from "./citas.routes.js";
+import { eventsRouter } from "./eventos.routes.js";
 import { formulariosRouter } from "./formularios.routes.js";
 import { ingestaRouter } from "./ingesta.routes.js";
 import { leadsRouter } from "./leads.routes.js";
+import { notificationsRouter } from "./notificaciones.routes.js";
 import { healthRouter } from "./salud.routes.js";
 import { usuariosRouter } from "./usuarios.routes.js";
 
@@ -16,3 +18,5 @@ apiRouter.use(ingestaRouter);
 apiRouter.use(leadsRouter);
 apiRouter.use(formulariosRouter);
 apiRouter.use(citasRouter);
+apiRouter.use(notificationsRouter);
+apiRouter.use(eventsRouter);

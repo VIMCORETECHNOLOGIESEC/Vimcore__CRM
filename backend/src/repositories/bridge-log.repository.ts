@@ -1,5 +1,5 @@
 import { Prisma, type NivelBridgeLog } from "@prisma/client";
-import { prisma } from "../lib/prisma.js";
+import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface RegistrarLogData {
   bridgeId: string | null;
@@ -20,8 +20,11 @@ export interface RegistrarLogData {
  * degradando a `logger.error` (diseño M4, DD5): un fallo al loguear nunca
  * debe enmascarar el error original que se intentaba registrar.
  */
-export async function registrarLog(data: RegistrarLogData): Promise<void> {
-  await prisma.bridgeLog.create({
+export async function registrarLog(
+  data: RegistrarLogData,
+  client: PrismaClientOrTransaction = prisma,
+) {
+  return client.bridgeLog.create({
     data: {
       bridgeId: data.bridgeId,
       nivel: data.nivel,

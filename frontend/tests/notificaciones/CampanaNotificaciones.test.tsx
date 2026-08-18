@@ -16,11 +16,29 @@ vi.mock("@/funcionalidades/notificaciones/notificaciones.api", () => ({
   markAllNotificacionesLeidasApi: vi.fn(),
 }));
 
+const realtime = vi.hoisted(() => ({
+  estado: "connected",
+  reintentar: vi.fn(),
+  onNueva: undefined as ((notificacion: Notificacion) => void) | undefined,
+}));
+vi.mock("@/funcionalidades/notificaciones/useNotificacionesRealtime", () => ({
+  useNotificacionesRealtime: vi.fn((onNueva) => {
+    realtime.onNueva = onNueva;
+    return { estado: realtime.estado, reintentar: realtime.reintentar };
+  }),
+}));
+vi.mock("@/funcionalidades/notificaciones/NotificacionToast", () => ({
+  showNotificacionToast: vi.fn(),
+}));
+
 const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
 const { fetchNotificacionesApi, markNotificacionLeidaApi, markAllNotificacionesLeidasApi } =
   await import("@/funcionalidades/notificaciones/notificaciones.api");
 const { CampanaNotificaciones } = await import(
   "@/funcionalidades/notificaciones/CampanaNotificaciones"
+);
+const { showNotificacionToast } = await import(
+  "@/funcionalidades/notificaciones/NotificacionToast"
 );
 
 const useAuthMock = vi.mocked(useAuth);
@@ -69,6 +87,8 @@ beforeEach(() => {
   });
   markNotificacionLeidaApiMock.mockResolvedValue(undefined);
   markAllNotificacionesLeidasApiMock.mockResolvedValue(undefined);
+  realtime.estado = "connected";
+  realtime.reintentar.mockReset();
 });
 
 afterEach(() => {
@@ -150,7 +170,7 @@ describe("CampanaNotificaciones — marcar como leída", () => {
     await user.click(await screen.findByRole("button", { name: /Marcar "Error de bridge" como leída/ }));
 
     await waitFor(() => {
-      expect(markNotificacionLeidaApiMock).toHaveBeenCalledWith("u1", "1");
+      expect(markNotificacionLeidaApiMock).toHaveBeenCalledWith("1");
     });
   });
 
@@ -166,7 +186,7 @@ describe("CampanaNotificaciones — marcar como leída", () => {
     await user.click(await screen.findByRole("button", { name: "Marcar todas como leídas" }));
 
     await waitFor(() => {
-      expect(markAllNotificacionesLeidasApiMock).toHaveBeenCalledWith("u1");
+      expect(markAllNotificacionesLeidasApiMock).toHaveBeenCalledWith();
     });
   });
 
@@ -180,5 +200,40 @@ describe("CampanaNotificaciones — marcar como leída", () => {
     await user.click(await screen.findByRole("button", { name: /Notificaciones/ }));
 
     expect(await screen.findByRole("button", { name: "Marcar todas como leídas" })).toBeDisabled();
+  });
+});
+
+describe("CampanaNotificaciones — estado del canal en tiempo real", () => {
+  it("muestra una señal visible y polite al reconectar sin robar el foco", async () => {
+    fetchNotificacionesApiMock.mockResolvedValue([]);
+    realtime.estado = "reconnecting";
+    const focusAnchor = document.createElement("button");
+    document.body.append(focusAnchor);
+    focusAnchor.focus();
+
+    renderCampana();
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Reconectando notificaciones");
+    expect(focusAnchor).toHaveFocus();
+    focusAnchor.remove();
+  });
+
+  it("permite reintentar un estado terminal con teclado", async () => {
+    fetchNotificacionesApiMock.mockResolvedValue([]);
+    realtime.estado = "terminal";
+    const user = userEvent.setup();
+    renderCampana();
+    const retry = await screen.findByRole("button", { name: "Reintentar notificaciones" });
+    retry.focus();
+    await user.keyboard("{Enter}");
+    expect(realtime.reintentar).toHaveBeenCalledTimes(1);
+  });
+
+  it("envía cada notificación nueva al toast navegable", async () => {
+    fetchNotificacionesApiMock.mockResolvedValue([]);
+    renderCampana();
+    const incoming = notificacionFake({ id: "nueva" });
+    realtime.onNueva?.(incoming);
+    expect(showNotificacionToast).toHaveBeenCalledWith(incoming, expect.any(Function));
   });
 });

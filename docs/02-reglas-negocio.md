@@ -240,3 +240,14 @@ que sigan visibles al iniciar sesión.
 | Gestionar bridges y tokens | ✅ | ❌ | ❌ | ❌ |
 
 Todo permiso se verifica en el backend por cada petición.
+
+### M8 — Garantías de entrega atómica
+
+Los productores de SLA y citas reclaman cada ventana de elegibilidad de forma
+atómica, persisten la notificación junto con el evento o marca que la origina y
+publican SSE solo después del commit. `ERROR_BRIDGE` se emite solo junto con una
+fila `bridge_logs.ERROR` confirmada.
+
+`TOKEN_POR_EXPIRAR` permanece en el contrato, pero su productor queda diferido
+al alcance restante de M4. M8 no infiere fechas de expiración mientras no
+existan almacenamiento cifrado y `token_expira_en`.

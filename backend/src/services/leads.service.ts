@@ -8,6 +8,7 @@ import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js"
 import { applyFormulario } from "./formularios.service.js";
 import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
+import { publishCommittedEvents } from "./committed-events.service.js";
 
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 const ETAPAS_TERMINALES: readonly EtapaLead[] = ["VENTA", "NO_VENTA"];
@@ -152,7 +153,7 @@ export async function transitionEtapa(
   id: string,
   body: PatchEtapaBody,
 ): Promise<Lead> {
-  return runInTransaction(
+  const result = await runInTransaction(
     undefined,
     async (tx) => {
       const lead = await leadRepository.findById(id, tx);
@@ -210,10 +211,13 @@ export async function transitionEtapa(
         tx,
       );
 
-      return leadActualizado;
+      const recipients = [...new Set([leadActualizado.asesorId, leadActualizado.vendedorId].filter((id): id is string => id !== null))];
+      return { lead: leadActualizado, events: recipients.map((userId) => ({ userId, type: "lead.etapa-cambiada" as const, data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa } })) };
     },
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );
+  publishCommittedEvents(result.events);
+  return result.lead;
 }
 
 /**

@@ -1,5 +1,7 @@
 import * as citaRepository from "../repositories/cita.repository.js";
-import { logger } from "../lib/logger.js";
+import { CITAS_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import * as notificationRepository from "../repositories/notificacion.repository.js";
+import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 
 /** Ventana del checklist M7: "recordatorio 1 hora antes". */
 const VENTANA_RECORDATORIO_MS = 60 * 60 * 1000;
@@ -41,23 +43,26 @@ export async function enviarRecordatoriosCita(
   const candidatos = await citaRepository.findPendientesDeRecordatorio(ahora, hasta);
   if (candidatos.length === 0) return { candidatos: 0, recordatoriosMarcados: 0 };
 
-  const resultado = await citaRepository.marcarRecordatorioEnviado(
-    candidatos.map((cita) => cita.id),
-  );
-
+  let recordatoriosMarcados = 0;
   for (const cita of candidatos) {
-    // M8 (nota de diseño, punto de enganche): reemplazar por la escritura
-    // real en `notificaciones` + emisión SSE al responsable (`cita.usuarioId`).
-    logger.info(
-      {
-        citaId: cita.id,
-        leadId: cita.leadId,
-        usuarioId: cita.usuarioId,
-        programadaPara: cita.programadaPara,
-      },
-      "citas-recordatorio: recordatorio marcado (emisión real de notificación/SSE pendiente de M8)",
-    );
+    const committed = await runInTransaction(undefined, async (tx) => {
+      const claimed = await citaRepository.marcarRecordatorioEnviado([cita.id], tx);
+      if (claimed.count === 0) return [];
+      const notification = await notificationRepository.createNotificacion(
+        {
+          usuarioId: cita.usuarioId,
+          tipo: "RECORDATORIO_CITA",
+          titulo: "Recordatorio de cita",
+          mensaje: "Tienes una cita programada para " + cita.programadaPara.toISOString(),
+          leadId: cita.leadId,
+        },
+        tx,
+      );
+      return notificationEvents(notification);
+    }, CITAS_TRANSACTION_BOUNDS);
+    if (committed.length > 0) recordatoriosMarcados += 1;
+    publishCommittedEvents(committed);
   }
 
-  return { candidatos: candidatos.length, recordatoriosMarcados: resultado.count };
+  return { candidatos: candidatos.length, recordatoriosMarcados };
 }

@@ -74,9 +74,12 @@ deduplicación por teléfono **no** detecta, porque un mismo lead legítimo sí 
 volver a entrar como reingreso. Son dos problemas distintos y necesitan dos
 defensas distintas.
 
-**Respuesta al webhook:** devolver `200 OK` de inmediato tras validar la firma y
-encolar el procesamiento. Meta reintenta agresivamente si el webhook tarda, y una
-cadena de reintentos por lentitud puede saturar el bridge.
+**Respuesta al webhook:** después de validar y confirmar el commit en PostgreSQL,
+devolver exactamente `200 { recepcionId, estado: "ACEPTADO" }`. El identificador
+es opaco y confirma solo recepción durable, no creación del lead. Un duplicado
+secuencial o concurrente obtiene el recibo original. El worker reclama con lease,
+procesa en transacción y publica SSE/asigna únicamente después del commit; al
+tercer fallo conserva el sobre y el error en `FALLA_MANUAL`.
 
 ---
 

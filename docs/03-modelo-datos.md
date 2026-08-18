@@ -240,21 +240,26 @@ a un rollback (`m4-ingesta-bridges-parcial`, DD5).
 
 ### `leads_recibidos`
 
-Recepción cruda de cada lead entrante, previa a la deduplicación
-(`m4-ingesta-bridges-parcial`, F1).
+Recepción cruda y buzón durable de cada lead entrante, previo a la deduplicación.
 
 | Columna | Tipo | Nota |
 |---|---|---|
 | `id` | uuid PK | |
 | `bridge_id` | uuid FK | |
 | `id_externo_lead` | text | Identificador del lead en la plataforma de origen |
-| `lead_id` | uuid FK NULL | Nulo hasta que la transacción de ingesta lo resuelve — no hay máquina de estados de recepción |
+| `lead_id` | uuid FK NULL | Nulo hasta que el worker completa el procesamiento |
 | `payload` | jsonb | Cuerpo crudo recibido, incluida la atribución de campaña sin resolver (`id_externo_campania`, `nombre_campania`, `id_externo_cuenta`) |
 | `datos_incompletos` | boolean | `true` si llegó sin teléfono ni correo |
 | `recibido_en` | timestamptz | |
+| `entrada_procesamiento` | jsonb | Sobre interno versionado; conserva la entrada y sus timestamps |
+| `estado` | enum | `PENDIENTE`, `PROCESANDO`, `REINTENTO`, `PROCESADO`, `FALLA_MANUAL` |
+| `intentos` / `disponible_en` | int / timestamptz | Reintentos automáticos acotados: 60 s y 300 s, máximo 3 intentos |
+| `lease_owner` / `lease_hasta` | text / timestamptz NULL | Propiedad temporal del claim; permite recuperar workers caídos |
+| `ultimo_error` / `procesado_en` | text / timestamptz NULL | Diagnóstico manual y finalización observable |
 
 UNIQUE (`bridge_id`, `id_externo_lead`) — defensa de idempotencia contra
 reintentos de webhook, incluida entrega concurrente.
+Los índices parciales de disponibilidad y lease vencido sostienen `FOR UPDATE SKIP LOCKED`.
 
 ### `notificaciones`
 
@@ -262,7 +267,7 @@ reintentos de webhook, incluida entrega concurrente.
 |---|---|---|
 | `id` | uuid PK | |
 | `usuario_id` | uuid FK | |
-| `tipo` | enum | |
+| `tipo` | enum | `LEAD_ASIGNADO`, `LEAD_TRASPASADO`, `LEAD_SIN_ATENDER`, `LEAD_SIN_ASIGNAR`, `RECORDATORIO_CITA`, `ERROR_BRIDGE`, `TOKEN_POR_EXPIRAR`, `INTERACCION_REPETIDA` |
 | `canal` | enum | Único valor válido en MVP: `IN_APP` |
 | `titulo` / `mensaje` | text | |
 | `lead_id` | uuid FK NULL | Navegación directa |

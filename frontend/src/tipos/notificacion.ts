@@ -18,6 +18,7 @@ export type TipoNotificacion =
   | "LEAD_SIN_ASIGNAR"
   | "RECORDATORIO_CITA"
   | "ERROR_BRIDGE"
+  | "INTERACCION_REPETIDA"
   | "TOKEN_POR_EXPIRAR";
 
 export interface Notificacion {

@@ -7,6 +7,8 @@ import * as clienteRepository from "../repositories/cliente.repository.js";
 import * as correoClienteRepository from "../repositories/correo-cliente.repository.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
+import * as notificacionRepository from "../repositories/notificacion.repository.js";
+import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import {
   decideAccionDeduplicacion,
   type DeduplicacionAction,
@@ -47,6 +49,8 @@ export interface DeduplicacionResult {
   leadCreado: boolean;
   eventoId: string;
   accion: DeduplicacionAction;
+  /** Intenciones que debe publicar el dueño de una transacción externa tras el commit. */
+  events: CommittedEvent[];
 }
 
 /**
@@ -91,7 +95,7 @@ export async function deduplicateLead(
   const telefono = normalizeTelefono(entrada.telefono);
   const correo = normalizeCorreo(entrada.correo);
 
-  return runInTransaction(
+  const outcome = await runInTransaction(
     txExterna,
     async (tx) => {
       // A. IDENTIDAD — primera sentencia de la transacción, sin excepciones.
@@ -237,6 +241,15 @@ export async function deduplicateLead(
         tx,
       );
 
+      const events: CommittedEvent[] = [];
+      if (tipoEvento === "INTERACCION_REPETIDA") {
+        const currentLead = await leadRepository.findById(leadId, tx);
+        const recipientId = currentLead?.vendedorId ?? currentLead?.asesorId;
+        if (recipientId) {
+          const notification = await notificacionRepository.createNotificacion({ usuarioId: recipientId, tipo: "INTERACCION_REPETIDA", titulo: "Interacción repetida", mensaje: "El lead registró una nueva interacción", leadId }, tx);
+          events.push(...notificationEvents(notification));
+        }
+      }
       return {
         clienteId,
         clienteCreado,
@@ -247,8 +260,14 @@ export async function deduplicateLead(
         leadCreado,
         eventoId: evento.id,
         accion,
+        events,
       };
     },
     DEDUPLICACION_TRANSACTION_BOUNDS,
   );
+  if (txExterna === undefined) {
+    publishCommittedEvents(outcome.events);
+    return { ...outcome, events: [] };
+  }
+  return outcome;
 }
