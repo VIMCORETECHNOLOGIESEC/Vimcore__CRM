@@ -101,7 +101,11 @@ reingreso, hace 91 días sí.
 - [ ] Adaptador Meta: handshake, verificación de firma, consulta de detalle
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
-- [ ] Cifrado y descifrado de tokens (AES-256-GCM)
+- [x] Cifrado y descifrado de tokens (AES-256-GCM) — `lib/cifrado-token.ts`;
+      migración additiva de `estado_token`/`token_cifrado`/`token_expira_en`/
+      `secreto_webhook` en `CuentaPublicitaria` (decisión 2026-08-18, granularidad
+      por Página — ver `03-modelo-datos.md` §cuentas_publicitarias). El
+      adaptador Meta que consume estos campos sigue pendiente
 - [x] CRUD de bridges y cuentas publicitarias
 - [x] Registro en `bridge_logs` de todo error de recepción
 - [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`

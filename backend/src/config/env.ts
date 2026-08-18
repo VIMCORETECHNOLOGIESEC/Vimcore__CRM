@@ -14,6 +14,15 @@ const envSchema = z.object({
   // Origen permitido para CORS (frontend). Default: donde corre el frontend
   // en Docker Compose / `pnpm dev` local.
   CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN es obligatoria").default("http://localhost:5173"),
+  // M4 (decisión 2026-08-18, docs/03-modelo-datos.md §cuentas_publicitarias):
+  // clave maestra AES-256-GCM (`lib/cifrado-token.ts`) para cifrar tokens de
+  // redes sociales en reposo (`cuentas_publicitarias.token_cifrado`). 64
+  // caracteres hex = 32 bytes exactos, requeridos por AES-256. El proceso no
+  // arranca sin ella — mismo patrón que `JWT_SECRET`. Generar con
+  // `openssl rand -hex 32`.
+  TOKEN_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "TOKEN_ENCRYPTION_KEY debe ser hex de 64 caracteres (32 bytes)"),
 });
 
 export type Env = z.infer<typeof envSchema>;
