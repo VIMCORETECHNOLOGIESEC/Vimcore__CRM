@@ -28,5 +28,5 @@ export async function postIngestaGenerica(req: Request, res: Response): Promise<
   const entrada = adaptGoogleForms(parsed.data, req.bridge.id);
   const resultado = await ingestarLead(entrada);
 
-  res.status(200).json({ leadId: resultado.leadId, duplicado: resultado.duplicado });
+  res.status(200).json(resultado);
 }

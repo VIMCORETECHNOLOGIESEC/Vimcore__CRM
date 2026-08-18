@@ -396,6 +396,16 @@ enum NivelBridgeLog {
   @@map("nivel_bridge_log")
 }
 
+enum EstadoRecepcion {
+  PENDIENTE
+  PROCESANDO
+  REINTENTO
+  PROCESADO
+  FALLA_MANUAL
+
+  @@map("estado_recepcion")
+}
+
 // Conexión con una red social (docs/05-bridges.md §1, §7). D-M4: el cifrado
 // de token (`token_cifrado`, `secreto_webhook`) queda fuera de esta
 // rebanada — no hay token reversible que cifrar todavía, Meta/LinkedIn
@@ -451,10 +461,19 @@ model LeadRecibido {
   payload          Json     @db.JsonB
   datosIncompletos Boolean  @default(false) @map("datos_incompletos")
   recibidoEn       DateTime @default(now()) @map("recibido_en") @db.Timestamptz(6)
+  entradaProcesamiento Json             @map("entrada_procesamiento") @db.JsonB
+  estado              EstadoRecepcion   @default(PENDIENTE)
+  intentos            Int               @default(0)
+  disponibleEn        DateTime          @default(now()) @map("disponible_en") @db.Timestamptz(6)
+  leaseOwner          String?           @map("lease_owner") @db.Text
+  leaseHasta          DateTime?         @map("lease_hasta") @db.Timestamptz(6)
+  ultimoError         String?           @map("ultimo_error") @db.Text
+  procesadoEn         DateTime?         @map("procesado_en") @db.Timestamptz(6)
 
   bridge Bridge @relation(fields: [bridgeId], references: [id], onDelete: Restrict)
   lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@unique([bridgeId, idExternoLead])
+  @@index([estado, disponibleEn], map: "idx_leads_recibidos_estado_disponible")
   @@map("leads_recibidos")
 }

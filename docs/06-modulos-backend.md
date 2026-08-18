@@ -95,7 +95,7 @@ reingreso, hace 91 días sí.
 > ver `migration.sql`). El contrato y los endpoints de M4 no cambiaron.
 
 - [x] Contrato `LeadEntrante` y normalizador compartido
-- [x] Tabla `leads_recibidos` con índice único de idempotencia
+- [x] Buzón PostgreSQL `leads_recibidos` con idempotencia, lease y recuperación
 - [x] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
 - [x] Adaptador Google Forms
 - [ ] Adaptador Meta: handshake, verificación de firma, consulta de detalle
@@ -104,6 +104,7 @@ reingreso, hace 91 días sí.
 - [ ] Cifrado y descifrado de tokens (AES-256-GCM)
 - [ ] CRUD de bridges y cuentas publicitarias
 - [x] Registro en `bridge_logs` de todo error de recepción
+- [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
 - [ ] Trabajo programado: verificación de expiración de tokens
 - [ ] Trabajo programado: detección de bridge sin actividad por 72 h
 
@@ -113,6 +114,9 @@ ERROR (control por clave de API, no firma HMAC — eso es específico del futuro
 adaptador Meta, fuera de esta rebanada); el mismo `idExternoLead` dos veces,
 incluida entrega concurrente, produce un solo lead; lead sin teléfono ni
 correo se persiste con marca de dato incompleto.
+
+La aceptación HTTP confirma solo el recibo durable. El worker completa deduplicación,
+eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del commit.
 
 ---
 
