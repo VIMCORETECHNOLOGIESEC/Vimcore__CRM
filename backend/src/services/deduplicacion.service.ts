@@ -49,6 +49,8 @@ export interface DeduplicacionResult {
   leadCreado: boolean;
   eventoId: string;
   accion: DeduplicacionAction;
+  /** Intenciones que debe publicar el dueño de una transacción externa tras el commit. */
+  events: CommittedEvent[];
 }
 
 /**
@@ -263,7 +265,9 @@ export async function deduplicateLead(
     },
     DEDUPLICACION_TRANSACTION_BOUNDS,
   );
-  if (txExterna === undefined) publishCommittedEvents(outcome.events);
-  const { events: _events, ...result } = outcome;
-  return result;
+  if (txExterna === undefined) {
+    publishCommittedEvents(outcome.events);
+    return { ...outcome, events: [] };
+  }
+  return outcome;
 }

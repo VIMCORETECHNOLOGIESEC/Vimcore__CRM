@@ -1,8 +1,8 @@
 import { logger } from "../lib/logger.js";
 import {
-  enviarRecordatoriosCita,
   type ResultadoRecordatorioCitas,
 } from "../services/citas-recordatorio.service.js";
+import { scheduledNotificationProducers } from "./notificaciones-programadas.js";
 
 /**
  * Mismo intervalo que `sla-atrasado.job.ts` (M6, `INTERVALO_SLA_MS`):
@@ -27,7 +27,8 @@ export type { ResultadoRecordatorioCitas } from "../services/citas-recordatorio.
  */
 export function startCitasRecordatorioJob(
   intervaloMs: number = INTERVALO_RECORDATORIO_CITA_MS,
-  enviar: (ahora?: Date) => Promise<ResultadoRecordatorioCitas> = enviarRecordatoriosCita,
+  enviar: (ahora?: Date) => Promise<ResultadoRecordatorioCitas> =
+    scheduledNotificationProducers.appointments,
 ): NodeJS.Timeout {
   let enCurso = false;
   const timer = setInterval(() => {

@@ -6,6 +6,7 @@ import type { RegistrarLogData } from "../repositories/bridge-log.repository.js"
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
 import { asignarTrasCommit } from "./asignacion.service.js";
+import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 
@@ -23,6 +24,7 @@ interface ResultadoTransaccion extends IngestaResultado {
    * (`ON CONFLICT`) — un reingreso nunca reintenta la asignación.
    */
   leadCreado: boolean;
+  events: CommittedEvent[];
 }
 
 /**
@@ -70,6 +72,7 @@ export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResult
       (tx) => procesarEnTransaccion(entrada, ahoraIngesta, tx),
       INGESTA_TRANSACTION_BOUNDS,
     );
+    publishCommittedEvents(resultado.events);
 
     await registrarLogSeguro({
       bridgeId: entrada.bridgeId,
@@ -140,6 +143,7 @@ async function procesarEnTransaccion(
       duplicado: true,
       datosIncompletos: recepcion.datosIncompletos,
       leadCreado: false,
+      events: [],
     };
   }
 
@@ -159,6 +163,7 @@ async function procesarEnTransaccion(
     duplicado: false,
     datosIncompletos: recepcion.datosIncompletos,
     leadCreado: dedupResultado.leadCreado,
+    events: dedupResultado.events,
   };
 }
 

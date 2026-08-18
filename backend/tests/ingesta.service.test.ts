@@ -1,7 +1,9 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
+import { eventBroker, type BrokerEvent } from "../src/lib/event-broker.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
+import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
 import { ingestarLead } from "../src/services/ingesta.service.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
@@ -30,6 +32,12 @@ vi.mock("../src/repositories/lead-evento.repository.js", async (importOriginal) 
 vi.mock("../src/repositories/usuario.repository.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/repositories/usuario.repository.js")>();
   return { ...actual, findActivosPorRol: vi.fn(actual.findActivosPorRol) };
+});
+
+vi.mock("../src/repositories/lead-recibido.repository.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/repositories/lead-recibido.repository.js")>();
+  return { ...actual, marcarProcesado: vi.fn(actual.marcarProcesado) };
 });
 
 let contador = 0;
@@ -238,4 +246,102 @@ describe("ingesta.service — ingestarLead (M4, PR3a)", () => {
     // no distinguiría nada) y que ese retraso NO se filtró a slaInicioEn.
     expect(despues - antes).toBeGreaterThanOrEqual(250);
   }, 10_000);
+
+  it("publica la notificación de interacción repetida solo después del commit de la ingesta real", async () => {
+    const { id: bridgeId } = await crearBridge();
+    const asesor = await prisma.usuario.create({
+      data: {
+        nombre: "Asesor interacción repetida",
+        correo: `asesor-interaccion-${++contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    const primeraEntrada = entradaBase(bridgeId);
+    const primera = await ingestarLead(primeraEntrada);
+    await prisma.lead.update({
+      where: { id: primera.leadId },
+      data: { asesorId: asesor.id, vendedorId: null },
+    });
+
+    const recibidos: BrokerEvent[] = [];
+    const unsubscribe = eventBroker.subscribe(asesor.id, undefined, (event) => recibidos.push(event));
+    const marcarProcesado = vi.mocked(leadRecibidoRepository.marcarProcesado);
+    const marcarProcesadoReal = marcarProcesado.getMockImplementation();
+    if (!marcarProcesadoReal) throw new Error("Se requiere la implementación real de marcarProcesado");
+    marcarProcesado.mockImplementationOnce(async (...args) => {
+      const resultado = await marcarProcesadoReal(...args);
+      expect(recibidos).toEqual([]);
+      return resultado;
+    });
+
+    const repetida = entradaBase(bridgeId, { telefono: primeraEntrada.telefono });
+    const resultado = await ingestarLead(repetida);
+    unsubscribe();
+
+    expect(resultado.leadId).toBe(primera.leadId);
+    expect(
+      await prisma.notificacion.count({
+        where: {
+          usuarioId: asesor.id,
+          leadId: primera.leadId,
+          tipo: "INTERACCION_REPETIDA",
+        },
+      }),
+    ).toBe(1);
+    expect(recibidos).toEqual([
+      expect.objectContaining({
+        type: "notificacion.nueva",
+        data: expect.objectContaining({ tipo: "INTERACCION_REPETIDA" }),
+      }),
+    ]);
+  });
+
+  it("revierte la interacción repetida y no emite SSE si falla la transacción exterior", async () => {
+    const { id: bridgeId } = await crearBridge();
+    const asesor = await prisma.usuario.create({
+      data: {
+        nombre: "Asesor rollback interacción",
+        correo: `asesor-rollback-interaccion-${++contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    const primeraEntrada = entradaBase(bridgeId);
+    const primera = await ingestarLead(primeraEntrada);
+    await prisma.lead.update({
+      where: { id: primera.leadId },
+      data: { asesorId: asesor.id, vendedorId: null },
+    });
+
+    const recibidos: BrokerEvent[] = [];
+    const unsubscribe = eventBroker.subscribe(asesor.id, undefined, (event) => recibidos.push(event));
+    const marcarProcesado = vi.mocked(leadRecibidoRepository.marcarProcesado);
+    const marcarProcesadoReal = marcarProcesado.getMockImplementation();
+    if (!marcarProcesadoReal) throw new Error("Se requiere la implementación real de marcarProcesado");
+    marcarProcesado.mockImplementationOnce(async (...args) => {
+      await marcarProcesadoReal(...args);
+      expect(recibidos).toEqual([]);
+      throw new Error("fallo posterior a la notificación para probar rollback");
+    });
+
+    const repetida = entradaBase(bridgeId, { telefono: primeraEntrada.telefono });
+    await expect(ingestarLead(repetida)).rejects.toThrow(
+      "fallo posterior a la notificación para probar rollback",
+    );
+    unsubscribe();
+
+    expect(
+      await prisma.notificacion.count({
+        where: {
+          usuarioId: asesor.id,
+          leadId: primera.leadId,
+          tipo: "INTERACCION_REPETIDA",
+        },
+      }),
+    ).toBe(0);
+    expect(recibidos).toEqual([]);
+  });
 });
