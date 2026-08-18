@@ -434,6 +434,12 @@ model Bridge {
   // recibe leads hasta activación explícita.
   estado       EstadoBridge @default(INACTIVO)
   ultimoLeadEn DateTime?    @map("ultimo_lead_en") @db.Timestamptz(6)
+  // Anti-spam del trabajo programado "bridge sin actividad por 72h"
+  // (docs/05-bridges.md §8, docs/06-modulos-backend.md): mismo patrón que
+  // `Cita.recordatorioEnviado` — evita reenviar la misma advertencia en
+  // cada tick de 15 min mientras el bridge sigue mudo.
+  // `touchUltimoLeadEn` la resetea a `false` cuando llega un lead nuevo.
+  advertenciaMudoEnviada Boolean @default(false) @map("advertencia_mudo_enviada")
 
   bridgeLogs          BridgeLog[]
   leadsRecibidos      LeadRecibido[]

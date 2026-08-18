@@ -1,3 +1,4 @@
+import { detectarBridgesMudos } from "../services/bridge-mudo.service.js";
 import { enviarRecordatoriosCita } from "../services/citas-recordatorio.service.js";
 import { detectLeadsAtrasados } from "../services/sla-atrasado.service.js";
 
@@ -9,4 +10,5 @@ import { detectLeadsAtrasados } from "../services/sla-atrasado.service.js";
 export const scheduledNotificationProducers = {
   sla: detectLeadsAtrasados,
   appointments: enviarRecordatoriosCita,
+  bridgeMudo: detectarBridgesMudos,
 } as const;

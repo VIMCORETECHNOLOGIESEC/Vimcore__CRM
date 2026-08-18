@@ -2,6 +2,7 @@ import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
 import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
+import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
 import { asignarTrasCommit } from "./asignacion.service.js";
@@ -104,6 +105,7 @@ export async function procesarRecepcion(
       : "Recepción de lead procesada",
     payload: { recepcionId: claim.recepcionId, leadId: resultado.dedup.leadId },
   });
+  await touchUltimoLeadEnSeguro(resultado.entrada.bridgeId);
   return true;
 }
 
@@ -112,5 +114,19 @@ async function registrarLogSeguro(data: RegistrarLogData): Promise<void> {
     await registrarBridgeLog(data);
   } catch (error) {
     logger.error({ err: error, bridgeId: data.bridgeId }, "ingesta: fallo al registrar bridge_logs");
+  }
+}
+
+/**
+ * Fuera de la transacción de dedupe, mismo espíritu que `registrarLogSeguro`
+ * (DD5): sostiene la detección de bridges mudos (docs/05-bridges.md §8,
+ * `services/bridge-mudo.service.ts`), pero un fallo acá nunca debe hacer
+ * fallar la recepción del lead ya committeada.
+ */
+async function touchUltimoLeadEnSeguro(bridgeId: string): Promise<void> {
+  try {
+    await bridgeRepository.touchUltimoLeadEn(bridgeId);
+  } catch (error) {
+    logger.error({ err: error, bridgeId }, "ingesta: fallo al actualizar ultimoLeadEn del bridge");
   }
 }

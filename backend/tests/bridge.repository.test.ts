@@ -54,6 +54,164 @@ describe("repositories/bridge — touchUltimoLeadEn (M4, PR1)", () => {
     expect(despues.ultimoLeadEn).not.toBeNull();
     expect(despues.ultimoLeadEn!.getTime()).toBeGreaterThanOrEqual(momentoAntes);
   });
+
+  it("resetea advertenciaMudoEnviada a false (docs/05-bridges.md §8: un lead nuevo re-arma la deteccion)", async () => {
+    const { id } = await crearBridge();
+    await prisma.bridge.update({ where: { id }, data: { advertenciaMudoEnviada: true } });
+
+    await bridgeRepository.touchUltimoLeadEn(id);
+
+    const despues = await prisma.bridge.findUniqueOrThrow({ where: { id } });
+    expect(despues.advertenciaMudoEnviada).toBe(false);
+  });
+});
+
+describe("repositories/bridge — findBridgesMudos (docs/05-bridges.md §8, trabajo programado 72h)", () => {
+  const HORA_MS = 60 * 60 * 1000;
+
+  async function crearBridgeConUltimoLead(
+    horasAtras: number,
+    overrides: { estado?: "ACTIVO" | "INACTIVO" | "TOKEN_EXPIRADO" | "ERROR"; advertenciaMudoEnviada?: boolean } = {},
+  ): Promise<{ id: string }> {
+    contador += 1;
+    const bridge = await prisma.bridge.create({
+      data: {
+        redSocial: "GOOGLE_FORMS",
+        nombre: `Bridge mudo ${contador}`,
+        claveApiHash: hashClaveBridge(claveApiUnica()),
+        estado: overrides.estado ?? "ACTIVO",
+        ultimoLeadEn: new Date(Date.now() - horasAtras * HORA_MS),
+        advertenciaMudoEnviada: overrides.advertenciaMudoEnviada ?? false,
+      },
+    });
+    return { id: bridge.id };
+  }
+
+  it("incluye un bridge ACTIVO sin cuentas publicitarias cuyo ultimoLeadEn vencio hace mas de 72h", async () => {
+    const { id } = await crearBridgeConUltimoLead(73);
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).toContain(id);
+  });
+
+  it("excluye un bridge cuyo ultimoLeadEn esta dentro de la ventana de 72h", async () => {
+    const { id } = await crearBridgeConUltimoLead(1);
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).not.toContain(id);
+  });
+
+  it("excluye un bridge con estado distinto de ACTIVO", async () => {
+    const { id } = await crearBridgeConUltimoLead(100, { estado: "INACTIVO" });
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).not.toContain(id);
+  });
+
+  it("excluye un bridge con ultimoLeadEn nulo (nunca recibio un lead)", async () => {
+    contador += 1;
+    const bridge = await prisma.bridge.create({
+      data: {
+        redSocial: "GOOGLE_FORMS",
+        nombre: `Bridge mudo sin leads ${contador}`,
+        claveApiHash: hashClaveBridge(claveApiUnica()),
+        estado: "ACTIVO",
+      },
+    });
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).not.toContain(bridge.id);
+  });
+
+  it("excluye un bridge cuya unica cuenta publicitaria esta inactiva", async () => {
+    const { id } = await crearBridgeConUltimoLead(100);
+    await prisma.cuentaPublicitaria.create({
+      data: { bridgeId: id, idExterno: `mudo-cuenta-${id}`, nombre: "Cuenta inactiva", activa: false },
+    });
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).not.toContain(id);
+  });
+
+  it("incluye un bridge con al menos una cuenta publicitaria activa entre varias", async () => {
+    const { id } = await crearBridgeConUltimoLead(100);
+    await prisma.cuentaPublicitaria.create({
+      data: { bridgeId: id, idExterno: `mudo-cuenta-inactiva-${id}`, nombre: "Cuenta inactiva", activa: false },
+    });
+    await prisma.cuentaPublicitaria.create({
+      data: { bridgeId: id, idExterno: `mudo-cuenta-activa-${id}`, nombre: "Cuenta activa", activa: true },
+    });
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).toContain(id);
+  });
+
+  it("excluye un bridge ya advertido (advertenciaMudoEnviada=true, guarda anti-spam)", async () => {
+    const { id } = await crearBridgeConUltimoLead(100, { advertenciaMudoEnviada: true });
+
+    const resultado = await bridgeRepository.findBridgesMudos(new Date(Date.now() - 72 * HORA_MS));
+
+    expect(resultado.map((b) => b.id)).not.toContain(id);
+  });
+});
+
+describe("repositories/bridge — marcarAdvertenciaMudoEnviada (guarda anti-duplicado)", () => {
+  const HORA_MS = 60 * 60 * 1000;
+  const umbral = () => new Date(Date.now() - 72 * HORA_MS);
+
+  it("marca la fila y el segundo reclamo sobre la misma fila devuelve count 0", async () => {
+    const { id } = await crearBridge();
+
+    const primero = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+    expect(primero.count).toBe(1);
+    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
+
+    const segundo = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+    expect(segundo.count).toBe(0);
+  });
+
+  it("devuelve count 0 sin consultar la base cuando la lista de ids esta vacia", async () => {
+    const resultado = await bridgeRepository.marcarAdvertenciaMudoEnviada([], umbral());
+    expect(resultado.count).toBe(0);
+  });
+
+  it("no reclama la advertencia si el bridge recibió un lead real entre la selección de candidatos y el claim (revalidación atómica anti-carrera)", async () => {
+    const { id } = await crearBridge();
+    // Simula el candidato tal como lo devolvería `findBridgesMudos`: mudo hace 100h.
+    await prisma.bridge.update({
+      where: { id },
+      data: { ultimoLeadEn: new Date(Date.now() - 100 * HORA_MS) },
+    });
+
+    // Entre el SELECT de candidatos y el claim llega un lead real
+    // (`procesarRecepcion` → `touchUltimoLeadEn`), que pone `ultimoLeadEn = now()`
+    // pero deja `advertenciaMudoEnviada` en `false`.
+    await bridgeRepository.touchUltimoLeadEn(id);
+
+    const claim = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+
+    expect(claim.count).toBe(0);
+    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(false);
+  });
+
+  it("reclama la advertencia cuando ultimoLeadEn sigue vencido respecto del umbral en el instante del claim", async () => {
+    const { id } = await crearBridge();
+    await prisma.bridge.update({
+      where: { id },
+      data: { ultimoLeadEn: new Date(Date.now() - 100 * HORA_MS) },
+    });
+
+    const claim = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+
+    expect(claim.count).toBe(1);
+    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
+  });
 });
 
 describe("repositories/bridge — create (m4-bridges-crud-fundacion, PR1.7)", () => {

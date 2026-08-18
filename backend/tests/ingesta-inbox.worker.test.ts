@@ -109,6 +109,22 @@ describe("trabajador del buzón de ingesta", () => {
     expect(info).not.toBeNull();
   });
 
+  it("actualiza ultimoLeadEn del bridge tras procesar la recepcion (docs/05-bridges.md §8)", async () => {
+    const input = await entrada();
+    const antes = await prisma.bridge.findUniqueOrThrow({ where: { id: input.bridgeId } });
+    expect(antes.ultimoLeadEn).toBeNull();
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-ultimo-lead", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-ultimo-lead", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    const despues = await prisma.bridge.findUniqueOrThrow({ where: { id: input.bridgeId } });
+    expect(despues.ultimoLeadEn).not.toBeNull();
+    expect(despues.ultimoLeadEn!.getTime()).toBeGreaterThanOrEqual(now.getTime());
+  });
+
   it("detiene reclamos y espera el trabajo activo antes de resolver el drenaje", async () => {
     vi.useFakeTimers();
     let resolveWork!: () => void;

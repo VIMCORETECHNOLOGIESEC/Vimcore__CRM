@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BRIDGE_MUDO_HORAS,
   SLA_HORAS,
   UMBRAL_AMARILLO,
   UMBRAL_VERDE,
@@ -23,5 +24,9 @@ describe("config/negocio — umbrales M5 (docs/04 §2, D9)", () => {
 
   it("no rompe VENTANA_REINGRESO_DIAS existente de M3 (90)", () => {
     expect(VENTANA_REINGRESO_DIAS).toBe(90);
+  });
+
+  it("BRIDGE_MUDO_HORAS es 72 (docs/05-bridges.md §8)", () => {
+    expect(BRIDGE_MUDO_HORAS).toBe(72);
   });
 });

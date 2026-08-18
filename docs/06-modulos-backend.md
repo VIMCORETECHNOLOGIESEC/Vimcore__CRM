@@ -179,7 +179,25 @@ reingreso, hace 91 días sí.
 - [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
 - [ ] Trabajo programado: verificación diaria de token vigente por Página vía
       `/debug_token` y notificación a administradores ante invalidez/revocación
-- [ ] Trabajo programado: detección de bridge sin actividad por 72 h
+- [x] Trabajo programado: detección de bridge sin actividad por 72 h
+      (2026-08-19). Criterio real implementado (`services/bridge-mudo.service.ts`,
+      `bridgeRepository.findBridgesMudos`): `Bridge.estado = ACTIVO`,
+      `ultimoLeadEn` no nulo y vencido hace más de 72 h, y "campaña activa" se
+      resuelve como "sin ninguna `CuentaPublicitaria` registrada o con al
+      menos una `activa = true`" — `Campania` existe en el schema pero no se
+      escribe en ningún flujo real todavía, así que no participa del filtro.
+      Un bridge con `ultimoLeadEn IS NULL` (nunca recibió un lead) queda
+      excluido: no hay columna de fecha de creación en `Bridge` para medir
+      "72 h de silencio" sin una marca de referencia. Anti-spam vía
+      `Bridge.advertenciaMudoEnviada` (mismo patrón que
+      `Cita.recordatorioEnviado`): se resetea en `touchUltimoLeadEn` cuando
+      llega un lead nuevo. La advertencia se escribe en `bridge_logs` nivel
+      `ADVERTENCIA` (visible en `GET /bridges/:id/logs`), no como notificación
+      push a administradores — `registrarBridgeLog` solo dispara notificación
+      en nivel `ERROR`; extender ese disparo a `ADVERTENCIA` queda fuera de
+      esta rebanada. `touchUltimoLeadEn` quedó wireado en
+      `ingesta.service.ts::procesarRecepcion` (antes no se llamaba desde
+      ningún flujo de producción)
 
 **Pruebas obligatorias:** `X-Bridge-Key` ausente, malformada o que no coincide
 con ningún bridge activo se rechaza con 401 y registra una fila `bridge_logs`
