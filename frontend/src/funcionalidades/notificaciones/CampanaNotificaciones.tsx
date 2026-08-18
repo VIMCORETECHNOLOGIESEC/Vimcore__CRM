@@ -1,6 +1,6 @@
-import { Bell, Check, Inbox } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
+import { Bell, Check, Inbox, WifiOff } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,11 +18,13 @@ import { cn } from "@/lib/utils";
 import type { Notificacion } from "@/tipos/notificacion";
 import { TIPO_NOTIFICACION_ETIQUETAS } from "./catalogos";
 import { countNoLeidas, formatFechaRelativa } from "./notificaciones.utils";
+import { showNotificacionToast } from "./NotificacionToast";
 import {
   useMarkAllNotificacionesLeidas,
   useMarkNotificacionLeida,
   useNotificaciones,
 } from "./useNotificaciones";
+import { useNotificacionesRealtime } from "./useNotificacionesRealtime";
 
 interface FilaNotificacionProps {
   notificacion: Notificacion;
@@ -100,13 +102,17 @@ function FilaNotificacion({ notificacion, onOpen, onMarkLeida }: FilaNotificacio
  * marcado de leída individual/masivo. Reemplaza el disparador deshabilitado
  * que dejó F1 en `Header.tsx`.
  *
- * Fuera de alcance de este componente (ver nota de progreso en docs/07 F6):
- * el aviso emergente al llegar una notificación por SSE y el indicador de
- * reconexión del canal -- ambos dependen del canal SSE real (M8), que
- * todavía no existe.
+ * La integración M8 monta acá su canal SSE porque este componente vive dentro
+ * del layout autenticado y del contexto de router/TanStack Query.
  */
 export function CampanaNotificaciones() {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const handleNuevaNotificacion = useCallback(
+    (notificacion: Notificacion) => showNotificacionToast(notificacion, navigate),
+    [navigate],
+  );
+  const { estado, reintentar } = useNotificacionesRealtime(handleNuevaNotificacion);
   const { data, isLoading, isError, error, refetch } = useNotificaciones();
   const markLeida = useMarkNotificacionLeida();
   const markTodas = useMarkAllNotificacionesLeidas();
@@ -126,7 +132,20 @@ export function CampanaNotificaciones() {
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <div className="flex items-center gap-2">
+      <span role="status" aria-live="polite" className="flex items-center gap-1 text-xs text-muted-foreground">
+        {estado === "reconnecting" ? (
+          <><WifiOff aria-hidden="true" />Reconectando notificaciones…</>
+        ) : estado === "terminal" ? (
+          <>
+            <WifiOff aria-hidden="true" />Canal de notificaciones interrumpido.
+            <Button type="button" variant="outline" size="sm" aria-label="Reintentar notificaciones" onClick={reintentar}>
+              Reintentar
+            </Button>
+          </>
+        ) : null}
+      </span>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
       {/*
         Sin Tooltip envolviendo el disparador a propósito: anidar
         `TooltipTrigger asChild` sobre `DropdownMenuTrigger asChild` encadena
@@ -199,6 +218,7 @@ export function CampanaNotificaciones() {
           )}
         </div>
       </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenu>
+    </div>
   );
 }

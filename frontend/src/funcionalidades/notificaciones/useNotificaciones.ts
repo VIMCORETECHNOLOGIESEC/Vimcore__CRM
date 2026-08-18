@@ -5,6 +5,7 @@ import {
   fetchNotificacionesApi,
   markAllNotificacionesLeidasApi,
   markNotificacionLeidaApi,
+  type ListarNotificacionesParams,
 } from "./notificaciones.api";
 
 const NOTIFICACIONES_QUERY_KEY = "notificaciones";
@@ -20,12 +21,12 @@ const NOTIFICACIONES_QUERY_KEY = "notificaciones";
  * foco de la ventana (comportamiento por defecto), que es una mejora
  * razonable sin inventar infraestructura de push.
  */
-export function useNotificaciones() {
+export function useNotificaciones(params: ListarNotificacionesParams = {}) {
   const { user } = useAuth();
 
   return useQuery({
     queryKey: [NOTIFICACIONES_QUERY_KEY, user?.id],
-    queryFn: () => fetchNotificacionesApi(user!.id),
+    queryFn: () => fetchNotificacionesApi(params),
     enabled: Boolean(user),
   });
 }
@@ -36,9 +37,12 @@ export function useMarkNotificacionLeida() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (notificacionId: string) => markNotificacionLeidaApi(user!.id, notificacionId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [NOTIFICACIONES_QUERY_KEY] });
+    mutationFn: (notificacionId: string) => markNotificacionLeidaApi(notificacionId),
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: [NOTIFICACIONES_QUERY_KEY, user!.id],
+        exact: true,
+      });
     },
   });
 }
@@ -49,9 +53,12 @@ export function useMarkAllNotificacionesLeidas() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => markAllNotificacionesLeidasApi(user!.id),
+    mutationFn: () => markAllNotificacionesLeidasApi(),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [NOTIFICACIONES_QUERY_KEY] });
+      void queryClient.invalidateQueries({
+        queryKey: [NOTIFICACIONES_QUERY_KEY, user!.id],
+        exact: true,
+      });
       toast.success("Todas las notificaciones se marcaron como leídas.");
     },
   });

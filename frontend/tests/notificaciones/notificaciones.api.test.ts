@@ -1,101 +1,91 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import {
-  _resetNotificacionesMockParaTests,
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/api/httpClient", () => ({
+  httpClient: {
+    get: vi.fn(),
+    patch: vi.fn(),
+  },
+}));
+
+const { httpClient } = await import("@/api/httpClient");
+const {
   fetchNotificacionesApi,
-  markNotificacionLeidaApi,
   markAllNotificacionesLeidasApi,
-} from "@/funcionalidades/notificaciones/notificaciones.api";
+  markNotificacionLeidaApi,
+} = await import("@/funcionalidades/notificaciones/notificaciones.api");
+const { TIPO_NOTIFICACION_ETIQUETAS } = await import(
+  "@/funcionalidades/notificaciones/catalogos"
+);
+
+const getMock = vi.mocked(httpClient.get);
+const patchMock = vi.mocked(httpClient.patch);
+
+const notificacion = {
+  id: "notif-1",
+  usuarioId: "usuario-servidor",
+  tipo: "INTERACCION_REPETIDA" as const,
+  canal: "IN_APP" as const,
+  titulo: "Interacción repetida",
+  mensaje: "El lead volvió a escribir.",
+  leadId: "lead-1",
+  leidaEn: null,
+  creadaEn: "2026-08-17T12:00:00.000Z",
+};
 
 beforeEach(() => {
-  _resetNotificacionesMockParaTests();
+  getMock.mockReset();
+  patchMock.mockReset();
 });
 
-describe("fetchNotificacionesApi — siembra perezosa por usuario", () => {
-  it("crea un set de ejemplo la primera vez que se pide para un usuario", async () => {
-    const notificaciones = await fetchNotificacionesApi("usuario-1");
-    expect(notificaciones.length).toBeGreaterThan(0);
-    expect(notificaciones.every((n) => n.usuarioId === "usuario-1")).toBe(true);
+describe("fetchNotificacionesApi — contrato M8", () => {
+  it("envía exactamente soloNoLeidas=true, sin usuario, y desenvuelve el envelope", async () => {
+    getMock.mockResolvedValue({ notificaciones: [notificacion] });
+
+    const resultado = await fetchNotificacionesApi({ soloNoLeidas: true });
+
+    expect(getMock).toHaveBeenCalledWith("/notificaciones", {
+      params: { soloNoLeidas: true },
+    });
+    expect(resultado).toEqual([notificacion]);
   });
 
-  it("devuelve el mismo estado en llamadas sucesivas (persistencia en memoria)", async () => {
-    const primera = await fetchNotificacionesApi("usuario-2");
-    const segunda = await fetchNotificacionesApi("usuario-2");
-    expect(segunda.map((n) => n.id)).toEqual(primera.map((n) => n.id));
-  });
+  it("envía exactamente soloNoLeidas=false por defecto y conserva listas vacías", async () => {
+    getMock.mockResolvedValue({ notificaciones: [] });
 
-  it("no mezcla notificaciones entre usuarios distintos", async () => {
-    const usuario1 = await fetchNotificacionesApi("usuario-a");
-    const usuario2 = await fetchNotificacionesApi("usuario-b");
-    expect(usuario1.every((n) => n.usuarioId === "usuario-a")).toBe(true);
-    expect(usuario2.every((n) => n.usuarioId === "usuario-b")).toBe(true);
-  });
+    const resultado = await fetchNotificacionesApi();
 
-  it("ordena de más reciente a más antigua por creadaEn", async () => {
-    const notificaciones = await fetchNotificacionesApi("usuario-3");
-    const fechas = notificaciones.map((n) => new Date(n.creadaEn).getTime());
-    const ordenadasDesc = [...fechas].sort((a, b) => b - a);
-    expect(fechas).toEqual(ordenadasDesc);
-  });
-
-  it("filtra solo no leídas cuando soloNoLeidas es true", async () => {
-    const todas = await fetchNotificacionesApi("usuario-4");
-    const noLeidas = await fetchNotificacionesApi("usuario-4", true);
-    expect(noLeidas.every((n) => n.leidaEn === null)).toBe(true);
-    expect(noLeidas.length).toBeLessThan(todas.length);
-    expect(noLeidas.length).toBeGreaterThan(0);
-  });
-
-  it("incluye notificaciones con y sin leadId asociado", async () => {
-    const notificaciones = await fetchNotificacionesApi("usuario-5");
-    expect(notificaciones.some((n) => n.leadId !== null)).toBe(true);
-    expect(notificaciones.some((n) => n.leadId === null)).toBe(true);
+    expect(getMock).toHaveBeenCalledWith("/notificaciones", {
+      params: { soloNoLeidas: false },
+    });
+    expect(resultado).toEqual([]);
   });
 });
 
-describe("markNotificacionLeidaApi", () => {
-  it("marca una notificación puntual como leída", async () => {
-    const [primera] = await fetchNotificacionesApi("usuario-6", true);
-    expect(primera.leidaEn).toBeNull();
+describe("mutaciones de lectura — contrato M8", () => {
+  it("marca una notificación por id sin cuerpo ni usuario", async () => {
+    patchMock.mockResolvedValue(undefined);
 
-    await markNotificacionLeidaApi("usuario-6", primera.id);
+    await markNotificacionLeidaApi("notif-9");
 
-    const actualizadas = await fetchNotificacionesApi("usuario-6");
-    const actualizada = actualizadas.find((n) => n.id === primera.id);
-    expect(actualizada?.leidaEn).not.toBeNull();
+    expect(patchMock).toHaveBeenCalledWith("/notificaciones/notif-9/leer");
   });
 
-  it("no afecta a otras notificaciones del mismo usuario", async () => {
-    const antes = await fetchNotificacionesApi("usuario-7");
-    const [objetivo, otra] = antes;
+  it("marca todas mediante la ruta masiva exacta sin cuerpo ni usuario", async () => {
+    patchMock.mockResolvedValue(undefined);
 
-    await markNotificacionLeidaApi("usuario-7", objetivo.id);
+    await markAllNotificacionesLeidasApi();
 
-    const despues = await fetchNotificacionesApi("usuario-7");
-    const otraDespues = despues.find((n) => n.id === otra.id);
-    expect(otraDespues?.leidaEn).toBe(otra.leidaEn);
+    expect(patchMock).toHaveBeenCalledWith("/notificaciones/leer-todas");
   });
 
-  it("no lanza error al marcar una notificación inexistente", async () => {
-    await expect(
-      markNotificacionLeidaApi("usuario-8", "id-inexistente"),
-    ).resolves.toBeUndefined();
+  it("propaga el 404 autoritativo en vez de simular una lectura local", async () => {
+    const error = new Error("Notificación no encontrada");
+    patchMock.mockRejectedValue(error);
+
+    await expect(markNotificacionLeidaApi("ajena")).rejects.toBe(error);
   });
 });
 
-describe("markAllNotificacionesLeidasApi", () => {
-  it("marca todas las notificaciones del usuario como leídas", async () => {
-    await markAllNotificacionesLeidasApi("usuario-9");
-    const notificaciones = await fetchNotificacionesApi("usuario-9");
-    expect(notificaciones.every((n) => n.leidaEn !== null)).toBe(true);
-  });
-
-  it("no afecta las notificaciones de otro usuario", async () => {
-    await fetchNotificacionesApi("usuario-10");
-    await fetchNotificacionesApi("usuario-11");
-
-    await markAllNotificacionesLeidasApi("usuario-10");
-
-    const usuario11 = await fetchNotificacionesApi("usuario-11", true);
-    expect(usuario11.length).toBeGreaterThan(0);
-  });
+it("incluye la etiqueta de INTERACCION_REPETIDA soportada por M8", () => {
+  expect(TIPO_NOTIFICACION_ETIQUETAS.INTERACCION_REPETIDA).toBe("Interacción repetida");
 });
