@@ -1,165 +1,49 @@
+import { httpClient } from "@/api/httpClient";
 import type { Notificacion, TipoNotificacion } from "@/tipos/notificacion";
-import { LEADS_MOCK } from "@/funcionalidades/leads/leads.api";
-import { sortByFechaDesc } from "./notificaciones.utils";
 
 /**
- * Capa de datos de notificaciones -- **mock hasta que exista el backend
- * real** (M8, `docs/06-modulos-backend.md`: `GET /api/v1/notificaciones`,
- * `PATCH /api/v1/notificaciones/:id/leer` y el canal SSE `GET
- * /api/v1/eventos` no existen todavía ni como esqueleto). Misma forma de
- * función que tendrá la integración real, para que conectar el backend sea
- * reemplazar el cuerpo de estas funciones, no reescribir quien las consume
- * (`useNotificaciones.ts`, `CampanaNotificaciones.tsx`).
+ * Capa de datos de notificaciones -- backend real (`backend/src/routes/notificaciones.routes.ts`,
+ * `backend/src/controllers/notificaciones.controller.ts`, worktree `dev-back`).
+ * Reemplaza el mock en memoria (`notificacionesPorUsuario` con siembra
+ * perezosa) que usaba este archivo hasta esta integración -- mismo criterio
+ * que `leads/leads.api.ts` y `bridges/bridges.api.ts`.
  *
- * Todo punto de integración pendiente está marcado con el token
- * `INTEGRACION-BACKEND` (grepeable en todo el repo).
+ * `usuarioId` desaparece como parámetro de las tres funciones: el backend lo
+ * resuelve del JWT (`assertAuthenticated`) en las tres rutas, todas bajo
+ * `requireAuthentication` sin restricción de rol -- mismo criterio que
+ * `LeadsContextoRol` al desaparecer de `leads.api.ts`.
  *
- * **Decisión de mock propia del frontend:** a diferencia de `leads.api.ts`
- * (que arma un fixture fijo con ids de usuario inventados, `asesor-1`,
- * `vendedor-1`...), acá no existe un catálogo de usuarios reales contra el
- * cual anclar notificaciones -- F2 autentica contra el backend real y el
- * `id` del usuario logueado es el que emite ese backend, no uno inventado
- * por este mock. Por eso las notificaciones se **siembran de forma perezosa
- * por `usuarioId`** la primera vez que se piden (`seedParaUsuario`): quien
- * sea que inicie sesión ve un set de ejemplo variado (con y sin lead
- * asociado, leídas y no leídas), y las mutaciones (`markNotificacionLeidaApi`,
- * `markAllNotificacionesLeidasApi`) persisten sobre ese mismo estado en
- * memoria durante la sesión del navegador.
+ * `httpClient` ya mapea errores del backend (`{ code, message }`) a
+ * `ApiError` -- las excepciones se propagan tal cual, sin envolverlas de
+ * nuevo.
  */
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function hoursAgo(horas: number): string {
-  return new Date(Date.now() - horas * 60 * 60 * 1000).toISOString();
-}
-
-const notificacionesPorUsuario = new Map<string, Notificacion[]>();
-
-function seedParaUsuario(usuarioId: string): Notificacion[] {
-  const [leadUno, leadDos, leadTres] = LEADS_MOCK;
-
-  const base: Array<Omit<Notificacion, "usuarioId">> = [
-    {
-      id: `${usuarioId}-notif-1`,
-      tipo: "LEAD_ASIGNADO",
-      canal: "IN_APP",
-      titulo: "Nuevo lead asignado",
-      mensaje: `Se te asignó el lead de ${leadUno.cliente.nombre}.`,
-      leadId: leadUno.id,
-      leidaEn: null,
-      creadaEn: hoursAgo(0.1),
-    },
-    {
-      id: `${usuarioId}-notif-2`,
-      tipo: "RECORDATORIO_CITA",
-      canal: "IN_APP",
-      titulo: "Recordatorio de cita",
-      mensaje: `Tienes una cita con ${leadDos.cliente.nombre} en 1 hora.`,
-      leadId: leadDos.id,
-      leidaEn: null,
-      creadaEn: hoursAgo(0.5),
-    },
-    {
-      id: `${usuarioId}-notif-3`,
-      tipo: "LEAD_SIN_ATENDER",
-      canal: "IN_APP",
-      titulo: "Lead sin atender hace 24 h",
-      mensaje: `El lead de ${leadTres.cliente.nombre} lleva más de 24 horas sin gestión.`,
-      leadId: leadTres.id,
-      leidaEn: hoursAgo(2),
-      creadaEn: hoursAgo(6),
-    },
-    {
-      id: `${usuarioId}-notif-4`,
-      tipo: "ERROR_BRIDGE",
-      canal: "IN_APP",
-      titulo: "Error de recepción en un bridge",
-      mensaje: "El bridge de Facebook Lead Ads no pudo procesar el último lead recibido.",
-      leadId: null,
-      leidaEn: null,
-      creadaEn: hoursAgo(9),
-    },
-    {
-      id: `${usuarioId}-notif-5`,
-      tipo: "TOKEN_POR_EXPIRAR",
-      canal: "IN_APP",
-      titulo: "Token próximo a expirar",
-      mensaje: "El token de la cuenta publicitaria de Instagram expira en 7 días.",
-      leadId: null,
-      leidaEn: hoursAgo(20),
-      creadaEn: hoursAgo(30),
-    },
-  ];
-
-  return base.map((notificacion) => ({ ...notificacion, usuarioId }));
-}
-
-function getListaUsuario(usuarioId: string): Notificacion[] {
-  let lista = notificacionesPorUsuario.get(usuarioId);
-  if (!lista) {
-    lista = seedParaUsuario(usuarioId);
-    notificacionesPorUsuario.set(usuarioId, lista);
-  }
-  return lista;
+interface NotificacionesListResponse {
+  notificaciones: Notificacion[];
 }
 
 /**
- * INTEGRACION-BACKEND: reemplazar por `httpClient.get<Notificacion[]>("/notificaciones",
- * { params: { no_leidas: soloNoLeidas } })` cuando exista `GET
- * /api/v1/notificaciones` (M8). `usuarioId` desaparece como parámetro en la
- * integración real: el backend lo resuelve del JWT, igual que
- * `LeadsContextoRol` en `leads.api.ts`.
+ * `GET /notificaciones?soloNoLeidas=true|false`: `soloNoLeidas` es un query
+ * param opcional (`listNotificationsQuerySchema` en el backend) -- se omite
+ * cuando es `false` para no mandar `?soloNoLeidas=false` innecesariamente
+ * (mismo criterio de `buildQueryString` de `httpClient`, que igual omite
+ * `undefined`).
  */
-export async function fetchNotificacionesApi(
-  usuarioId: string,
-  soloNoLeidas = false,
-): Promise<Notificacion[]> {
-  await delay(150);
-
-  const lista = getListaUsuario(usuarioId);
-  const filtradas = soloNoLeidas ? lista.filter((n) => !n.leidaEn) : lista;
-  return sortByFechaDesc(filtradas);
+export async function fetchNotificacionesApi(soloNoLeidas = false): Promise<Notificacion[]> {
+  const { notificaciones } = await httpClient.get<NotificacionesListResponse>("/notificaciones", {
+    params: { soloNoLeidas: soloNoLeidas || undefined },
+  });
+  return notificaciones;
 }
 
-/**
- * INTEGRACION-BACKEND: reemplazar por `httpClient.patch("/notificaciones/:id/leer")`
- * cuando exista `PATCH /api/v1/notificaciones/:id/leer` (M8).
- */
-export async function markNotificacionLeidaApi(
-  usuarioId: string,
-  notificacionId: string,
-): Promise<void> {
-  await delay(100);
-
-  const lista = getListaUsuario(usuarioId);
-  const notificacion = lista.find((n) => n.id === notificacionId);
-  if (notificacion && !notificacion.leidaEn) {
-    notificacion.leidaEn = new Date().toISOString();
-  }
+/** `PATCH /notificaciones/:id/leer`: responde `204` sin cuerpo. */
+export async function markNotificacionLeidaApi(notificacionId: string): Promise<void> {
+  await httpClient.patch<void>(`/notificaciones/${notificacionId}/leer`);
 }
 
-/**
- * INTEGRACION-BACKEND: M8 (docs/06-modulos-backend.md) solo documenta
- * "marcado masivo" en el ítem del `PATCH /api/v1/notificaciones/:id/leer" --
- * no fija el endpoint exacto para marcar todas a la vez (ej. `PATCH
- * /notificaciones/leer-todas` o un `POST` separado). Es una decisión de
- * backend pendiente, no algo que este cambio de frontend deba inventar.
- */
-export async function markAllNotificacionesLeidasApi(usuarioId: string): Promise<void> {
-  await delay(100);
-
-  const lista = getListaUsuario(usuarioId);
-  const ahora = new Date().toISOString();
-  for (const notificacion of lista) {
-    if (!notificacion.leidaEn) notificacion.leidaEn = ahora;
-  }
-}
-
-/** Solo para tests: reinicia el estado en memoria entre casos. */
-export function _resetNotificacionesMockParaTests(): void {
-  notificacionesPorUsuario.clear();
+/** `PATCH /notificaciones/leer-todas`: responde `204` sin cuerpo. */
+export async function markAllNotificacionesLeidasApi(): Promise<void> {
+  await httpClient.patch<void>("/notificaciones/leer-todas");
 }
 
 export type { TipoNotificacion };

@@ -601,48 +601,43 @@ paquete es razonable para el volumen de gráficas de este dashboard.
 
 ## F6 — Notificaciones
 
-> **Progreso:** implementado contra un **mock en memoria**
-> (`funcionalidades/notificaciones/notificaciones.api.ts`) -- M8
-> (`docs/06-modulos-backend.md`) no existe todavía ni como esqueleto:
-> `GET /api/v1/notificaciones`, `PATCH /api/v1/notificaciones/:id/leer` y el
-> canal SSE `GET /api/v1/eventos` no están implementados. Cada punto de
-> integración pendiente está marcado con el token `INTEGRACION-BACKEND`
-> (grepeable en todo el repo). Reemplaza el disparador deshabilitado que
-> había dejado F1 en `layouts/Header.tsx` por el componente real
-> `CampanaNotificaciones.tsx`.
+> **Progreso:** el listado y el marcado (individual/masivo) llaman al
+> **backend real** (`funcionalidades/notificaciones/notificaciones.api.ts`),
+> confirmado contra `backend/src/routes/notificaciones.routes.ts` y
+> `notificaciones.controller.ts` (worktree `dev-back`): `GET /notificaciones`
+> (con `soloNoLeidas` como query param opcional), `PATCH
+> /notificaciones/:id/leer` y `PATCH /notificaciones/leer-todas`, los tres
+> `204` sin cuerpo salvo el `GET`. Reemplaza el mock en memoria con siembra
+> perezosa por usuario que usaba este archivo hasta esta integración. El
+> canal SSE `GET /api/v1/eventos` sigue sin implementar -- ver los ítems sin
+> marcar más abajo, es un módulo aparte.
 >
-> **Decisión de mock propia del frontend, distinta al criterio de F3/F4/F5:**
-> `leads.api.ts` arma su fixture contra ids de usuario inventados
-> (`asesor-1`, `vendedor-1`...) porque F3+ no dependía de quién inició
-> sesión de verdad. F2 sí autentica contra el backend real, así que el `id`
-> del usuario logueado en cualquier ambiente de prueba de este cambio es el
-> que emite ese backend, no uno inventado acá. Por eso las notificaciones se
-> **siembran de forma perezosa por `usuarioId`** la primera vez que se piden
-> (`seedParaUsuario`, ver el comentario en `notificaciones.api.ts`): quien
-> sea que inicie sesión ve un set de ejemplo variado (con y sin lead
-> asociado, leídas y no leídas, cubriendo los 7 tipos de evento de
-> docs/02-reglas-negocio.md §8), y las mutaciones de marcado persisten sobre
-> ese mismo estado en memoria durante la sesión del navegador.
+> **`usuarioId` desapareció como parámetro** de las tres funciones y de
+> `useNotificaciones.ts`: el backend lo resuelve del JWT
+> (`assertAuthenticated`) en las tres rutas (`requireAuthentication`, sin
+> restricción de rol), mismo criterio que `LeadsContextoRol` al desaparecer
+> de `leads.api.ts` (F3/F4). `useNotificaciones`/`useMarkNotificacionLeida`/
+> `useMarkAllNotificacionesLeidas` ya no dependen de `useAuth()` --
+> `CampanaNotificaciones` solo se monta detrás de `ProtectedRoute`.
 >
-> **Otras decisiones propias, a validar cuando exista M8:**
-> - `TipoNotificacion` (`tipos/notificacion.ts`) es una propuesta de nombres
->   de enum (un valor por fila de la tabla de docs/02 §8) -- docs/03 fija la
->   columna `notificaciones.tipo` como `enum` pero no sus valores exactos.
-> - El marcado masivo ("leer todas") no tiene endpoint documentado en M8
->   (el ítem del checklist de backend solo dice "y marcado masivo" sin
->   fijar la ruta) -- decisión de backend pendiente, no inventada acá.
-> - Se retiró `components/ui/scroll-area.tsx` de la lista de dependencias
->   activas del panel: usar `@radix-ui/react-scroll-area` ahí disparaba
->   `ResizeObserver is not defined` en jsdom (Vitest/Testing Library). Se
->   reemplazó por un `<div className="overflow-y-auto">` nativo, suficiente
->   para una lista de notificaciones y sin la dependencia frágil en tests;
->   el componente sigue en el repo por si otra pantalla lo necesita.
+> **`TipoNotificacion` (`tipos/notificacion.ts`) corregido contra el enum
+> real de Prisma:** el enum real trae 8 valores, uno más que la propuesta
+> original de docs/02-reglas-negocio.md §8 -- `INTERACCION_REPETIDA`, sin
+> equivalente en la lista original. Se agregó al union y a
+> `TIPO_NOTIFICACION_ETIQUETAS` (`catalogos.ts`).
 >
-> TDD: Vitest, 27 tests nuevos (240 en total en el frontend) cubriendo el
-> conteo de no leídas, el formato de fecha relativa/absoluta, la siembra
-> perezosa por usuario, el aislamiento entre usuarios, y el marcado
-> individual/masivo del componente (mockeando la capa `notificaciones.api.ts`,
-> mismo patrón que `LeadsPage.test.tsx`). `tsc` + `vite build` sin errores.
+> Verificado con `curl` contra el backend real (`docker compose up backend
+> db` en `dev-back`, usuario de prueba creado y eliminado con `prisma`
+> directo): `GET /notificaciones` y `?soloNoLeidas=true` devuelven `{
+> notificaciones }`; `PATCH /notificaciones/:id/leer` y `PATCH
+> /notificaciones/leer-todas` devuelven `204` y el `GET` posterior confirma
+> `leidaEn` seteado en ambas notificaciones.
+>
+> TDD: Vitest, `notificaciones.api.test.ts` reescrito para mockear
+> `httpClient` (mismo patrón que `bridges.api.test.ts`) en vez del fixture en
+> memoria; `CampanaNotificaciones.test.tsx` ajustado (sin mock de
+> `AuthContext`, aserciones sin `usuarioId`). `pnpm --filter frontend test`:
+> 407 tests en verde. `tsc` + `vite build` sin errores.
 
 - [x] Campana con contador de no leídas
 - [x] Panel desplegable con listado y navegación al lead relacionado

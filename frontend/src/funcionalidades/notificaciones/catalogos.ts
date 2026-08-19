@@ -9,4 +9,5 @@ export const TIPO_NOTIFICACION_ETIQUETAS: Record<TipoNotificacion, string> = {
   RECORDATORIO_CITA: "Recordatorio de cita",
   ERROR_BRIDGE: "Error de bridge",
   TOKEN_POR_EXPIRAR: "Token por expirar",
+  INTERACCION_REPETIDA: "Interacción repetida",
 };

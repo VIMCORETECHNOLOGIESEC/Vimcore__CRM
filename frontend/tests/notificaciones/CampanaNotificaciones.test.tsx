@@ -6,24 +6,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Notificacion } from "@/tipos/notificacion";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
-  useAuth: vi.fn(),
-}));
-
+// Sin mock de `AuthContext`: `useNotificaciones`/`CampanaNotificaciones` ya
+// no dependen de `useAuth()` tras la integración -- el backend resuelve el
+// usuario del JWT (ver `useNotificaciones.ts`).
 vi.mock("@/funcionalidades/notificaciones/notificaciones.api", () => ({
   fetchNotificacionesApi: vi.fn(),
   markNotificacionLeidaApi: vi.fn(),
   markAllNotificacionesLeidasApi: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
 const { fetchNotificacionesApi, markNotificacionLeidaApi, markAllNotificacionesLeidasApi } =
   await import("@/funcionalidades/notificaciones/notificaciones.api");
 const { CampanaNotificaciones } = await import(
   "@/funcionalidades/notificaciones/CampanaNotificaciones"
 );
 
-const useAuthMock = vi.mocked(useAuth);
 const fetchNotificacionesApiMock = vi.mocked(fetchNotificacionesApi);
 const markNotificacionLeidaApiMock = vi.mocked(markNotificacionLeidaApi);
 const markAllNotificacionesLeidasApiMock = vi.mocked(markAllNotificacionesLeidasApi);
@@ -59,14 +56,6 @@ function renderCampana() {
 }
 
 beforeEach(() => {
-  useAuthMock.mockReturnValue({
-    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol: "ASESOR" },
-    isAuthenticated: true,
-    isLoading: false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    hasRole: () => true,
-  });
   markNotificacionLeidaApiMock.mockResolvedValue(undefined);
   markAllNotificacionesLeidasApiMock.mockResolvedValue(undefined);
 });
@@ -150,7 +139,7 @@ describe("CampanaNotificaciones — marcar como leída", () => {
     await user.click(await screen.findByRole("button", { name: /Marcar "Error de bridge" como leída/ }));
 
     await waitFor(() => {
-      expect(markNotificacionLeidaApiMock).toHaveBeenCalledWith("u1", "1");
+      expect(markNotificacionLeidaApiMock).toHaveBeenCalledWith("1");
     });
   });
 
@@ -166,7 +155,7 @@ describe("CampanaNotificaciones — marcar como leída", () => {
     await user.click(await screen.findByRole("button", { name: "Marcar todas como leídas" }));
 
     await waitFor(() => {
-      expect(markAllNotificacionesLeidasApiMock).toHaveBeenCalledWith("u1");
+      expect(markAllNotificacionesLeidasApiMock).toHaveBeenCalledWith();
     });
   });
 

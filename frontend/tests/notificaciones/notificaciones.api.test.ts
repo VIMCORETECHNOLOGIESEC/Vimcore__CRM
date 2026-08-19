@@ -1,101 +1,114 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import {
-  _resetNotificacionesMockParaTests,
-  fetchNotificacionesApi,
-  markNotificacionLeidaApi,
-  markAllNotificacionesLeidasApi,
-} from "@/funcionalidades/notificaciones/notificaciones.api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * `notificaciones.api.ts` -- backend real (integración M8,
+ * `backend/src/controllers/notificaciones.controller.ts`,
+ * `backend/src/routes/notificaciones.routes.ts`, worktree `dev-back`). Mismo
+ * patrón que `bridges/bridges.api.test.ts` (F8): `httpClient` mockeado, se
+ * verifica la ruta/verbo/params exactos que manda cada función y cómo
+ * adapta la respuesta -- nunca contra un fixture en memoria (eso quedó
+ * atrás con el mock, ver `notificaciones.api.ts` para el detalle del
+ * reemplazo).
+ */
+vi.mock("@/api/httpClient", () => ({
+  httpClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+  ApiError: class ApiError extends Error {
+    code: string;
+    status: number;
+    constructor(code: string, status: number, message: string) {
+      super(message);
+      this.name = "ApiError";
+      this.code = code;
+      this.status = status;
+    }
+  },
+}));
+
+const { httpClient, ApiError } = await import("@/api/httpClient");
+const { fetchNotificacionesApi, markNotificacionLeidaApi, markAllNotificacionesLeidasApi } =
+  await import("@/funcionalidades/notificaciones/notificaciones.api");
+
+const getMock = vi.mocked(httpClient.get);
+const patchMock = vi.mocked(httpClient.patch);
+
+function notificacionBackendFake(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "notif-1",
+    usuarioId: "u1",
+    tipo: "LEAD_ASIGNADO",
+    canal: "IN_APP",
+    titulo: "Nuevo lead asignado",
+    mensaje: "Se te asignó el lead de Roberto Salazar.",
+    leadId: "lead-01",
+    leidaEn: null,
+    creadaEn: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
-  _resetNotificacionesMockParaTests();
+  getMock.mockReset();
+  patchMock.mockReset();
 });
 
-describe("fetchNotificacionesApi — siembra perezosa por usuario", () => {
-  it("crea un set de ejemplo la primera vez que se pide para un usuario", async () => {
-    const notificaciones = await fetchNotificacionesApi("usuario-1");
-    expect(notificaciones.length).toBeGreaterThan(0);
-    expect(notificaciones.every((n) => n.usuarioId === "usuario-1")).toBe(true);
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("fetchNotificacionesApi — GET /notificaciones", () => {
+  it("desenvuelve `{ notificaciones }` y lo devuelve tal cual", async () => {
+    const notificaciones = [notificacionBackendFake(), notificacionBackendFake({ id: "notif-2" })];
+    getMock.mockResolvedValue({ notificaciones });
+
+    const resultado = await fetchNotificacionesApi();
+
+    expect(getMock).toHaveBeenCalledWith("/notificaciones", {
+      params: { soloNoLeidas: undefined },
+    });
+    expect(resultado).toEqual(notificaciones);
   });
 
-  it("devuelve el mismo estado en llamadas sucesivas (persistencia en memoria)", async () => {
-    const primera = await fetchNotificacionesApi("usuario-2");
-    const segunda = await fetchNotificacionesApi("usuario-2");
-    expect(segunda.map((n) => n.id)).toEqual(primera.map((n) => n.id));
+  it("manda `soloNoLeidas=true` como query param cuando se pide", async () => {
+    getMock.mockResolvedValue({ notificaciones: [] });
+
+    await fetchNotificacionesApi(true);
+
+    expect(getMock).toHaveBeenCalledWith("/notificaciones", {
+      params: { soloNoLeidas: true },
+    });
   });
 
-  it("no mezcla notificaciones entre usuarios distintos", async () => {
-    const usuario1 = await fetchNotificacionesApi("usuario-a");
-    const usuario2 = await fetchNotificacionesApi("usuario-b");
-    expect(usuario1.every((n) => n.usuarioId === "usuario-a")).toBe(true);
-    expect(usuario2.every((n) => n.usuarioId === "usuario-b")).toBe(true);
-  });
+  it("propaga el ApiError del backend sin envolverlo de nuevo", async () => {
+    getMock.mockRejectedValue(new ApiError("sesion_expirada", 401, "Tu sesión expiró."));
 
-  it("ordena de más reciente a más antigua por creadaEn", async () => {
-    const notificaciones = await fetchNotificacionesApi("usuario-3");
-    const fechas = notificaciones.map((n) => new Date(n.creadaEn).getTime());
-    const ordenadasDesc = [...fechas].sort((a, b) => b - a);
-    expect(fechas).toEqual(ordenadasDesc);
-  });
-
-  it("filtra solo no leídas cuando soloNoLeidas es true", async () => {
-    const todas = await fetchNotificacionesApi("usuario-4");
-    const noLeidas = await fetchNotificacionesApi("usuario-4", true);
-    expect(noLeidas.every((n) => n.leidaEn === null)).toBe(true);
-    expect(noLeidas.length).toBeLessThan(todas.length);
-    expect(noLeidas.length).toBeGreaterThan(0);
-  });
-
-  it("incluye notificaciones con y sin leadId asociado", async () => {
-    const notificaciones = await fetchNotificacionesApi("usuario-5");
-    expect(notificaciones.some((n) => n.leadId !== null)).toBe(true);
-    expect(notificaciones.some((n) => n.leadId === null)).toBe(true);
+    await expect(fetchNotificacionesApi()).rejects.toMatchObject({
+      code: "sesion_expirada",
+      status: 401,
+    });
   });
 });
 
-describe("markNotificacionLeidaApi", () => {
-  it("marca una notificación puntual como leída", async () => {
-    const [primera] = await fetchNotificacionesApi("usuario-6", true);
-    expect(primera.leidaEn).toBeNull();
+describe("markNotificacionLeidaApi — PATCH /notificaciones/:id/leer", () => {
+  it("manda el id en la ruta y no espera cuerpo de respuesta (204)", async () => {
+    patchMock.mockResolvedValue(undefined);
 
-    await markNotificacionLeidaApi("usuario-6", primera.id);
+    await markNotificacionLeidaApi("notif-1");
 
-    const actualizadas = await fetchNotificacionesApi("usuario-6");
-    const actualizada = actualizadas.find((n) => n.id === primera.id);
-    expect(actualizada?.leidaEn).not.toBeNull();
-  });
-
-  it("no afecta a otras notificaciones del mismo usuario", async () => {
-    const antes = await fetchNotificacionesApi("usuario-7");
-    const [objetivo, otra] = antes;
-
-    await markNotificacionLeidaApi("usuario-7", objetivo.id);
-
-    const despues = await fetchNotificacionesApi("usuario-7");
-    const otraDespues = despues.find((n) => n.id === otra.id);
-    expect(otraDespues?.leidaEn).toBe(otra.leidaEn);
-  });
-
-  it("no lanza error al marcar una notificación inexistente", async () => {
-    await expect(
-      markNotificacionLeidaApi("usuario-8", "id-inexistente"),
-    ).resolves.toBeUndefined();
+    expect(patchMock).toHaveBeenCalledWith("/notificaciones/notif-1/leer");
   });
 });
 
-describe("markAllNotificacionesLeidasApi", () => {
-  it("marca todas las notificaciones del usuario como leídas", async () => {
-    await markAllNotificacionesLeidasApi("usuario-9");
-    const notificaciones = await fetchNotificacionesApi("usuario-9");
-    expect(notificaciones.every((n) => n.leidaEn !== null)).toBe(true);
-  });
+describe("markAllNotificacionesLeidasApi — PATCH /notificaciones/leer-todas", () => {
+  it("no manda parámetros y no espera cuerpo de respuesta (204)", async () => {
+    patchMock.mockResolvedValue(undefined);
 
-  it("no afecta las notificaciones de otro usuario", async () => {
-    await fetchNotificacionesApi("usuario-10");
-    await fetchNotificacionesApi("usuario-11");
+    await markAllNotificacionesLeidasApi();
 
-    await markAllNotificacionesLeidasApi("usuario-10");
-
-    const usuario11 = await fetchNotificacionesApi("usuario-11", true);
-    expect(usuario11.length).toBeGreaterThan(0);
+    expect(patchMock).toHaveBeenCalledWith("/notificaciones/leer-todas");
   });
 });

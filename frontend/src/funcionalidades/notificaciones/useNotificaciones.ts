@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
 import {
   fetchNotificacionesApi,
   markAllNotificacionesLeidasApi,
@@ -10,9 +9,12 @@ import {
 const NOTIFICACIONES_QUERY_KEY = "notificaciones";
 
 /**
- * Trae el listado de notificaciones del usuario en sesión (F6). Misma forma
- * de retorno que tendría contra el backend real -- ver `notificaciones.api.ts`
- * para el punto de integración exacto con M8.
+ * Trae el listado de notificaciones del usuario en sesión (F6), backend real
+ * -- ver `notificaciones.api.ts`. Sin `useAuth()`/`enabled`: el backend
+ * resuelve el usuario del JWT y este componente solo se monta detrás de
+ * `ProtectedRoute` (`router.tsx`), mismo criterio que `useLeads`/`useBridges`
+ * tras su integración (F3/F4/F8) -- `LeadsContextoRol` desapareció por la
+ * misma razón.
  *
  * Sin `refetchInterval`: agregar un polling artificial para simular "tiempo
  * real" sería fingir el canal SSE que todavía no existe (docs/07 F6, ítems
@@ -21,22 +23,18 @@ const NOTIFICACIONES_QUERY_KEY = "notificaciones";
  * razonable sin inventar infraestructura de push.
  */
 export function useNotificaciones() {
-  const { user } = useAuth();
-
   return useQuery({
-    queryKey: [NOTIFICACIONES_QUERY_KEY, user?.id],
-    queryFn: () => fetchNotificacionesApi(user!.id),
-    enabled: Boolean(user),
+    queryKey: [NOTIFICACIONES_QUERY_KEY],
+    queryFn: () => fetchNotificacionesApi(),
   });
 }
 
 /** Marca una notificación puntual como leída (F6, "individual"). */
 export function useMarkNotificacionLeida() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (notificacionId: string) => markNotificacionLeidaApi(user!.id, notificacionId),
+    mutationFn: (notificacionId: string) => markNotificacionLeidaApi(notificacionId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [NOTIFICACIONES_QUERY_KEY] });
     },
@@ -45,11 +43,10 @@ export function useMarkNotificacionLeida() {
 
 /** Marca todas las notificaciones del usuario como leídas (F6, "masivo"). */
 export function useMarkAllNotificacionesLeidas() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => markAllNotificacionesLeidasApi(user!.id),
+    mutationFn: () => markAllNotificacionesLeidasApi(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [NOTIFICACIONES_QUERY_KEY] });
       toast.success("Todas las notificaciones se marcaron como leídas.");
