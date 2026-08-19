@@ -19,6 +19,7 @@ import { calculateEstadoSla } from "./sla.calculator.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { createForActiveSupervisorsAndAdmins } from "./notificaciones.service.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
 
@@ -117,7 +118,17 @@ export type MotivoAsignacion =
   | "reasignacion"
   | "traspaso"
   | "sin_candidatos"
-  | "sla_vencido";
+  | "sla_vencido"
+  /**
+   * M2 (baja lógica con reasignación obligatoria de cartera activa): un lead
+   * de la cartera de un usuario dado de baja se reasigna (pool ASESOR,
+   * `tipoEvento REASIGNACION`) o traspasa (pool VENDEDOR, `tipoEvento
+   * TRASPASO`) a otro candidato activo del mismo pool — distinto de
+   * "reasignacion"/"traspaso" manuales porque `ejecutadoPorId` es siempre
+   * `null` (nadie lo ejecutó a mano, lo disparó la baja) y el motivo real de
+   * negocio es la baja, no una decisión operativa sobre ESE lead puntual.
+   */
+  | "baja_usuario";
 
 /**
  * D5 (diseño M6) — interfaz NUEVA, no extiende `DetalleEventoLead` de M3: su
@@ -146,15 +157,19 @@ interface ApplyAsignacionInput {
 }
 
 /**
- * Interna, no exportada (D11, diseño M6): el ÚNICO punto de escritura
- * compartido por los cuatro caminos de asignación. Tres escrituras atómicas,
- * juntas o ninguna — todo dentro del `tx` del llamador, nunca abre una
- * transacción propia:
+ * D11 (diseño M6): el ÚNICO punto de escritura compartido por los cuatro
+ * caminos de asignación de ESTE archivo, más el quinto camino de M2 (baja
+ * lógica con reasignación obligatoria de cartera, `usuarios.service.ts`).
+ * Tres escrituras atómicas, juntas o ninguna — todo dentro del `tx` del
+ * llamador, nunca abre una transacción propia:
  *   1. `leads` — responsable (asesorId/vendedorId según `pool`) + `slaInicioEn`.
  *   2. `usuarios.ultima_asignacion_en` del receptor (D10).
  *   3. `lead_eventos` del tipo correspondiente (bitácora inmutable, D-lead_eventos).
+ *
+ * Exportada (M2): antes era interna a este archivo; `usuarios.service.ts`
+ * la reutiliza en vez de duplicar las tres escrituras atómicas.
  */
-async function applyAsignacion(
+export async function applyAsignacion(
   input: ApplyAsignacionInput,
   tx: Prisma.TransactionClient,
 ): Promise<{ lead: Lead; events: CommittedEvent[] }> {
@@ -187,6 +202,13 @@ async function applyAsignacion(
 
   const tipo = input.tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
   const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId }, tx);
+  // M9 (docs/08-dashboard-kpis.md §5): "asignación" — el hook de métricas NO
+  // se llama acá: `applyAsignacion` corre dentro de la `tx` del llamador y
+  // esa transacción puede todavía hacer rollback (p. ej. dentro del loop de
+  // reasignación de cartera de `usuarios.service.ts::deactivateUsuario`, si
+  // un paso posterior de la misma transacción falla). `scheduleMetricasBroadcast`
+  // se llama en cada CALLER externo de `applyAsignacion`, después del commit,
+  // en el mismo lugar donde cada uno ya llama `publishCommittedEvents`.
   return { lead, events: [...notificationEvents(notification), { userId: input.receptorId, type: "lead.asignado", data: { leadId: input.leadId, responsableId: input.receptorId } }] };
 }
 
@@ -314,6 +336,9 @@ export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<vo
         ASIGNACION_TRANSACTION_BOUNDS,
       );
       publishCommittedEvents(events);
+      // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+      // `publishCommittedEvents` — la `tx` de este intento ya confirmó.
+      scheduleMetricasBroadcast();
       return;
     } catch (error) {
       ultimoError = error;
@@ -489,6 +514,9 @@ export async function assignLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 
@@ -599,6 +627,9 @@ export async function reassignLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 
@@ -649,5 +680,8 @@ export async function transferLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }

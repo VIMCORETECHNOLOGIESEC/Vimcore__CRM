@@ -7,8 +7,11 @@ import { revokeAllForUser } from "./refresh-token.repository.js";
  * porque `login` necesita compararlo; los endpoints de `usuarios` (PR2) usan
  * `select` explícito sin este campo — ver `adminUsuarioSelect` abajo.
  */
-export async function findById(id: string): Promise<Usuario | null> {
-  return prisma.usuario.findUnique({ where: { id } });
+export async function findById(
+  id: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Usuario | null> {
+  return client.usuario.findUnique({ where: { id } });
 }
 
 export async function findByEmail(correo: string): Promise<Usuario | null> {
@@ -110,12 +113,6 @@ export async function updateUsuario(
   }
 }
 
-/** M6 (diseño, "Cálculo de menor carga activa — consulta exacta"). */
-export interface CandidatoRol {
-  id: string;
-  ultimaAsignacionEn: Date | null;
-}
-
 /**
  * F3/F4 (diseño D-A1, catálogo de responsables): proyección estricta
  * `{id,nombre,rol}` — deliberadamente MÁS angosta que `CandidatoRol`
@@ -141,6 +138,12 @@ export async function findResponsablesActivosPorRol(rol: RolUsuario): Promise<Re
     where: { rol, activo: true },
     select: responsableSelect,
   });
+}
+
+/** M6 (diseño, "Cálculo de menor carga activa — consulta exacta"). */
+export interface CandidatoRol {
+  id: string;
+  ultimaAsignacionEn: Date | null;
 }
 
 /**
@@ -174,27 +177,52 @@ export async function updateUltimaAsignacion(
 
 /**
  * D3: baja lógica — `activo=false` **y** revocación de todos los refresh
- * tokens del usuario, en la misma transacción (nunca dos pasos separados: si
+ * tokens del usuario, en la MISMA transacción (nunca dos pasos separados: si
  * el proceso muriera entre medias, quedaría una sesión activa para un
  * usuario desactivado). Reutiliza `revokeAllForUser` de
  * `refresh-token.repository.ts` pasándole el cliente de transacción — no
  * duplica la lógica de revocación en cascada (D-D ya la implementa).
+ *
+ * M2 (baja lógica con reasignación obligatoria de cartera activa): tx-aware
+ * — YA NO abre su propia `prisma.$transaction`. `usuarios.service::
+ * deactivateUsuario` es ahora quien abre la transacción de punta a punta
+ * (lectura del usuario → reasignación de cartera si aplica → esta escritura),
+ * porque si la reasignación de cartera falla (sin candidato disponible, D3),
+ * la baja NO debe persistirse — dos transacciones separadas no podrían
+ * garantizar ese todo-o-nada. El único llamador (`usuarios.service.ts`) ya
+ * validó existencia con `findById` dentro de la misma `tx` antes de llegar
+ * acá, así que esta función asume que `id` existe y no vuelve a atrapar
+ * `P2025`.
  */
-export async function deactivateUsuario(id: string): Promise<AdminUsuarioView | null> {
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const updated = await tx.usuario.update({
-        where: { id },
-        data: { activo: false },
-        select: adminUsuarioSelect,
-      });
-      await revokeAllForUser(id, tx);
-      return updated;
-    });
-  } catch (error) {
-    if (isRecordNotFoundError(error)) {
-      return null;
-    }
-    throw error;
-  }
+export async function deactivateUsuario(
+  id: string,
+  client: PrismaClientOrTransaction,
+): Promise<AdminUsuarioView> {
+  const updated = await client.usuario.update({
+    where: { id },
+    data: { activo: false },
+    select: adminUsuarioSelect,
+  });
+  await revokeAllForUser(id, client);
+  return updated;
+}
+
+/**
+ * M9 (`metricas.service.ts::getPorAsesor`, docs/08 §3.2): rótulo de nombre
+ * para cada `responsableId` que devuelve la agregación SQL cruda de
+ * `metricas.repository.ts::getPorAsesorConSla` — esa consulta solo conoce
+ * ids (Prisma no permite `include`/`select` sobre un `$queryRaw`). Un único
+ * viaje por lote, mismo criterio que `lead.repository.ts::
+ * countCargaActivaPorResponsable` (recibe la lista completa de ids, no N+1).
+ */
+export async function findNombresPorIds(
+  ids: readonly string[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, { nombre: string; rol: RolUsuario; activo: boolean }>> {
+  if (ids.length === 0) return new Map();
+  const filas = await client.usuario.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, nombre: true, rol: true, activo: true },
+  });
+  return new Map(filas.map((f) => [f.id, { nombre: f.nombre, rol: f.rol, activo: f.activo }]));
 }

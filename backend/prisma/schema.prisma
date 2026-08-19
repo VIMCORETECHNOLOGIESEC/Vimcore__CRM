@@ -406,10 +406,23 @@ enum EstadoRecepcion {
   @@map("estado_recepcion")
 }
 
-// Conexión con una red social (docs/05-bridges.md §1, §7). D-M4: el cifrado
-// de token (`token_cifrado`, `secreto_webhook`) queda fuera de esta
-// rebanada — no hay token reversible que cifrar todavía, Meta/LinkedIn
-// quedan para un cambio SDD futuro — y lo añade el módulo que lo consuma.
+// Decisión confirmada (2026-08-18, docs/03-modelo-datos.md
+// §cuentas_publicitarias): el estado de expiración/validez de un token de
+// Meta vive por Página en `CuentaPublicitaria.estadoToken`, no en
+// `Bridge.estado` — cada Page Access Token expira o se revoca de forma
+// independiente. `Bridge.estado.TOKEN_EXPIRADO` queda reservado para un
+// futuro bridge sin granularidad por cuenta (p. ej. LinkedIn).
+enum EstadoTokenCuenta {
+  VALIDO
+  TOKEN_EXPIRADO
+  ERROR
+
+  @@map("estado_token_cuenta")
+}
+
+// Conexión con una red social (docs/05-bridges.md §1, §7). El cifrado de
+// token (`CuentaPublicitaria.tokenCifrado`/`secretoWebhook`) se añade en el
+// módulo que lo consume (adaptador Meta, M4) — ver `CuentaPublicitaria` abajo.
 model Bridge {
   id           String       @id @default(uuid()) @db.Uuid
   redSocial    RedSocial    @map("red_social")
@@ -421,6 +434,12 @@ model Bridge {
   // recibe leads hasta activación explícita.
   estado       EstadoBridge @default(INACTIVO)
   ultimoLeadEn DateTime?    @map("ultimo_lead_en") @db.Timestamptz(6)
+  // Anti-spam del trabajo programado "bridge sin actividad por 72h"
+  // (docs/05-bridges.md §8, docs/06-modulos-backend.md): mismo patrón que
+  // `Cita.recordatorioEnviado` — evita reenviar la misma advertencia en
+  // cada tick de 15 min mientras el bridge sigue mudo.
+  // `touchUltimoLeadEn` la resetea a `false` cuando llega un lead nuevo.
+  advertenciaMudoEnviada Boolean @default(false) @map("advertencia_mudo_enviada")
 
   bridgeLogs          BridgeLog[]
   leadsRecibidos      LeadRecibido[]
@@ -446,6 +465,18 @@ model CuentaPublicitaria {
   // §3). NULL en el resto de las redes.
   idExternoVinculado String? @map("id_externo_vinculado") @db.Text
   activa   Boolean @default(true)
+  // Decisión confirmada (2026-08-18, docs/03-modelo-datos.md
+  // §cuentas_publicitarias): granularidad por Página — cada Page Access
+  // Token de Meta expira o se revoca de forma independiente, así que este
+  // estado vive acá y no en `Bridge.estado`. Nace `VALIDO`: una fila que
+  // todavía no cargó token no está "expirada".
+  estadoToken   EstadoTokenCuenta @default(VALIDO) @map("estado_token")
+  // Nulo hasta que se carga un token de Meta (endpoint de administración de
+  // token, fuera de esta rebanada). AES-256-GCM vía `lib/cifrado-token.ts`;
+  // nunca sale por la API.
+  tokenCifrado  String?           @map("token_cifrado") @db.Text
+  tokenExpiraEn DateTime?         @map("token_expira_en") @db.Timestamptz(6)
+  secretoWebhook String?          @map("secreto_webhook") @db.Text
 
   bridge    Bridge     @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
   campanias Campania[]

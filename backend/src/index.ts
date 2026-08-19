@@ -1,8 +1,10 @@
 import { env } from "./config/env.js";
 import { createApp } from "./app.js";
+import { startBridgeMudoJob } from "./jobs/bridge-mudo.job.js";
 import { startCitasRecordatorioJob } from "./jobs/citas-recordatorio.job.js";
 import { startIngestionWorker } from "./jobs/ingesta-inbox.job.js";
 import { startSlaAtrasadoJob } from "./jobs/sla-atrasado.job.js";
+import { startVerificacionTokenJob } from "./jobs/verificacion-token.job.js";
 import { prisma } from "./lib/prisma.js";
 import { shutdownBackend } from "./server-lifecycle.js";
 
@@ -18,6 +20,10 @@ const server = app.listen(env.PORT, () => {
 const slaTimer = startSlaAtrasadoJob();
 // M7: mismo patrón que el job de SLA.
 const citasTimer = startCitasRecordatorioJob();
+// docs/05-bridges.md §8: mismo patrón que sla/citas.
+const bridgeMudoTimer = startBridgeMudoJob();
+// docs/05-bridges.md §3: mismo patrón que sla/citas/bridge-mudo, ciclo de 24h.
+const verificacionTokenTimer = startVerificacionTokenJob();
 const ingestionWorker = startIngestionWorker();
 
 let shuttingDown = false;
@@ -26,7 +32,12 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     if (shuttingDown) return;
     shuttingDown = true;
     void shutdownBackend({
-      stopTimers: () => { clearInterval(slaTimer); clearInterval(citasTimer); },
+      stopTimers: () => {
+        clearInterval(slaTimer);
+        clearInterval(citasTimer);
+        clearInterval(bridgeMudoTimer);
+        clearInterval(verificacionTokenTimer);
+      },
       closeHttp: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
       stopAndDrain: () => ingestionWorker.stopAndDrain(),
       disconnect: () => prisma.$disconnect(),

@@ -12,6 +12,8 @@ import {
   postBridge,
   postBridgeClave,
   postCuentaPublicitaria,
+  postCuentaProbarConexion,
+  postCuentaToken,
 } from "../controllers/bridge.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../middlewares/require-role.middleware.js";
@@ -99,4 +101,18 @@ bridgesRouter.patch(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   patchCuentaPublicitaria,
+);
+// docs/05-bridges.md §7 ("Carga y renovación de token con verificación
+// inmediata de validez" / "Prueba de conexión bajo demanda").
+bridgesRouter.post(
+  "/bridges/:id/cuentas/:cuentaId/token",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postCuentaToken,
+);
+bridgesRouter.post(
+  "/bridges/:id/cuentas/:cuentaId/probar-conexion",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postCuentaProbarConexion,
 );
