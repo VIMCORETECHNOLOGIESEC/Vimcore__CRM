@@ -79,7 +79,7 @@ export async function findBridgesMudos(
  * umbral` y el claim no tiene efecto, en vez de marcar una advertencia
  * falsa sobre un bridge que acaba de reactivarse.
  */
-export async function marcarAdvertenciaMudoEnviada(
+export async function markAdvertenciaMudoEnviada(
   ids: readonly string[],
   umbral: Date,
   client: PrismaClientOrTransaction = prisma,
@@ -117,8 +117,21 @@ export async function create(
 }
 
 /** Orden estable por nombre — no hay requerimiento de paginación en esta rebanada. */
-export async function list(client: PrismaClientOrTransaction = prisma): Promise<Bridge[]> {
-  return client.bridge.findMany({ orderBy: { nombre: "asc" } });
+/**
+ * Fix (2026-08-19, hallazgo de correlación end-to-end): el listado embebe
+ * `cuentasPublicitarias` -- igual que `findById` -- porque el frontend
+ * (`bridges.utils.ts::evaluateAvisoBridge`) calcula el aviso de "token
+ * expirado/próximo a vencer" por FILA de la tabla, no solo en el detalle.
+ * Sin este `include`, cada bridge del listado llegaba sin esa relación y
+ * `evaluateAvisoBridge` rompía en runtime contra datos reales (`Cannot read
+ * properties of undefined (reading 'some')`) -- nunca lo cubrió el mock del
+ * frontend, que siempre construye un `Bridge` completo por contrato de tipo.
+ */
+export async function list(client: PrismaClientOrTransaction = prisma): Promise<BridgeConCuentas[]> {
+  return client.bridge.findMany({
+    orderBy: { nombre: "asc" },
+    include: { cuentasPublicitarias: true },
+  });
 }
 
 export type BridgeConCuentas = Bridge & { cuentasPublicitarias: CuentaPublicitaria[] };
@@ -154,9 +167,9 @@ export async function update(
  * función) o `BAJA_LOGICA` (`update` con `estado: INACTIVO`) según
  * `countLeadsRecibidos`, dentro de una única transacción, es de
  * `bridge.service.ts` (PR2, Requirement: Delete mode is decided by lead
- * count). Se llama `eliminar` porque `delete` es palabra reservada de JS.
+ * count). Se llama `remove` porque `delete` es palabra reservada de JS.
  */
-export async function eliminar(id: string, client: PrismaClientOrTransaction = prisma): Promise<void> {
+export async function remove(id: string, client: PrismaClientOrTransaction = prisma): Promise<void> {
   await client.bridge.delete({ where: { id } });
 }
 

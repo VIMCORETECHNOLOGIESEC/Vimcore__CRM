@@ -26,7 +26,7 @@ export interface ResultadoDeteccionMudos {
  *
  * Por cada candidato: primero se registra el log en `bridge_logs`
  * (`registrarLogSeguro`) y SOLO si esa escritura tuvo éxito se reclama la
- * fila de forma atómica (`marcarAdvertenciaMudoEnviada`, guarda `WHERE
+ * fila de forma atómica (`markAdvertenciaMudoEnviada`, guarda `WHERE
  * advertenciaMudoEnviada = false AND (ultimoLeadEn IS NULL OR ultimoLeadEn <
  * umbral)` en el propio `updateMany` — mismo espíritu anti-duplicado que
  * `citas-recordatorio.service.ts`, revalidando la condición temporal en el
@@ -65,7 +65,7 @@ export async function detectarBridgesMudos(
     });
     if (!logRegistrado) continue;
 
-    const claimed = await bridgeRepository.marcarAdvertenciaMudoEnviada([bridge.id], umbral);
+    const claimed = await bridgeRepository.markAdvertenciaMudoEnviada([bridge.id], umbral);
     if (claimed.count === 0) continue;
 
     advertenciasRegistradas += 1;

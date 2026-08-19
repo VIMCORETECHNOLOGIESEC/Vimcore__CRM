@@ -81,9 +81,9 @@ export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiRe
   return { bridge: toBridgeDto(bridge), claveApi };
 }
 
-export async function listBridges(): Promise<BridgeDto[]> {
+export async function listBridges(): Promise<BridgeDetalleDto[]> {
   const bridges = await bridgeRepository.list();
-  return bridges.map(toBridgeDto);
+  return bridges.map(toBridgeDetalleDto);
 }
 
 export async function getBridgeById(id: string): Promise<BridgeDetalleDto> {
@@ -138,7 +138,7 @@ export async function deleteBridge(id: string): Promise<DeleteBridgeResult> {
 
       const leadsRecibidosCount = await bridgeRepository.countLeadsRecibidos(id, tx);
       if (leadsRecibidosCount === 0) {
-        await bridgeRepository.eliminar(id, tx);
+        await bridgeRepository.remove(id, tx);
         return { resultado: "BAJA_FISICA" as const, bridge: toBridgeDto(existente) };
       }
 
@@ -154,7 +154,7 @@ export async function deleteBridge(id: string): Promise<DeleteBridgeResult> {
  * `estado` — solo reemplaza el hash (diseño DD "generarClaveBridge() shape
  * and lifecycle", user-confirmed).
  */
-export async function regenerarClave(id: string): Promise<ClaveApiResult> {
+export async function regenerateClave(id: string): Promise<ClaveApiResult> {
   const existente = await bridgeRepository.findById(id);
   if (!existente) {
     throw bridgeNotFound();
@@ -170,12 +170,12 @@ export async function regenerarClave(id: string): Promise<ClaveApiResult> {
  * are enum-derived and deduplicated). Función pura — no toca la BD, así que
  * no es `async` (preferencia de funciones puras del ciclo TDD).
  */
-export function redesSoportadas(): RedSocial[] {
+export function listRedesSoportadas(): RedSocial[] {
   return Object.values(RedSocial);
 }
 
 /** `GET /bridges/redes-activas`: redes con al menos un bridge no eliminado, sin duplicados (Requirement: Network catalogs are enum-derived and deduplicated). */
-export async function redesActivas(): Promise<RedSocial[]> {
+export async function listRedesActivas(): Promise<RedSocial[]> {
   return bridgeRepository.listRedesActivas();
 }
 
@@ -187,7 +187,7 @@ const LOGS_LIMITE_CAP = 500;
  * única fuente de verdad del clamp — default 100, cap duro 500. Función pura,
  * testeable sin BD ni fixtures de 500 filas.
  */
-export function resolverLimiteLogs(limiteSolicitado: number | undefined): number {
+export function resolveLimiteLogs(limiteSolicitado: number | undefined): number {
   return Math.min(limiteSolicitado ?? LOGS_LIMITE_DEFAULT, LOGS_LIMITE_CAP);
 }
 
@@ -198,13 +198,13 @@ export interface ListarLogsFiltros {
   limite?: number;
 }
 
-export async function listarLogs(id: string, filtros: ListarLogsFiltros): Promise<BridgeLog[]> {
+export async function listLogs(id: string, filtros: ListarLogsFiltros): Promise<BridgeLog[]> {
   const existente = await bridgeRepository.findById(id);
   if (!existente) {
     throw bridgeNotFound();
   }
 
-  const limite = resolverLimiteLogs(filtros.limite);
+  const limite = resolveLimiteLogs(filtros.limite);
   return bridgeLogRepository.listByBridge(
     { bridgeId: id, nivel: filtros.nivel, fechaDesde: filtros.fechaDesde, fechaHasta: filtros.fechaHasta },
     limite,

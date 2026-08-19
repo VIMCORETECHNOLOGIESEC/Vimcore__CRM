@@ -28,7 +28,7 @@ export const idParamSchema = z.object({ id: z.uuid() });
 /**
  * `GET /bridges/:id/logs` (diseño m4-bridges-crud-fundacion, DD "log reads
  * are capped server-side"): el schema solo valida FORMA/tipos — el default
- * 100 y el cap duro 500 se resuelven en `bridge.service.ts::resolverLimiteLogs`,
+ * 100 y el cap duro 500 se resuelven en `bridge.service.ts::resolveLimiteLogs`,
  * nunca acá, para que exista una única fuente de verdad sobre el clamp.
  */
 export const logsQuerySchema = z.object({

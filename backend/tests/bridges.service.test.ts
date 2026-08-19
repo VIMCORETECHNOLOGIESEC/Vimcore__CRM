@@ -7,12 +7,12 @@ import {
   createBridge,
   deleteBridge,
   getBridgeById,
-  listarLogs,
+  listLogs,
   listBridges,
-  redesActivas,
-  redesSoportadas,
-  regenerarClave,
-  resolverLimiteLogs,
+  listRedesActivas,
+  listRedesSoportadas,
+  regenerateClave,
+  resolveLimiteLogs,
   updateBridge,
 } from "../src/services/bridge.service.js";
 import {
@@ -161,11 +161,11 @@ describe("bridge.service — deleteBridge (Requirement: Delete mode is decided b
   });
 });
 
-describe("bridge.service — regenerarClave (Requirement: Key regeneration never changes bridge state)", () => {
+describe("bridge.service — regenerateClave (Requirement: Key regeneration never changes bridge state)", () => {
   it("emite una clave nueva distinta de la original y deja estado ACTIVO intacto", async () => {
     const { id, claveApi: claveOriginal } = await crearBridgeDirecto({ estado: "ACTIVO" });
 
-    const { bridge, claveApi: claveNueva } = await regenerarClave(id);
+    const { bridge, claveApi: claveNueva } = await regenerateClave(id);
 
     expect(claveNueva).not.toBe(claveOriginal);
     expect(bridge.estado).toBe("ACTIVO");
@@ -174,59 +174,59 @@ describe("bridge.service — regenerarClave (Requirement: Key regeneration never
   it("deja estado INACTIVO intacto", async () => {
     const { id } = await crearBridgeDirecto({ estado: "INACTIVO" });
 
-    const { bridge } = await regenerarClave(id);
+    const { bridge } = await regenerateClave(id);
 
     expect(bridge.estado).toBe("INACTIVO");
   });
 
   it("con un id inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      regenerarClave("00000000-0000-0000-0000-000000000000"),
+      regenerateClave("00000000-0000-0000-0000-000000000000"),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
 
-describe("bridge.service — redesSoportadas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
+describe("bridge.service — listRedesSoportadas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
   it("devuelve exactamente los valores del enum RedSocial", () => {
-    const redes = redesSoportadas();
+    const redes = listRedesSoportadas();
 
     expect(redes).toHaveLength(Object.values(RedSocial).length);
     expect(new Set(redes)).toEqual(new Set(Object.values(RedSocial)));
   });
 });
 
-describe("bridge.service — redesActivas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
+describe("bridge.service — listRedesActivas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
   it("no duplica una red social compartida por dos bridges no eliminados", async () => {
     await crearBridgeDirecto({ redSocial: "X" });
     await crearBridgeDirecto({ redSocial: "X" });
 
-    const redes = await redesActivas();
+    const redes = await listRedesActivas();
 
     expect(redes.filter((r) => r === "X")).toHaveLength(1);
   });
 });
 
-describe("bridge.service — resolverLimiteLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
+describe("bridge.service — resolveLimiteLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
   it("sin argumento devuelve el default 100", () => {
-    expect(resolverLimiteLogs(undefined)).toBe(100);
+    expect(resolveLimiteLogs(undefined)).toBe(100);
   });
 
   it("recorta un valor mayor a 500 al cap duro", () => {
-    expect(resolverLimiteLogs(10_000)).toBe(500);
+    expect(resolveLimiteLogs(10_000)).toBe(500);
   });
 
   it("respeta un valor válido dentro del rango", () => {
-    expect(resolverLimiteLogs(10)).toBe(10);
+    expect(resolveLimiteLogs(10)).toBe(10);
   });
 });
 
-describe("bridge.service — listarLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
+describe("bridge.service — listLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
   it("filtra por bridge y nivel, respetando el límite resuelto", async () => {
     const { id } = await crearBridgeDirecto();
     await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "INFO", mensaje: "info listarLogs" });
     await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "ERROR", mensaje: "error listarLogs" });
 
-    const logs = await listarLogs(id, { nivel: "ERROR" });
+    const logs = await listLogs(id, { nivel: "ERROR" });
 
     expect(logs).toHaveLength(1);
     expect(logs[0]?.nivel).toBe("ERROR");
@@ -234,7 +234,7 @@ describe("bridge.service — listarLogs (Requirement: Log reads are bounded by a
 
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      listarLogs("00000000-0000-0000-0000-000000000000", {}),
+      listLogs("00000000-0000-0000-0000-000000000000", {}),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });

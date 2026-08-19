@@ -161,23 +161,23 @@ describe("repositories/bridge — findBridgesMudos (docs/05-bridges.md §8, trab
   });
 });
 
-describe("repositories/bridge — marcarAdvertenciaMudoEnviada (guarda anti-duplicado)", () => {
+describe("repositories/bridge — markAdvertenciaMudoEnviada (guarda anti-duplicado)", () => {
   const HORA_MS = 60 * 60 * 1000;
   const umbral = () => new Date(Date.now() - 72 * HORA_MS);
 
   it("marca la fila y el segundo reclamo sobre la misma fila devuelve count 0", async () => {
     const { id } = await crearBridge();
 
-    const primero = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+    const primero = await bridgeRepository.markAdvertenciaMudoEnviada([id], umbral());
     expect(primero.count).toBe(1);
     expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
 
-    const segundo = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+    const segundo = await bridgeRepository.markAdvertenciaMudoEnviada([id], umbral());
     expect(segundo.count).toBe(0);
   });
 
   it("devuelve count 0 sin consultar la base cuando la lista de ids esta vacia", async () => {
-    const resultado = await bridgeRepository.marcarAdvertenciaMudoEnviada([], umbral());
+    const resultado = await bridgeRepository.markAdvertenciaMudoEnviada([], umbral());
     expect(resultado.count).toBe(0);
   });
 
@@ -194,7 +194,7 @@ describe("repositories/bridge — marcarAdvertenciaMudoEnviada (guarda anti-dupl
     // pero deja `advertenciaMudoEnviada` en `false`.
     await bridgeRepository.touchUltimoLeadEn(id);
 
-    const claim = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+    const claim = await bridgeRepository.markAdvertenciaMudoEnviada([id], umbral());
 
     expect(claim.count).toBe(0);
     expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(false);
@@ -207,7 +207,7 @@ describe("repositories/bridge — marcarAdvertenciaMudoEnviada (guarda anti-dupl
       data: { ultimoLeadEn: new Date(Date.now() - 100 * HORA_MS) },
     });
 
-    const claim = await bridgeRepository.marcarAdvertenciaMudoEnviada([id], umbral());
+    const claim = await bridgeRepository.markAdvertenciaMudoEnviada([id], umbral());
 
     expect(claim.count).toBe(1);
     expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
@@ -293,11 +293,11 @@ describe("repositories/bridge — update (m4-bridges-crud-fundacion, PR1.7)", ()
   });
 });
 
-describe("repositories/bridge — eliminar (m4-bridges-crud-fundacion, PR1.7)", () => {
+describe("repositories/bridge — remove (m4-bridges-crud-fundacion, PR1.7)", () => {
   it("elimina físicamente la fila", async () => {
     const { id } = await crearBridge();
 
-    await bridgeRepository.eliminar(id);
+    await bridgeRepository.remove(id);
 
     const encontrado = await prisma.bridge.findUnique({ where: { id } });
     expect(encontrado).toBeNull();
@@ -439,11 +439,11 @@ describe("repositories/bridge — update (m4-bridges-crud-fundacion, PR1.7)", ()
   });
 });
 
-describe("repositories/bridge — eliminar (m4-bridges-crud-fundacion, PR1.7)", () => {
+describe("repositories/bridge — remove (m4-bridges-crud-fundacion, PR1.7)", () => {
   it("elimina físicamente la fila", async () => {
     const { id } = await crearBridge();
 
-    await bridgeRepository.eliminar(id);
+    await bridgeRepository.remove(id);
 
     const encontrado = await prisma.bridge.findUnique({ where: { id } });
     expect(encontrado).toBeNull();

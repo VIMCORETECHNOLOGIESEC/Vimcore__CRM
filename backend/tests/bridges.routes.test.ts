@@ -107,7 +107,7 @@ describe("POST /api/v1/bridges (Requirement: Bridge creation starts inactive wit
 });
 
 describe("GET /api/v1/bridges y GET /api/v1/bridges/:id", () => {
-  it("200 lista bridges sin exponer claveApiHash", async () => {
+  it("200 lista bridges sin exponer claveApiHash, con cuentasPublicitarias embebidas", async () => {
     await crearBridgeDirecto();
 
     const respuesta = await request(app)
@@ -118,6 +118,9 @@ describe("GET /api/v1/bridges y GET /api/v1/bridges/:id", () => {
     expect(Array.isArray(respuesta.body.bridges)).toBe(true);
     for (const bridge of respuesta.body.bridges) {
       expect(bridge.claveApiHash).toBeUndefined();
+      // Fix (2026-08-19): sin esto, el listado real del frontend rompía en
+      // runtime -- evaluateAvisoBridge asume esta relación en cada fila.
+      expect(Array.isArray(bridge.cuentasPublicitarias)).toBe(true);
     }
   });
 

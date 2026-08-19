@@ -14,11 +14,11 @@ import {
   createBridge,
   deleteBridge,
   getBridgeById,
-  listarLogs,
+  listLogs,
   listBridges,
-  redesActivas,
-  redesSoportadas,
-  regenerarClave,
+  listRedesActivas,
+  listRedesSoportadas,
+  regenerateClave,
   updateBridge,
 } from "../services/bridge.service.js";
 import * as cuentaPublicitariaService from "../services/cuenta-publicitaria.service.js";
@@ -91,18 +91,18 @@ export async function postBridgeClave(req: Request, res: Response): Promise<void
     throw invalidIdParam();
   }
 
-  const { bridge, claveApi } = await regenerarClave(parsedId.data.id);
+  const { bridge, claveApi } = await regenerateClave(parsedId.data.id);
   res.status(200).json({ bridge, claveApi });
 }
 
 /** `GET /bridges/catalogo/redes-soportadas`: catálogo de redes derivado del enum, sin duplicados (Requirement: Network catalogs are enum-derived and deduplicated). */
 export async function getRedesSoportadas(_req: Request, res: Response): Promise<void> {
-  res.status(200).json({ redesSociales: redesSoportadas() });
+  res.status(200).json({ redesSociales: listRedesSoportadas() });
 }
 
 /** `GET /bridges/redes-activas`: redes con al menos un bridge no eliminado, sin duplicados (Requirement: Network catalogs are enum-derived and deduplicated). */
 export async function getRedesActivas(_req: Request, res: Response): Promise<void> {
-  const redesSociales = await redesActivas();
+  const redesSociales = await listRedesActivas();
   res.status(200).json({ redesSociales });
 }
 
@@ -118,7 +118,7 @@ export async function getBridgeLogs(req: Request, res: Response): Promise<void> 
     throw zodValidationError();
   }
 
-  const logs = await listarLogs(parsedId.data.id, parsedQuery.data);
+  const logs = await listLogs(parsedId.data.id, parsedQuery.data);
   res.status(200).json({ logs });
 }
 
