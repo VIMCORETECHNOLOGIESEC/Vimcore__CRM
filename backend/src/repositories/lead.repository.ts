@@ -341,3 +341,26 @@ export async function assignResponsable(
         : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn },
   });
 }
+
+/**
+ * Fix bulk writes (`deactivateUsuario`, M2): variante en lote de
+ * `assignResponsable` — un solo `updateMany` para todos los leads que caen
+ * en el MISMO receptor (mismo `pool`, mismo `responsableId`, mismo
+ * `slaInicioEn`), en vez de un `update` awaited por lead. Mismo criterio
+ * condicional ASESOR/VENDEDOR que la versión singular. Si `leadIds` está
+ * vacío, no ejecuta ninguna consulta.
+ */
+export async function assignResponsableBulk(
+  leadIds: readonly string[],
+  data: AssignResponsableData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  if (leadIds.length === 0) return;
+  await client.lead.updateMany({
+    where: { id: { in: [...leadIds] } },
+    data:
+      data.pool === "ASESOR"
+        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn }
+        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn },
+  });
+}

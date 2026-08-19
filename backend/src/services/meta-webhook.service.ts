@@ -103,7 +103,7 @@ async function consultarDetalleLead(
 /**
  * `registrarBridgeLog` en su propio `try/catch` degradando a `logger.error`
  * (mismo criterio que `ingesta.service.ts::registrarLogSeguro`/
- * `asignacion.service.ts::registrarDegradacionAsignacion`, DD5 diseño M4):
+ * `asignacion.service.ts::recordAssignmentDegradation`, DD5 diseño M4):
  * un fallo al loguear nunca debe interrumpir el procesamiento del resto de
  * la notificación ni convertir la respuesta del webhook en algo distinto de
  * 200.

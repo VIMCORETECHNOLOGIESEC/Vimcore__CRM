@@ -11,7 +11,12 @@ import type {
   UpdateUsuarioData,
 } from "../repositories/usuario.repository.js";
 import type { ListUsuariosQuery } from "../schemas/usuarios.schema.js";
-import { applyAsignacion, chooseCandidato, type CandidatoAsignacion } from "./asignacion.service.js";
+import {
+  applyAsignacionesEnLote,
+  chooseCandidato,
+  type ApplyAsignacionesEnLoteEntrada,
+  type CandidatoAsignacion,
+} from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
@@ -30,7 +35,7 @@ function emailAlreadyInUse(): AppError {
  * recibirla, la baja se rechaza entera (nada se persiste, ver
  * `deactivateUsuario` abajo) en vez de dejar leads huérfanos.
  */
-function noHayCandidatoParaReasignar(): AppError {
+function noCandidateToReassign(): AppError {
   return new AppError(
     "baja_sin_candidato_reasignacion",
     409,
@@ -43,7 +48,7 @@ function noHayCandidatoParaReasignar(): AppError {
  * `vendedorId`) — `ADMINISTRADOR`/`SUPERVISOR` nunca son responsables de un
  * lead, así que su baja nunca necesita reasignación.
  */
-const POOL_POR_ROL: Partial<Record<RolUsuario, PoolAsignacion>> = {
+const POOL_BY_ROL: Partial<Record<RolUsuario, PoolAsignacion>> = {
   ASESOR: "ASESOR",
   VENDEDOR: "VENDEDOR",
 };
@@ -205,7 +210,7 @@ export async function deactivateUsuario(id: string): Promise<void> {
       }
 
       const eventosAcumulados: CommittedEvent[] = [];
-      const pool = POOL_POR_ROL[usuario.rol];
+      const pool = POOL_BY_ROL[usuario.rol];
 
       if (pool !== undefined) {
         const ahora = new Date();
@@ -221,7 +226,7 @@ export async function deactivateUsuario(id: string): Promise<void> {
           const candidatosElegibles = activos.filter((u) => u.id !== id);
 
           if (candidatosElegibles.length === 0) {
-            throw noHayCandidatoParaReasignar();
+            throw noCandidateToReassign();
           }
 
           const cargas = await leadRepository.countCargaActivaPorResponsable(
@@ -236,38 +241,44 @@ export async function deactivateUsuario(id: string): Promise<void> {
             cargaActiva: cargas.get(u.id) ?? 0,
           }));
 
+          // Selección de candidato lead-por-lead en memoria (sin awaits a
+          // BD dentro del loop, ver nota de code-review sobre N+1): solo la
+          // ESCRITURA se agrupa por receptor y se ejecuta una única vez
+          // después del loop (`applyAsignacionesEnLote`), en vez de un
+          // `applyAsignacion` awaited por lead.
+          const entradas: ApplyAsignacionesEnLoteEntrada[] = [];
           for (const lead of cartera) {
             const candidato = chooseCandidato(candidatos);
             if (candidato === null) {
               // Inalcanzable: `candidatos` nunca queda vacío dentro de este
               // loop (solo se incrementa `cargaActiva`, nunca se remueve un
               // elemento) — defensivo, no reemplaza la guarda de arriba.
-              throw noHayCandidatoParaReasignar();
+              throw noCandidateToReassign();
             }
 
             const responsableAnteriorId = pool === "ASESOR" ? lead.asesorId : lead.vendedorId;
-            const resultado = await applyAsignacion(
-              {
-                leadId: lead.id,
-                pool,
-                receptorId: candidato.id,
-                responsableAnteriorId,
-                tipoEvento: pool === "ASESOR" ? "REASIGNACION" : "TRASPASO",
-                motivo: "baja_usuario",
-                ejecutadoPorId: null,
-                ahora,
-              },
-              tx,
-            );
-            eventosAcumulados.push(...resultado.events);
+            entradas.push({ leadId: lead.id, receptorId: candidato.id, responsableAnteriorId });
 
-            // Mantener el estado en memoria en sincronía con lo que
-            // `applyAsignacion` ya persistió (`cargaActiva` +1,
+            // Mantener el estado en memoria en sincronía con lo que la
+            // escritura en lote va a persistir (`cargaActiva` +1,
             // `ultimaAsignacionEn = ahora`) para que el próximo lead de esta
             // misma cartera compare contra la carga actualizada.
             candidato.cargaActiva += 1;
             candidato.ultimaAsignacionEn = ahora;
           }
+
+          const eventos = await applyAsignacionesEnLote(
+            entradas,
+            {
+              pool,
+              tipoEvento: pool === "ASESOR" ? "REASIGNACION" : "TRASPASO",
+              motivo: "baja_usuario",
+              ejecutadoPorId: null,
+              ahora,
+            },
+            tx,
+          );
+          eventosAcumulados.push(...eventos);
         }
       }
 

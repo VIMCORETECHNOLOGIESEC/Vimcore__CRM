@@ -15,7 +15,7 @@ vi.mock("../src/repositories/lead-recibido.repository.js", async (importOriginal
 });
 vi.mock("../src/services/asignacion.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/asignacion.service.js")>();
-  return { ...actual, asignarTrasCommit: vi.fn(actual.asignarTrasCommit) };
+  return { ...actual, assignAfterCommit: vi.fn(actual.assignAfterCommit) };
 });
 vi.mock("../src/services/committed-events.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/committed-events.service.js")>();
@@ -64,19 +64,19 @@ describe("trabajador del buzón de ingesta", () => {
     vi.mocked(inbox.completeClaim).mockRejectedValueOnce(new Error("fallo de finalización"));
     await expect(procesarRecepcion(claim)).rejects.toThrow("fallo de finalización");
     expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
-    expect(vi.mocked(asignacion.asignarTrasCommit)).not.toHaveBeenCalled();
+    expect(vi.mocked(asignacion.assignAfterCommit)).not.toHaveBeenCalled();
     expect((await prisma.leadRecibido.findUniqueOrThrow({ where: { id: receipt.recepcionId } })).leadId).toBeNull();
 
     vi.mocked(inbox.completeClaim).mockImplementationOnce(async (...args) => {
       expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
-      expect(vi.mocked(asignacion.asignarTrasCommit)).not.toHaveBeenCalled();
+      expect(vi.mocked(asignacion.assignAfterCommit)).not.toHaveBeenCalled();
       return (await vi.importActual<typeof inbox>("../src/repositories/lead-recibido.repository.js")).completeClaim(...args);
     });
     expect(await procesarRecepcion(claim)).toBe(true);
     expect(vi.mocked(committedEvents.publishCommittedEvents)).toHaveBeenCalledAfter(
       vi.mocked(inbox.completeClaim),
     );
-    expect(vi.mocked(asignacion.asignarTrasCommit)).toHaveBeenCalledAfter(
+    expect(vi.mocked(asignacion.assignAfterCommit)).toHaveBeenCalledAfter(
       vi.mocked(inbox.completeClaim),
     );
 
@@ -144,7 +144,7 @@ describe("trabajador del buzón de ingesta", () => {
 
     // >=1 en vez de exactamente 1: un lead nuevo dispara TANTO el hook de
     // "ingreso de lead" (procesarRecepcion) COMO el de "asignación"
-    // (asignarTrasCommit -> applyAsignacion) cuando hay un asesor activo
+    // (assignAfterCommit -> applyAsignacion) cuando hay un asesor activo
     // disponible — ambos son disparos legítimos del mismo evento de negocio,
     // el debounce de 2s de metricas-broadcast.ts absorbe la duplicación.
     expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast)).toHaveBeenCalled();

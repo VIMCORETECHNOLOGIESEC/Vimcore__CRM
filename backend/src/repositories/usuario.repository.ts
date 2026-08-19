@@ -176,6 +176,22 @@ export async function updateUltimaAsignacion(
 }
 
 /**
+ * Fix bulk writes (`deactivateUsuario`, M2): variante en lote de
+ * `updateUltimaAsignacion` — un solo `updateMany` para todos los receptores
+ * distintos de una reasignación de cartera masiva, en vez de un `update`
+ * awaited por receptor/lead. Si `ids` está vacío, no ejecuta ninguna
+ * consulta.
+ */
+export async function updateUltimaAsignacionBulk(
+  ids: readonly string[],
+  ahora: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await client.usuario.updateMany({ where: { id: { in: [...ids] } }, data: { ultimaAsignacionEn: ahora } });
+}
+
+/**
  * D3: baja lógica — `activo=false` **y** revocación de todos los refresh
  * tokens del usuario, en la MISMA transacción (nunca dos pasos separados: si
  * el proceso muriera entre medias, quedaría una sesión activa para un

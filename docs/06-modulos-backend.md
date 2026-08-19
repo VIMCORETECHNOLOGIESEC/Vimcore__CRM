@@ -55,8 +55,11 @@ Desacoplado a propósito: otro equipo integrará el SSO contra esta misma API.
       `ASESOR`/`VENDEDOR` y tiene cartera abierta (leads en su pool, no
       terminales; para `ASESOR` excluye los ya traspasados con
       `vendedorId` no nulo), cada lead se reasigna a un candidato activo del
-      mismo pool (reutiliza `selectResponsable`/`applyAsignacion` de
-      `asignacion.service.ts`, motivo `baja_usuario`). **"Obligatoria" =
+      mismo pool (reutiliza `selectResponsable` para elegir candidato
+      lead-por-lead en memoria; la escritura persiste agrupada por receptor
+      con `applyAsignacionesEnLote` de `asignacion.service.ts` — fix de
+      bulk writes, O(candidatos) en vez de O(cartera) — motivo
+      `baja_usuario`). **"Obligatoria" =
       bloqueante**: si no hay ningún otro candidato activo del mismo pool
       (p. ej. es el último asesor activo), la baja se rechaza entera con 409
       `baja_sin_candidato_reasignacion` — nada se persiste (ni la baja ni

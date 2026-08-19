@@ -1,6 +1,8 @@
 import { RedSocial } from "@prisma/client";
 import { z } from "zod";
 
+import { finDiaUTC } from "../lib/rango-fechas.js";
+
 /**
  * docs/08-dashboard-kpis.md §4 ("Rango de fechas"): los seis presets
  * literales del filtro. `personalizado` exige `desde`/`hasta` explícitos —
@@ -25,7 +27,15 @@ export const metricasQuerySchema = z
   .object({
     rango: z.enum(RANGOS_PRESET).default("30d"),
     desde: z.coerce.date().optional(),
-    hasta: z.coerce.date().optional(),
+    // El frontend manda `hasta` como fecha cruda de un <input type="date">
+    // ("2026-08-18"), que Zod parsea a medianoche UTC. Se normaliza a fin de
+    // día ANTES de la validación de objeto (Zod corre transforms de campo
+    // antes del `superRefine`), así el guard `desde > hasta` de abajo ya
+    // compara contra el valor normalizado.
+    hasta: z.coerce
+      .date()
+      .optional()
+      .transform((v) => (v === undefined ? undefined : finDiaUTC(v))),
     redSocial: z.enum(RedSocial).optional(),
     // DD2 (M4/M5): mismo criterio que `leads.schema.ts` — texto libre ILIKE
     // contra `payload_original ->> 'nombreCampania'`.

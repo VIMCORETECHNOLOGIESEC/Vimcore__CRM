@@ -13,7 +13,7 @@ function inicioDiaUTC(fecha: Date): Date {
   return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate(), 0, 0, 0, 0));
 }
 
-function finDiaUTC(fecha: Date): Date {
+export function finDiaUTC(fecha: Date): Date {
   return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate(), 23, 59, 59, 999));
 }
 

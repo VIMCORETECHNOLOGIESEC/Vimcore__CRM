@@ -5,7 +5,7 @@ import type { RegistrarLogData } from "../repositories/bridge-log.repository.js"
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
-import { asignarTrasCommit } from "./asignacion.service.js";
+import { assignAfterCommit } from "./asignacion.service.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
@@ -96,7 +96,7 @@ export async function procesarRecepcion(
   }
   publishCommittedEvents(resultado.dedup.events);
   if (resultado.dedup.leadCreado) {
-    await asignarTrasCommit(resultado.dedup.leadId, new Date(claim.entradaProcesamiento.recibidoEn));
+    await assignAfterCommit(resultado.dedup.leadId, new Date(claim.entradaProcesamiento.recibidoEn));
   }
   await registrarLogSeguro({
     bridgeId: resultado.entrada.bridgeId,

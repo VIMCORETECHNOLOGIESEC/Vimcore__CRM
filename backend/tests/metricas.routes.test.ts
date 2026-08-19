@@ -9,6 +9,11 @@ const PASSWORD = "clave-de-prueba-123456";
 
 let contador = 0;
 
+function marcador(): string {
+  contador += 1;
+  return `metrica-routes-${Date.now()}-${contador}`;
+}
+
 async function crearUsuarioConToken(
   rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR",
 ): Promise<{ id: string; token: string }> {
@@ -82,5 +87,31 @@ describe("routes/metricas — wiring y autenticación", () => {
       .set("Authorization", `Bearer ${supervisor.token}`);
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("items");
+  });
+
+  it("regresión FIX A: un lead ingresado tarde en el día (22:00 UTC) cuenta en /resumen cuando `hasta` es ese mismo día (docs/08 §4)", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    const cam = marcador();
+    const dia = "2026-08-18";
+    const cliente = await prisma.cliente.create({
+      data: { nombre: `Cliente MR ${cam}`, telefonoValido: false },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: cliente.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        ingresadoEn: new Date(`${dia}T22:00:00.000Z`),
+        payloadOriginal: { nombreCampania: cam },
+      },
+    });
+
+    const res = await request(app)
+      .get(
+        `/api/v1/metricas/resumen?rango=personalizado&desde=${dia}&hasta=${dia}&campania=${encodeURIComponent(cam)}`,
+      )
+      .set("Authorization", `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.totalIngresados.actual).toBe(1);
   });
 });

@@ -1,7 +1,9 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { eventBroker } from "../src/lib/event-broker.js";
 import { prisma } from "../src/lib/prisma.js";
+import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import * as leadRepository from "../src/repositories/lead.repository.js";
+import * as notificacionRepository from "../src/repositories/notificacion.repository.js";
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
 import { deactivateUsuario } from "../src/services/usuarios.service.js";
 import type { EtapaLead, RolUsuario } from "@prisma/client";
@@ -142,6 +144,81 @@ describe("usuarios.service — deactivateUsuario (M2: baja lógica con reasignac
     for (const id of candidatoIds) {
       expect(conteoPorCandidato.get(id)).toBe(2);
     }
+  });
+
+  it("fix bulk writes: cartera grande (99 leads, 3 candidatos) se reparte ~33/33/33 con escrituras agrupadas por receptor, no N+1", async () => {
+    await desactivarTodos("ASESOR");
+
+    const victima = await crearUsuario("ASESOR");
+    const candidatosCreados = await Promise.all([
+      crearUsuario("ASESOR"),
+      crearUsuario("ASESOR"),
+      crearUsuario("ASESOR"),
+    ]);
+    const candidatoIds = candidatosCreados.map((c) => c.id).sort();
+
+    const TOTAL_LEADS = 99;
+    const leads = await Promise.all(
+      Array.from({ length: TOTAL_LEADS }, () => crearLead({ asesorId: victima.id, etapa: "NUEVO" })),
+    );
+
+    const spyBulkAssign = vi.spyOn(leadRepository, "assignResponsableBulk");
+    const spyBulkUltimaAsignacion = vi.spyOn(usuarioRepository, "updateUltimaAsignacionBulk");
+    const spyBulkEventos = vi.spyOn(leadEventoRepository, "createEventos");
+    const spyBulkNotificaciones = vi.spyOn(notificacionRepository, "createNotificaciones");
+
+    // Guardrail: el camino N+1 (una escritura singular por lead) debe haber
+    // desaparecido por completo de `deactivateUsuario`.
+    const spySingularAssign = vi.spyOn(leadRepository, "assignResponsable");
+    const spySingularUltimaAsignacion = vi.spyOn(usuarioRepository, "updateUltimaAsignacion");
+    const spySingularEvento = vi.spyOn(leadEventoRepository, "createEvento");
+    const spySingularNotificacion = vi.spyOn(notificacionRepository, "createNotificacion");
+
+    await deactivateUsuario(victima.id);
+
+    // Con 3 candidatos que arrancan en carga 0 y reparto por menor-carga-
+    // primero, los 3 reciben carga en algún momento del reparto — la función
+    // bulk de leads se llama una vez POR RECEPTOR CON CARGA, nunca una vez
+    // por lead.
+    expect(spyBulkAssign).toHaveBeenCalledTimes(3);
+    expect(spyBulkUltimaAsignacion).toHaveBeenCalledTimes(1);
+    expect(spyBulkEventos).toHaveBeenCalledTimes(1);
+    expect(spyBulkNotificaciones).toHaveBeenCalledTimes(1);
+
+    expect(spySingularAssign).toHaveBeenCalledTimes(0);
+    expect(spySingularUltimaAsignacion).toHaveBeenCalledTimes(0);
+    expect(spySingularEvento).toHaveBeenCalledTimes(0);
+    expect(spySingularNotificacion).toHaveBeenCalledTimes(0);
+
+    spyBulkAssign.mockRestore();
+    spyBulkUltimaAsignacion.mockRestore();
+    spyBulkEventos.mockRestore();
+    spyBulkNotificaciones.mockRestore();
+    spySingularAssign.mockRestore();
+    spySingularUltimaAsignacion.mockRestore();
+    spySingularEvento.mockRestore();
+    spySingularNotificacion.mockRestore();
+
+    const conteoPorCandidato = new Map<string, number>(candidatoIds.map((id) => [id, 0]));
+    for (const lead of leads) {
+      const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+      expect(leadActualizado.asesorId).not.toBeNull();
+      expect(candidatoIds).toContain(leadActualizado.asesorId);
+      conteoPorCandidato.set(
+        leadActualizado.asesorId as string,
+        (conteoPorCandidato.get(leadActualizado.asesorId as string) ?? 0) + 1,
+      );
+    }
+
+    for (const id of candidatoIds) {
+      expect(conteoPorCandidato.get(id)).toBe(TOTAL_LEADS / 3);
+    }
+
+    // Cada lead tiene su propio evento REASIGNACION, aun escrito en lote.
+    const totalEventos = await prisma.leadEvento.count({
+      where: { leadId: { in: leads.map((l) => l.id) }, tipo: "REASIGNACION" },
+    });
+    expect(totalEventos).toBe(TOTAL_LEADS);
   });
 
   it("vendedor con cartera abierta (leads traspasados) y otro vendedor activo disponible: baja exitosa con evento TRASPASO", async () => {
