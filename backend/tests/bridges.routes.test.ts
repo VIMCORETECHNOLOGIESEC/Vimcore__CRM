@@ -443,6 +443,9 @@ describe("POST /api/v1/bridges/:id/cuentas (Requirement: Admin can manually crea
     expect(respuesta.body.cuenta.bridgeId).toBe(id);
     expect(respuesta.body.cuenta.instagramAccountId).toBe("ig-rutas-1");
     expect(respuesta.body.cuenta.idExternoVinculado).toBeUndefined();
+    expect(respuesta.body.cuenta.estadoToken).toBe("VALIDO");
+    expect(respuesta.body.cuenta.tokenExpiraEn).toBeNull();
+    expect(respuesta.body.cuenta).not.toHaveProperty("tokenCifrado");
   });
 
   it("400 cuando falta idExterno (Instagram id solo no es aceptado como identidad)", async () => {
@@ -500,6 +503,9 @@ describe("GET /api/v1/bridges/:id/cuentas (Requirement: Bridge detail embeds its
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.cuentas).toHaveLength(1);
     expect(respuesta.body.cuentas[0].instagramAccountId).toBe("ig-listado");
+    expect(respuesta.body.cuentas[0].estadoToken).toBe("VALIDO");
+    expect(respuesta.body.cuentas[0].tokenExpiraEn).toBeNull();
+    expect(respuesta.body.cuentas[0]).not.toHaveProperty("tokenCifrado");
   });
 
   it("404 con un bridge inexistente", async () => {
@@ -550,6 +556,8 @@ describe(
       expect(respuesta.status).toBe(200);
       expect(respuesta.body.cuenta.activa).toBe(false);
       expect(respuesta.body.cuenta.nombre).toBe("Cuenta a togglear");
+      expect(respuesta.body.cuenta.estadoToken).toBe("VALIDO");
+      expect(respuesta.body.cuenta).not.toHaveProperty("tokenCifrado");
     });
 
     it("400 con un body sin el campo activa", async () => {
@@ -620,7 +628,10 @@ describe(
     it("200 con un token válido: persiste y nunca devuelve el token en claro", async () => {
       const { id } = await crearBridgeDirecto();
       const { cuentaId } = await crearCuentaDirecta(id);
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true } })));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true, expires_at: 1_900_000_000 } })),
+      );
 
       const respuesta = await request(app)
         .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/token`)
@@ -631,6 +642,8 @@ describe(
       expect(respuesta.body.cuenta.id).toBe(cuentaId);
       expect(JSON.stringify(respuesta.body)).not.toContain("page-access-token-secreto");
       expect(respuesta.body.cuenta).not.toHaveProperty("tokenCifrado");
+      expect(respuesta.body.cuenta.estadoToken).toBe("VALIDO");
+      expect(respuesta.body.cuenta.tokenExpiraEn).toBe(new Date(1_900_000_000 * 1000).toISOString());
     });
 
     it("422 con un token inválido/revocado según Graph API", async () => {

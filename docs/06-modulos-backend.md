@@ -198,6 +198,12 @@ reingreso, hace 91 días sí.
       nivel de `Bridge` completo (`POST /bridges/:id/token`) — decisión de
       mock explícita, no el contrato real; el frontend deberá adaptarse al
       endpoint por `cuentaId` cuando integre contra el backend real.
+      `estadoToken`/`tokenExpiraEn` viajan en `CuentaPublicitariaDto`
+      (`services/cuenta-publicitaria.service.ts::toCuentaPublicitariaDto`,
+      2026-08-19) — se agregaron tras detectar que el DTO nunca los exponía
+      pese a que ya se persistían correctamente, dejando sin dato al
+      indicador visual de "token por vencer/vencido" del panel de bridges.
+      `tokenCifrado` sigue sin exponerse jamás.
 - [x] Cifrado y descifrado de tokens (AES-256-GCM) — `lib/cifrado-token.ts`;
       migración additiva de `estado_token`/`token_cifrado`/`token_expira_en`/
       `secreto_webhook` en `CuentaPublicitaria` (decisión 2026-08-18, granularidad
@@ -266,6 +272,20 @@ eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del
 
 - [x] `GET /api/v1/leads` con filtros (etapa, semáforo, red social, campaña,
       responsable, rango de fechas, estado de SLA), paginación y orden
+- [ ] `GET /api/v1/leads` — parámetro `vista` (`activos` | `cerrados`,
+      default `activos`) (2026-08-19, decisión de diseño para la tabla de
+      leads de F3 en `dev-front`: tabs "Pendientes/En proceso" — vista por
+      defecto — vs "Cerrados", con Venta/No Venta dentro de esta última).
+      `activos` = `etapa NOT IN (VENTA, NO_VENTA)`; `cerrados` = `etapa IN
+      (VENTA, NO_VENTA)`. Si el query ya trae `etapa` puntual, esta gana
+      sobre `vista` (ya acota a una sola etapa, terminal o no) — `vista`
+      solo decide el conjunto por defecto cuando no hay una etapa específica
+      elegida, y se combina con el resto de filtros existentes sin
+      reemplazarlos. Único punto a tocar: `listLeadsQuerySchema`
+      (`leads.schema.ts`) + `buildWhere` (`leads.service.ts`). No hace falta
+      índice nuevo — `idx_leads_etapa_ingreso` ya cubre `etapa`, y el
+      volumen de esta CRM no justifica uno compuesto para un `IN`/`NOT IN`
+      de 2-3 valores.
 - [x] Filtrado automático por rol: asesor y vendedor solo ven su cartera
 - [x] `GET /api/v1/leads/:id` con verificación de acceso
 - [x] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio

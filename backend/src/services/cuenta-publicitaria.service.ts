@@ -1,4 +1,4 @@
-import type { CuentaPublicitaria } from "@prisma/client";
+import type { CuentaPublicitaria, EstadoTokenCuenta } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { decrypt, encrypt } from "../lib/cifrado-token.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
@@ -50,8 +50,18 @@ export interface CuentaPublicitariaDto {
   nombre: string;
   instagramAccountId: string | null;
   activa: boolean;
+  estadoToken: EstadoTokenCuenta;
+  tokenExpiraEn: Date | null;
 }
 
+/**
+ * `estadoToken`/`tokenExpiraEn` (docs/05-bridges.md §7-8): metadata de estado
+ * del token, nunca el secreto en sí — `tokenCifrado` jamás se lee acá ni se
+ * agrega a este DTO. `tokenExpiraEn` sigue el mismo criterio de
+ * serialización que `bridge.service.ts::toBridgeDto` (`ultimoLeadEn`): el
+ * campo queda tipado `Date | null` y Express serializa a ISO 8601 al
+ * responder `res.json(...)`, no hay conversión manual acá.
+ */
 export function toCuentaPublicitariaDto(cuenta: CuentaPublicitaria): CuentaPublicitariaDto {
   return {
     id: cuenta.id,
@@ -60,6 +70,8 @@ export function toCuentaPublicitariaDto(cuenta: CuentaPublicitaria): CuentaPubli
     nombre: cuenta.nombre,
     instagramAccountId: cuenta.idExternoVinculado,
     activa: cuenta.activa,
+    estadoToken: cuenta.estadoToken,
+    tokenExpiraEn: cuenta.tokenExpiraEn,
   };
 }
 

@@ -63,6 +63,8 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
 
     expect(dto).not.toHaveProperty("tokenCifrado");
     expect(JSON.stringify(dto)).not.toContain("page-access-token-en-claro");
+    expect(dto.estadoToken).toBe("VALIDO");
+    expect(dto.tokenExpiraEn).toEqual(new Date(1_900_000_000 * 1000));
 
     const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
