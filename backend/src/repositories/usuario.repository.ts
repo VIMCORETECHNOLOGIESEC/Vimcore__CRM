@@ -180,3 +180,23 @@ export async function deactivateUsuario(
   await revokeAllForUser(id, client);
   return updated;
 }
+
+/**
+ * M9 (`metricas.service.ts::getPorAsesor`, docs/08 §3.2): rótulo de nombre
+ * para cada `responsableId` que devuelve la agregación SQL cruda de
+ * `metricas.repository.ts::getPorAsesorConSla` — esa consulta solo conoce
+ * ids (Prisma no permite `include`/`select` sobre un `$queryRaw`). Un único
+ * viaje por lote, mismo criterio que `lead.repository.ts::
+ * countCargaActivaPorResponsable` (recibe la lista completa de ids, no N+1).
+ */
+export async function findNombresPorIds(
+  ids: readonly string[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, { nombre: string; rol: RolUsuario; activo: boolean }>> {
+  if (ids.length === 0) return new Map();
+  const filas = await client.usuario.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, nombre: true, rol: true, activo: true },
+  });
+  return new Map(filas.map((f) => [f.id, { nombre: f.nombre, rol: f.rol, activo: f.activo }]));
+}

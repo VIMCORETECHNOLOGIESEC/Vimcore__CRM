@@ -453,18 +453,20 @@ productor ni un scheduler de expiración de tokens.
 
 ## M9 — Dashboard y métricas
 
-- [ ] Servicio de agregación de KPIs (ver `08-dashboard-kpis.md`)
-- [ ] `GET /api/v1/metricas/resumen`
-- [ ] `GET /api/v1/metricas/por-red-social`
-- [ ] `GET /api/v1/metricas/por-asesor`
-- [ ] `GET /api/v1/metricas/por-etapa`
-- [ ] `GET /api/v1/metricas/por-campania`
-- [ ] `GET /api/v1/metricas/embudo`
-- [ ] `GET /api/v1/metricas/red-social-x-semaforo` — matriz cruzada
-- [ ] Filtro por rango de fechas en todos los endpoints de métricas
-- [ ] Alcance por rol: general para administrador y supervisor, personal para
+- [x] Servicio de agregación de KPIs (ver `08-dashboard-kpis.md`)
+- [x] `GET /api/v1/metricas/resumen`
+- [x] `GET /api/v1/metricas/por-red-social`
+- [x] `GET /api/v1/metricas/por-asesor`
+- [x] `GET /api/v1/metricas/por-etapa`
+- [x] `GET /api/v1/metricas/por-campania`
+- [x] `GET /api/v1/metricas/embudo`
+- [x] `GET /api/v1/metricas/red-social-x-semaforo` — matriz cruzada
+- [x] Filtro por rango de fechas en todos los endpoints de métricas
+- [x] Alcance por rol: general para administrador y supervisor, personal para
       asesor y vendedor
-- [ ] Emisión de actualización de métricas por SSE ante cambios relevantes
+- [ ] Emisión de actualización de métricas por SSE ante cambios relevantes —
+      pendiente A PROPÓSITO, queda para una tarea futura separada (fuera de
+      alcance de la tarea que cerró el resto de M9).
 
 **Pruebas obligatorias:** un asesor consultando métricas recibe solo datos de su
 cartera; los conteos por etapa suman el total de leads del período.
