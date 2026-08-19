@@ -34,10 +34,21 @@ const usuarioFake = {
   rol: "ASESOR" as const,
 };
 
+/**
+ * Expuesto para que los tests puedan inspeccionar/poblar la caché de
+ * TanStack Query directamente (Fix de fuga de datos entre sesiones: ver
+ * describe "AuthContext — logout limpia toda la caché de TanStack Query"
+ * más abajo). `wrapper` solo se ejecuta una vez por test -- RTL no vuelve a
+ * invocar la función componente en cada `act()` interno del hook bajo
+ * prueba --, así que esta referencia es estable durante todo el test.
+ */
+let queryClientDeTest: QueryClient | null = null;
+
 function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  queryClientDeTest = queryClient;
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>{children}</AuthProvider>
@@ -213,6 +224,73 @@ describe("AuthContext — logout", () => {
     });
 
     expect(logoutApiMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("AuthContext — logout limpia toda la caché de TanStack Query", () => {
+  // Regresión: al integrar contra el backend real, `logout()` solo borraba
+  // la query del perfil (`["auth", "perfil"]`), no el resto de la caché. Con
+  // `staleTime: 30_000` (`api/queryClient.ts`) y login/logout como
+  // navegación SPA sin recarga de página, eso deja servir a un segundo
+  // usuario que inicia sesión en la misma pestaña dentro de esos 30 s los
+  // datos cacheados del usuario anterior (notificaciones, leads, etc.) sin
+  // ningún request de red -- una fuga de datos entre sesiones en estaciones
+  // compartidas. `logout()` debe usar `queryClient.clear()`, no
+  // `setQueryData` puntual, para cubrir cualquier query cacheada por
+  // cualquier módulo, tenga o no `user.id` en su key.
+  it("borra datos cacheados por otros módulos (no solo la query del perfil) al cerrar sesión", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-1");
+    logoutApiMock.mockResolvedValue(undefined);
+    loginApiMock.mockResolvedValue({
+      accessToken: "access-1",
+      refreshToken: "refresh-1",
+      user: usuarioFake,
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await act(async () => {
+      await result.current.login("ana@crm.test", "clave-segura");
+    });
+
+    // Simula datos que un módulo ajeno (p. ej. notificaciones, leads) dejó
+    // en caché durante la sesión de este usuario.
+    queryClientDeTest?.setQueryData(["notificaciones"], [{ id: "notif-del-usuario-anterior" }]);
+    expect(queryClientDeTest?.getQueryData(["notificaciones"])).toBeDefined();
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(queryClientDeTest?.getQueryData(["notificaciones"])).toBeUndefined();
+  });
+
+  // El otro camino por el que una sesión puede terminar sin pasar por
+  // `logout()` explícito: un refresco de token fallido invoca el mismo
+  // handler que registra `setOnSessionExpired` (ver httpClient.ts). Si un
+  // segundo usuario inicia sesión justo después de eso -- sin que nadie haya
+  // tocado el botón de cerrar sesión --, la misma fuga aplica si ese camino
+  // no limpia también la caché completa.
+  it("el handler de sesión expirada también borra datos cacheados por otros módulos", async () => {
+    loginApiMock.mockResolvedValue({
+      accessToken: "access-1",
+      refreshToken: "refresh-1",
+      user: usuarioFake,
+    });
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.login("ana@crm.test", "clave-segura");
+    });
+
+    queryClientDeTest?.setQueryData(["notificaciones"], [{ id: "notif-del-usuario-anterior" }]);
+
+    const handlerRegistrado = setOnSessionExpiredMock.mock.calls[0]?.[0] as () => void;
+    act(() => {
+      handlerRegistrado();
+    });
+
+    await waitFor(() => expect(result.current.user).toBeNull());
+    expect(queryClientDeTest?.getQueryData(["notificaciones"])).toBeUndefined();
   });
 });
 

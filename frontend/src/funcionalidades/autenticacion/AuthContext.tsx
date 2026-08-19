@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -31,6 +31,42 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * sincronizado el tipo `AuthenticatedUser` en `@/tipos/usuario`.
  */
 const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
+
+/**
+ * Termina el estado de sesión reactivo y purga cualquier otro dato
+ * cacheado de la sesión saliente -- se invoca tanto en `logout()` explícito
+ * como cuando `httpClient` reporta sesión expirada (un refresco fallido
+ * también termina la sesión sin pasar por el botón de logout).
+ *
+ * Riesgo que evita: sin esto, cualquier query cacheada por otro módulo que
+ * no incluya `user.id` en su key (p. ej. `useNotificaciones`/`useLeads` --
+ * el backend ya filtra por el usuario del JWT, así que ninguna de las dos
+ * lo necesita) sigue en caché después de cerrar sesión. Con
+ * `staleTime: 30_000` (`api/queryClient.ts`) y login/logout como navegación
+ * SPA sin recarga de página, un segundo usuario que inicia sesión en la
+ * misma pestaña dentro de esos 30 s (p. ej. cambio de turno en una estación
+ * compartida) recibiría datos cacheados del usuario anterior sin ningún
+ * request de red.
+ *
+ * Por qué no `queryClient.clear()` a secas: `clear()`/`removeQueries()`
+ * destruyen el objeto `Query` interno de TanStack Query sin notificar a los
+ * observers ya montados (no disparan `dispatch`), así que el observer de
+ * `perfilQuery` -- todavía montado en este mismo `AuthProvider` -- queda
+ * apuntando a un objeto "huérfano" con los datos viejos hasta el próximo
+ * render, y nada dispara ese render. `setQueryData` sí notifica de
+ * inmediato porque reutiliza el mismo objeto `Query` vivo. Por eso: primero
+ * `setQueryData` (perfil pasa a `null` ya mismo, dispara la redirección de
+ * `ProtectedRoute`), después `removeQueries` excluyendo esa query -- si se
+ * la volviera a eliminar, el próximo `login()`/`setQueryData` construiría
+ * un `Query` nuevo desconectado del observer ya montado, rompiendo el
+ * flujo de login siguiente en la misma pestaña.
+ */
+function clearSessionCache(queryClient: QueryClient): void {
+  queryClient.setQueryData(PERFIL_QUERY_KEY, null);
+  queryClient.removeQueries({
+    predicate: (query) => query.queryKey[0] !== PERFIL_QUERY_KEY[0],
+  });
+}
 
 /**
  * Estado de sesión (F2, "Persistencia de sesión y cierre automático al
@@ -86,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const user = perfilQuery.data ?? null;
 
   useEffect(() => {
-    setOnSessionExpired(() => queryClient.setQueryData(PERFIL_QUERY_KEY, null));
+    setOnSessionExpired(() => clearSessionCache(queryClient));
     return () => setOnSessionExpired(null);
   }, [queryClient]);
 
@@ -108,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
     setTokens(null);
-    queryClient.setQueryData(PERFIL_QUERY_KEY, null);
+    clearSessionCache(queryClient);
     if (refreshToken) {
       try {
         await logoutApi(refreshToken);
