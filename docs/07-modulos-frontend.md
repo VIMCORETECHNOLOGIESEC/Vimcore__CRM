@@ -32,6 +32,35 @@ frontend/src/
 
 ---
 
+## Estado consolidado (verificado contra código real en `test/integration`, 2026-08-19)
+
+| Módulo | Estado | Pendientes |
+|---|---|---|
+| F1 — Base | ✅ Completo | — |
+| F2 — Autenticación | ✅ Completo (frontend) | Backend no expone autoservicio de cambio de contraseña para roles no-administrador (brecha de backend M2, no de este módulo) |
+| F3 — Listado de leads | ⚠️ Completo con gaps | Tabs "Pendientes/Cerrados" sin implementar (requiere el parámetro `vista` de M5, tampoco implementado); SSE de lead nuevo real requiere un evento `lead.nuevo` que el backend no emite todavía (M9 solo emite `lead.asignado`/`lead.etapa-cambiada`, dirigidos por usuario) |
+| F4 — Detalle del lead | ⚠️ Completo con gaps | Guard local `canEdit` en timeline/formulario de etapa; redirección automática ante pérdida de acceso (403 `permiso_denegado`); la actualización SSE ya ocurre parcialmente vía el listener global de F6, sin suscripción propia de F4 |
+| F5 — Dashboard | ✅ Completo | — (actualización en tiempo real vía SSE resuelta el 2026-08-19: `decodeKnownEvent` ya reconoce `metricas.actualizadas` y `useNotificacionesRealtime` invalida `["metricas"]`) |
+| F6 — Notificaciones | ✅ Completo | — |
+| F7 — Administración de usuarios | ✅ Completo | — |
+| F8 — Administración de bridges | ✅ Completo | — |
+
+**Ningún módulo frontend propuesto está sin empezar.** 6 de 8 están terminados al 100%. Los gaps restantes en F3/F4 son de "tiempo real"/SSE o dependen de un ítem de M5 aún no implementado en el backend (`vista`) -- ninguno es un módulo sin construir, son refinamientos incrementales sobre una base ya funcional y probada.
+
+---
+
+## Backlog no bloqueante — mejoras post-lanzamiento
+
+Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometido en el scope MVP original, o ya tiene workaround funcional. No bloquean el lanzamiento.
+
+- **Autoservicio de cambio de contraseña para roles no-administrador** (F2, requiere endpoint nuevo de backend, ej. `PATCH /auth/perfil/password`): no prometido en el scope MVP; workaround 100% funcional ya existe (reset por administrador, F7, `PATCH /usuarios/:id`). Esfuerzo: medio (endpoint nuevo + verificación de contraseña actual).
+- **Tabs "Pendientes/Cerrados"** (F3): depende del parámetro `vista` del backend (M5, ver backlog de `docs/06-modulos-backend.md`), sin implementar todavía.
+- **SSE de listado/detalle de leads con alcance completo** (F3/F4): hoy la cobertura vía `lead.asignado`/`lead.etapa-cambiada` es incidental y dirigida solo al usuario destinatario del evento (`EventBroker.publish` por `userId`, no `broadcastAll`) — un supervisor mirando el listado en otra sesión no se entera de un lead nuevo o reasignado a otra persona. Esfuerzo: medio (nuevo evento `lead.nuevo` en el backend + decidir si usa `broadcastAll` como `metricas.actualizadas`).
+- **Guard `canEdit` local en `LeadTimeline`/`FormularioEtapaLead`** (F4): el backend ya rechaza correctamente con 403 — es solo un mensaje de error confuso en vez de ocultar el control proactivamente. Esfuerzo: bajo.
+- **Redirección automática ante pérdida de acceso (403 `permiso_denegado`)** (F4): mismo criterio, el backend ya protege el recurso — hoy el usuario queda atascado en un botón "Reintentar" que nunca funciona. Esfuerzo: bajo.
+
+---
+
 ## F1 — Base
 
 > **Progreso:** implementado en `configuracion-base-monorepo` (PR1
@@ -260,8 +289,23 @@ del producto.
 - [x] Vista adaptada por rol: asesor y vendedor ven solo su cartera, sin columna
       de responsable
 - [x] Acciones masivas de asignación para supervisor y administrador
-- [ ] Actualización por SSE cuando ingresa un lead nuevo (pendiente,
-      depende de infraestructura de bridges/tiempo real — F8)
+- [ ] Actualización por SSE cuando ingresa un lead nuevo (pendiente;
+      corrección 2026-08-19 -- esta nota decía "depende de F8/bridges",
+      inexacto: la infraestructura de tiempo real ya existe desde F6/M8.
+      `useNotificacionesRealtime` está montado globalmente
+      (`layouts/Header.tsx`) e invalida `["leads"]` ante
+      `lead.asignado`/`lead.etapa-cambiada` -- la tabla YA se actualiza en
+      vivo para esos dos eventos, sin código nuevo de F3. Pero
+      `EventBroker.publish` (`lib/event-broker.ts`) dirige el evento solo
+      al `userId` receptor, no a todo conectado, así que un lead
+      autoasignado refresca la sesión de quien lo recibió, no la de un
+      supervisor mirando el listado en otra sesión; y no existe ningún
+      evento `lead.nuevo`/`lead.creado` en el backend (`EventType` no lo
+      define), así que un ingreso sin autoasignación exitosa
+      (`SIN_ASIGNAR`) no refresca ninguna sesión. Pendiente real: agregar
+      `lead.nuevo` al backend con `broadcastAll` (mismo patrón que
+      `metricas.actualizadas`, M9) para que cualquier listado abierto lo
+      vea, no solo la sesión del responsable asignado.)
 - [ ] Tabs "Pendientes/En proceso" (vista por defecto) vs "Cerrados"
       (2026-08-19, diseño): la vista principal de la tabla — la que hoy
       existe sin distinción — pasa a filtrar por defecto `etapa NOT IN
@@ -489,16 +533,21 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
       responsabilidad — fue traspasado/reasignado a &lt;nombre&gt;."), no
       solo los oculte en silencio.
 - [ ] Actualización en vivo del detalle abierto ante cambios de otro usuario
-      (2026-08-19, depende del módulo SSE compartido de F8/tiempo real):
-      hoy, si otro usuario (admin, o el nuevo responsable) cambia la etapa o
-      reasigna el lead que este usuario tiene abierto en `LeadDetallePage`,
-      nada se actualiza hasta un refresh manual (`staleTime: 30_000` sin
-      `refetchOnWindowFocus`, confirmado en `api/queryClient.ts`). Cuando
-      exista el cliente SSE genérico, suscribir `[lead-detalle, leadId]` a
-      `lead.etapa-cambiada`/eventos de reasignación que mencionen este
-      `leadId` puntual e invalidar esa query — mismo criterio que ya usan
-      las mutaciones propias del usuario, aplicado también a cambios
-      ajenos.
+      (corrección 2026-08-19 -- esta nota decía "depende de F8/tiempo real"
+      y "nada se actualiza hasta un refresh manual", ambos inexactos hoy):
+      el cliente SSE genérico ya existe (F6/M8) y `useNotificacionesRealtime`
+      (montado globalmente) YA invalida `["lead-detalle", leadId]` ante
+      `lead.asignado`/`lead.etapa-cambiada` de CUALQUIER lead, incluido el
+      que este usuario tiene abierto -- verificado en
+      `useNotificacionesRealtime.ts` líneas 33-36. Esto no fue construido a
+      propósito para F4 (es un efecto colateral del listener global de F6),
+      y por eso queda como pendiente real: no hay suscripción propia de
+      `LeadDetallePage`/`useLeadDetalle`, así que cualquier otro tipo de
+      evento futuro sobre este lead no se propaga acá salvo que también lo
+      maneje ese mismo listener genérico -- y, mismo matiz que F3 arriba,
+      el evento solo llega a la sesión del usuario destinatario
+      (`EventBroker.publish` por `userId`), no a un tercero con el detalle
+      abierto que no sea el afectado directo del cambio.
 - [ ] Redirección a la tabla de leads si se pierde el acceso de lectura
       (2026-08-19, gap verificado): `canRead` en el backend es más amplio
       que `canEdit` (D4: el asesor que traspasó conserva lectura), así que
@@ -607,8 +656,15 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 - [x] Selector de rango de fechas con comparativa contra el período anterior
 - [x] Alcance por rol: general para administrador y supervisor, personal para
       asesor y vendedor
-- [ ] Actualización en tiempo real vía SSE (pendiente, depende de M9 y de
-      infraestructura de tiempo real — F8)
+- [x] Actualización en tiempo real vía SSE (resuelto 2026-08-19 -- el parser
+      del canal SSE (`notificaciones.sse.ts::decodeKnownEvent`) ahora
+      reconoce `metricas.actualizadas` en la whitelist `known` en vez de
+      descartarlo en silencio, y `useNotificacionesRealtime` (el listener
+      global, montado para todas las rutas protegidas) invalida
+      `["metricas"]` al recibirlo -- sin hook nuevo, TanStack Query
+      refetchea en segundo plano las queries ya montadas por
+      `useMetricas.ts`. No dependía de bridges/F8, tal como ya aclaraba la
+      nota anterior.)
 
 **Biblioteca de gráficas:** Recharts. Es declarativa, tipada, y su tamaño de
 paquete es razonable para el volumen de gráficas de este dashboard.

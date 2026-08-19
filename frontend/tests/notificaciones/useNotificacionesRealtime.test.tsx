@@ -76,6 +76,19 @@ it("invalida los prefijos F3/F4 y resincroniza notificaciones, leads y detalles"
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["lead-detalle"] });
 });
 
+it("invalida metricas ante metricas.actualizadas sin caer en el catch-all genérico", () => {
+  const context = setup();
+  const invalidate = vi.spyOn(context.client, "invalidateQueries");
+  act(() => {
+    context.options.onEvent({ type: "metricas.actualizadas", data: {}, id: "e5" });
+  });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["metricas"] });
+  expect(invalidate).toHaveBeenCalledTimes(1);
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["lead-detalle"] });
+});
+
 it("aborta la conexión vieja al cambiar usuario y al desmontar", () => {
   const context = setup();
   const firstAbort = context.aborts[0];

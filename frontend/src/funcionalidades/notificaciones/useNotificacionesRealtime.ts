@@ -35,6 +35,10 @@ export function useNotificacionesRealtime(onNuevaNotificacion?: (value: Notifica
         void queryClient.invalidateQueries({ queryKey: ["lead-detalle", event.data.leadId] });
         return;
       }
+      if (event.type === "metricas.actualizadas") {
+        void queryClient.invalidateQueries({ queryKey: ["metricas"] });
+        return;
+      }
       void queryClient.invalidateQueries({ queryKey: ["notificaciones", userId], exact: true });
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
       void queryClient.invalidateQueries({ queryKey: ["lead-detalle"] });

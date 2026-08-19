@@ -8,6 +8,34 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 
 ---
 
+## Estado consolidado (verificado contra código real en `test/integration`, 2026-08-19)
+
+| Módulo | Estado | Pendientes |
+|---|---|---|
+| M1 — Base e infraestructura | ✅ Completo | — |
+| M2 — Autenticación y usuarios | ✅ Completo | — |
+| M3 — Normalización y deduplicación | ✅ Completo | — |
+| M4 — Ingesta y bridges | ⚠️ Parcial | Adaptador LinkedIn (bloqueado por aprobación externa del Marketing Developer Platform); adaptador X dedicado (trivial sobre el endpoint genérico, no implementado) |
+| M5 — Gestión de leads | ⚠️ Completo con deuda técnica | Parámetro `vista=activos\|cerrados` sin implementar (`listLeadsQuerySchema`); `limite` valida rango abierto 1-100 en vez de whitelist 10/25/50/100 (ver "Backlog no bloqueante" más abajo) |
+| M6 — Asignación, traspaso y SLA | ✅ Completo | — |
+| M7 — Citas | ✅ Completo | — |
+| M8 — Notificaciones y tiempo real | ✅ Completo | — |
+| M9 — Dashboard y métricas | ✅ Completo | — |
+
+**Ningún módulo backend propuesto está sin empezar.** 7 de 9 están terminados al 100%. M4 tiene dos adaptadores externos pendientes por diseño (dependencia externa documentada desde el inicio, no un olvido — ver "Orden de ejecución sugerido" al final de este documento). M5 tiene dos deudas técnicas puntuales y acotadas, ninguna bloqueante para el resto del sistema.
+
+---
+
+## Backlog no bloqueante — mejoras post-lanzamiento
+
+Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometido en el scope MVP original, o ya tiene workaround funcional. No bloquean el lanzamiento.
+
+- **`limite` sin whitelist** (M5, `leads.schema.ts::listLeadsQuerySchema`): valida rango abierto 1-100 en vez de la whitelist fija 10/25/50/100 que usa el frontend. Endurecimiento defensivo, sin exploit conocido (ya capado en 100). Esfuerzo: trivial (1 línea de schema).
+- **Parámetro `vista=activos|cerrados`** (M5, `GET /leads`): mejora de UX decidida durante el desarrollo de F3 (tabs "Pendientes/Cerrados"), no prometida en `01-alcance-mvp.md`. Esfuerzo: bajo (schema + `buildWhere` en `leads.service.ts`).
+- **Validación de traspaso asesor→vendedor y conflicto de rol dual, pendiente de confirmar con el cliente** (no es deuda de código): `docs/01-alcance-mvp.md` riesgos R4 y R6 pedían validar con el cliente la regla de traspaso y el conflicto "misma persona = asesor y vendedor" **antes de M6**. M6 ya está completo, implementado sobre el supuesto de `docs/02-reglas-negocio.md` §5 (marcado ahí mismo como "a confirmar"), sin evidencia documentada de que esa validación con el cliente haya ocurrido. Conviene cerrar esta decisión de producto antes de operar con usuarios reales que puedan combinar ambos roles.
+
+---
+
 ## M1 — Base e infraestructura
 
 > **Progreso:** implementado en `configuracion-base-monorepo` (PR1
@@ -302,15 +330,14 @@ eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del
 - [x] Filtrado automático por rol: asesor y vendedor solo ven su cartera
 - [x] `GET /api/v1/leads/:id` con verificación de acceso
 - [x] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
-      > **Pendiente (validación server-side faltante):** `leads.service.ts::transitionEtapa`
-      > (líneas 134-201) solo rechaza reabrir una etapa terminal (línea 147,
-      > `ETAPAS_TERMINALES.includes(lead.etapa)`) pero no valida que `body.etapa`
-      > sea una transición válida desde `lead.etapa` — no hay chequeo equivalente
-      > a la whitelist de `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`
-      > (progreso lineal Nuevo → Contactado → Cita, nunca se retrocede, más salto
-      > directo a cierre desde cualquier etapa no terminal — docs/02-reglas-negocio.md
-      > §6). Hoy el endpoint acepta, por ejemplo, `CITA → NUEVO`. Falta agregar esa
-      > validación server-side antes de `leadRepository.updateEtapa` (línea 185).
+      > (2026-08-19) `leads.service.ts::transitionEtapa` ahora valida server-side
+      > que `body.etapa` sea una transición válida desde `lead.etapa` actual,
+      > vía la whitelist `TRANSICIONES_VALIDAS` (progreso lineal Nuevo →
+      > Contactado → Cita, nunca se retrocede, más salto directo a cierre desde
+      > cualquier etapa no terminal — docs/02-reglas-negocio.md §6), replicando
+      > `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`.
+      > Responde 409 `transicion_invalida` cuando la transición pedida no está
+      > en la whitelist.
 - [x] Validación de campos obligatorios en etapas terminales
 - [x] Escritura de `lead_eventos` en la misma transacción que cada cambio
 - [x] `GET /api/v1/formularios/:etapa` — definición de formulario

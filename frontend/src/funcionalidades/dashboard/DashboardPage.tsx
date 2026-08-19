@@ -80,15 +80,17 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       {/*
-        INTEGRACION-BACKEND: acá se conecta la actualización en tiempo real
-        por SSE (docs/08 §5 -- F8, todavía no existe el canal de eventos ni
-        el motor de notificaciones en el backend). Cuando exista, el
-        servidor reemite indicadores recalculados en ventanas de 2s ante
-        ingreso de lead/cambio de etapa/cierre/asignación; el cliente debe
-        invalidar las queries ["metricas", ...] (ver `useMetricas.ts`) en vez
-        de hacer polling -- mismo criterio que el comentario SSE ya dejado en
-        `LeadsPage.tsx` (F3), y con el mismo indicador de reconexión pedido
-        en docs/08 §5 ante interrupción del canal.
+        INTEGRACION-BACKEND: la actualización en tiempo real por SSE ya está
+        resuelta -- no hace falta código acá. El backend emite
+        "metricas.actualizadas" (debounce de 2s) ante ingreso de
+        lead/cambio de etapa/cierre/asignación vía `EventBroker.broadcastAll`
+        (`backend/src/lib/metricas-broadcast.ts`). El listener global
+        `useNotificacionesRealtime` (montado en `layouts/AppLayout.tsx` para
+        todas las rutas protegidas) decodifica ese evento e invalida
+        `["metricas", ...]`; TanStack Query refetchea en segundo plano las
+        queries ya montadas por `useMetricas.ts` sin polling. El indicador de
+        reconexión ya lo expone `estado` de ese mismo hook (ver
+        `CampanaNotificaciones.tsx`).
       */}
 
       <FiltroRangoFechas rango={rango} onChange={setRango} />

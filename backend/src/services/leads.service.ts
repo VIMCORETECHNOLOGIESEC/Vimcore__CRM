@@ -14,6 +14,22 @@ import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 const ETAPAS_TERMINALES: readonly EtapaLead[] = ["VENTA", "NO_VENTA"];
 
+/**
+ * docs/02-reglas-negocio.md §6: progreso lineal hacia adelante entre etapas
+ * no terminales (NUEVO → CONTACTADO → CITA), nunca se retrocede; desde
+ * cualquier etapa no terminal se permite el salto directo a cierre (VENTA o
+ * NO_VENTA). Copia server-side de `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`
+ * — mismo criterio que `ETAPAS_TERMINALES` arriba: no compartida, replicada
+ * a propósito en este archivo.
+ */
+const TRANSICIONES_VALIDAS: Record<EtapaLead, readonly EtapaLead[]> = {
+  NUEVO: ["CONTACTADO", "VENTA", "NO_VENTA"],
+  CONTACTADO: ["CITA", "VENTA", "NO_VENTA"],
+  CITA: ["VENTA", "NO_VENTA"],
+  VENTA: [],
+  NO_VENTA: [],
+};
+
 export type LeadConSla = Lead & { estadoSla: EstadoSla };
 /**
  * spec ("Respuesta enriquecida con relaciones"): forma real de `findLeads`/
@@ -167,6 +183,13 @@ export async function transitionEtapa(
           "etapa_terminal",
           409,
           `El lead ya está en una etapa terminal (${lead.etapa}) y no puede reabrirse`,
+        );
+      }
+      if (!TRANSICIONES_VALIDAS[lead.etapa].includes(body.etapa)) {
+        throw new AppError(
+          "transicion_invalida",
+          409,
+          `No se puede pasar de ${lead.etapa} a ${body.etapa}`,
         );
       }
 

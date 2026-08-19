@@ -246,6 +246,30 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(sinCambios.etapa).toBe("VENTA");
   });
 
+  it("409: no se puede retroceder de CITA a CONTACTADO", async () => {
+    const asesor = await crearUsuario("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "CITA" });
+
+    await expect(
+      transitionEtapa(asesor, lead.id, { etapa: "CONTACTADO", respuestas: {} }),
+    ).rejects.toMatchObject({ statusHttp: 409 });
+
+    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(sinCambios.etapa).toBe("CITA");
+  });
+
+  it("409: no se puede saltar de NUEVO a CITA sin pasar por CONTACTADO", async () => {
+    const asesor = await crearUsuario("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO" });
+
+    await expect(
+      transitionEtapa(asesor, lead.id, { etapa: "CITA", respuestas: {} }),
+    ).rejects.toMatchObject({ statusHttp: 409 });
+
+    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(sinCambios.etapa).toBe("NUEVO");
+  });
+
   it("403: el asesor original tras un traspaso no puede editar; el vendedor sí", async () => {
     const asesorOriginal = await crearUsuario("ASESOR");
     const vendedor = await crearUsuario("VENDEDOR");
