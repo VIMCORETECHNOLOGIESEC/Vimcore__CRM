@@ -28,18 +28,21 @@ const SEMAFORO_CLASES: Record<SemaforoLead, { badge: string; dot: string }> = {
 };
 
 interface SemaforoBadgeProps {
-  semaforo: SemaforoLead;
+  /** `null` para un lead que todavía no fue calificado (D14). */
+  semaforo: SemaforoLead | null;
   className?: string;
 }
 
 export function SemaforoBadge({ semaforo, className }: SemaforoBadgeProps) {
-  const clases = SEMAFORO_CLASES[semaforo];
+  const clases = semaforo
+    ? SEMAFORO_CLASES[semaforo]
+    : { badge: "border-border bg-secondary text-muted-foreground", dot: "text-muted-foreground" };
   return (
     <span
       className={`inline-flex w-fit items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium ${clases.badge} ${className ?? ""}`}
     >
       <Circle className={`size-2 fill-current ${clases.dot}`} aria-hidden="true" />
-      {SEMAFORO_ETIQUETAS[semaforo]}
+      {semaforo ? SEMAFORO_ETIQUETAS[semaforo] : "Sin calificar"}
     </span>
   );
 }

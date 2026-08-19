@@ -110,10 +110,8 @@ interface BackendLeadsListResponse {
  *   esas entidades con `id` (ver nota en `LeadsQueryParams.campaniaId`).
  * - `semaforo`/`puntuacion` pueden ser `null` en la BD real para un lead
  *   `NUEVO` sin calificar todavía (D14, `docs/06-modulos-backend.md`); el
- *   tipo `Lead` del frontend los declara no-nulos (decisión previa a esta
- *   integración, fuera del alcance de este cambio) -- se pasan tal cual
- *   llegan (`as`), un lead recién ingresado puede mostrarse sin badge de
- *   semáforo hasta que se resuelva ese gap en un cambio posterior.
+ *   tipo `Lead` los declara nullable y `SemaforoBadge` renderiza un estado
+ *   neutro ("Sin calificar") en ese caso -- ver `SemaforoBadge.tsx`.
  */
 export function mapLeadFromApi(raw: BackendLeadDetalleConSla): Lead {
   return {
@@ -134,8 +132,8 @@ export function mapLeadFromApi(raw: BackendLeadDetalleConSla): Lead {
     // defecto, solo la UI necesita *algo* que renderizar).
     redSocial: raw.redSocial ?? "INSTAGRAM",
     etapa: raw.etapa,
-    semaforo: raw.semaforo as SemaforoLead,
-    puntuacion: raw.puntuacion as number,
+    semaforo: raw.semaforo,
+    puntuacion: raw.puntuacion,
     asesor: raw.asesor
       ? { id: raw.asesor.id, nombre: raw.asesor.nombre, rol: raw.asesor.rol as ResponsableLead["rol"] }
       : null,

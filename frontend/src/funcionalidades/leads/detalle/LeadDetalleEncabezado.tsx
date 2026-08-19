@@ -25,7 +25,8 @@ export function LeadDetalleEncabezado({ lead }: LeadDetalleEncabezadoProps) {
             {ETAPA_ETIQUETAS[lead.etapa]}
           </span>
           <span className="text-xs text-muted-foreground">
-            Puntuación: <span className="font-medium text-foreground">{lead.puntuacion}</span>
+            Puntuación:{" "}
+            <span className="font-medium text-foreground">{lead.puntuacion ?? "Sin calificar"}</span>
           </span>
         </div>
       </div>

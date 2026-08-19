@@ -93,6 +93,21 @@ describe("fetchLeadsApi — contrato de respuesta (GET /leads real, D-A1)", () =
     expect(lead.vendedor).toEqual({ id: "vendedor-1", nombre: "Sofía", rol: "VENDEDOR" });
     // Campaña/cuenta publicitaria: sin entidad real con id en el backend (gap documentado).
     expect(lead.campania).toBeNull();
+  });
+
+  it("un lead NUEVO sin calificar (semaforo/puntuacion null en el backend, D14) se mapea sin forzar un valor falso", async () => {
+    getMock.mockResolvedValue({
+      leads: [leadBackendFake({ etapa: "NUEVO", semaforo: null, puntuacion: null })],
+      total: 1,
+      pagina: 1,
+      limite: 10,
+    });
+
+    const respuesta = await fetchLeadsApi({ pagina: 1, porPagina: 10 });
+    const [lead] = respuesta.datos;
+
+    expect(lead.semaforo).toBeNull();
+    expect(lead.puntuacion).toBeNull();
     expect(lead.cuentaPublicitaria).toBeNull();
   });
 

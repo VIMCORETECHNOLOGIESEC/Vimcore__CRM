@@ -81,8 +81,10 @@ export interface Lead {
   origen: OrigenLead;
   redSocial: RedSocial;
   etapa: EtapaLead;
-  semaforo: SemaforoLead;
-  puntuacion: number;
+  /** Nulo hasta que el lead se califica (D14) -- p.ej. recién ingresado por un bridge. */
+  semaforo: SemaforoLead | null;
+  /** Nulo hasta que el lead se califica (D14). */
+  puntuacion: number | null;
   asesor: ResponsableLead | null;
   vendedor: ResponsableLead | null;
   /** ISO 8601 (UTC). Nulo si nunca se asignó. */
