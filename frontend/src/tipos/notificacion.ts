@@ -6,10 +6,11 @@
  */
 
 /**
- * `docs/02-reglas-negocio.md` §8 documenta 7 eventos que generan notificación,
- * pero no fija el nombre exacto del enum `tipo` de la tabla `notificaciones`
- * -- estos valores son una propuesta razonable (un caso por fila de esa
- * tabla), a validar contra el enum real de Prisma cuando M8 exista.
+ * Confirmado contra el enum real de Prisma (`backend/prisma/schema.prisma`,
+ * `TipoNotificacion`, worktree `dev-back`) -- 8 valores, uno más que la
+ * propuesta original de `docs/02-reglas-negocio.md` §8:
+ * `INTERACCION_REPETIDA` (interacción repetida de un mismo lead/canal) no
+ * tenía equivalente en la lista original.
  */
 export type TipoNotificacion =
   | "LEAD_ASIGNADO"

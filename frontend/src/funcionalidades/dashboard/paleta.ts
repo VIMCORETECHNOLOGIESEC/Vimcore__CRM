@@ -41,6 +41,15 @@ export const PALETA_SEMAFORO: Record<SemaforoLead, string> = {
   ROJO: "#DC2626",
 };
 
+/**
+ * "Sin calificar" (leads con `semaforo IS NULL`, D14) no es un color de
+ * semáforo -- es la ausencia de calificación. El backend real (M9) sí
+ * distingue este bucket en `distribucionSemaforo`/`red-social-x-semaforo`, a
+ * diferencia del mock anterior que no lo modelaba. Gris neutro, deliberadamente
+ * fuera de `PALETA_SEMAFORO` para no confundirlo con un cuarto color de negocio.
+ */
+export const COLOR_SIN_CALIFICAR = "#94A3B8";
+
 /** Orden canónico de redes sociales para asignar la paleta categórica en secuencia (docs/08 §3.1/§3.5). */
 export const ORDEN_REDES_SOCIALES: RedSocial[] = [
   "FACEBOOK",

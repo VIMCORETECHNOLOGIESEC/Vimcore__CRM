@@ -11,15 +11,14 @@ import {
 const NOTIFICACIONES_QUERY_KEY = "notificaciones";
 
 /**
- * Trae el listado de notificaciones del usuario en sesión (F6). Misma forma
- * de retorno que tendría contra el backend real -- ver `notificaciones.api.ts`
- * para el punto de integración exacto con M8.
- *
- * Sin `refetchInterval`: agregar un polling artificial para simular "tiempo
- * real" sería fingir el canal SSE que todavía no existe (docs/07 F6, ítems
- * de SSE dejados sin marcar). TanStack Query igual refresca al recuperar el
- * foco de la ventana (comportamiento por defecto), que es una mejora
- * razonable sin inventar infraestructura de push.
+ * Trae el listado de notificaciones del usuario en sesión (F6), backend real
+ * -- ver `notificaciones.api.ts`. La query key incluye `user.id` a
+ * propósito: `useNotificacionesRealtime.ts` escribe (`setQueryData`) e
+ * invalida sobre la misma clave `["notificaciones", userId]` al recibir
+ * eventos del canal SSE (`notificacion.nueva`, resincronización), así que
+ * sacar `user.id` de la clave desincronizaría en silencio ese caché en
+ * tiempo real -- `queryClient.invalidateQueries` no matchea una clave más
+ * específica contra una más corta.
  */
 export function useNotificaciones(params: ListarNotificacionesParams = {}) {
   const { user } = useAuth();
@@ -33,8 +32,8 @@ export function useNotificaciones(params: ListarNotificacionesParams = {}) {
 
 /** Marca una notificación puntual como leída (F6, "individual"). */
 export function useMarkNotificacionLeida() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: (notificacionId: string) => markNotificacionLeidaApi(notificacionId),
@@ -49,8 +48,8 @@ export function useMarkNotificacionLeida() {
 
 /** Marca todas las notificaciones del usuario como leídas (F6, "masivo"). */
 export function useMarkAllNotificacionesLeidas() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: () => markAllNotificacionesLeidasApi(),

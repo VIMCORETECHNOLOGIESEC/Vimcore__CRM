@@ -1,12 +1,12 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
-import type { ComparativaValor } from "@/tipos/metricas";
+import type { Comparativa } from "@/tipos/metricas";
 
 interface KpiCardProps {
   titulo: string;
   valor: string;
   detalle?: string;
-  /** `undefined`/`null` cuando el indicador no tiene comparativa (ej. "en gestión", ver `ResumenMetricas`). */
-  comparativa?: ComparativaValor | null;
+  /** `undefined`/`null` cuando el indicador no tiene comparativa. */
+  comparativa?: Comparativa | null;
 }
 
 const FORMATO_NUMERO = new Intl.NumberFormat("es-EC");
@@ -14,8 +14,9 @@ const FORMATO_NUMERO = new Intl.NumberFormat("es-EC");
 /**
  * Tarjeta de KPI reusable para los 7 indicadores de resumen (docs/07 F5).
  * Componente de presentación: la lógica de cálculo del valor/comparativa ya
- * está resuelta y testeada en `metricas.utils.ts` -- acá solo se decide
- * qué ícono mostrar según el signo, sin recalcular nada de negocio.
+ * está resuelta y testeada del lado del backend real (`metricas.service.ts`,
+ * worktree `dev-back`) -- acá solo se decide qué ícono mostrar según el
+ * signo, sin recalcular nada de negocio.
  */
 export function KpiCard({ titulo, valor, detalle, comparativa }: KpiCardProps) {
   return (
@@ -28,8 +29,8 @@ export function KpiCard({ titulo, valor, detalle, comparativa }: KpiCardProps) {
   );
 }
 
-function ComparativaIndicador({ comparativa }: { comparativa: ComparativaValor }) {
-  if (comparativa.variacionPorcentaje === null) {
+function ComparativaIndicador({ comparativa }: { comparativa: Comparativa }) {
+  if (comparativa.variacionPorcentual === null) {
     return (
       <span className="text-xs text-muted-foreground">
         Período anterior: {FORMATO_NUMERO.format(comparativa.anterior)} leads (muestra insuficiente
@@ -38,7 +39,7 @@ function ComparativaIndicador({ comparativa }: { comparativa: ComparativaValor }
     );
   }
 
-  const subio = comparativa.variacionPorcentaje >= 0;
+  const subio = comparativa.variacionPorcentual >= 0;
   return (
     <span
       className={`flex items-center gap-1 text-xs font-medium ${subio ? "text-green-700" : "text-red-700"}`}
@@ -48,7 +49,7 @@ function ComparativaIndicador({ comparativa }: { comparativa: ComparativaValor }
       ) : (
         <ArrowDown className="size-3" aria-hidden="true" />
       )}
-      {Math.abs(comparativa.variacionPorcentaje).toFixed(1)} % vs. período anterior (
+      {Math.abs(comparativa.variacionPorcentual).toFixed(1)} % vs. período anterior (
       {FORMATO_NUMERO.format(comparativa.anterior)})
     </span>
   );

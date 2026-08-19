@@ -32,9 +32,20 @@ function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
     redSocial: "FACEBOOK",
     nombre: "Meta Ads — Facebook",
     estado: "ACTIVO",
-    tokenExpiraEn: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
+    tokenExpiraEn: null,
     ultimoLeadEn: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    cuentasPublicitarias: [{ id: "c1", idExterno: "act_1", nombre: "Cuenta", activa: true }],
+    cuentasPublicitarias: [
+      {
+        id: "c1",
+        bridgeId: "bridge-1",
+        idExterno: "act_1",
+        nombre: "Cuenta",
+        instagramAccountId: null,
+        activa: true,
+        estadoToken: "VALIDO",
+        tokenExpiraEn: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ],
     ...overrides,
   };
 }
@@ -112,9 +123,9 @@ describe("BridgesPage — listado con estado, último lead recibido y expiració
     expect(screen.getByText("Activo")).toBeInTheDocument();
   });
 
-  it("muestra «Nunca» y «No expira» cuando no hay último lead ni expiración", async () => {
+  it("muestra «Nunca» y «No expira» cuando no hay último lead ni ninguna cuenta con expiración", async () => {
     fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({ ultimoLeadEn: null, tokenExpiraEn: null }),
+      bridgeFake({ ultimoLeadEn: null, cuentasPublicitarias: [] }),
     ]);
     renderBridgesPage();
 
@@ -132,13 +143,63 @@ describe("BridgesPage — aviso destacado ante token expirado o bridge sin activ
     expect(screen.queryByText(/necesita atención/)).not.toBeInTheDocument();
   });
 
-  it("muestra un aviso destacado (con nombre del bridge) cuando el token expiró", async () => {
+  it("muestra un aviso destacado (con nombre del bridge) cuando el token de una cuenta expiró", async () => {
     fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({ id: "bridge-li", nombre: "LinkedIn Lead Sync", estado: "TOKEN_EXPIRADO" }),
+      bridgeFake({
+        id: "bridge-li",
+        nombre: "LinkedIn Lead Sync",
+        cuentasPublicitarias: [
+          {
+            id: "c1",
+            bridgeId: "bridge-li",
+            idExterno: "act_1",
+            nombre: "Cuenta",
+            instagramAccountId: null,
+            activa: true,
+            estadoToken: "TOKEN_EXPIRADO",
+            tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ],
+      }),
     ]);
     renderBridgesPage();
 
     expect(await screen.findByText("LinkedIn Lead Sync necesita atención")).toBeInTheDocument();
+    expect(screen.getByText(/el token expiró/i)).toBeInTheDocument();
+  });
+
+  it("un bridge con una cuenta con el token expirado y otra sana muestra el peor caso (aviso destacado)", async () => {
+    fetchBridgesApiMock.mockResolvedValue([
+      bridgeFake({
+        id: "bridge-mixto",
+        nombre: "Bridge Mixto",
+        cuentasPublicitarias: [
+          {
+            id: "c1",
+            bridgeId: "bridge-mixto",
+            idExterno: "act_1",
+            nombre: "Cuenta Expirada",
+            instagramAccountId: null,
+            activa: true,
+            estadoToken: "TOKEN_EXPIRADO",
+            tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            id: "c2",
+            bridgeId: "bridge-mixto",
+            idExterno: "act_2",
+            nombre: "Cuenta Sana",
+            instagramAccountId: null,
+            activa: true,
+            estadoToken: "VALIDO",
+            tokenExpiraEn: new Date(Date.now() + 200 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ],
+      }),
+    ]);
+    renderBridgesPage();
+
+    expect(await screen.findByText("Bridge Mixto necesita atención")).toBeInTheDocument();
     expect(screen.getByText(/el token expiró/i)).toBeInTheDocument();
   });
 

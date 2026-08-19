@@ -5,7 +5,12 @@ import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Bridge } from "@/tipos/bridge";
-import { evaluarAvisoBridge, formatFecha, tieneAvisoDestacado } from "./bridges.utils";
+import {
+  evaluateAvisoBridge,
+  formatFecha,
+  proximaExpiracionTokenBridge,
+  hasAvisoDestacado,
+} from "./bridges.utils";
 import { RED_SOCIAL_ETIQUETAS } from "./catalogos";
 import { EstadoBridgeBadge } from "./EstadoBridgeBadge";
 
@@ -55,11 +60,14 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
           return valor ? formatFecha(valor) : <span className="text-muted-foreground">Nunca</span>;
         },
       }),
-      columnHelper.accessor((b) => b.tokenExpiraEn, {
+      columnHelper.display({
         id: "tokenExpiraEn",
         header: "Expiración de token",
-        cell: ({ getValue }) => {
-          const valor = getValue();
+        // No lee `Bridge.tokenExpiraEn` (constante muerta a nivel bridge,
+        // ver `tipos/bridge.ts`) -- la fecha real vive por cuenta
+        // publicitaria, y esta columna muestra la más urgente entre todas.
+        cell: ({ row }) => {
+          const valor = proximaExpiracionTokenBridge(row.original);
           return valor ? formatFecha(valor) : <span className="text-muted-foreground">No expira</span>;
         },
       }),
@@ -67,16 +75,15 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
         id: "aviso",
         header: "Aviso",
         cell: ({ row }) => {
-          const aviso = evaluarAvisoBridge(row.original);
-          if (!tieneAvisoDestacado(aviso)) {
+          const aviso = evaluateAvisoBridge(row.original);
+          if (!hasAvisoDestacado(aviso)) {
             return <span className="text-muted-foreground">—</span>;
           }
-          const etiqueta =
-            aviso.tokenExpirado && aviso.sinActividad
-              ? "Token expirado y sin actividad"
-              : aviso.tokenExpirado
-                ? "Token expirado"
-                : "Sin actividad";
+          const partes: string[] = [];
+          if (aviso.tokenExpirado) partes.push("Token expirado");
+          else if (aviso.tokenProximoAVencer) partes.push("Token próximo a vencer");
+          if (aviso.sinActividad) partes.push("Sin actividad");
+          const etiqueta = partes.join(" y ");
           return (
             <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
               <AlertTriangle className="size-3" aria-hidden="true" />

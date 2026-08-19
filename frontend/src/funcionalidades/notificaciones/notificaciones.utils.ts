@@ -49,10 +49,3 @@ export function formatFechaRelativa(iso: string, ahora: Date = new Date()): stri
   }
   return formatFechaAbsoluta(fecha);
 }
-
-/** Ordena de más reciente a más antigua por `creadaEn`. */
-export function sortByFechaDesc(notificaciones: Notificacion[]): Notificacion[] {
-  return [...notificaciones].sort(
-    (a, b) => new Date(b.creadaEn).getTime() - new Date(a.creadaEn).getTime(),
-  );
-}
