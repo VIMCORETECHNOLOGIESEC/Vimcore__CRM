@@ -1,10 +1,14 @@
 import { RedSocial } from "@prisma/client";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+
+function mockFetchJson(status: number, body: unknown): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
+}
 
 const app = createApp();
 const ADMIN_PASSWORD = "clave-admin-bridges-123456";
@@ -592,6 +596,170 @@ describe(
       const respuesta = await request(app)
         .patch(`/api/v1/bridges/${id}/cuentas/${cuentaId}`)
         .send({ activa: false });
+
+      expect(respuesta.status).toBe(401);
+    });
+  },
+);
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe(
+  "POST /api/v1/bridges/:id/cuentas/:cuentaId/token (docs/05-bridges.md §7, carga y renovación con " +
+    "verificación inmediata; el token nunca se devuelve por API)",
+  () => {
+    async function crearCuentaDirecta(bridgeId: string): Promise<{ cuentaId: string }> {
+      const cuenta = await prisma.cuentaPublicitaria.create({
+        data: { bridgeId, idExterno: `page-token-ruta-${Date.now()}-${Math.random()}`, nombre: "Cuenta a cargar" },
+      });
+      return { cuentaId: cuenta.id };
+    }
+
+    it("200 con un token válido: persiste y nunca devuelve el token en claro", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true } })));
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/token`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({ token: "page-access-token-secreto" });
+
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body.cuenta.id).toBe(cuentaId);
+      expect(JSON.stringify(respuesta.body)).not.toContain("page-access-token-secreto");
+      expect(respuesta.body.cuenta).not.toHaveProperty("tokenCifrado");
+    });
+
+    it("422 con un token inválido/revocado según Graph API", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: false } })));
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/token`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({ token: "token-malo" });
+
+      expect(respuesta.status).toBe(422);
+    });
+
+    it("400 con un body sin token", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/token`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({});
+
+      expect(respuesta.status).toBe(400);
+    });
+
+    it("404 cuando la cuenta no pertenece al bridge indicado", async () => {
+      const { id: bridgeA } = await crearBridgeDirecto();
+      const { id: bridgeB } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(bridgeA);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${bridgeB}/cuentas/${cuentaId}/token`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send({ token: "cualquiera" });
+
+      expect(respuesta.status).toBe(404);
+    });
+
+    it("403 cuando un VENDEDOR intenta cargar un token", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/token`)
+        .set("Authorization", `Bearer ${vendedorAccessToken}`)
+        .send({ token: "cualquiera" });
+
+      expect(respuesta.status).toBe(403);
+    });
+
+    it("401 sin token de acceso", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/token`)
+        .send({ token: "cualquiera" });
+
+      expect(respuesta.status).toBe(401);
+    });
+  },
+);
+
+describe(
+  "POST /api/v1/bridges/:id/cuentas/:cuentaId/probar-conexion (docs/05-bridges.md §7, prueba de conexión bajo demanda)",
+  () => {
+    async function crearCuentaDirecta(
+      bridgeId: string,
+      overrides: { tokenCifrado?: string | null } = {},
+    ): Promise<{ cuentaId: string }> {
+      const cuenta = await prisma.cuentaPublicitaria.create({
+        data: {
+          bridgeId,
+          idExterno: `page-probar-ruta-${Date.now()}-${Math.random()}`,
+          nombre: "Cuenta a probar",
+          tokenCifrado: overrides.tokenCifrado ?? null,
+        },
+      });
+      return { cuentaId: cuenta.id };
+    }
+
+    it("200 ok=false cuando la cuenta no tiene token cargado, sin llamar a Graph API", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/probar-conexion`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send();
+
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body.ok).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("404 cuando la cuenta no pertenece al bridge indicado", async () => {
+      const { id: bridgeA } = await crearBridgeDirecto();
+      const { id: bridgeB } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(bridgeA);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${bridgeB}/cuentas/${cuentaId}/probar-conexion`)
+        .set("Authorization", `Bearer ${adminAccessToken}`)
+        .send();
+
+      expect(respuesta.status).toBe(404);
+    });
+
+    it("403 cuando un VENDEDOR intenta probar la conexión", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app)
+        .post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/probar-conexion`)
+        .set("Authorization", `Bearer ${vendedorAccessToken}`)
+        .send();
+
+      expect(respuesta.status).toBe(403);
+    });
+
+    it("401 sin token de acceso", async () => {
+      const { id } = await crearBridgeDirecto();
+      const { cuentaId } = await crearCuentaDirecta(id);
+
+      const respuesta = await request(app).post(`/api/v1/bridges/${id}/cuentas/${cuentaId}/probar-conexion`).send();
 
       expect(respuesta.status).toBe(401);
     });

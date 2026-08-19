@@ -64,6 +64,17 @@ export const bridgeCuentaParamsSchema = z.object({
   cuentaId: z.uuid(),
 });
 
+/**
+ * `POST /bridges/:id/cuentas/:cuentaId/token` (docs/05-bridges.md §7): un
+ * solo campo, el Page Access Token en texto plano — nunca se persiste sin
+ * pasar antes por `meta-token.service.ts::verificarTokenPagina` y
+ * `lib/cifrado-token.ts::encrypt` (`cuenta-publicitaria.service.ts::
+ * cargarToken`, la única capa que lo toca en texto plano).
+ */
+export const cargarTokenBodySchema = z.object({
+  token: z.string().trim().min(1),
+});
+
 export type CreateBridgeBody = z.infer<typeof createBridgeBodySchema>;
 export type UpdateBridgeBody = z.infer<typeof updateBridgeBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
@@ -71,3 +82,4 @@ export type LogsQuery = z.infer<typeof logsQuerySchema>;
 export type CreateCuentaPublicitariaBody = z.infer<typeof createCuentaPublicitariaBodySchema>;
 export type UpdateCuentaPublicitariaBody = z.infer<typeof updateCuentaPublicitariaBodySchema>;
 export type BridgeCuentaParams = z.infer<typeof bridgeCuentaParamsSchema>;
+export type CargarTokenBody = z.infer<typeof cargarTokenBodySchema>;

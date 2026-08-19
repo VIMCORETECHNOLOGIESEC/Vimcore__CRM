@@ -37,6 +37,12 @@ const envSchema = z.object({
   // diferencia del Page Access Token, que sí es por Página y vive cifrado en
   // `CuentaPublicitaria.tokenCifrado`). Mismo patrón fail-fast.
   META_APP_SECRET: z.string().min(1, "META_APP_SECRET es obligatoria"),
+  // ID numérico de la Meta App (dashboard, "Configuración básica"). Junto con
+  // `META_APP_SECRET` compone el App Access Token (`<APP_ID>|<APP_SECRET>`)
+  // que Graph API exige como `access_token` de `/debug_token` para poder
+  // inspeccionar el Page Access Token de un tercero (docs/05-bridges.md §3,
+  // §7) — un solo App ID por app, no por Página. Mismo patrón fail-fast.
+  META_APP_ID: z.string().min(1, "META_APP_ID es obligatoria"),
 });
 
 export type Env = z.infer<typeof envSchema>;

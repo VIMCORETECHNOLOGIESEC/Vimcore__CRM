@@ -73,3 +73,60 @@ export async function updateEstadoToken(
 ): Promise<CuentaPublicitaria> {
   return client.cuentaPublicitaria.update({ where: { id }, data: { estadoToken } });
 }
+
+export interface UpdateTokenData {
+  tokenCifrado: string;
+  tokenExpiraEn: Date | null;
+}
+
+/**
+ * Endpoints de administración de token de Meta (docs/05-bridges.md §7,
+ * "Carga y renovación de token con verificación inmediata de validez"): una
+ * sola escritura atómica de `tokenCifrado` + `tokenExpiraEn` +
+ * `estadoToken: VALIDO` — el servicio ya verificó el token contra
+ * `/debug_token` antes de llamar acá (`meta-token.service.ts`), así que
+ * cargar/renovar siempre deja la cuenta en estado `VALIDO`.
+ */
+export async function updateToken(
+  id: string,
+  data: UpdateTokenData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria> {
+  return client.cuentaPublicitaria.update({
+    where: { id },
+    data: { tokenCifrado: data.tokenCifrado, tokenExpiraEn: data.tokenExpiraEn, estadoToken: "VALIDO" },
+  });
+}
+
+/**
+ * Trabajo programado diario (docs/05-bridges.md §3, "verificación de
+ * token"): universo completo de cuentas con un token cargado, sin filtrar
+ * por bridge — a diferencia de `findByIdExternoConBridge` (una Página
+ * puntual, resuelta desde un webhook entrante). `bridgeId` ya es una columna
+ * escalar de `CuentaPublicitaria` (no una relación) — `verificacion-token.
+ * service.ts` solo necesita ese valor para `registrarBridgeLog`, nunca lee
+ * `cuenta.bridge.*`, así que no hace falta el `include` de la relación
+ * completa.
+ */
+export async function listConTokenCargado(
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria[]> {
+  return client.cuentaPublicitaria.findMany({
+    where: { tokenCifrado: { not: null } },
+  });
+}
+
+/**
+ * `verificacion-token.service.ts`: cuando la verificación diaria confirma un
+ * token vigente pero con una `tokenExpiraEn` distinta a la persistida, solo
+ * se actualiza esa columna — nunca hace falta volver a cifrar el token (ya
+ * está cifrado y sigue siendo el mismo), a diferencia de `updateToken`
+ * (carga/renovación desde texto plano).
+ */
+export async function updateTokenExpiraEn(
+  id: string,
+  tokenExpiraEn: Date | null,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria> {
+  return client.cuentaPublicitaria.update({ where: { id }, data: { tokenExpiraEn } });
+}

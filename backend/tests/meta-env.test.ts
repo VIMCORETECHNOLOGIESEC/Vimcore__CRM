@@ -23,7 +23,7 @@ function correrSinVariable(nombreVariable: string): { status: number | null; std
   return { status: resultado.status, stderr: resultado.stderr };
 }
 
-describe("config/env — META_WEBHOOK_VERIFY_TOKEN/META_APP_SECRET obligatorias (adaptador Meta, mismo patrón que JWT_SECRET/TOKEN_ENCRYPTION_KEY)", () => {
+describe("config/env — META_WEBHOOK_VERIFY_TOKEN/META_APP_SECRET/META_APP_ID obligatorias (adaptador Meta, mismo patrón que JWT_SECRET/TOKEN_ENCRYPTION_KEY)", () => {
   it("el proceso no arranca si falta META_WEBHOOK_VERIFY_TOKEN", () => {
     const resultado = correrSinVariable("META_WEBHOOK_VERIFY_TOKEN");
 
@@ -36,5 +36,12 @@ describe("config/env — META_WEBHOOK_VERIFY_TOKEN/META_APP_SECRET obligatorias 
 
     expect(resultado.status).toBe(1);
     expect(resultado.stderr).toContain("META_APP_SECRET");
+  });
+
+  it("el proceso no arranca si falta META_APP_ID (endpoints de administración de token, docs/05-bridges.md §7)", () => {
+    const resultado = correrSinVariable("META_APP_ID");
+
+    expect(resultado.status).toBe(1);
+    expect(resultado.stderr).toContain("META_APP_ID");
   });
 });

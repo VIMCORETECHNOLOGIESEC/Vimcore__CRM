@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import {
   bridgeCuentaParamsSchema,
+  cargarTokenBodySchema,
   createBridgeBodySchema,
   createCuentaPublicitariaBodySchema,
   idParamSchema,
@@ -166,4 +167,47 @@ export async function patchCuentaPublicitaria(req: Request, res: Response): Prom
     parsedBody.data.activa,
   );
   res.status(200).json({ cuenta });
+}
+
+/**
+ * `POST /bridges/:id/cuentas/:cuentaId/token`: carga y renovación de token
+ * con verificación inmediata contra `/debug_token` (docs/05-bridges.md §7).
+ * El token en texto plano viaja solo en el body de la request — la
+ * respuesta nunca lo incluye, ni siquiera enmascarado.
+ */
+export async function postCuentaToken(req: Request, res: Response): Promise<void> {
+  const parsedParams = bridgeCuentaParamsSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidCuentaParams();
+  }
+
+  const parsedBody = cargarTokenBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw zodValidationError();
+  }
+
+  const cuenta = await cuentaPublicitariaService.cargarToken(
+    parsedParams.data.id,
+    parsedParams.data.cuentaId,
+    parsedBody.data.token,
+  );
+  res.status(200).json({ cuenta });
+}
+
+/**
+ * `POST /bridges/:id/cuentas/:cuentaId/probar-conexion`: prueba de conexión
+ * bajo demanda (docs/05-bridges.md §7) — puramente diagnóstica, nunca
+ * persiste cambios.
+ */
+export async function postCuentaProbarConexion(req: Request, res: Response): Promise<void> {
+  const parsedParams = bridgeCuentaParamsSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidCuentaParams();
+  }
+
+  const resultado = await cuentaPublicitariaService.probarConexion(
+    parsedParams.data.id,
+    parsedParams.data.cuentaId,
+  );
+  res.status(200).json(resultado);
 }

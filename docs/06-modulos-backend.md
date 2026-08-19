@@ -165,9 +165,25 @@ reingreso, hace 91 días sí.
       mismo patrón de buzón/lease/worker que el endpoint genérico
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
-- [ ] Endpoints de administración de token de Meta (`05-bridges.md` §7): carga
+- [x] Endpoints de administración de token de Meta (`05-bridges.md` §7): carga
       y renovación con verificación inmediata contra `/debug_token`; el token
-      nunca se devuelve por API
+      nunca se devuelve por API (2026-08-18). Contrato real por
+      `CuentaPublicitaria` (una Página), NO por `Bridge` — un bridge puede
+      tener varias Páginas, cada una con su propio Page Access Token
+      (`03-modelo-datos.md`). `POST /bridges/:id/cuentas/:cuentaId/token`
+      (`services/meta-token.service.ts::verificarTokenPagina`,
+      `services/cuenta-publicitaria.service.ts::cargarToken`): un solo intento
+      contra `/debug_token`, sin reintento/backoff (a diferencia de la consulta
+      de detalle de leadgen); un token que Graph API rechaza responde 422 y
+      NUNCA se cifra ni se persiste. `POST
+      /bridges/:id/cuentas/:cuentaId/probar-conexion`
+      (`cuenta-publicitaria.service.ts::probarConexion`): puramente
+      diagnóstica, nunca modifica `estadoToken` ni ninguna otra columna.
+      **Gap de integración**: el mock del frontend
+      (`frontend/src/funcionalidades/bridges/bridges.api.ts`) simula esto a
+      nivel de `Bridge` completo (`POST /bridges/:id/token`) — decisión de
+      mock explícita, no el contrato real; el frontend deberá adaptarse al
+      endpoint por `cuentaId` cuando integre contra el backend real.
 - [x] Cifrado y descifrado de tokens (AES-256-GCM) — `lib/cifrado-token.ts`;
       migración additiva de `estado_token`/`token_cifrado`/`token_expira_en`/
       `secreto_webhook` en `CuentaPublicitaria` (decisión 2026-08-18, granularidad
@@ -177,8 +193,20 @@ reingreso, hace 91 días sí.
 - [x] CRUD de bridges y cuentas publicitarias
 - [x] Registro en `bridge_logs` de todo error de recepción
 - [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
-- [ ] Trabajo programado: verificación diaria de token vigente por Página vía
+- [x] Trabajo programado: verificación diaria de token vigente por Página vía
       `/debug_token` y notificación a administradores ante invalidez/revocación
+      (2026-08-18). `services/verificacion-token.service.ts::verificarTokensVigentes`
+      + `jobs/verificacion-token.job.ts::startVerificacionTokenJob` — mismo
+      patrón que `bridge-mudo.job.ts`/`sla-atrasado.job.ts` (guarda de
+      re-entrada, `unref()`, seam de testabilidad), intervalo de 24h. Escanea
+      TODAS las `CuentaPublicitaria` con `tokenCifrado` no nulo (universo
+      completo, no filtrado por bridge — el criterio es por Página, no por
+      ventana temporal como bridge-mudo); un token inválido/revocado marca
+      `estadoToken = TOKEN_EXPIRADO` y registra `bridge_logs` nivel `ERROR` —
+      `registrarBridgeLog` en ese nivel YA dispara notificación real a
+      administradores (`bridge-log.service.ts`), cumpliendo el requisito sin
+      lógica adicional. Un token vigente con `tokenExpiraEn` distinto se
+      actualiza sin volver a cifrar (el token no cambió).
 - [x] Trabajo programado: detección de bridge sin actividad por 72 h
       (2026-08-19). Criterio real implementado (`services/bridge-mudo.service.ts`,
       `bridgeRepository.findBridgesMudos`): `Bridge.estado = ACTIVO`,
