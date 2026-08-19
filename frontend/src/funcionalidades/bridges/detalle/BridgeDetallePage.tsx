@@ -4,18 +4,23 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AvisoBridge } from "../AvisoBridge";
-import { evaluarAvisoBridge, formatFecha } from "../bridges.utils";
+import { evaluarAvisoBridge, formatFecha, proximaExpiracionTokenBridge } from "../bridges.utils";
 import { RED_SOCIAL_ETIQUETAS } from "../catalogos";
 import { EstadoBridgeBadge } from "../EstadoBridgeBadge";
 import { useBridgeDetalle } from "../useBridges";
 import { BitacoraErrores } from "./BitacoraErrores";
 import { CredencialBridgeForm } from "./CredencialBridgeForm";
 import { CuentasPublicitariasList } from "./CuentasPublicitariasList";
-import { PruebaConexionBoton } from "./PruebaConexionBoton";
 
 /**
  * Detalle de un bridge (F8, docs/07 -- solo administrador, ruta protegida en
- * `router.tsx`). Mock en memoria -- ver `bridges.api.ts`.
+ * `router.tsx`). Backend real -- ver `bridges.api.ts`.
+ *
+ * La prueba de conexión ya no se muestra acá a nivel de bridge: el backend
+ * real la resuelve POR CUENTA PUBLICITARIA
+ * (`POST /bridges/:id/cuentas/:cuentaId/probar-conexion`), así que vive
+ * ahora por cada fila de `CuentasPublicitariasList` -- ver el gap de
+ * contrato documentado en `bridges.api.ts`.
  */
 export function BridgeDetallePage() {
   const { id } = useParams<{ id: string }>();
@@ -43,6 +48,7 @@ export function BridgeDetallePage() {
   }
 
   const aviso = evaluarAvisoBridge(bridge);
+  const proximaExpiracion = proximaExpiracionTokenBridge(bridge);
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,13 +66,13 @@ export function BridgeDetallePage() {
             {bridge.ultimoLeadEn ? formatFecha(bridge.ultimoLeadEn) : "Nunca"}
           </dd>
 
-          <dt className="text-muted-foreground">Expiración de token</dt>
+          {/* No lee `bridge.tokenExpiraEn` (constante muerta a nivel bridge, ver `tipos/bridge.ts`) --
+              la fecha real vive por cuenta publicitaria, ver el detalle exacto en cada fila más abajo. */}
+          <dt className="text-muted-foreground">Expiración de token más próxima</dt>
           <dd className="text-foreground">
-            {bridge.tokenExpiraEn ? formatFecha(bridge.tokenExpiraEn) : "No expira"}
+            {proximaExpiracion ? formatFecha(proximaExpiracion) : "No expira"}
           </dd>
         </dl>
-
-        <PruebaConexionBoton bridgeId={bridge.id} />
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
@@ -76,7 +82,11 @@ export function BridgeDetallePage() {
 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
         <h2 className="text-sm font-semibold text-foreground">Cuentas publicitarias asociadas</h2>
-        <CuentasPublicitariasList bridgeId={bridge.id} cuentas={bridge.cuentasPublicitarias} />
+        <CuentasPublicitariasList
+          bridgeId={bridge.id}
+          redSocial={bridge.redSocial}
+          cuentas={bridge.cuentasPublicitarias}
+        />
       </section>
 
       <BitacoraErrores bridgeId={bridge.id} />

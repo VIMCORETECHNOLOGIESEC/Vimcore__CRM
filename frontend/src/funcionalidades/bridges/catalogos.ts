@@ -19,6 +19,23 @@ export const ESTILO_AUTENTICACION_POR_RED: Record<RedSocial, EstiloAutenticacion
   LINKEDIN: "TOKEN_PROVEEDOR",
 };
 
+/**
+ * GAP DE CONTRATO CONFIRMADO (integración bridges.api.ts, 2026-08-19): el
+ * endpoint real `POST /bridges/:id/cuentas/:cuentaId/token` (y su
+ * `probar-conexion`) solo verifica contra Graph API de Meta
+ * (`backend/src/services/meta-token.service.ts::verificarTokenPagina`,
+ * `/debug_token`) -- no existe ningún adaptador OAuth de LinkedIn del lado
+ * del servidor todavía, aunque `ESTILO_AUTENTICACION_POR_RED` clasifique a
+ * LinkedIn como `TOKEN_PROVEEDOR` igual que Facebook/Instagram. Llamar a ese
+ * endpoint para una cuenta de LinkedIn invocaría por error la verificación
+ * de Meta. Por eso las cuentas de redes en esta lista muestran el formulario
+ * de token funcional (`TokenForm`/`PruebaConexionBoton`) por fila
+ * (`CuentasPublicitariasList.tsx`); el resto de las redes `TOKEN_PROVEEDOR`
+ * (hoy solo LinkedIn) sigue mostrando el aviso "Fase 2 · Proveedor OAuth no
+ * conectado todavía" sin ofrecer un formulario interactivo.
+ */
+export const REDES_CON_INTEGRACION_TOKEN_CONECTADA: RedSocial[] = ["FACEBOOK", "INSTAGRAM"];
+
 export const ESTADO_BRIDGE_ETIQUETAS: Record<EstadoBridge, string> = {
   ACTIVO: "Activo",
   TOKEN_EXPIRADO: "Token expirado",

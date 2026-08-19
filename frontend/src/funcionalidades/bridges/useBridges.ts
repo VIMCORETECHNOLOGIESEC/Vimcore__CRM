@@ -22,7 +22,7 @@ const BRIDGE_LOGS_QUERY_KEY = "bridge-logs";
 const REDES_SOCIALES_SOPORTADAS_QUERY_KEY = "redes-sociales-soportadas";
 const REDES_SOCIALES_ACTIVAS_QUERY_KEY = "redes-sociales-activas";
 
-/** Listado de bridges (F8). Mock -- ver `bridges.api.ts`. */
+/** Listado de bridges (F8). Backend real -- ver `bridges.api.ts`. */
 export function useBridges() {
   return useQuery({ queryKey: [BRIDGES_QUERY_KEY], queryFn: fetchBridgesApi });
 }
@@ -36,14 +36,16 @@ export function useBridgeDetalle(bridgeId: string) {
 }
 
 /**
- * Carga/renovación de token con verificación inmediata (F8). Invalida tanto
- * el listado como el detalle -- el estado y la expiración cambian en ambas
- * vistas.
+ * Carga/renovación de token con verificación inmediata (F8). Opera POR
+ * CUENTA PUBLICITARIA, no por bridge (`POST
+ * /bridges/:id/cuentas/:cuentaId/token`, backend real) -- ver el gap de
+ * contrato documentado en `bridges.api.ts` y `tipos/bridge.ts`. Invalida el
+ * detalle del bridge (las cuentas embebidas cambian) y el listado.
  */
-export function useSaveToken(bridgeId: string) {
+export function useSaveToken(bridgeId: string, cuentaId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (token: string) => saveTokenApi(bridgeId, token),
+    mutationFn: (token: string) => saveTokenApi(bridgeId, cuentaId, token),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [BRIDGES_QUERY_KEY] });
       toast.success("Token guardado y verificado correctamente.");
@@ -52,15 +54,17 @@ export function useSaveToken(bridgeId: string) {
 }
 
 /**
- * Prueba de conexión bajo demanda (F8). No invalida ninguna query -- es
- * diagnóstica, no cambia el estado guardado del bridge (ver
+ * Prueba de conexión bajo demanda (F8). Opera POR CUENTA PUBLICITARIA
+ * (`POST /bridges/:id/cuentas/:cuentaId/probar-conexion`, backend real) --
+ * mismo gap de contrato que `useSaveToken`. No invalida ninguna query -- es
+ * diagnóstica, no cambia el estado guardado de la cuenta (ver
  * `bridges.api.ts::testConnectionApi`). El resultado se muestra vía el valor
  * de retorno de la mutación, no solo por toast, para que quede visible en
  * pantalla después de que el aviso desaparezca.
  */
-export function useTestConnection(bridgeId: string) {
+export function useTestConnection(bridgeId: string, cuentaId: string) {
   return useMutation({
-    mutationFn: () => testConnectionApi(bridgeId),
+    mutationFn: () => testConnectionApi(bridgeId, cuentaId),
     onSuccess: (resultado) => {
       if (resultado.ok) {
         toast.success(resultado.mensaje);

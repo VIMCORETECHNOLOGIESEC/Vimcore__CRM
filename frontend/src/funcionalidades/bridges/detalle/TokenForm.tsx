@@ -14,6 +14,14 @@ type TokenFormValues = z.infer<typeof tokenFormSchema>;
 
 interface TokenFormProps {
   bridgeId: string;
+  /**
+   * El backend real administra el token POR CUENTA PUBLICITARIA, no por
+   * bridge (`POST /bridges/:id/cuentas/:cuentaId/token`) -- ver el gap de
+   * contrato documentado en `bridges.api.ts`. Por eso este formulario se
+   * renderiza por cada fila de `CuentasPublicitariasList`, no una sola vez
+   * en `BridgeDetallePage`.
+   */
+  cuentaId: string;
 }
 
 /**
@@ -21,17 +29,17 @@ interface TokenFormProps {
  * (F8). El campo **siempre se muestra vacío, nunca precargado** (docs/07 F8:
  * "El token nunca se devuelve por la API... Se envía solo al guardar") --
  * `defaultValues` es siempre `{ token: "" }`, nunca se inicializa con nada
- * proveniente del bridge (que de hecho ni siquiera tiene ese campo en
+ * proveniente de la cuenta (que de hecho ni siquiera tiene ese campo en
  * `tipos/bridge.ts`: el token nunca llega al frontend). Tras guardar
  * correctamente, `reset()` vuelve a vaciar el campo -- no queda el valor
  * recién escrito en pantalla ni un segundo después.
  *
- * La "verificación inmediata" ocurre en el propio `saveTokenApi` (mock): la
- * mutación no se resuelve hasta que la "plataforma" acepta o rechaza el
- * token -- ver `bridges.api.ts` para la simulación exacta.
+ * La "verificación inmediata" ocurre en el propio backend real
+ * (`cuenta-publicitaria.service.ts::cargarToken`, Graph API `/debug_token`):
+ * la mutación no se resuelve hasta que Meta acepta o rechaza el token.
  */
-export function TokenForm({ bridgeId }: TokenFormProps) {
-  const saveToken = useSaveToken(bridgeId);
+export function TokenForm({ bridgeId, cuentaId }: TokenFormProps) {
+  const saveToken = useSaveToken(bridgeId, cuentaId);
   const {
     register,
     handleSubmit,
@@ -43,12 +51,18 @@ export function TokenForm({ bridgeId }: TokenFormProps) {
     saveToken.mutate(valores.token, { onSuccess: () => reset({ token: "" }) });
   });
 
+  // `id` derivado de `cuentaId` (no un literal fijo): este formulario ahora
+  // se renderiza una vez POR CADA fila de `CuentasPublicitariasList`, un id
+  // fijo produciría ids duplicados en el DOM cuando un bridge tiene más de
+  // una cuenta publicitaria.
+  const inputId = `bridge-token-${cuentaId}`;
+
   return (
     <form onSubmit={enviar} noValidate className="flex flex-wrap items-end gap-3">
       <div className="flex flex-1 flex-col gap-1.5">
-        <Label htmlFor="bridge-token">Token</Label>
+        <Label htmlFor={inputId}>Token</Label>
         <Input
-          id="bridge-token"
+          id={inputId}
           type="password"
           autoComplete="off"
           placeholder="Pegá el token nuevo…"

@@ -24,9 +24,8 @@ interface ClaveModalState {
 
 /**
  * Administración de bridges (F8/bridges-lifecycle-management, docs/07 --
- * solo administrador, ruta protegida en `router.tsx`). Mock en memoria --
- * ver `bridges.api.ts` para el detalle de qué se simula y el punto de
- * integración con el futuro backend real de bridges (M8, no existe todavía).
+ * solo administrador, ruta protegida en `router.tsx`). Backend real -- ver
+ * `bridges.api.ts` para el detalle de los endpoints consumidos.
  */
 export function BridgesPage() {
   usePageHeader({ title: "Bridges" });

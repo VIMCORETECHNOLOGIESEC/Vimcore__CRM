@@ -3,13 +3,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getErrorMessage } from "@/api/httpClient";
+import { getErrorMessage } from "@/api/httpClient";
 import type { Bridge, BridgeLog } from "@/tipos/bridge";
 
 vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
   fetchBridgeDetalleApi: vi.fn(),
-  saveTokenApi: vi.fn(),
-  testConnectionApi: vi.fn(),
   toggleCuentaActivaApi: vi.fn(),
   fetchBridgeLogsApi: vi.fn(),
 }));
@@ -20,13 +18,18 @@ const { toast } = await import("sonner");
 const { BridgeDetallePage } = await import("@/funcionalidades/bridges/detalle/BridgeDetallePage");
 
 const fetchBridgeDetalleApiMock = vi.mocked(bridgesApi.fetchBridgeDetalleApi);
-const saveTokenApiMock = vi.mocked(bridgesApi.saveTokenApi);
-const testConnectionApiMock = vi.mocked(bridgesApi.testConnectionApi);
 const toggleCuentaActivaApiMock = vi.mocked(bridgesApi.toggleCuentaActivaApi);
 const fetchBridgeLogsApiMock = vi.mocked(bridgesApi.fetchBridgeLogsApi);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
 
+/**
+ * `redSocial: "LINKEDIN"` a propósito: el token/prueba de conexión POR
+ * CUENTA (gap de contrato confirmado, ver `bridges.api.ts`) ya no vive en
+ * `BridgeDetallePage` -- se movió a `CuentasPublicitariasList` y se prueba
+ * en `tests/bridges/detalle/CuentasPublicitariasList.test.tsx`, con un
+ * bridge FACEBOOK (único estilo con adaptador real conectado hoy).
+ */
 function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
   return {
     id: "bridge-1",
@@ -36,7 +39,16 @@ function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
     tokenExpiraEn: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     ultimoLeadEn: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     cuentasPublicitarias: [
-      { id: "c1", idExterno: "li-org-1", nombre: "LinkedIn Ads Empresa", activa: true },
+      {
+        id: "c1",
+        bridgeId: "bridge-1",
+        idExterno: "li-org-1",
+        nombre: "LinkedIn Ads Empresa",
+        instagramAccountId: null,
+        activa: true,
+        estadoToken: "VALIDO",
+        tokenExpiraEn: null,
+      },
     ],
     ...overrides,
   };
@@ -73,8 +85,6 @@ function renderBridgeDetallePage() {
 
 beforeEach(() => {
   fetchBridgeDetalleApiMock.mockReset();
-  saveTokenApiMock.mockReset();
-  testConnectionApiMock.mockReset();
   toggleCuentaActivaApiMock.mockReset();
   fetchBridgeLogsApiMock.mockReset();
   toastSuccessMock.mockReset();
@@ -106,8 +116,23 @@ describe("BridgeDetallePage — encabezado", () => {
 });
 
 describe("BridgeDetallePage — aviso destacado ante token expirado o sin actividad", () => {
-  it("muestra el aviso cuando el token expiró", async () => {
-    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake({ estado: "TOKEN_EXPIRADO" }));
+  it("muestra el aviso cuando el token de una cuenta publicitaria expiró", async () => {
+    fetchBridgeDetalleApiMock.mockResolvedValue(
+      bridgeFake({
+        cuentasPublicitarias: [
+          {
+            id: "c1",
+            bridgeId: "bridge-1",
+            idExterno: "li-org-1",
+            nombre: "LinkedIn Ads Empresa",
+            instagramAccountId: null,
+            activa: true,
+            estadoToken: "TOKEN_EXPIRADO",
+            tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ],
+      }),
+    );
     renderBridgeDetallePage();
 
     expect(await screen.findByText("LinkedIn Lead Sync necesita atención")).toBeInTheDocument();
@@ -122,106 +147,28 @@ describe("BridgeDetallePage — aviso destacado ante token expirado o sin activi
   });
 });
 
-describe("BridgeDetallePage — token siempre vacío, verificación inmediata", () => {
-  it("el campo de token arranca vacío, nunca precargado", async () => {
+describe("BridgeDetallePage — credenciales (a nivel de bridge)", () => {
+  it("para un estilo TOKEN_PROVEEDOR, ya no muestra un formulario de token acá -- señala la sección de cuentas publicitarias", async () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
     await screen.findByText("LinkedIn");
-    expect(screen.getByLabelText("Token")).toHaveValue("");
-  });
-
-  it("con un token válido, llama a saveTokenApi con el bridgeId y el token, y vacía el campo al terminar", async () => {
-    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
-    saveTokenApiMock.mockResolvedValue(bridgeFake({ estado: "ACTIVO" }));
-    const user = userEvent.setup();
-    renderBridgeDetallePage();
-    await screen.findByText("LinkedIn");
-
-    await user.type(screen.getByLabelText("Token"), "un-token-bastante-largo-1234");
-    await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
-
-    await waitFor(() =>
-      expect(saveTokenApiMock).toHaveBeenCalledWith("bridge-1", "un-token-bastante-largo-1234"),
-    );
-    expect(toastSuccessMock).toHaveBeenCalledWith("Token guardado y verificado correctamente.");
-    await waitFor(() => expect(screen.getByLabelText("Token")).toHaveValue(""));
-  });
-
-  it("si la verificación inmediata rechaza el token, muestra el mensaje accionable del mock (no un código HTTP)", async () => {
-    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
-    saveTokenApiMock.mockRejectedValue(
-      new ApiError("token_invalido", 422, "El token no es válido. Verificá que lo copiaste completo desde la plataforma e intentá nuevamente."),
-    );
-    const user = userEvent.setup();
-    renderBridgeDetallePage();
-    await screen.findByText("LinkedIn");
-
-    await user.type(screen.getByLabelText("Token"), "corto");
-    await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
-
-    await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith(
-        "El token no es válido. Verificá que lo copiaste completo desde la plataforma e intentá nuevamente.",
-      ),
-    );
-  });
-
-  it("rechaza el envío sin escribir ningún token, sin llamar a saveTokenApi", async () => {
-    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
-    const user = userEvent.setup();
-    renderBridgeDetallePage();
-    await screen.findByText("LinkedIn");
-
-    await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
-
-    expect(await screen.findByText("Ingresá el token.")).toBeInTheDocument();
-    expect(saveTokenApiMock).not.toHaveBeenCalled();
-  });
-});
-
-describe("BridgeDetallePage — prueba de conexión", () => {
-  it("al hacer clic, llama a testConnectionApi y muestra el resultado en pantalla", async () => {
-    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
-    testConnectionApiMock.mockResolvedValue({ ok: true, mensaje: "Conexión verificada correctamente." });
-    const user = userEvent.setup();
-    renderBridgeDetallePage();
-    await screen.findByText("LinkedIn");
-
-    await user.click(screen.getByRole("button", { name: "Probar conexión" }));
-
-    await waitFor(() => expect(testConnectionApiMock).toHaveBeenCalledWith("bridge-1"));
-    expect(await screen.findByText("Conexión verificada correctamente.")).toBeInTheDocument();
-  });
-
-  it("muestra el mensaje de fallo cuando la prueba de conexión no es exitosa", async () => {
-    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake({ estado: "TOKEN_EXPIRADO" }));
-    testConnectionApiMock.mockResolvedValue({
-      ok: false,
-      mensaje: "El token expiró. Cargá uno nuevo antes de volver a probar la conexión.",
-    });
-    const user = userEvent.setup();
-    renderBridgeDetallePage();
-    await screen.findByText("LinkedIn");
-
-    await user.click(screen.getByRole("button", { name: "Probar conexión" }));
-
-    expect(
-      await screen.findByText("El token expiró. Cargá uno nuevo antes de volver a probar la conexión."),
-    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
+    expect(screen.getByText(/buscá la sección/i)).toBeInTheDocument();
   });
 });
 
 describe("BridgeDetallePage — cuentas publicitarias asociadas", () => {
   it("muestra las cuentas con su estado activo/inactivo y permite alternarlo", async () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
-    toggleCuentaActivaApiMock.mockResolvedValue(
-      bridgeFake({
-        cuentasPublicitarias: [
-          { id: "c1", idExterno: "li-org-1", nombre: "LinkedIn Ads Empresa", activa: false },
-        ],
-      }),
-    );
+    toggleCuentaActivaApiMock.mockResolvedValue({
+      id: "c1",
+      bridgeId: "bridge-1",
+      idExterno: "li-org-1",
+      nombre: "LinkedIn Ads Empresa",
+      instagramAccountId: null,
+      activa: false,
+    });
     const user = userEvent.setup();
     renderBridgeDetallePage();
 

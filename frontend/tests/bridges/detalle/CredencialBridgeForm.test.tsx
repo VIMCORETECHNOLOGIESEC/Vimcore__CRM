@@ -6,7 +6,6 @@ import { getErrorMessage } from "@/api/httpClient";
 import type { Bridge } from "@/tipos/bridge";
 
 vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
-  saveTokenApi: vi.fn(),
   regenerateClaveApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -15,7 +14,6 @@ const bridgesApi = await import("@/funcionalidades/bridges/bridges.api");
 const { toast } = await import("sonner");
 const { CredencialBridgeForm } = await import("@/funcionalidades/bridges/detalle/CredencialBridgeForm");
 
-const saveTokenApiMock = vi.mocked(bridgesApi.saveTokenApi);
 const regenerateClaveApiMock = vi.mocked(bridgesApi.regenerateClaveApi);
 
 function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
@@ -44,7 +42,6 @@ function renderForm(bridge: Bridge) {
 }
 
 beforeEach(() => {
-  saveTokenApiMock.mockReset();
   regenerateClaveApiMock.mockReset();
 });
 
@@ -74,23 +71,20 @@ describe("CredencialBridgeForm — bifurca por estilo de autenticación (Require
     expect(await screen.findByText("brg_nueva-clave-regenerada")).toBeInTheDocument();
   });
 
-  it("estilo TOKEN_PROVEEDOR (Facebook/Instagram/LinkedIn): muestra el formulario de token existente, marcado como Fase 2", () => {
+  it("estilo TOKEN_PROVEEDOR (Facebook/Instagram/LinkedIn): ya NO muestra un formulario de token a nivel de bridge -- el backend real lo administra por cuenta publicitaria", () => {
     renderForm(bridgeFake({ redSocial: "LINKEDIN" }));
 
-    expect(screen.getByLabelText("Token")).toBeInTheDocument();
-    expect(screen.getByText(/Fase 2/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Guardar y verificar" })).not.toBeInTheDocument();
+    expect(screen.getByText(/cuentas publicitarias asociadas/i)).toBeInTheDocument();
   });
 
-  it("estilo TOKEN_PROVEEDOR: el formulario de token sigue siendo funcional (no se deshabilita)", async () => {
-    saveTokenApiMock.mockResolvedValue(bridgeFake({ redSocial: "FACEBOOK", estado: "ACTIVO" }));
-    const user = userEvent.setup();
-    renderForm(bridgeFake({ id: "bridge-fb", redSocial: "FACEBOOK" }));
+  it("estilo TOKEN_PROVEEDOR: el mismo texto explicativo aparece sin importar la red (Facebook/Instagram/LinkedIn)", () => {
+    renderForm(bridgeFake({ redSocial: "FACEBOOK" }));
 
-    await user.type(screen.getByLabelText("Token"), "un-token-bastante-largo-1234");
-    await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
-
-    await waitFor(() =>
-      expect(saveTokenApiMock).toHaveBeenCalledWith("bridge-fb", "un-token-bastante-largo-1234"),
-    );
+    expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/el campo siempre se muestra vacío/i),
+    ).toBeInTheDocument();
   });
 });

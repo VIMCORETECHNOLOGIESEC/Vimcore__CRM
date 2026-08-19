@@ -262,6 +262,29 @@ del producto.
 - [x] Acciones masivas de asignación para supervisor y administrador
 - [ ] Actualización por SSE cuando ingresa un lead nuevo (pendiente,
       depende de infraestructura de bridges/tiempo real — F8)
+- [ ] Tabs "Pendientes/En proceso" (vista por defecto) vs "Cerrados"
+      (2026-08-19, diseño): la vista principal de la tabla — la que hoy
+      existe sin distinción — pasa a filtrar por defecto `etapa NOT IN
+      (VENTA, NO_VENTA)` (mapea al nuevo parámetro `vista=activos` de
+      `GET /api/v1/leads`, ver `docs/06-modulos-backend.md` M5). Un segundo
+      tab "Cerrados" (`vista=cerrados`) muestra solo Venta/No Venta, con un
+      control adicional dentro de ese tab para acotar a una de las dos
+      (reusa el filtro `etapa` ya existente, restringido a esas dos opciones
+      mientras el tab está activo — el resto de filtros combinables sigue
+      disponible igual en ambos tabs). Cambiar de tab resetea la página a 1
+      (mismo criterio que ya aplica cualquier cambio de filtro) pero
+      conserva el resto de filtros activos.
+      **Nota de diseño a confirmar al implementar:** el filtro de rango de
+      fechas hoy filtra por `ingresadoEn` (`fechaDesde`/`fechaHasta` →
+      `desde`/`hasta` del backend). El dashboard (`docs/08-dashboard-kpis.md`
+      §2.3) ya estableció la convención "los cerrados se cuentan por fecha
+      de **cierre**, los ingresados por fecha de **ingreso**" — por
+      consistencia, el tab "Cerrados" debería filtrar ese mismo rango contra
+      `cerradoEn`, no `ingresadoEn`, mientras el tab "Pendientes" sigue
+      usando `ingresadoEn` como hoy. El backend actual (`listLeadsQuerySchema`)
+      no distingue el campo de fecha por `vista` — si se confirma este
+      criterio, hace falta agregarlo al mismo cambio de M5 de arriba, no
+      inventarlo solo del lado del frontend.
 
 > El contador de SLA se calcula en el cliente a partir de la marca de tiempo
 > recibida. No consultes al servidor cada segundo: a 100 concurrentes eso son
@@ -446,6 +469,49 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 - [x] Acción de reasignación con la regla de semáforo aplicada
 - [x] Panel de citas: agendar, reprogramar, marcar resultado
 - [x] Campos de cierre para Venta y No Venta con validación
+- [ ] Guard local de edición (`canEdit`) en `LeadTimeline`/`FormularioEtapaLead`
+      y en los botones "Cerrar como venta/no venta" (2026-08-19, gap
+      verificado leyendo el código, no solo analizado en abstracto):
+      `AccionesResponsable.tsx` sí tiene guards de UX
+      (`canHandoffToVendedor`/`canReassignLead`, `leadDetalle.guards.ts`) y
+      correctamente desaparecen tras un traspaso/reasignación exitosos (la
+      mutación invalida `lead-detalle` y el componente recalcula contra el
+      lead fresco). Pero `LeadTimeline`/`FormularioEtapaLead` **no reciben
+      `user` y no tienen ningún guard** — después de que un asesor traspasa
+      su lead a un vendedor (D4: conserva lectura, pierde edición), el
+      formulario de etapa y los botones de cierre siguen mostrándose como si
+      pudiera editar. Un envío se rechaza recién en el backend (403) con un
+      toast de error genérico, sin explicar la causa. Agregar un
+      `canEditLead(lead, user)` local (mismo criterio que
+      `leads.access.ts::canEdit` del backend: responsable operativo =
+      `vendedorId ?? asesorId`) que oculte esos controles y muestre un
+      mensaje explicativo en su lugar (ej. "Este lead ya no está bajo tu
+      responsabilidad — fue traspasado/reasignado a &lt;nombre&gt;."), no
+      solo los oculte en silencio.
+- [ ] Actualización en vivo del detalle abierto ante cambios de otro usuario
+      (2026-08-19, depende del módulo SSE compartido de F8/tiempo real):
+      hoy, si otro usuario (admin, o el nuevo responsable) cambia la etapa o
+      reasigna el lead que este usuario tiene abierto en `LeadDetallePage`,
+      nada se actualiza hasta un refresh manual (`staleTime: 30_000` sin
+      `refetchOnWindowFocus`, confirmado en `api/queryClient.ts`). Cuando
+      exista el cliente SSE genérico, suscribir `[lead-detalle, leadId]` a
+      `lead.etapa-cambiada`/eventos de reasignación que mencionen este
+      `leadId` puntual e invalidar esa query — mismo criterio que ya usan
+      las mutaciones propias del usuario, aplicado también a cambios
+      ajenos.
+- [ ] Redirección a la tabla de leads si se pierde el acceso de lectura
+      (2026-08-19, gap verificado): `canRead` en el backend es más amplio
+      que `canEdit` (D4: el asesor que traspasó conserva lectura), así que
+      un usuario solo pierde lectura completa por una REASIGNACIÓN real (no
+      un traspaso) que lo reemplaza como responsable. Si eso pasa mientras
+      tiene la página abierta, `GET /leads/:id` responde 403 y hoy
+      `LeadDetallePage.tsx` muestra el `ErrorState` genérico con un botón
+      "Reintentar" que vuelve a fallar siempre (`getErrorMessage` no
+      distingue código de error). Cuando el código de `ApiError` sea
+      `permiso_denegado`, navegar automáticamente a `/leads` con un toast
+      explicativo ("Ya no tenés acceso a este lead — fue reasignado a otra
+      persona") en vez de dejarlo atascado en un botón de reintento que
+      nunca funciona.
 
 ---
 
@@ -849,6 +915,86 @@ Solo administrador.
 > de trabajo de backend (M5-M9) que no existe todavía -- no son ítems sin
 > hacer del frontend, son puntos de integración pendientes ya marcados con
 > `INTEGRACION-BACKEND`.
+>
+> **Actualización (integración contra backend real de bridges, M4, dev-front,
+> 2026-08-19):** `bridges.api.ts` reemplaza el mock en memoria por
+> `httpClient` contra el backend real (`backend/src/routes/bridges.routes.ts`
+> + `bridge.controller.ts`/`bridge.service.ts`/`cuenta-publicitaria.service.ts`,
+> worktree `dev-back`, verificado leyendo el código fuente, no asumido).
+> - **Gap de contrato confirmado y resuelto -- token/prueba de conexión son
+>   por CUENTA PUBLICITARIA, no por bridge:** el mock original asumía
+>   `POST /bridges/:id/token`; el backend real expone
+>   `POST /bridges/:id/cuentas/:cuentaId/token` y
+>   `.../cuentas/:cuentaId/probar-conexion`. Se rediseñó la UI: `TokenForm`/
+>   `PruebaConexionBoton` ya no se renderizan una vez a nivel de
+>   `BridgeDetallePage` -- se montan POR CADA FILA de
+>   `CuentasPublicitariasList.tsx` (que ya tenía `cuentaId` por fila).
+>   `CredencialBridgeForm.tsx` para el estilo `TOKEN_PROVEEDOR` ya no
+>   renderiza ningún formulario a nivel de bridge, solo un texto que señala
+>   la sección de cuentas. Un bridge sin cuentas no muestra ningún control
+>   de token (el `EmptyState` ya existente lo cubre sin rama adicional).
+> - **Segundo gap descubierto durante la integración (no estaba en el
+>   encargo inicial):** el endpoint real de token solo verifica contra Graph
+>   API de Meta (`meta-token.service.ts::verificarTokenPagina`) -- no hay
+>   adaptador OAuth de LinkedIn del lado del servidor todavía, aunque
+>   `ESTILO_AUTENTICACION_POR_RED` siga clasificando a LinkedIn como
+>   `TOKEN_PROVEEDOR` igual que Facebook/Instagram. Se agregó
+>   `REDES_CON_INTEGRACION_TOKEN_CONECTADA` (`catalogos.ts`) para que solo
+>   Facebook/Instagram ofrezcan el formulario funcional por cuenta; LinkedIn
+>   sigue mostrando el aviso "Fase 2 · Proveedor OAuth no conectado
+>   todavía" sin llamar por error a la verificación de Meta.
+> - **Tercer gap, documentado pero NO resuelto en este cambio (requiere
+>   trabajo de backend):** `Bridge.tokenExpiraEn` es una constante `null` en
+>   el backend real (`bridge.service.ts::TOKEN_EXPIRA_EN`) -- la expiración
+>   real vive por cuenta (`CuentaPublicitaria.estadoToken`/`tokenExpiraEn`
+>   en Prisma), pero `CuentaPublicitariaDto` no expone ninguno de los dos
+>   campos por la API todavía. Consecuencia: `EstadoBridge ===
+>   "TOKEN_EXPIRADO"` nunca lo produce el backend real para los bridges
+>   actuales, así que la rama `tokenExpirado` de
+>   `bridges.utils.ts::evaluarAvisoBridge` y la columna "Expiración de
+>   token" de `BridgesTable.tsx`/`BridgeDetallePage.tsx` quedan
+>   efectivamente inalcanzables contra datos reales -- no se eliminaron
+>   (documentan un criterio real de docs/03/docs/05) pero necesitan que el
+>   backend exponga esa señal por cuenta en un cambio futuro.
+> - `CuentaPublicitariaBridge` (`tipos/bridge.ts`) gana `bridgeId` e
+>   `instagramAccountId` para calzar con `CuentaPublicitariaDto` real.
+> - Tests actualizados junto con la implementación (TDD, no se saltó pese a
+>   ser una integración): `bridges.api.test.ts` reescrito completo contra
+>   `httpClient` mockeado (antes contra `BRIDGES_MOCK`); nuevo
+>   `tests/bridges/detalle/CuentasPublicitariasList.test.tsx` cubre el
+>   token/prueba de conexión por cuenta (Facebook conectado, LinkedIn Fase
+>   2, X/Google Forms sin controles); `BridgeDetallePage.test.tsx`/
+>   `CredencialBridgeForm.test.tsx` actualizados a la nueva forma. 393 tests
+>   en todo el frontend, todos en verde. `tsc` + `vite build` sin errores.
+>   Verificado además end-to-end contra el backend real levantado con
+>   Docker (`dev-back`): login, listado, detalle con cuentas, carga de
+>   token (rechazo real de Graph API con credenciales de prueba), prueba de
+>   conexión, alta/baja de cuenta, alta/baja/reactivación de bridge y
+>   regeneración de clave -- todas las formas de respuesta coinciden
+>   exactamente con lo que espera `bridges.api.ts`.
+>
+> **Actualización (tercer gap resuelto, dev-front, 2026-08-19):** el backend
+> (`dev-back`) expuso `estadoToken`/`tokenExpiraEn` en `CuentaPublicitariaDto`,
+> cerrando el gap documentado arriba. `tipos/bridge.ts::CuentaPublicitariaBridge`
+> gana ambos campos; `bridges.utils.ts::evaluarAvisoBridge` ahora calcula
+> `tokenExpirado`/`tokenProximoAVencer` (umbral propio de 7 días, sin plazo
+> fijado en docs/03/docs/05 -- ver comentario en el archivo) como el PEOR CASO
+> entre `bridge.cuentasPublicitarias`, en vez de leer `bridge.estado`/
+> `bridge.tokenExpiraEn` (que siguen siendo datos muertos a nivel bridge, el
+> backend los manda constantes). `BridgesTable.tsx` ("Expiración de token" y
+> "Aviso") y `BridgeDetallePage.tsx` (resumen) usan el nuevo
+> `proximaExpiracionTokenBridge`. `CuentasPublicitariasList.tsx` gana un
+> indicador de estado de token POR FILA (sin agregación, vía
+> `evaluarEstadoTokenCuenta`) -- más preciso que el agregado a nivel bridge,
+> ya que ahí se tiene el contexto de cada cuenta. Antes de este cambio el
+> aviso de "token expirado" estaba permanentemente inalcanzable contra el
+> backend real (nunca se disparaba, porque leía el campo muerto); quedó
+> detectado y corregido en un review previo a integrar. 20 tests nuevos/
+> reescritos (413 en total en el frontend, todos en verde): `bridges.utils.test.ts`
+> (peor caso entre cuentas, umbral de 7 días, `proximaExpiracionTokenBridge`,
+> `evaluarEstadoTokenCuenta`), `CuentasPublicitariasList.test.tsx` (indicador
+> por fila), `BridgesPage.test.tsx`/`BridgeDetallePage.test.tsx` actualizados
+> a la nueva forma del DTO. `tsc` + `vite build` sin errores.
 
 - [x] Listado con estado, último lead recibido y expiración de token
 - [x] Detalle con cuentas publicitarias asociadas

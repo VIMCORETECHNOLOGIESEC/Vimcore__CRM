@@ -4,6 +4,12 @@ import { useTestConnection } from "../useBridges";
 
 interface PruebaConexionBotonProps {
   bridgeId: string;
+  /**
+   * El backend real prueba la conexión POR CUENTA PUBLICITARIA, no por
+   * bridge (`POST /bridges/:id/cuentas/:cuentaId/probar-conexion`) -- mismo
+   * gap de contrato documentado en `bridges.api.ts`.
+   */
+  cuentaId: string;
 }
 
 /**
@@ -12,8 +18,8 @@ interface PruebaConexionBotonProps {
  * del toast que dispara `useTestConnection` -- así queda visible mientras el
  * administrador sigue revisando el resto del detalle.
  */
-export function PruebaConexionBoton({ bridgeId }: PruebaConexionBotonProps) {
-  const testConnection = useTestConnection(bridgeId);
+export function PruebaConexionBoton({ bridgeId, cuentaId }: PruebaConexionBotonProps) {
+  const testConnection = useTestConnection(bridgeId, cuentaId);
 
   return (
     <div className="flex flex-wrap items-center gap-3">

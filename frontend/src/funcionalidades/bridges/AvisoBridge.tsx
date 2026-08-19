@@ -15,11 +15,13 @@ interface AvisoBridgeProps {
  * calculadas.
  */
 export function AvisoBridge({ nombre, aviso }: AvisoBridgeProps) {
-  if (!aviso.tokenExpirado && !aviso.sinActividad) return null;
+  if (!aviso.tokenExpirado && !aviso.tokenProximoAVencer && !aviso.sinActividad) return null;
 
   const mensajes: string[] = [];
   if (aviso.tokenExpirado) {
     mensajes.push("el token expiró y dejará de recibir leads hasta que se cargue uno nuevo");
+  } else if (aviso.tokenProximoAVencer) {
+    mensajes.push("el token de alguna cuenta publicitaria está próximo a vencer");
   }
   if (aviso.sinActividad) {
     mensajes.push("no recibió leads en las últimas 72 horas a pesar de tener cuentas publicitarias activas");

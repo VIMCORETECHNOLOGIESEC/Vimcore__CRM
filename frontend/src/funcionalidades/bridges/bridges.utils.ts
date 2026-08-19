@@ -1,4 +1,4 @@
-import type { Bridge } from "@/tipos/bridge";
+import type { Bridge, CuentaPublicitariaBridge } from "@/tipos/bridge";
 
 /**
  * Lógica pura de bridges (F8, docs/07), separada de la capa mock
@@ -9,9 +9,34 @@ import type { Bridge } from "@/tipos/bridge";
 
 const HORAS_SIN_ACTIVIDAD = 72;
 
+/**
+ * DECISIÓN DE DISEÑO (2026-08-19, no hay un plazo fijado en docs/03/docs/05
+ * para "próximo a vencer"): 7 días. La única pista concreta en el repo es la
+ * notificación mock `TOKEN_POR_EXPIRAR` de `notificaciones/notificaciones.api.ts`
+ * ("El token de la cuenta publicitaria de Instagram expira en 7 días."), que
+ * usa ese mismo plazo -- se adopta acá por consistencia, no por ser un valor
+ * documentado formalmente. A revisar si el backend llega a exponer un umbral
+ * configurable.
+ */
+const UMBRAL_TOKEN_PROXIMO_A_VENCER_DIAS = 7;
+
 export interface AvisoBridge {
-  /** `estado === "TOKEN_EXPIRADO"` -- única fuente de verdad (docs/03 §`bridges.estado`, docs/05 §8). */
+  /**
+   * Alguna cuenta publicitaria del bridge tiene `estadoToken === "TOKEN_EXPIRADO"`
+   * (peor caso entre `bridge.cuentasPublicitarias` -- ver `evaluarAvisoBridge`).
+   * Fuente real: `CuentaPublicitariaBridge.estadoToken`, NUNCA
+   * `Bridge.estado`/`Bridge.tokenExpiraEn`, que son datos muertos a nivel
+   * bridge (ver `tipos/bridge.ts`).
+   */
   tokenExpirado: boolean;
+  /**
+   * Ninguna cuenta tiene el token ya expirado, pero al menos una expira
+   * dentro de `UMBRAL_TOKEN_PROXIMO_A_VENCER_DIAS` días (peor caso entre
+   * cuentas). Mutuamente excluyente con `tokenExpirado` a propósito: un
+   * bridge con una cuenta ya expirada no necesita además el aviso de
+   * "próximo a vencer", que sería redundante y menos urgente.
+   */
+  tokenProximoAVencer: boolean;
   /**
    * Sin leads en más de `HORAS_SIN_ACTIVIDAD` horas, con al menos una cuenta
    * publicitaria activa (docs/05 §8: "Bridge sin leads durante 72 h con
@@ -26,6 +51,13 @@ export interface AvisoBridge {
   sinActividad: boolean;
 }
 
+/** `true` si `cuenta` tiene un token válido que vence dentro del umbral (nunca para uno ya expirado -- esa es otra rama). */
+function estaProximoAVencer(cuenta: CuentaPublicitariaBridge, ahora: Date): boolean {
+  if (cuenta.estadoToken !== "VALIDO" || cuenta.tokenExpiraEn === null) return false;
+  const diasRestantes = (new Date(cuenta.tokenExpiraEn).getTime() - ahora.getTime()) / (24 * 60 * 60 * 1000);
+  return diasRestantes >= 0 && diasRestantes <= UMBRAL_TOKEN_PROXIMO_A_VENCER_DIAS;
+}
+
 /**
  * Un bridge `INACTIVO` está desactivado a propósito (ej. Google Forms fuera
  * de pruebas, docs/05 §6, "Debe quedar desactivado por defecto en el
@@ -33,7 +65,20 @@ export interface AvisoBridge {
  * leads es el comportamiento esperado, no un problema de configuración.
  */
 export function evaluarAvisoBridge(bridge: Bridge, ahora: Date = new Date()): AvisoBridge {
-  const tokenExpirado = bridge.estado === "TOKEN_EXPIRADO";
+  // GAP DE CONTRATO RESUELTO (worktree dev-back, 2026-08-19): `Bridge.estado`
+  // nunca vale `"TOKEN_EXPIRADO"` para los bridges actuales -- esa
+  // granularidad vive por CUENTA PUBLICITARIA (`CuentaPublicitaria.estadoToken`,
+  // `verificacion-token.service.ts`), no en `Bridge.estado`
+  // (`Bridge.estado.TOKEN_EXPIRADO` queda reservado, según el propio schema
+  // de Prisma, "para un futuro bridge sin granularidad por cuenta"). Ahora que
+  // `CuentaPublicitariaDto` expone `estadoToken`/`tokenExpiraEn`, se calcula
+  // el PEOR CASO entre todas las cuentas del bridge en vez de leer
+  // `bridge.estado`/`bridge.tokenExpiraEn` (dato muerto, ver `tipos/bridge.ts`).
+  const tokenExpirado = bridge.cuentasPublicitarias.some(
+    (cuenta) => cuenta.estadoToken === "TOKEN_EXPIRADO",
+  );
+  const tokenProximoAVencer =
+    !tokenExpirado && bridge.cuentasPublicitarias.some((cuenta) => estaProximoAVencer(cuenta, ahora));
 
   const tieneCuentaActiva = bridge.cuentasPublicitarias.some((cuenta) => cuenta.activa);
   const horasDesdeUltimoLead = bridge.ultimoLeadEn
@@ -44,24 +89,69 @@ export function evaluarAvisoBridge(bridge: Bridge, ahora: Date = new Date()): Av
     tieneCuentaActiva &&
     (horasDesdeUltimoLead === null || horasDesdeUltimoLead >= HORAS_SIN_ACTIVIDAD);
 
-  return { tokenExpirado, sinActividad };
+  return { tokenExpirado, tokenProximoAVencer, sinActividad };
 }
 
 /** `true` si corresponde mostrar el aviso destacado (docs/07 F8, "Aviso destacado ante token expirado o bridge sin actividad"). */
 export function tieneAvisoDestacado(aviso: AvisoBridge): boolean {
-  return aviso.tokenExpirado || aviso.sinActividad;
+  return aviso.tokenExpirado || aviso.tokenProximoAVencer || aviso.sinActividad;
 }
 
 /**
- * `true` si el bridge puede eliminarse físicamente en vez de darse de baja
- * lógicamente (bridge-lifecycle-management, Requirement: Hard Delete Only
- * Without Leads). El backend real decide con `leadsRecibidos.count === 0`;
- * `tipos/bridge.ts` no trae ese conteo al frontend, así que se usa
- * `ultimoLeadEn === null` ("nunca recibió un lead") como señal equivalente
- * -- misma decisión de mock documentada en `bridges.api.ts::deleteBridgeApi`,
- * reutilizada acá como función pura para que `BridgesTable`/`BridgesPage`
- * puedan advertir la irreversibilidad ANTES de confirmar la baja, sin
- * duplicar la regla.
+ * Fecha de expiración de token más urgente entre las cuentas publicitarias
+ * del bridge (la más próxima -- si alguna ya venció, esa fecha pasada gana
+ * igual, porque es la más chica). Reemplaza la lectura de
+ * `Bridge.tokenExpiraEn`, que es una constante muerta a nivel bridge (ver
+ * `tipos/bridge.ts`). `null` si ninguna cuenta tiene una fecha de expiración
+ * conocida (sin token cargado, o token de larga duración que no expira).
+ */
+export function proximaExpiracionTokenBridge(bridge: Bridge): string | null {
+  const fechas = bridge.cuentasPublicitarias
+    .map((cuenta) => cuenta.tokenExpiraEn)
+    .filter((fecha): fecha is string => fecha !== null);
+  if (fechas.length === 0) return null;
+  return fechas.reduce((masProxima, actual) =>
+    new Date(actual).getTime() < new Date(masProxima).getTime() ? actual : masProxima,
+  );
+}
+
+export type EstadoTokenCuentaDisplay =
+  | "TOKEN_EXPIRADO"
+  | "TOKEN_PROXIMO_A_VENCER"
+  | "TOKEN_VALIDO"
+  | "ERROR_VERIFICACION";
+
+/**
+ * Estado de token de UNA cuenta puntual, sin agregación (a diferencia de
+ * `evaluarAvisoBridge`, que calcula el peor caso entre todas las cuentas de
+ * un bridge). Usado en `CuentasPublicitariasList` (F8, detalle por cuenta):
+ * ahí ya se tiene el contexto de cada fila, así que mostrar el estado exacto
+ * de esa cuenta es más preciso que repetir el agregado a nivel bridge.
+ */
+export function evaluarEstadoTokenCuenta(
+  cuenta: CuentaPublicitariaBridge,
+  ahora: Date = new Date(),
+): EstadoTokenCuentaDisplay {
+  if (cuenta.estadoToken === "TOKEN_EXPIRADO") return "TOKEN_EXPIRADO";
+  if (cuenta.estadoToken === "ERROR") return "ERROR_VERIFICACION";
+  if (estaProximoAVencer(cuenta, ahora)) return "TOKEN_PROXIMO_A_VENCER";
+  return "TOKEN_VALIDO";
+}
+
+/**
+ * `true` si es ESPERABLE que el bridge se elimine físicamente en vez de
+ * darse de baja lógicamente (bridge-lifecycle-management, Requirement: Hard
+ * Delete Only Without Leads) -- usada SOLO para el texto del diálogo de
+ * confirmación ANTES de llamar a `deleteBridgeApi`, nunca para decidir el
+ * resultado real: el backend real decide con `leadsRecibidos.count === 0`
+ * dentro de una transacción (`bridge.service.ts::deleteBridge`) y devuelve
+ * `resultado` en la respuesta -- `useDeleteBridge`/`BridgesPage` consumen
+ * ese campo tal cual, sin replicar la decisión acá. `tipos/bridge.ts` no
+ * trae ese conteo al frontend, así que se usa `ultimoLeadEn === null`
+ * ("nunca recibió un lead") como señal equivalente para el mensaje previo a
+ * confirmar; puede divergir del resultado real en un caso de carrera (un
+ * lead entra justo entre abrir el diálogo y confirmar), que el 200 real ya
+ * resuelve correctamente porque nunca se basa en esta función.
  */
 export function puedeEliminarseFisicamente(bridge: Bridge): boolean {
   return bridge.ultimoLeadEn === null;

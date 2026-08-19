@@ -1,15 +1,32 @@
 /**
- * Tipos compartidos con el backend para bridges de captación (F8, docs/07 +
- * docs/05-bridges.md + docs/03-modelo-datos.md §`bridges`/`cuentas_publicitarias`/
- * `bridge_logs`). Mantenerlos sincronizados manualmente: el frontend no
- * comparte el cliente de Prisma generado (mismo criterio que
- * `tipos/usuario.ts`/`tipos/lead.ts`).
+ * Tipos compartidos con el backend real de bridges (integración M4,
+ * `backend/src/services/bridge.service.ts` +
+ * `backend/src/services/cuenta-publicitaria.service.ts`). Mantenerlos
+ * sincronizados manualmente: el frontend no comparte el cliente de Prisma
+ * generado (mismo criterio que `tipos/usuario.ts`/`tipos/lead.ts`).
  *
  * IMPORTANTE (docs/05 §7): "El token nunca se devuelve por la API, ni
- * siquiera enmascarado" -- por eso `Bridge` no tiene ningún campo de token.
- * La interfaz solo conoce `estado` y `tokenExpiraEn`.
+ * siquiera enmascarado" -- por eso ni `Bridge` ni `CuentaPublicitariaBridge`
+ * exponen el valor del token, solo su ESTADO de verificación y su fecha de
+ * expiración (nunca el token en sí).
+ *
+ * GAP DE CONTRATO RESUELTO (worktree dev-back, 2026-08-19, posterior al gap
+ * documentado originalmente en esta integración): `CuentaPublicitariaDto`
+ * ahora expone `estadoToken`/`tokenExpiraEn` en TODAS las respuestas que
+ * incluyen `cuenta`/`cuentas` (`GET /bridges/:id`, `GET /bridges/:id/cuentas`,
+ * alta/edición de cuenta, carga de token). Esa es la única fuente real de
+ * expiración de token -- `Bridge.tokenExpiraEn` (más abajo) sigue siendo una
+ * constante muerta a nivel bridge y NO debe leerse para esto; ver
+ * `bridges.utils.ts::evaluarAvisoBridge`/`evaluarEstadoTokenCuenta`.
  */
 import type { RedSocial } from "./lead";
+
+/**
+ * Estado de verificación del token de una cuenta publicitaria puntual
+ * (`cuenta-publicitaria.service.ts`/`verificacion-token.service.ts`,
+ * backend real). Siempre presente en `CuentaPublicitariaDto`.
+ */
+export type EstadoTokenCuenta = "VALIDO" | "TOKEN_EXPIRADO" | "ERROR";
 
 export type EstadoBridge = "ACTIVO" | "TOKEN_EXPIRADO" | "ERROR" | "INACTIVO";
 
@@ -25,13 +42,31 @@ export type NivelBridgeLog = "INFO" | "ADVERTENCIA" | "ERROR";
  */
 export type EstiloAutenticacionBridge = "CLAVE_API" | "TOKEN_PROVEEDOR";
 
-/** Forma de una fila de `cuentas_publicitarias` (docs/03). */
+/**
+ * Forma de una fila de `cuentas_publicitarias` tal como la expone
+ * `CuentaPublicitariaDto` (backend real,
+ * `cuenta-publicitaria.service.ts::toCuentaPublicitariaDto`) -- boundary
+ * explícito de nombres: el backend traduce `idExternoVinculado` (Prisma) a
+ * `instagramAccountId` (wire), nunca al revés.
+ */
 export interface CuentaPublicitariaBridge {
   id: string;
-  /** ID de la cuenta en la plataforma (docs/03 §`cuentas_publicitarias.id_externo`). */
+  bridgeId: string;
+  /** ID de la cuenta en la plataforma -- para Meta, el ID de la Página (docs/05 §3). */
   idExterno: string;
   nombre: string;
+  /** Cuenta de Instagram vinculada a la misma Página, si la hay (docs/05 §3). `null` en el resto de las redes. */
+  instagramAccountId: string | null;
   activa: boolean;
+  /** Siempre presente (backend real, 2026-08-19) -- ver nota de archivo. */
+  estadoToken: EstadoTokenCuenta;
+  /**
+   * ISO 8601, o `null` si no hay token cargado todavía, o si el token no
+   * expira (Page Access Token de larga duración de Meta). Fuente real de
+   * expiración -- no confundir con `Bridge.tokenExpiraEn`, que es una
+   * constante muerta a nivel bridge (ver más abajo).
+   */
+  tokenExpiraEn: string | null;
 }
 
 /**
@@ -47,7 +82,15 @@ export interface Bridge {
   /** Etiqueta del administrador (docs/03 §`bridges.nombre`). */
   nombre: string;
   estado: EstadoBridge;
-  /** ISO 8601 (UTC). Nulo para bridges de clave de API que no expiran (X, Google Forms). */
+  /**
+   * CAMPO MUERTO A NIVEL BRIDGE: el backend lo manda siempre como
+   * `null` -- es una CONSTANTE hardcodeada del lado del servidor
+   * (`bridge.service.ts::BridgeDto`, decisión de diseño "no hay columnas de
+   * token a nivel bridge"; nunca va a traer datos reales). La expiración
+   * real vive por CUENTA PUBLICITARIA (`CuentaPublicitariaBridge.tokenExpiraEn`
+   * más arriba) -- usar esa, nunca esta, para cualquier lógica de aviso o
+   * visualización de expiración.
+   */
   tokenExpiraEn: string | null;
   /** ISO 8601 (UTC). Nulo si nunca recibió un lead -- detección de bridges mudos (docs/03). */
   ultimoLeadEn: string | null;

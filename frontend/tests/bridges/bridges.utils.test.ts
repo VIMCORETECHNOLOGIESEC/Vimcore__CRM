@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluarAvisoBridge,
+  evaluarEstadoTokenCuenta,
   formatFecha,
+  proximaExpiracionTokenBridge,
   puedeEliminarseFisicamente,
   tieneAvisoDestacado,
 } from "@/funcionalidades/bridges/bridges.utils";
-import type { Bridge } from "@/tipos/bridge";
+import type { Bridge, CuentaPublicitariaBridge } from "@/tipos/bridge";
 
 const AHORA = new Date("2026-08-14T12:00:00.000Z");
 
@@ -22,19 +24,98 @@ function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
   };
 }
 
+function cuentaFake(overrides: Partial<CuentaPublicitariaBridge> = {}): CuentaPublicitariaBridge {
+  return {
+    id: "c1",
+    bridgeId: "bridge-1",
+    idExterno: "act_1",
+    nombre: "Cuenta",
+    instagramAccountId: null,
+    activa: true,
+    estadoToken: "VALIDO",
+    tokenExpiraEn: null,
+    ...overrides,
+  };
+}
+
 function horasAntes(horas: number): string {
   return new Date(AHORA.getTime() - horas * 60 * 60 * 1000).toISOString();
 }
 
-describe("evaluarAvisoBridge — token expirado", () => {
-  it("marca tokenExpirado únicamente cuando el estado es TOKEN_EXPIRADO", () => {
-    const bridge = bridgeFake({ estado: "TOKEN_EXPIRADO" });
+function diasDesde(dias: number): string {
+  return new Date(AHORA.getTime() + dias * 24 * 60 * 60 * 1000).toISOString();
+}
+
+describe("evaluarAvisoBridge — token expirado (peor caso entre cuentas publicitarias)", () => {
+  it("marca tokenExpirado cuando alguna cuenta tiene estadoToken TOKEN_EXPIRADO", () => {
+    const bridge = bridgeFake({ cuentasPublicitarias: [cuentaFake({ estadoToken: "TOKEN_EXPIRADO" })] });
     expect(evaluarAvisoBridge(bridge, AHORA).tokenExpirado).toBe(true);
   });
 
-  it("no marca tokenExpirado para ERROR, aunque también sea una condición anómala", () => {
-    const bridge = bridgeFake({ estado: "ERROR" });
+  it("no marca tokenExpirado para estadoToken ERROR, aunque también sea una condición anómala", () => {
+    const bridge = bridgeFake({ cuentasPublicitarias: [cuentaFake({ estadoToken: "ERROR" })] });
     expect(evaluarAvisoBridge(bridge, AHORA).tokenExpirado).toBe(false);
+  });
+
+  it("un bridge con una cuenta expirada y otra sana muestra el peor caso (tokenExpirado true)", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [
+        cuentaFake({ id: "c1", estadoToken: "TOKEN_EXPIRADO" }),
+        cuentaFake({ id: "c2", estadoToken: "VALIDO", tokenExpiraEn: diasDesde(200) }),
+      ],
+    });
+    expect(evaluarAvisoBridge(bridge, AHORA).tokenExpirado).toBe(true);
+  });
+
+  it("un bridge sin ninguna cuenta publicitaria no dispara ningún aviso de token", () => {
+    const bridge = bridgeFake({ cuentasPublicitarias: [] });
+    const aviso = evaluarAvisoBridge(bridge, AHORA);
+    expect(aviso.tokenExpirado).toBe(false);
+    expect(aviso.tokenProximoAVencer).toBe(false);
+  });
+
+  it("ignora `bridge.estado`/`bridge.tokenExpiraEn` (datos muertos a nivel bridge) para decidir tokenExpirado", () => {
+    const bridge = bridgeFake({
+      estado: "TOKEN_EXPIRADO",
+      tokenExpiraEn: diasDesde(-1),
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "VALIDO" })],
+    });
+    expect(evaluarAvisoBridge(bridge, AHORA).tokenExpirado).toBe(false);
+  });
+});
+
+describe("evaluarAvisoBridge — token próximo a vencer (umbral de 7 días)", () => {
+  it("marca tokenProximoAVencer cuando una cuenta VALIDO expira dentro de los 7 días", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: diasDesde(3) })],
+    });
+    expect(evaluarAvisoBridge(bridge, AHORA).tokenProximoAVencer).toBe(true);
+  });
+
+  it("no marca tokenProximoAVencer cuando la expiración está a más de 7 días", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: diasDesde(8) })],
+    });
+    expect(evaluarAvisoBridge(bridge, AHORA).tokenProximoAVencer).toBe(false);
+  });
+
+  it("no marca tokenProximoAVencer si tokenExpiraEn es nulo (token de larga duración que no expira)", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: null })],
+    });
+    expect(evaluarAvisoBridge(bridge, AHORA).tokenProximoAVencer).toBe(false);
+  });
+
+  it("prioriza tokenExpirado sobre tokenProximoAVencer si otra cuenta ya expiró (peor caso)", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [
+        cuentaFake({ id: "c1", estadoToken: "TOKEN_EXPIRADO" }),
+        cuentaFake({ id: "c2", estadoToken: "VALIDO", tokenExpiraEn: diasDesde(3) }),
+      ],
+    });
+    const aviso = evaluarAvisoBridge(bridge, AHORA);
+    expect(aviso.tokenExpirado).toBe(true);
+    expect(aviso.tokenProximoAVencer).toBe(false);
   });
 });
 
@@ -42,7 +123,7 @@ describe("evaluarAvisoBridge — sin actividad (docs/05 §8, 72 horas con cuenta
   it("marca sinActividad cuando pasaron 72 h o más desde el último lead, con una cuenta activa", () => {
     const bridge = bridgeFake({
       ultimoLeadEn: horasAntes(72),
-      cuentasPublicitarias: [{ id: "c1", idExterno: "act_1", nombre: "Cuenta", activa: true }],
+      cuentasPublicitarias: [cuentaFake({ activa: true })],
     });
     expect(evaluarAvisoBridge(bridge, AHORA).sinActividad).toBe(true);
   });
@@ -50,7 +131,7 @@ describe("evaluarAvisoBridge — sin actividad (docs/05 §8, 72 horas con cuenta
   it("no marca sinActividad con menos de 72 h desde el último lead", () => {
     const bridge = bridgeFake({
       ultimoLeadEn: horasAntes(10),
-      cuentasPublicitarias: [{ id: "c1", idExterno: "act_1", nombre: "Cuenta", activa: true }],
+      cuentasPublicitarias: [cuentaFake({ activa: true })],
     });
     expect(evaluarAvisoBridge(bridge, AHORA).sinActividad).toBe(false);
   });
@@ -58,7 +139,7 @@ describe("evaluarAvisoBridge — sin actividad (docs/05 §8, 72 horas con cuenta
   it("marca sinActividad cuando nunca recibió un lead (ultimoLeadEn nulo), con cuenta activa", () => {
     const bridge = bridgeFake({
       ultimoLeadEn: null,
-      cuentasPublicitarias: [{ id: "c1", idExterno: "act_1", nombre: "Cuenta", activa: true }],
+      cuentasPublicitarias: [cuentaFake({ activa: true })],
     });
     expect(evaluarAvisoBridge(bridge, AHORA).sinActividad).toBe(true);
   });
@@ -66,7 +147,7 @@ describe("evaluarAvisoBridge — sin actividad (docs/05 §8, 72 horas con cuenta
   it("no marca sinActividad si ninguna cuenta publicitaria está activa", () => {
     const bridge = bridgeFake({
       ultimoLeadEn: null,
-      cuentasPublicitarias: [{ id: "c1", idExterno: "act_1", nombre: "Cuenta", activa: false }],
+      cuentasPublicitarias: [cuentaFake({ activa: false })],
     });
     expect(evaluarAvisoBridge(bridge, AHORA).sinActividad).toBe(false);
   });
@@ -80,20 +161,81 @@ describe("evaluarAvisoBridge — sin actividad (docs/05 §8, 72 horas con cuenta
     const bridge = bridgeFake({
       estado: "INACTIVO",
       ultimoLeadEn: null,
-      cuentasPublicitarias: [{ id: "c1", idExterno: "act_1", nombre: "Cuenta", activa: true }],
+      cuentasPublicitarias: [cuentaFake({ activa: true })],
     });
     expect(evaluarAvisoBridge(bridge, AHORA).sinActividad).toBe(false);
   });
 });
 
 describe("tieneAvisoDestacado", () => {
-  it("es true si cualquiera de las dos banderas es true", () => {
-    expect(tieneAvisoDestacado({ tokenExpirado: true, sinActividad: false })).toBe(true);
-    expect(tieneAvisoDestacado({ tokenExpirado: false, sinActividad: true })).toBe(true);
+  it("es true si cualquiera de las tres banderas es true", () => {
+    expect(
+      tieneAvisoDestacado({ tokenExpirado: true, tokenProximoAVencer: false, sinActividad: false }),
+    ).toBe(true);
+    expect(
+      tieneAvisoDestacado({ tokenExpirado: false, tokenProximoAVencer: true, sinActividad: false }),
+    ).toBe(true);
+    expect(
+      tieneAvisoDestacado({ tokenExpirado: false, tokenProximoAVencer: false, sinActividad: true }),
+    ).toBe(true);
   });
 
   it("es false cuando ninguna bandera está activa", () => {
-    expect(tieneAvisoDestacado({ tokenExpirado: false, sinActividad: false })).toBe(false);
+    expect(
+      tieneAvisoDestacado({ tokenExpirado: false, tokenProximoAVencer: false, sinActividad: false }),
+    ).toBe(false);
+  });
+});
+
+describe("proximaExpiracionTokenBridge", () => {
+  it("devuelve la fecha más próxima entre varias cuentas con expiración conocida", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [
+        cuentaFake({ id: "c1", tokenExpiraEn: diasDesde(20) }),
+        cuentaFake({ id: "c2", tokenExpiraEn: diasDesde(3) }),
+      ],
+    });
+    expect(proximaExpiracionTokenBridge(bridge)).toBe(diasDesde(3));
+  });
+
+  it("devuelve null si ninguna cuenta tiene tokenExpiraEn", () => {
+    const bridge = bridgeFake({
+      cuentasPublicitarias: [cuentaFake({ tokenExpiraEn: null })],
+    });
+    expect(proximaExpiracionTokenBridge(bridge)).toBeNull();
+  });
+
+  it("devuelve null si el bridge no tiene ninguna cuenta publicitaria", () => {
+    expect(proximaExpiracionTokenBridge(bridgeFake({ cuentasPublicitarias: [] }))).toBeNull();
+  });
+});
+
+describe("evaluarEstadoTokenCuenta — estado puntual por cuenta, sin agregación", () => {
+  it("devuelve TOKEN_EXPIRADO para una cuenta con estadoToken TOKEN_EXPIRADO", () => {
+    expect(evaluarEstadoTokenCuenta(cuentaFake({ estadoToken: "TOKEN_EXPIRADO" }), AHORA)).toBe(
+      "TOKEN_EXPIRADO",
+    );
+  });
+
+  it("devuelve ERROR_VERIFICACION para una cuenta con estadoToken ERROR", () => {
+    expect(evaluarEstadoTokenCuenta(cuentaFake({ estadoToken: "ERROR" }), AHORA)).toBe(
+      "ERROR_VERIFICACION",
+    );
+  });
+
+  it("devuelve TOKEN_PROXIMO_A_VENCER para una cuenta VALIDO que expira dentro del umbral", () => {
+    expect(
+      evaluarEstadoTokenCuenta(cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: diasDesde(5) }), AHORA),
+    ).toBe("TOKEN_PROXIMO_A_VENCER");
+  });
+
+  it("devuelve TOKEN_VALIDO para una cuenta VALIDO que expira lejos, o que no expira nunca", () => {
+    expect(
+      evaluarEstadoTokenCuenta(cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: diasDesde(60) }), AHORA),
+    ).toBe("TOKEN_VALIDO");
+    expect(
+      evaluarEstadoTokenCuenta(cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: null }), AHORA),
+    ).toBe("TOKEN_VALIDO");
   });
 });
 
