@@ -812,14 +812,33 @@ Solo administrador.
 > en varios mocks (`leads.api.ts`, `bridges.api.ts`, `metricas.api.ts`), acá
 > se implementó por primera vez porque F7 es el único módulo que pega contra
 > un backend real hoy.
+>
+> **Actualización (reasignación automática de cartera pasa a ser backend
+> real, M2):** la brecha descrita arriba para "baja lógica con reasignación
+> obligatoria de la cartera activa" quedó resuelta del lado del backend --
+> `usuarios.service.ts::deactivateUsuario` ahora reasigna automáticamente
+> cada lead activo del usuario dado de baja (si es ASESOR/VENDEDOR) al
+> candidato del mismo rol con menor carga activa (desempate FIFO por
+> `ultimaAsignacionEn`, mismo criterio que la asignación automática M6),
+> todo dentro de la misma transacción de baja; si no hay ningún candidato,
+> rechaza con `409 baja_sin_candidato_reasignacion` sin persistir nada. En
+> consecuencia se eliminó del frontend todo el camino mock que hacía esto
+> manualmente: `BajaUsuarioDialog` volvió a ser un diálogo de confirmación
+> simple (sin selector de responsable), y `usuarios.api.ts`/`useUsuarios.ts`
+> perdieron `getCandidatosReasignacion`/`reassignCarteraActiva`/
+> `useCandidatosReasignacion` y la llamada previa a `POST
+> /leads/asignar-lote` en `useDeactivateUsuario` -- ahora es una única
+> llamada a `DELETE /usuarios/:id`, ya no dos llamadas HTTP no atómicas. La
+> "carga activa de leads" (columna de solo lectura de la tabla) sigue siendo
+> backend real de leads tal como se describe arriba, sin cambios.
 
-- [x] Listado con rol, estado y carga activa de leads (carga activa: mock
-      de F3, ver nota de brecha arriba; filtro y paginación real desde F7,
-      ver nota de actualización arriba)
+- [x] Listado con rol, estado y carga activa de leads (carga activa: backend
+      real de leads, ver nota arriba; filtro y paginación real desde F7, ver
+      nota de actualización arriba)
 - [x] Alta y edición de usuario
-- [x] Baja lógica con reasignación obligatoria de la cartera activa
-      (reasignación: mock de F3, ver nota de brecha arriba; la baja lógica
-      en sí es backend real)
+- [x] Baja lógica con reasignación automática de la cartera activa (backend
+      real, atómica -- M2, ver nota de actualización arriba; el frontend
+      solo confirma la baja)
 - [x] Restablecimiento de contraseña (backend real, sin brecha)
 
 ---

@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,27 +6,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import type { AdminUsuario } from "@/tipos/usuario";
-import { useCandidatosReasignacion, useCargaActivaDeUsuario } from "./useUsuarios";
 
 interface BajaUsuarioDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   usuario: AdminUsuario;
-  onConfirm: (nuevoResponsableId?: string) => void;
+  onConfirm: () => void;
   confirmando: boolean;
 }
 
 /**
- * Baja lógica con reasignación obligatoria de la cartera activa (F7,
- * checklist). Acción irreversible -- confirmación explícita siempre (docs/07,
- * criterio transversal), y si el usuario tiene leads activos en su cartera
- * no deja confirmar sin elegir antes a quién se le reasignan.
- *
- * La cartera activa y sus candidatos de reasignación son backend real --
- * ver `usuarios.api.ts::getCargaActivaDeUsuario`/`getCandidatosReasignacion`.
+ * Baja lógica (F7, checklist). Acción irreversible -- confirmación explícita
+ * siempre (docs/07, criterio transversal). La reasignación de la cartera
+ * activa ya no es responsabilidad del frontend: el backend real (M2,
+ * `backend/src/services/usuarios.service.ts::deactivateUsuario`) la resuelve
+ * de forma atómica dentro de la misma transacción de baja -- si el usuario
+ * dado de baja es ASESOR/VENDEDOR con cartera abierta, reasigna cada lead al
+ * compañero del mismo rol con menor carga activa (mismo criterio de la
+ * asignación automática M6, desempate FIFO por `ultimaAsignacionEn`). Si no
+ * hay ningún candidato disponible, el backend rechaza la baja con
+ * `409 baja_sin_candidato_reasignacion` y no persiste nada.
  */
 export function BajaUsuarioDialog({
   open,
@@ -37,57 +36,23 @@ export function BajaUsuarioDialog({
   onConfirm,
   confirmando,
 }: BajaUsuarioDialogProps) {
-  const { data: cargaActiva = 0 } = useCargaActivaDeUsuario(usuario.id);
-  const { data: candidatos = [] } = useCandidatosReasignacion(usuario.rol, usuario.id);
-  const [nuevoResponsableId, setNuevoResponsableId] = useState("");
-
-  const requiereReasignacion = cargaActiva > 0;
-  const puedeConfirmar = !requiereReasignacion || Boolean(nuevoResponsableId);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Dar de baja a {usuario.nombre}</DialogTitle>
           <DialogDescription>
-            {requiereReasignacion
-              ? `Este usuario tiene ${cargaActiva} lead${cargaActiva === 1 ? "" : "s"} activo${cargaActiva === 1 ? "" : "s"} en su cartera. Elegí quién los va a recibir antes de continuar: no se puede dar de baja a un usuario con cartera activa sin reasignarla.`
-              : "El usuario no podrá volver a iniciar sesión. Esta acción es irreversible."}
+            El usuario no podrá volver a iniciar sesión. Esta acción es irreversible. Si tiene
+            cartera activa, el sistema la reasigna automáticamente al compañero del mismo rol con
+            menor carga activa (mismo criterio que la asignación automática de leads nuevos).
           </DialogDescription>
         </DialogHeader>
-
-        {requiereReasignacion ? (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="baja-nuevo-responsable">Reasignar cartera a</Label>
-            <Select value={nuevoResponsableId} onValueChange={setNuevoResponsableId}>
-              <SelectTrigger id="baja-nuevo-responsable" aria-label="Reasignar cartera a">
-                <SelectValue placeholder="Elegir usuario…" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidatos.map((candidato) => (
-                  <SelectItem key={candidato.id} value={candidato.id}>
-                    {candidato.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {candidatos.length === 0 ? (
-              <p className="text-sm text-destructive">
-                No hay otro usuario del mismo rol disponible para recibir la cartera.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={confirmando}>
             Cancelar
           </Button>
-          <Button
-            variant="destructive"
-            disabled={!puedeConfirmar || confirmando}
-            onClick={() => onConfirm(requiereReasignacion ? nuevoResponsableId : undefined)}
-          >
+          <Button variant="destructive" disabled={confirmando} onClick={onConfirm}>
             {confirmando ? "Procesando…" : "Confirmar baja"}
           </Button>
         </DialogFooter>

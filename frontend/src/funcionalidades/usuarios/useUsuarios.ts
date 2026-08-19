@@ -1,13 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { RolUsuario } from "@/tipos/usuario";
 import {
   createUsuarioApi,
   deactivateUsuarioApi,
   fetchUsuariosApi,
-  getCandidatosReasignacion,
   getCargaActivaDeUsuario,
-  reassignCarteraActiva,
   resetPasswordApi,
   updateUsuarioApi,
   type UpdateUsuarioInput,
@@ -17,7 +14,6 @@ import {
 
 const USUARIOS_QUERY_KEY = "usuarios";
 const CARGA_ACTIVA_QUERY_KEY = "usuario-carga-activa";
-const CANDIDATOS_REASIGNACION_QUERY_KEY = "candidatos-reasignacion";
 
 /**
  * Carga activa de leads de un usuario (F7, integración F3/F4). Backend real
@@ -27,17 +23,6 @@ export function useCargaActivaDeUsuario(usuarioId: string) {
   return useQuery({
     queryKey: [CARGA_ACTIVA_QUERY_KEY, usuarioId],
     queryFn: () => getCargaActivaDeUsuario(usuarioId),
-  });
-}
-
-/**
- * Candidatos del mismo rol operativo para recibir la cartera de un usuario
- * dado de baja (F7). Backend real -- ver `usuarios.api.ts::getCandidatosReasignacion`.
- */
-export function useCandidatosReasignacion(rol: RolUsuario, excluirUsuarioId: string) {
-  return useQuery({
-    queryKey: [CANDIDATOS_REASIGNACION_QUERY_KEY, rol, excluirUsuarioId],
-    queryFn: () => getCandidatosReasignacion(rol, excluirUsuarioId),
   });
 }
 
@@ -97,26 +82,18 @@ export function useResetPassword() {
 }
 
 /**
- * Baja lógica con reasignación obligatoria de la cartera activa (F7). Si se
- * pasa `nuevoResponsableId`, reasigna primero (mock, ver `usuarios.api.ts`) y
- * recién después llama al backend real de baja -- si la reasignación falla,
- * nunca se llega a desactivar al usuario.
+ * Baja lógica (F7). Una única llamada a `deactivateUsuarioApi` -- la
+ * reasignación de la cartera activa, si corresponde, la hace el backend de
+ * forma atómica dentro de la misma transacción (M2, ver el JSDoc de
+ * `deactivateUsuarioApi` en `usuarios.api.ts`). El manejo global de errores
+ * de mutaciones (`api/queryClient.ts`) muestra el mensaje accionable si el
+ * backend rechaza la baja por falta de candidato de reasignación
+ * (`409 baja_sin_candidato_reasignacion`).
  */
 export function useDeactivateUsuario() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      nuevoResponsableId,
-    }: {
-      id: string;
-      nuevoResponsableId?: string;
-    }) => {
-      if (nuevoResponsableId) {
-        await reassignCarteraActiva(id, nuevoResponsableId);
-      }
-      await deactivateUsuarioApi(id);
-    },
+    mutationFn: (id: string) => deactivateUsuarioApi(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
       toast.success("Usuario dado de baja correctamente.");

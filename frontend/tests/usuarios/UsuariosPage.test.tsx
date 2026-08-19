@@ -14,8 +14,6 @@ vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   resetPasswordApi: vi.fn(),
   deactivateUsuarioApi: vi.fn(),
   getCargaActivaDeUsuario: vi.fn(),
-  getCandidatosReasignacion: vi.fn(),
-  reassignCarteraActiva: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -29,8 +27,6 @@ const updateUsuarioApiMock = vi.mocked(usuariosApi.updateUsuarioApi);
 const resetPasswordApiMock = vi.mocked(usuariosApi.resetPasswordApi);
 const deactivateUsuarioApiMock = vi.mocked(usuariosApi.deactivateUsuarioApi);
 const getCargaActivaDeUsuarioMock = vi.mocked(usuariosApi.getCargaActivaDeUsuario);
-const getCandidatosReasignacionMock = vi.mocked(usuariosApi.getCandidatosReasignacion);
-const reassignCarteraActivaMock = vi.mocked(usuariosApi.reassignCarteraActiva);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
 
@@ -79,12 +75,9 @@ beforeEach(() => {
   resetPasswordApiMock.mockReset();
   deactivateUsuarioApiMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReset();
-  getCandidatosReasignacionMock.mockReset();
-  reassignCarteraActivaMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReturnValue(0);
-  getCandidatosReasignacionMock.mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -430,10 +423,9 @@ describe("UsuariosPage — restablecimiento de contraseña (F7, sin brecha de ba
   });
 });
 
-describe("UsuariosPage — baja lógica con reasignación obligatoria de la cartera activa (F7)", () => {
-  it("sin cartera activa: la baja se confirma directo, sin reasignar nada", async () => {
+describe("UsuariosPage — baja lógica con reasignación automática de la cartera activa por el backend (F7, M2)", () => {
+  it("al confirmar la baja, llama a deactivateUsuarioApi con el id, muestra éxito y cierra el diálogo", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    getCargaActivaDeUsuarioMock.mockReturnValue(0);
     deactivateUsuarioApiMock.mockResolvedValue(undefined);
     const user = userEvent.setup();
     renderUsuariosPage();
@@ -442,68 +434,37 @@ describe("UsuariosPage — baja lógica con reasignación obligatoria de la cart
     await user.click(screen.getByRole("button", { name: "Dar de baja" }));
     expect(
       await screen.findByText(
-        "El usuario no podrá volver a iniciar sesión. Esta acción es irreversible.",
+        "El usuario no podrá volver a iniciar sesión. Esta acción es irreversible. Si tiene cartera activa, el sistema la reasigna automáticamente al compañero del mismo rol con menor carga activa (mismo criterio que la asignación automática de leads nuevos).",
       ),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Confirmar baja" }));
 
     await waitFor(() => expect(deactivateUsuarioApiMock).toHaveBeenCalledWith("u1"));
-    expect(reassignCarteraActivaMock).not.toHaveBeenCalled();
     expect(toastSuccessMock).toHaveBeenCalledWith("Usuario dado de baja correctamente.");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("con cartera activa: no deja confirmar sin elegir antes un nuevo responsable", async () => {
+  it("si el backend rechaza la baja por falta de candidato de reasignación (409), muestra el mensaje accionable y no cierra el diálogo", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    getCargaActivaDeUsuarioMock.mockReturnValue(2);
-    getCandidatosReasignacionMock.mockReturnValue([{ id: "asesor-2", nombre: "Julián Peña" }]);
+    deactivateUsuarioApiMock.mockRejectedValue(
+      new ApiError(
+        "baja_sin_candidato_reasignacion",
+        409,
+        "No hay otro usuario activo del mismo rol para reasignar la cartera de este usuario",
+      ),
+    );
     const user = userEvent.setup();
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
     await user.click(screen.getByRole("button", { name: "Dar de baja" }));
-
-    expect(await screen.findByText(/tiene 2 leads activos/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar baja" })).toBeDisabled();
-    expect(deactivateUsuarioApiMock).not.toHaveBeenCalled();
-  });
-
-  it("con cartera activa: al elegir el nuevo responsable, reasigna primero y solo después da de baja", async () => {
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    getCargaActivaDeUsuarioMock.mockReturnValue(2);
-    getCandidatosReasignacionMock.mockReturnValue([{ id: "asesor-2", nombre: "Julián Peña" }]);
-    reassignCarteraActivaMock.mockResolvedValue(undefined);
-    deactivateUsuarioApiMock.mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    renderUsuariosPage();
-    await screen.findByText("Marta Herrera");
-
-    await user.click(screen.getByRole("button", { name: "Dar de baja" }));
-    await user.click(screen.getByRole("combobox", { name: "Reasignar cartera a" }));
-    await user.click(await screen.findByRole("option", { name: "Julián Peña" }));
     await user.click(screen.getByRole("button", { name: "Confirmar baja" }));
 
-    await waitFor(() => expect(reassignCarteraActivaMock).toHaveBeenCalledWith("u1", "asesor-2"));
-    await waitFor(() => expect(deactivateUsuarioApiMock).toHaveBeenCalledWith("u1"));
-    const ordenReasignacion = reassignCarteraActivaMock.mock.invocationCallOrder[0];
-    const ordenBaja = deactivateUsuarioApiMock.mock.invocationCallOrder[0];
-    expect(ordenReasignacion).toBeLessThan(ordenBaja);
-  });
-
-  it("si la reasignación falla, nunca se llega a llamar a deactivateUsuarioApi (no atómico, brecha documentada)", async () => {
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    getCargaActivaDeUsuarioMock.mockReturnValue(2);
-    getCandidatosReasignacionMock.mockReturnValue([{ id: "asesor-2", nombre: "Julián Peña" }]);
-    reassignCarteraActivaMock.mockRejectedValue(new Error("boom"));
-    const user = userEvent.setup();
-    renderUsuariosPage();
-    await screen.findByText("Marta Herrera");
-
-    await user.click(screen.getByRole("button", { name: "Dar de baja" }));
-    await user.click(screen.getByRole("combobox", { name: "Reasignar cartera a" }));
-    await user.click(await screen.findByRole("option", { name: "Julián Peña" }));
-    await user.click(screen.getByRole("button", { name: "Confirmar baja" }));
-
-    await waitFor(() => expect(reassignCarteraActivaMock).toHaveBeenCalled());
-    expect(deactivateUsuarioApiMock).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "No hay otro usuario activo del mismo rol para reasignar la cartera de este usuario",
+      ),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });
