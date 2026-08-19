@@ -166,3 +166,5 @@ de arriba) y replicar las variables de `.env.example` en tu entorno.
 | [`docs/08-dashboard-kpis.md`](docs/08-dashboard-kpis.md) | Definición de los KPIs del dashboard |
 | [`docs/09-linea-grafica-frontend.md`](docs/09-linea-grafica-frontend.md) | Paleta, línea gráfica, librerías de UI |
 | [`docs/11-plan-integracion.md`](docs/11-plan-integracion.md) | Plan de integración de las ramas de desarrollo |
+| [`docs/12-pruebas-manuales-qa.md`](docs/12-pruebas-manuales-qa.md) | Checklist de pruebas manuales de QA contra el ambiente Docker con datos sembrados |
+| [`docs/13-configuracion-bridges.md`](docs/13-configuracion-bridges.md) | Guía operativa de configuración de bridges (Meta y Google Forms) |
