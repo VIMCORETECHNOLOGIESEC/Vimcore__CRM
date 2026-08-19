@@ -12,3 +12,6 @@ dist/
 .env
 *.env
 !.env.example
+
+# Local scratch tokens (curl testing artifacts)
+.admin_token
