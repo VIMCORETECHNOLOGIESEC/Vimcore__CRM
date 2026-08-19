@@ -1,7 +1,33 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { ApiError } from "@/api/httpClient";
-import {
-  BRIDGES_MOCK,
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * `bridges.api.ts` -- backend real (integración M4). Mismo patrón que
+ * `leads/leads.api.test.ts` (F3/F4): `httpClient` mockeado, se verifica la
+ * ruta/verbo/body exactos que manda cada función y cómo adapta la
+ * respuesta -- nunca contra un fixture en memoria (eso quedó atrás con el
+ * mock, ver `bridges.api.ts` para el detalle del reemplazo).
+ */
+vi.mock("@/api/httpClient", () => ({
+  httpClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+  ApiError: class ApiError extends Error {
+    code: string;
+    status: number;
+    constructor(code: string, status: number, message: string) {
+      super(message);
+      this.name = "ApiError";
+      this.code = code;
+      this.status = status;
+    }
+  },
+}));
+
+const { httpClient, ApiError } = await import("@/api/httpClient");
+const {
   createBridgeApi,
   deleteBridgeApi,
   fetchBridgeDetalleApi,
@@ -14,299 +40,247 @@ import {
   saveTokenApi,
   testConnectionApi,
   toggleCuentaActivaApi,
-} from "@/funcionalidades/bridges/bridges.api";
+} = await import("@/funcionalidades/bridges/bridges.api");
 
-/**
- * `BRIDGES_MOCK` es un fixture mutable en memoria (mismo criterio que
- * `LEADS_MOCK` en F3): las pruebas que mutan estado/token/cuentas restauran
- * el snapshot original después de cada test, para que el orden de ejecución
- * nunca afecte a otro test (mismo problema y misma solución que
- * `reassignCarteraActiva` -- ver `usuarios.api.test.ts`, que en cambio no
- * necesita restaurar porque solo un test lo ejercita).
- *
- * A partir de bridge-lifecycle-management, `BRIDGES_MOCK` también cambia de
- * TAMAÑO (alta/baja física con push/splice) -- por eso la restauración ya no
- * alcanza con pisar campos: reconstruye el arreglo completo con el snapshot
- * inicial clonado.
- */
-const SNAPSHOT_INICIAL: typeof BRIDGES_MOCK = JSON.parse(JSON.stringify(BRIDGES_MOCK));
+const getMock = vi.mocked(httpClient.get);
+const postMock = vi.mocked(httpClient.post);
+const patchMock = vi.mocked(httpClient.patch);
+const deleteMock = vi.mocked(httpClient.delete);
+
+function bridgeBackendFake(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "bridge-1",
+    redSocial: "FACEBOOK",
+    nombre: "Meta Ads — Facebook",
+    estado: "ACTIVO",
+    ultimoLeadEn: null,
+    tokenExpiraEn: null,
+    ...overrides,
+  };
+}
+
+function cuentaBackendFake(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "cuenta-1",
+    bridgeId: "bridge-1",
+    idExterno: "page-1",
+    nombre: "Página Principal",
+    instagramAccountId: null,
+    activa: true,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  getMock.mockReset();
+  postMock.mockReset();
+  patchMock.mockReset();
+  deleteMock.mockReset();
+});
 
 afterEach(() => {
-  BRIDGES_MOCK.length = 0;
-  BRIDGES_MOCK.push(...SNAPSHOT_INICIAL.map((b) => ({ ...b, cuentasPublicitarias: b.cuentasPublicitarias.map((c) => ({ ...c })) })));
+  vi.restoreAllMocks();
 });
 
-describe("fetchBridgesApi", () => {
-  it("devuelve el listado con estado, último lead recibido y expiración de token", async () => {
-    const bridges = await fetchBridgesApi();
-    expect(bridges.length).toBeGreaterThan(0);
-    for (const bridge of bridges) {
-      expect(bridge).toHaveProperty("estado");
-      expect(bridge).toHaveProperty("ultimoLeadEn");
-      expect(bridge).toHaveProperty("tokenExpiraEn");
-    }
-  });
+describe("fetchBridgesApi — GET /bridges", () => {
+  it("desenvuelve `{ bridges }` y lo devuelve tal cual", async () => {
+    const bridges = [bridgeBackendFake(), bridgeBackendFake({ id: "bridge-2", redSocial: "X" })];
+    getMock.mockResolvedValue({ bridges });
 
-  it("cubre las 5 redes sociales documentadas (docs/05)", async () => {
-    const bridges = await fetchBridgesApi();
-    const redes = new Set(bridges.map((b) => b.redSocial));
-    expect(redes).toEqual(new Set(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "X", "GOOGLE_FORMS"]));
-  });
+    const resultado = await fetchBridgesApi();
 
-  it("nunca expone ningún campo de token -- solo estado y expiración (docs/05 §7)", async () => {
-    const bridges = await fetchBridgesApi();
-    for (const bridge of bridges) {
-      expect(bridge).not.toHaveProperty("token");
-      expect(bridge).not.toHaveProperty("tokenCifrado");
-      expect(bridge).not.toHaveProperty("secretoWebhook");
-    }
-  });
-
-  it("devuelve copias, no referencias al fixture (mutar el resultado no afecta al mock compartido)", async () => {
-    const bridges = await fetchBridgesApi();
-    bridges[0].estado = "ERROR";
-    const bridgesOtraVez = await fetchBridgesApi();
-    expect(bridgesOtraVez[0].estado).not.toBe("ERROR");
+    expect(getMock).toHaveBeenCalledWith("/bridges");
+    expect(resultado).toEqual(bridges);
   });
 });
 
-describe("fetchBridgeDetalleApi", () => {
-  it("devuelve el bridge con sus cuentas publicitarias asociadas", async () => {
-    const bridge = await fetchBridgeDetalleApi("bridge-facebook");
-    expect(bridge.id).toBe("bridge-facebook");
-    expect(bridge.cuentasPublicitarias.length).toBeGreaterThan(0);
+describe("fetchBridgeDetalleApi — GET /bridges/:id", () => {
+  it("desenvuelve `{ bridge }` con sus cuentas publicitarias embebidas", async () => {
+    const bridge = bridgeBackendFake({ cuentasPublicitarias: [cuentaBackendFake()] });
+    getMock.mockResolvedValue({ bridge });
+
+    const resultado = await fetchBridgeDetalleApi("bridge-1");
+
+    expect(getMock).toHaveBeenCalledWith("/bridges/bridge-1");
+    expect(resultado).toEqual(bridge);
   });
 
-  it("lanza un error si el bridge no existe", async () => {
-    await expect(fetchBridgeDetalleApi("no-existe")).rejects.toThrow();
+  it("propaga el ApiError del backend si el bridge no existe (sin envolverlo de nuevo)", async () => {
+    getMock.mockRejectedValue(new ApiError("bridge_no_encontrado", 404, "Bridge no encontrado"));
+
+    await expect(fetchBridgeDetalleApi("no-existe")).rejects.toMatchObject({
+      code: "bridge_no_encontrado",
+      status: 404,
+    });
   });
 });
 
-describe("saveTokenApi — carga y renovación con verificación inmediata", () => {
-  it("con un token válido, activa el bridge y fija una nueva expiración", async () => {
-    const bridge = await saveTokenApi("bridge-linkedin", "un-token-bastante-largo-1234");
-    expect(bridge.estado).toBe("ACTIVO");
-    expect(bridge.tokenExpiraEn).not.toBeNull();
-    expect(new Date(bridge.tokenExpiraEn as string).getTime()).toBeGreaterThan(Date.now());
+describe("saveTokenApi — POST /bridges/:id/cuentas/:cuentaId/token (gap de contrato: por cuenta, no por bridge)", () => {
+  it("manda bridgeId y cuentaId en la ruta y el token en el body, devuelve la cuenta actualizada", async () => {
+    const cuenta = cuentaBackendFake({ activa: true });
+    postMock.mockResolvedValue({ cuenta });
+
+    const resultado = await saveTokenApi("bridge-1", "cuenta-1", "un-token-bastante-largo");
+
+    expect(postMock).toHaveBeenCalledWith("/bridges/bridge-1/cuentas/cuenta-1/token", {
+      token: "un-token-bastante-largo",
+    });
+    expect(resultado).toEqual(cuenta);
   });
 
-  it("con un token demasiado corto, rechaza con un ApiError accionable (verificación inmediata fallida)", async () => {
-    await expect(saveTokenApi("bridge-linkedin", "corto")).rejects.toBeInstanceOf(ApiError);
-    await expect(saveTokenApi("bridge-linkedin", "corto")).rejects.toThrow(
-      "El token no es válido. Verificá que lo copiaste completo desde la plataforma e intentá nuevamente.",
+  it("propaga el ApiError 422 del backend cuando Graph API rechaza el token, con mensaje accionable", async () => {
+    postMock.mockRejectedValue(
+      new ApiError("meta_token_invalido", 422, "El token no pudo verificarse contra Graph API: inválido."),
     );
-  });
 
-  it("no cambia el estado del bridge cuando el token es rechazado", async () => {
-    try {
-      await saveTokenApi("bridge-linkedin", "corto");
-    } catch {
-      // esperado
-    }
-    const bridge = await fetchBridgeDetalleApi("bridge-linkedin");
-    expect(bridge.estado).toBe("TOKEN_EXPIRADO");
-  });
-
-  it("para X (clave de API, sin expiración), guarda el token sin fijar tokenExpiraEn", async () => {
-    const bridge = await saveTokenApi("bridge-x", "una-clave-de-api-bien-larga-123");
-    expect(bridge.estado).toBe("ACTIVO");
-    expect(bridge.tokenExpiraEn).toBeNull();
+    await expect(saveTokenApi("bridge-1", "cuenta-1", "corto")).rejects.toMatchObject({
+      code: "meta_token_invalido",
+      status: 422,
+      message: "El token no pudo verificarse contra Graph API: inválido.",
+    });
   });
 });
 
-describe("testConnectionApi — prueba de conexión bajo demanda", () => {
-  it("falla con un mensaje accionable si el token expiró", async () => {
-    const resultado = await testConnectionApi("bridge-linkedin");
+describe("testConnectionApi — POST /bridges/:id/cuentas/:cuentaId/probar-conexion (gap de contrato: por cuenta, no por bridge)", () => {
+  it("manda bridgeId y cuentaId en la ruta, sin body, y devuelve `{ ok, mensaje }` tal cual", async () => {
+    postMock.mockResolvedValue({ ok: true, mensaje: "Conexión verificada correctamente." });
+
+    const resultado = await testConnectionApi("bridge-1", "cuenta-1");
+
+    expect(postMock).toHaveBeenCalledWith("/bridges/bridge-1/cuentas/cuenta-1/probar-conexion");
+    expect(resultado).toEqual({ ok: true, mensaje: "Conexión verificada correctamente." });
+  });
+
+  it("nunca lanza para un resultado diagnóstico negativo -- resuelve con `ok: false`", async () => {
+    postMock.mockResolvedValue({ ok: false, mensaje: "El token expiró o fue revocado. Cargá uno nuevo." });
+
+    const resultado = await testConnectionApi("bridge-1", "cuenta-1");
+
     expect(resultado.ok).toBe(false);
-    expect(resultado.mensaje).toContain("token expiró");
-  });
-
-  it("falla con un mensaje accionable si el bridge está inactivo", async () => {
-    const resultado = await testConnectionApi("bridge-google-forms");
-    expect(resultado.ok).toBe(false);
-    expect(resultado.mensaje).toContain("inactivo");
-  });
-
-  it("falla con un mensaje accionable si el estado es ERROR", async () => {
-    const resultado = await testConnectionApi("bridge-x");
-    expect(resultado.ok).toBe(false);
-  });
-
-  it("es exitosa para un bridge ACTIVO", async () => {
-    const resultado = await testConnectionApi("bridge-facebook");
-    expect(resultado.ok).toBe(true);
-  });
-
-  it("no cambia el estado guardado del bridge -- es puramente diagnóstica", async () => {
-    await testConnectionApi("bridge-linkedin");
-    const bridge = await fetchBridgeDetalleApi("bridge-linkedin");
-    expect(bridge.estado).toBe("TOKEN_EXPIRADO");
   });
 });
 
-describe("toggleCuentaActivaApi — alta/baja de cuentas publicitarias (docs/05 §7)", () => {
-  it("activa/desactiva la cuenta indicada y devuelve el bridge actualizado", async () => {
-    const cuentaId = SNAPSHOT_INICIAL.find((b) => b.id === "bridge-facebook")?.cuentasPublicitarias[1]
-      .id as string; // cuenta-fb-2, activa: false originalmente
-    const bridge = await toggleCuentaActivaApi("bridge-facebook", cuentaId, true);
-    const cuenta = bridge.cuentasPublicitarias.find((c) => c.id === cuentaId);
-    expect(cuenta?.activa).toBe(true);
-  });
+describe("toggleCuentaActivaApi — PATCH /bridges/:id/cuentas/:cuentaId", () => {
+  it("manda solo `{ activa }` y devuelve la cuenta actualizada", async () => {
+    const cuenta = cuentaBackendFake({ activa: false });
+    patchMock.mockResolvedValue({ cuenta });
 
-  it("lanza un error si la cuenta no existe", async () => {
-    await expect(toggleCuentaActivaApi("bridge-facebook", "no-existe", true)).rejects.toThrow();
+    const resultado = await toggleCuentaActivaApi("bridge-1", "cuenta-1", false);
+
+    expect(patchMock).toHaveBeenCalledWith("/bridges/bridge-1/cuentas/cuenta-1", { activa: false });
+    expect(resultado).toEqual(cuenta);
   });
 });
 
-describe("fetchBridgeLogsApi — bitácora con filtro por nivel y rango de fechas", () => {
-  it("solo devuelve entradas del bridge solicitado", async () => {
-    const logs = await fetchBridgeLogsApi("bridge-linkedin");
-    expect(logs.length).toBeGreaterThan(0);
-    expect(logs.every((log) => log.bridgeId === "bridge-linkedin")).toBe(true);
-  });
+describe("fetchBridgeLogsApi — GET /bridges/:id/logs", () => {
+  it("sin filtros, no manda ningún query param con valor (el backend aplica su propio default)", async () => {
+    getMock.mockResolvedValue({ logs: [] });
 
-  it("filtra por nivel", async () => {
-    const logs = await fetchBridgeLogsApi("bridge-linkedin", { nivel: "ERROR" });
-    expect(logs.length).toBeGreaterThan(0);
-    expect(logs.every((log) => log.nivel === "ERROR")).toBe(true);
-  });
+    await fetchBridgeLogsApi("bridge-1");
 
-  it("filtra por rango de fechas", async () => {
-    const hoy = new Date().toISOString().slice(0, 10);
-    const logs = await fetchBridgeLogsApi("bridge-x", { fechaDesde: hoy, fechaHasta: hoy });
-    expect(logs.every((log) => log.ocurridoEn.slice(0, 10) === hoy)).toBe(true);
+    expect(getMock).toHaveBeenCalledWith("/bridges/bridge-1/logs", {
+      params: { nivel: undefined, fechaDesde: undefined, fechaHasta: undefined },
+    });
   });
 
   it("combina nivel y rango de fechas en la misma consulta (filtros combinables)", async () => {
-    const hoy = new Date().toISOString().slice(0, 10);
-    const logs = await fetchBridgeLogsApi("bridge-x", { nivel: "ERROR", fechaDesde: hoy });
-    expect(logs.every((log) => log.nivel === "ERROR")).toBe(true);
+    getMock.mockResolvedValue({ logs: [] });
+
+    await fetchBridgeLogsApi("bridge-1", { nivel: "ERROR", fechaDesde: "2026-01-01", fechaHasta: "2026-01-31" });
+
+    expect(getMock).toHaveBeenCalledWith("/bridges/bridge-1/logs", {
+      params: { nivel: "ERROR", fechaDesde: "2026-01-01", fechaHasta: "2026-01-31" },
+    });
   });
 
-  it("ordena de más reciente a más antigua", async () => {
-    const logs = await fetchBridgeLogsApi("bridge-linkedin");
-    const timestamps = logs.map((log) => new Date(log.ocurridoEn).getTime());
-    expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
-  });
-});
+  it("desenvuelve `{ logs }` y lo devuelve tal cual", async () => {
+    const logs = [
+      { id: "log-1", bridgeId: "bridge-1", nivel: "ERROR", mensaje: "boom", ocurridoEn: new Date().toISOString() },
+    ];
+    getMock.mockResolvedValue({ logs });
 
-describe("createBridgeApi — alta de bridge (Requirement: Create Bridge)", () => {
-  it("crea el bridge con estado INACTIVO y devuelve la clave en texto plano una única vez", async () => {
-    const respuesta = await createBridgeApi({ redSocial: "GOOGLE_FORMS", nombre: "Formulario Ventas Norte" });
+    const resultado = await fetchBridgeLogsApi("bridge-1");
 
-    expect(respuesta.bridge.redSocial).toBe("GOOGLE_FORMS");
-    expect(respuesta.bridge.nombre).toBe("Formulario Ventas Norte");
-    expect(respuesta.bridge.estado).toBe("INACTIVO");
-    expect(respuesta.claveApi).toMatch(/^brg_/);
-  });
-
-  it("el bridge creado aparece en el listado inmediatamente después", async () => {
-    const respuesta = await createBridgeApi({ redSocial: "X", nombre: "X — Campaña Sur" });
-
-    const bridges = await fetchBridgesApi();
-    expect(bridges.some((b) => b.id === respuesta.bridge.id)).toBe(true);
-  });
-
-  it("permite dos bridges con la misma redSocial y distinto nombre (Requirement: Multiple Bridges per Red Social)", async () => {
-    await createBridgeApi({ redSocial: "FACEBOOK", nombre: "Facebook — Página Norte" });
-    await createBridgeApi({ redSocial: "FACEBOOK", nombre: "Facebook — Página Sur" });
-
-    const bridges = await fetchBridgesApi();
-    const facebookBridges = bridges.filter((b) => b.redSocial === "FACEBOOK");
-    expect(facebookBridges.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(facebookBridges.map((b) => b.id)).size).toBe(facebookBridges.length);
+    expect(resultado).toEqual(logs);
   });
 });
 
-describe("deleteBridgeApi — baja física u lógica según historial de leads (Requirement: Hard Delete Only Without Leads)", () => {
-  it("bridge sin leads recibidos (ultimoLeadEn nulo): baja física, se elimina del listado", async () => {
-    const resultado = await deleteBridgeApi("bridge-google-forms");
+describe("createBridgeApi — POST /bridges (Requirement: Create Bridge)", () => {
+  it("manda el input tal cual y devuelve `{ bridge, claveApi }` sin envolver", async () => {
+    const respuesta = { bridge: bridgeBackendFake({ estado: "INACTIVO" }), claveApi: "brg_nueva-clave" };
+    postMock.mockResolvedValue(respuesta);
 
-    expect(resultado.resultado).toBe("BAJA_FISICA");
-    const bridges = await fetchBridgesApi();
-    expect(bridges.some((b) => b.id === "bridge-google-forms")).toBe(false);
+    const resultado = await createBridgeApi({ redSocial: "GOOGLE_FORMS", nombre: "Formulario Ventas Norte" });
+
+    expect(postMock).toHaveBeenCalledWith("/bridges", {
+      redSocial: "GOOGLE_FORMS",
+      nombre: "Formulario Ventas Norte",
+    });
+    expect(resultado).toEqual(respuesta);
+  });
+});
+
+describe("deleteBridgeApi — DELETE /bridges/:id (Requirement: Hard Delete Only Without Leads)", () => {
+  it("devuelve `{ resultado, bridge }` tal cual llega del backend -- nunca decide la baja del lado del frontend", async () => {
+    const respuesta = { resultado: "BAJA_FISICA" as const, bridge: bridgeBackendFake() };
+    deleteMock.mockResolvedValue(respuesta);
+
+    const resultado = await deleteBridgeApi("bridge-1");
+
+    expect(deleteMock).toHaveBeenCalledWith("/bridges/bridge-1");
+    expect(resultado).toEqual(respuesta);
   });
 
-  it("bridge con leads recibidos (ultimoLeadEn no nulo): baja lógica, queda INACTIVO pero no se elimina", async () => {
-    const resultado = await deleteBridgeApi("bridge-facebook");
+  it("también propaga BAJA_LOGICA tal cual, sin replicar la regla de conteo de leads", async () => {
+    const respuesta = { resultado: "BAJA_LOGICA" as const, bridge: bridgeBackendFake({ estado: "INACTIVO" }) };
+    deleteMock.mockResolvedValue(respuesta);
+
+    const resultado = await deleteBridgeApi("bridge-1");
 
     expect(resultado.resultado).toBe("BAJA_LOGICA");
-    expect(resultado.bridge.estado).toBe("INACTIVO");
-    const bridges = await fetchBridgesApi();
-    expect(bridges.some((b) => b.id === "bridge-facebook")).toBe(true);
-  });
-
-  it("lanza un error si el bridge no existe", async () => {
-    await expect(deleteBridgeApi("no-existe")).rejects.toThrow();
   });
 });
 
-describe("reactivateBridgeApi — reactivación preserva clave e historial (Requirement: Soft Deactivate and Reactivate)", () => {
-  it("pasa el estado a ACTIVO sin tocar ultimoLeadEn ni cuentasPublicitarias", async () => {
-    const bridge = await reactivateBridgeApi("bridge-google-forms");
+describe("reactivateBridgeApi — PATCH /bridges/:id { estado: ACTIVO } (Requirement: Soft Deactivate and Reactivate)", () => {
+  it("manda únicamente `{ estado: \"ACTIVO\" }`", async () => {
+    patchMock.mockResolvedValue({ bridge: bridgeBackendFake({ estado: "ACTIVO" }) });
 
-    expect(bridge.estado).toBe("ACTIVO");
-    expect(bridge.ultimoLeadEn).toBe(SNAPSHOT_INICIAL.find((b) => b.id === "bridge-google-forms")?.ultimoLeadEn ?? null);
-  });
+    await reactivateBridgeApi("bridge-1");
 
-  it("funciona igual sobre un bridge ya ACTIVO (idempotente)", async () => {
-    const bridge = await reactivateBridgeApi("bridge-facebook");
-    expect(bridge.estado).toBe("ACTIVO");
-  });
-
-  it("lanza un error si el bridge no existe", async () => {
-    await expect(reactivateBridgeApi("no-existe")).rejects.toThrow();
+    expect(patchMock).toHaveBeenCalledWith("/bridges/bridge-1", { estado: "ACTIVO" });
   });
 });
 
-describe("regenerateClaveApi — invalida la clave anterior (Requirement: Regenerate Key)", () => {
-  it("devuelve una nueva clave en texto plano con la misma forma que la de alta", async () => {
-    const respuesta = await regenerateClaveApi("bridge-x");
-    expect(respuesta.claveApi).toMatch(/^brg_/);
-    expect(respuesta.bridge.id).toBe("bridge-x");
-  });
+describe("regenerateClaveApi — POST /bridges/:id/clave (Requirement: Regenerate Key)", () => {
+  it("sin body, devuelve `{ bridge, claveApi }` tal cual", async () => {
+    const respuesta = { bridge: bridgeBackendFake(), claveApi: "brg_otra-clave" };
+    postMock.mockResolvedValue(respuesta);
 
-  it("dos regeneraciones sucesivas nunca devuelven la misma clave", async () => {
-    const primera = await regenerateClaveApi("bridge-x");
-    const segunda = await regenerateClaveApi("bridge-x");
-    expect(primera.claveApi).not.toBe(segunda.claveApi);
-  });
+    const resultado = await regenerateClaveApi("bridge-1");
 
-  it("no cambia el estado guardado del bridge", async () => {
-    await regenerateClaveApi("bridge-google-forms");
-    const bridge = await fetchBridgeDetalleApi("bridge-google-forms");
-    expect(bridge.estado).toBe("INACTIVO");
-  });
-
-  it("lanza un error si el bridge no existe", async () => {
-    await expect(regenerateClaveApi("no-existe")).rejects.toThrow();
+    expect(postMock).toHaveBeenCalledWith("/bridges/bridge-1/clave");
+    expect(resultado).toEqual(respuesta);
   });
 });
 
-describe("fetchRedesSocialesSoportadasApi — catálogo de creación (Requirement: Backend-Driven Creation Catalog)", () => {
-  it("devuelve las 5 redes sociales soportadas", async () => {
-    const redes = await fetchRedesSocialesSoportadasApi();
-    expect(new Set(redes)).toEqual(new Set(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "X", "GOOGLE_FORMS"]));
+describe("fetchRedesSocialesSoportadasApi — GET /bridges/catalogo/redes-soportadas (Requirement: Backend-Driven Creation Catalog)", () => {
+  it("desenvuelve `{ redesSociales }`", async () => {
+    getMock.mockResolvedValue({ redesSociales: ["FACEBOOK", "INSTAGRAM", "LINKEDIN", "X", "GOOGLE_FORMS"] });
+
+    const resultado = await fetchRedesSocialesSoportadasApi();
+
+    expect(getMock).toHaveBeenCalledWith("/bridges/catalogo/redes-soportadas");
+    expect(resultado).toEqual(["FACEBOOK", "INSTAGRAM", "LINKEDIN", "X", "GOOGLE_FORMS"]);
   });
 });
 
-describe("fetchRedesSocialesActivasApi — catálogo de activas para el filtro de F3 (Requirement: Active Red-Social Catalog Endpoint)", () => {
-  it("devuelve solo las redes sociales de bridges ACTIVO, sin duplicados", async () => {
-    const redes = await fetchRedesSocialesActivasApi();
-    expect(new Set(redes)).toEqual(new Set(["FACEBOOK", "INSTAGRAM"]));
-    expect(redes.length).toBe(new Set(redes).size);
-  });
+describe("fetchRedesSocialesActivasApi — GET /bridges/redes-activas (Requirement: Active Red-Social Catalog Endpoint)", () => {
+  it("desenvuelve `{ redesSociales }`", async () => {
+    getMock.mockResolvedValue({ redesSociales: ["FACEBOOK"] });
 
-  it("una vez desactivado el único bridge de una red, esa red ya no aparece", async () => {
-    await deleteBridgeApi("bridge-facebook");
-    const redes = await fetchRedesSocialesActivasApi();
-    expect(redes).not.toContain("FACEBOOK");
-  });
+    const resultado = await fetchRedesSocialesActivasApi();
 
-  it("devuelve vacío cuando ningún bridge está ACTIVO", async () => {
-    await deleteBridgeApi("bridge-facebook");
-    await deleteBridgeApi("bridge-instagram");
-    const redes = await fetchRedesSocialesActivasApi();
-    expect(redes).toEqual([]);
+    expect(getMock).toHaveBeenCalledWith("/bridges/redes-activas");
+    expect(resultado).toEqual(["FACEBOOK"]);
   });
 });

@@ -4,7 +4,7 @@ import type { MetricasPorCampania } from "@/tipos/metricas";
 import { getColorCategorico } from "./paleta";
 
 interface GraficoPorCampaniaProps {
-  /** Ya viene como top 10 ordenado (`calculateMetricasPorCampania`). Con menos de 10 campañas en el fixture, simplemente se muestran las que hay. */
+  /** Ya viene como top 10 ordenado (`getPorCampaniaTop10`, `ORDER BY total DESC LIMIT 10`, `metricas.repository.ts`). */
   datos: MetricasPorCampania[];
 }
 
@@ -12,11 +12,14 @@ interface GraficoPorCampaniaProps {
  * 3.4 Leads por campaña (docs/08 §3.4): barras horizontales, top 10.
  * Etiqueta con nombre de campaña **y** red social juntos, porque una misma
  * campaña puede correr en redes distintas y son registros independientes.
+ * `redSocial` puede ser `null` (leads previos a M5 sin ese dato, mismo gap
+ * que `leads.api.ts::mapLeadFromApi`).
  */
 export function GraficoPorCampania({ datos }: GraficoPorCampaniaProps) {
-  const filas = datos.map((d) => ({
+  const filas = datos.map((d, indice) => ({
     ...d,
-    etiqueta: `${d.nombre} · ${RED_SOCIAL_ETIQUETAS[d.redSocial]}`,
+    clave: `${d.nombreCampania}::${d.redSocial ?? "sin-red"}::${indice}`,
+    etiqueta: `${d.nombreCampania} · ${d.redSocial ? RED_SOCIAL_ETIQUETAS[d.redSocial] : "Sin red social"}`,
   }));
   const alto = Math.max(120, filas.length * 44);
 

@@ -37,9 +37,11 @@ const USUARIOS_POR_PAGINA = 10;
  * Administración de usuarios (F7, docs/07 -- solo administrador, ruta
  * protegida en `router.tsx`). Backend real para listado/alta/edición/
  * restablecimiento de contraseña/baja lógica (`usuarios.api.ts`), con
- * filtro (búsqueda, rol, estado) y paginación reales desde el backend; la
- * columna "carga activa de leads" y la reasignación obligatoria de cartera
- * en la baja son mock -- ver el comentario de brecha ahí.
+ * filtro (búsqueda, rol, estado) y paginación reales desde el backend. La
+ * reasignación de la cartera activa al dar de baja un usuario también es
+ * backend real (M2, atómica) -- el frontend solo confirma la baja, ver
+ * `BajaUsuarioDialog`. La columna "carga activa de leads" es de solo
+ * lectura -- ver el comentario de brecha en `usuarios.api.ts`.
  */
 export function UsuariosPage() {
   usePageHeader({ title: "Usuarios" });
@@ -198,11 +200,8 @@ export function UsuariosPage() {
           }}
           usuario={usuarioParaBaja}
           confirmando={darDeBaja.isPending}
-          onConfirm={(nuevoResponsableId) =>
-            darDeBaja.mutate(
-              { id: usuarioParaBaja.id, nuevoResponsableId },
-              { onSuccess: () => setUsuarioParaBaja(null) },
-            )
+          onConfirm={() =>
+            darDeBaja.mutate(usuarioParaBaja.id, { onSuccess: () => setUsuarioParaBaja(null) })
           }
         />
       ) : null}

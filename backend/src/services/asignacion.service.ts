@@ -1,4 +1,5 @@
-import type { EtapaLead, Lead, Prisma, RolUsuario } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import type { EtapaLead, Lead, Notificacion, Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
 import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
@@ -19,6 +20,7 @@ import { calculateEstadoSla } from "./sla.calculator.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { createForActiveSupervisorsAndAdmins } from "./notificaciones.service.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
 
@@ -117,7 +119,17 @@ export type MotivoAsignacion =
   | "reasignacion"
   | "traspaso"
   | "sin_candidatos"
-  | "sla_vencido";
+  | "sla_vencido"
+  /**
+   * M2 (baja lógica con reasignación obligatoria de cartera activa): un lead
+   * de la cartera de un usuario dado de baja se reasigna (pool ASESOR,
+   * `tipoEvento REASIGNACION`) o traspasa (pool VENDEDOR, `tipoEvento
+   * TRASPASO`) a otro candidato activo del mismo pool — distinto de
+   * "reasignacion"/"traspaso" manuales porque `ejecutadoPorId` es siempre
+   * `null` (nadie lo ejecutó a mano, lo disparó la baja) y el motivo real de
+   * negocio es la baja, no una decisión operativa sobre ESE lead puntual.
+   */
+  | "baja_usuario";
 
 /**
  * D5 (diseño M6) — interfaz NUEVA, no extiende `DetalleEventoLead` de M3: su
@@ -146,15 +158,19 @@ interface ApplyAsignacionInput {
 }
 
 /**
- * Interna, no exportada (D11, diseño M6): el ÚNICO punto de escritura
- * compartido por los cuatro caminos de asignación. Tres escrituras atómicas,
- * juntas o ninguna — todo dentro del `tx` del llamador, nunca abre una
- * transacción propia:
+ * D11 (diseño M6): el ÚNICO punto de escritura compartido por los cuatro
+ * caminos de asignación de ESTE archivo, más el quinto camino de M2 (baja
+ * lógica con reasignación obligatoria de cartera, `usuarios.service.ts`).
+ * Tres escrituras atómicas, juntas o ninguna — todo dentro del `tx` del
+ * llamador, nunca abre una transacción propia:
  *   1. `leads` — responsable (asesorId/vendedorId según `pool`) + `slaInicioEn`.
  *   2. `usuarios.ultima_asignacion_en` del receptor (D10).
  *   3. `lead_eventos` del tipo correspondiente (bitácora inmutable, D-lead_eventos).
+ *
+ * Exportada (M2): antes era interna a este archivo; `usuarios.service.ts`
+ * la reutiliza en vez de duplicar las tres escrituras atómicas.
  */
-async function applyAsignacion(
+export async function applyAsignacion(
   input: ApplyAsignacionInput,
   tx: Prisma.TransactionClient,
 ): Promise<{ lead: Lead; events: CommittedEvent[] }> {
@@ -187,13 +203,138 @@ async function applyAsignacion(
 
   const tipo = input.tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
   const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId }, tx);
+  // M9 (docs/08-dashboard-kpis.md §5): "asignación" — el hook de métricas NO
+  // se llama acá: `applyAsignacion` corre dentro de la `tx` del llamador y
+  // esa transacción puede todavía hacer rollback (p. ej. dentro del loop de
+  // reasignación de cartera de `usuarios.service.ts::deactivateUsuario`, si
+  // un paso posterior de la misma transacción falla). `scheduleMetricasBroadcast`
+  // se llama en cada CALLER externo de `applyAsignacion`, después del commit,
+  // en el mismo lugar donde cada uno ya llama `publishCommittedEvents`.
   return { lead, events: [...notificationEvents(notification), { userId: input.receptorId, type: "lead.asignado", data: { leadId: input.leadId, responsableId: input.receptorId } }] };
+}
+
+export interface ApplyAsignacionesEnLoteEntrada {
+  leadId: string;
+  receptorId: string;
+  responsableAnteriorId: string | null;
+}
+
+interface ApplyAsignacionesEnLoteOpciones {
+  pool: PoolAsignacion;
+  tipoEvento: "ASIGNACION" | "REASIGNACION" | "TRASPASO";
+  motivo: MotivoAsignacion;
+  ejecutadoPorId: string | null;
+  ahora: Date;
+}
+
+/**
+ * Fix bulk writes (`deactivateUsuario`, M2): variante en lote de
+ * `applyAsignacion` para reasignaciones de cartera masivas — reduce el
+ * número de escrituras de O(cartera) a O(candidatos activos del pool),
+ * agrupando las 4 escrituras de `applyAsignacion` por RECEPTOR en vez de
+ * ejecutarlas una vez por lead. No reemplaza `applyAsignacion`: los otros
+ * callers (`assignLead`/`reassignLead`/`transferLead`/`assignAutomatically`,
+ * que siempre operan sobre UN lead) siguen usando la versión singular sin
+ * cambios.
+ *
+ * Devuelve el array de `CommittedEvent[]` en el MISMO orden que `entradas`
+ * (determinismo del orden de eventos SSE, igual que si se hubiera llamado
+ * `applyAsignacion` una vez por entrada).
+ */
+export async function applyAsignacionesEnLote(
+  entradas: readonly ApplyAsignacionesEnLoteEntrada[],
+  opciones: ApplyAsignacionesEnLoteOpciones,
+  tx: Prisma.TransactionClient,
+): Promise<CommittedEvent[]> {
+  if (entradas.length === 0) return [];
+
+  const { pool, tipoEvento, motivo, ejecutadoPorId, ahora } = opciones;
+
+  const leadIdsPorReceptor = new Map<string, string[]>();
+  for (const entrada of entradas) {
+    const existentes = leadIdsPorReceptor.get(entrada.receptorId);
+    if (existentes) {
+      existentes.push(entrada.leadId);
+    } else {
+      leadIdsPorReceptor.set(entrada.receptorId, [entrada.leadId]);
+    }
+  }
+
+  for (const [receptorId, leadIds] of leadIdsPorReceptor) {
+    await leadRepository.assignResponsableBulk(
+      leadIds,
+      { pool, responsableId: receptorId, slaInicioEn: ahora },
+      tx,
+    );
+  }
+
+  await usuarioRepository.updateUltimaAsignacionBulk(
+    [...leadIdsPorReceptor.keys()],
+    ahora,
+    tx,
+  );
+
+  const eventosData: leadEventoRepository.CreateEventoData[] = entradas.map((entrada) => {
+    const detalle: DetalleEventoAsignacion = {
+      version: 1,
+      requiereNotificacion: false,
+      motivo,
+      responsableId: entrada.receptorId,
+      responsableAnteriorId: entrada.responsableAnteriorId,
+      ejecutadoPorId,
+    };
+    return {
+      leadId: entrada.leadId,
+      tipo: tipoEvento,
+      usuarioId: ejecutadoPorId ?? undefined,
+      detalle: detalle as unknown as Prisma.InputJsonValue,
+    };
+  });
+  await leadEventoRepository.createEventos(eventosData, tx);
+
+  const tipoNotificacion = tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
+  const tituloNotificacion = tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado";
+
+  const notificacionesData: notificacionRepository.CreateNotificacionBulkData[] = entradas.map((entrada) => ({
+    id: randomUUID(),
+    usuarioId: entrada.receptorId,
+    tipo: tipoNotificacion,
+    titulo: tituloNotificacion,
+    mensaje: "Tenés un nuevo lead a cargo",
+    leadId: entrada.leadId,
+    canal: "IN_APP",
+    creadaEn: ahora,
+  }));
+  await notificacionRepository.createNotificaciones(notificacionesData, tx);
+
+  return entradas.flatMap((entrada, index) => {
+    const notificacionData = notificacionesData[index] as notificacionRepository.CreateNotificacionBulkData;
+    const notification: Notificacion = {
+      id: notificacionData.id,
+      usuarioId: notificacionData.usuarioId,
+      tipo: notificacionData.tipo,
+      canal: notificacionData.canal,
+      titulo: notificacionData.titulo,
+      mensaje: notificacionData.mensaje,
+      leadId: notificacionData.leadId ?? null,
+      leidaEn: null,
+      creadaEn: notificacionData.creadaEn,
+    };
+    return [
+      ...notificationEvents(notification),
+      {
+        userId: entrada.receptorId,
+        type: "lead.asignado",
+        data: { leadId: entrada.leadId, responsableId: entrada.receptorId },
+      },
+    ];
+  });
 }
 
 /**
  * D1 (diseño M6, revisado por D-A2 revisión 2) — el motor de asignación
  * automática. Nunca abre transacción propia: desde F3/F4 recibe la `tx`
- * viva de `asignacion.service::asignarTrasCommit` (antes recibía la `tx` de
+ * viva de `asignacion.service::assignAfterCommit` (antes recibía la `tx` de
  * `ingesta.service::procesarEnTransaccion` — ver nota en ese archivo, la
  * invariante "nunca abre su propia transacción" se preserva, solo cambió
  * QUIÉN abre la transacción externa). Sin candidatos activos del pool
@@ -206,7 +347,7 @@ async function applyAsignacion(
  * evento. Cubre dos casos reales que el disparo dentro-de-la-transacción de
  * ingesta no necesitaba cubrir: (1) un Supervisor asigna a mano en la
  * ventana entre el commit de ingesta y el intento automático post-commit;
- * (2) un reintento de `asignarTrasCommit` cuyo intento anterior sí llegó a
+ * (2) un reintento de `assignAfterCommit` cuyo intento anterior sí llegó a
  * confirmar pero cuya excepción se disparó después (p. ej. al reportar el
  * resultado) — el reintento ve el lead ya asignado y no duplica asignación
  * ni evento.
@@ -278,7 +419,7 @@ export interface DetalleEventoAsignacionFallida {
   errorFinal: string;
 }
 
-function esperarMs(ms: number): Promise<void> {
+function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -303,7 +444,7 @@ function esperarMs(ms: number): Promise<void> {
  * bucle de abajo solo reintenta ante una excepción real — un único intento
  * cubre ese camino.
  */
-export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<void> {
+export async function assignAfterCommit(leadId: string, ahora: Date): Promise<void> {
   let ultimoError: unknown;
 
   for (let intento = 1; intento <= ASIGNACION_POST_COMMIT_MAX_INTENTOS; intento++) {
@@ -314,17 +455,20 @@ export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<vo
         ASIGNACION_TRANSACTION_BOUNDS,
       );
       publishCommittedEvents(events);
+      // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+      // `publishCommittedEvents` — la `tx` de este intento ya confirmó.
+      scheduleMetricasBroadcast();
       return;
     } catch (error) {
       ultimoError = error;
       const quedanReintentos = intento < ASIGNACION_POST_COMMIT_MAX_INTENTOS;
       if (quedanReintentos) {
-        await esperarMs(ASIGNACION_POST_COMMIT_BACKOFF_MS[intento - 1] as number);
+        await waitMs(ASIGNACION_POST_COMMIT_BACKOFF_MS[intento - 1] as number);
       }
     }
   }
 
-  await registrarDegradacionAsignacion(leadId, ASIGNACION_POST_COMMIT_MAX_INTENTOS, ultimoError);
+  await recordAssignmentDegradation(leadId, ASIGNACION_POST_COMMIT_MAX_INTENTOS, ultimoError);
 }
 
 /**
@@ -337,7 +481,7 @@ export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<vo
  *   2. `bridge_logs` ERROR — canal de operador interino (M8 no existe aún).
  *   3. `logger.error` estructurado — último recurso si la BD está caída.
  */
-async function registrarDegradacionAsignacion(
+async function recordAssignmentDegradation(
   leadId: string,
   intentos: number,
   ultimoError: unknown,
@@ -400,7 +544,7 @@ function assertLeadAbierto(lead: Lead): void {
  * código HTTP — único punto de mapeo, reutilizado por las tres operaciones
  * manuales (tarea 2.14).
  */
-function throwPorMotivoDenegacion(motivo: MotivoDenegacion): never {
+function throwForMotivoDenegacion(motivo: MotivoDenegacion): never {
   if (motivo === "etapa_no_traspasable") {
     throw new AppError(
       "etapa_no_traspasable",
@@ -489,6 +633,9 @@ export async function assignLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 
@@ -575,7 +722,7 @@ export async function reassignLead(
         vendedorId: lead.vendedorId,
         semaforo: lead.semaforo,
       });
-      if (motivoDenegacion !== null) throwPorMotivoDenegacion(motivoDenegacion);
+      if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
       const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
@@ -599,6 +746,9 @@ export async function reassignLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 
@@ -625,7 +775,7 @@ export async function transferLead(
         vendedorId: lead.vendedorId,
         etapa: lead.etapa,
       });
-      if (motivoDenegacion !== null) throwPorMotivoDenegacion(motivoDenegacion);
+      if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
       const receptorId = await resolveReceptor("VENDEDOR", tx, lead.vendedorId ?? undefined, destino);
@@ -649,5 +799,8 @@ export async function transferLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }

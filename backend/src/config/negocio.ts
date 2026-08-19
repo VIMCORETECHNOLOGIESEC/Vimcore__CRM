@@ -13,3 +13,8 @@ export const UMBRAL_AMARILLO = 40;
 // `lead.slaInicioEn`. El estado se deriva en cada consulta, nunca se
 // persiste.
 export const SLA_HORAS = 24;
+
+// docs/05-bridges.md §8 (tabla de casos borde): "Bridge sin leads durante
+// 72 h con campañas activas" — umbral del trabajo programado de
+// `services/bridge-mudo.service.ts`.
+export const BRIDGE_MUDO_HORAS = 72;

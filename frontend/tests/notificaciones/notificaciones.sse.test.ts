@@ -72,6 +72,20 @@ describe("connectNotificacionesSse", () => {
     connection.abort();
   });
 
+  it("entrega un evento metricas.actualizadas en vez de descartarlo", async () => {
+    const onEvent = vi.fn();
+    const fetcher = vi.fn().mockResolvedValue(
+      streamResponse("id: evt-9\nevent: metricas.actualizadas\ndata: {}\n\n"),
+    );
+
+    const connection = connectNotificacionesSse({ onEvent, fetcher });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith({ id: "evt-9", type: "metricas.actualizadas", data: {} });
+    expect(connection.getCursor()).toBe("evt-9");
+    connection.abort();
+  });
+
   it("un frame conocido malformado termina sin adelantar el cursor", async () => {
     const estados: string[] = [];
     const connection = connectNotificacionesSse({

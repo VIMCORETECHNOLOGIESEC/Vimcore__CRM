@@ -1,9 +1,5 @@
 import { httpClient, type QueryParamValue } from "@/api/httpClient";
-import {
-  assignLeadsMasivoApi,
-  fetchLeadsApi,
-  getCatalogoResponsablesConRol,
-} from "@/funcionalidades/leads/leads.api";
+import { fetchLeadsApi } from "@/funcionalidades/leads/leads.api";
 import { ETAPAS_TERMINALES } from "@/funcionalidades/leads/etapas";
 import type { AdminUsuario, RolUsuario } from "@/tipos/usuario";
 
@@ -15,9 +11,12 @@ import type { AdminUsuario, RolUsuario } from "@/tipos/usuario";
  * edición, restablecimiento de contraseña y baja lógica llaman al backend
  * real, no a un mock.
  *
- * "Carga activa de leads" y la reasignación obligatoria de cartera en la
- * baja lógica (integración F3/F4) ya llaman al backend real de leads
- * (`GET /leads?responsableId=`, `POST /leads/asignar-lote`) -- ver la nota
+ * La reasignación de la cartera activa al dar de baja un usuario es
+ * responsabilidad exclusiva del backend (M2, atómica dentro de la misma
+ * transacción de baja) -- el frontend no orquesta ninguna llamada adicional
+ * para eso, ver el JSDoc de `deactivateUsuarioApi`. "Carga activa de leads"
+ * (columna de solo lectura de la tabla) sí sigue llamando al backend real de
+ * leads (`GET /leads?responsableId=`) -- ver la nota
  * INTEGRACION-BACKEND-GAP en `getCargaActivaDeUsuario` más abajo sobre el
  * límite de 100 leads activos por falta de un endpoint de agregación.
  */
@@ -117,22 +116,26 @@ export async function resetPasswordApi(id: string, password: string): Promise<vo
 
 /**
  * Baja lógica -- `DELETE /usuarios/:id`, backend real
- * (`usuarioRepository.deactivateUser`): pone `activo=false` y revoca todos
- * los refresh tokens del usuario en una misma transacción. **No reasigna la
- * cartera activa**: confirmado leyendo
- * `backend/src/repositories/usuario.repository.ts::deactivateUser`, la
- * transacción solo hace el `update` de `activo` y `revokeAllForUser`, nada
- * de leads. La reasignación previa (`reassignCarteraActiva`, más abajo) es
- * responsabilidad exclusiva del frontend hoy.
+ * (`usuarios.service.ts::deactivateUsuario`): pone `activo=false`, revoca
+ * todos los refresh tokens del usuario **y reasigna automáticamente su
+ * cartera activa** cuando corresponde, todo en una única transacción. Si el
+ * usuario dado de baja es ASESOR/VENDEDOR con leads activos, cada lead se
+ * reasigna al candidato del mismo rol con menor carga activa (desempate FIFO
+ * por `ultimaAsignacionEn`, mismo criterio que la asignación automática M6).
+ * Si no hay ningún candidato disponible, el backend aborta con
+ * `409 baja_sin_candidato_reasignacion` y no persiste nada (ni la baja ni
+ * reasignaciones parciales) -- el frontend no orquesta ninguna llamada
+ * previa, solo muestra ese error accionable si ocurre.
  */
 export async function deactivateUsuarioApi(id: string): Promise<void> {
   await httpClient.delete<void>(`/usuarios/${id}`);
 }
 
 // ---------------------------------------------------------------------------
-// "Carga activa de leads" y reasignación obligatoria de cartera (F7,
-// checklist) -- backend real de leads (integración F3/F4, D-A1/D-A2), ya no
-// dependen del mock en memoria que usaba `leads.api.ts::LEADS_MOCK`.
+// "Carga activa de leads" (F7, checklist) -- backend real de leads
+// (integración F3/F4), ya no depende del mock en memoria que usaba
+// `leads.api.ts::LEADS_MOCK`. Es una columna de solo lectura de la tabla;
+// no participa de la baja lógica (ver `deactivateUsuarioApi` más arriba).
 //
 // INTEGRACION-BACKEND-GAP (documentado, no resuelto en este cambio): no
 // existe un endpoint de agregación dedicado ("cantidad de leads activos por
@@ -143,53 +146,8 @@ export async function deactivateUsuarioApi(id: string): Promise<void> {
 // subcontaría (no hay agregación server-side ni paginación completa acá).
 // ---------------------------------------------------------------------------
 
-async function fetchLeadsActivosIdsDeUsuario(usuarioId: string): Promise<string[]> {
-  const { datos } = await fetchLeadsApi({ pagina: 1, porPagina: 100, responsableId: usuarioId });
-  return datos.filter((lead) => !ETAPAS_TERMINALES.includes(lead.etapa)).map((lead) => lead.id);
-}
-
 /** Cantidad de leads activos (no en etapa terminal) de los que `usuarioId` es responsable. Backend real. */
 export async function getCargaActivaDeUsuario(usuarioId: string): Promise<number> {
-  const ids = await fetchLeadsActivosIdsDeUsuario(usuarioId);
-  return ids.length;
-}
-
-/**
- * Candidatos válidos para recibir la cartera de un usuario dado de baja: del
- * mismo rol operativo (un asesor solo puede traspasar a otro asesor, un
- * vendedor solo a otro vendedor -- administrador/supervisor no cargan
- * cartera propia en este modelo), excluyendo al propio usuario. Backend real.
- */
-export async function getCandidatosReasignacion(
-  rol: RolUsuario,
-  excluirUsuarioId: string,
-): Promise<{ id: string; nombre: string }[]> {
-  if (rol !== "ASESOR" && rol !== "VENDEDOR") {
-    return [];
-  }
-  const responsables = await getCatalogoResponsablesConRol();
-  return responsables
-    .filter((responsable) => responsable.rol === rol && responsable.id !== excluirUsuarioId)
-    .map(({ id, nombre }) => ({ id, nombre }));
-}
-
-/**
- * Reasigna la cartera activa de un usuario antes de darlo de baja. Backend
- * real: `assignLeadsMasivoApi` llama a `POST /leads/asignar-lote` (D-A1).
- *
- * IMPORTANTE (limitación conocida, no resuelta en silencio): esto y
- * `deactivateUsuarioApi` **no son una transacción atómica** -- son dos
- * llamadas HTTP independientes. Si `deactivateUsuarioApi` fallara después de
- * una reasignación exitosa, la cartera ya se movió pero el usuario seguiría
- * activo. Debería vivir en la misma transacción que `deactivateUser`
- * (`usuario.repository.ts`), igual que ya hace hoy con `revokeAllForUser` --
- * cambio de backend fuera del alcance de esta unidad (frontend-only).
- */
-export async function reassignCarteraActiva(
-  usuarioId: string,
-  nuevoResponsableId: string,
-): Promise<void> {
-  const leadIds = await fetchLeadsActivosIdsDeUsuario(usuarioId);
-  if (leadIds.length === 0) return;
-  await assignLeadsMasivoApi(leadIds, nuevoResponsableId);
+  const { datos } = await fetchLeadsApi({ pagina: 1, porPagina: 100, responsableId: usuarioId });
+  return datos.filter((lead) => !ETAPAS_TERMINALES.includes(lead.etapa)).length;
 }

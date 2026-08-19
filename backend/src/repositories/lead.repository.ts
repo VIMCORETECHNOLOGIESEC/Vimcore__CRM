@@ -18,7 +18,7 @@ export const ETAPAS_CERRADAS = [EtapaLead.VENTA, EtapaLead.NO_VENTA] as const;
  * spec (Integración F3/F4, "Respuesta enriquecida con relaciones"): `GET
  * /leads` y `GET /leads/:id` MUST incluir `cliente`/`asesor`/`vendedor`
  * anidados. Un único `include` compartido por `findById`/`findMany` — mismo
- * patrón `satisfies` que `usuario.repository.ts::adminUserSelect`.
+ * patrón `satisfies` que `usuario.repository.ts::adminUsuarioSelect`.
  */
 const responsableLeadSelect = {
   id: true,
@@ -260,6 +260,32 @@ export async function countCargaActivaPorResponsable(
   return groupByRowsToCountMap(filas, "vendedorId");
 }
 
+/**
+ * M2 (baja lógica con reasignación obligatoria de cartera activa): leads
+ * "abiertos" de un usuario en su pool de responsabilidad —
+ * `ASESOR`: `asesorId = usuarioId` Y `vendedorId IS NULL` (un lead ya
+ * traspasado a un vendedor dejó de ser cartera operativa del asesor
+ * original); `VENDEDOR`: `vendedorId = usuarioId`. Ambos casos excluyen
+ * `ETAPAS_CERRADAS` (un lead cerrado no tiene responsable operativo
+ * pendiente). Reutiliza el mismo filtro de "abierto" que
+ * `countCargaActivaPorResponsable`, sin declarar una quinta copia.
+ */
+export async function findCarteraAbierta(
+  usuarioId: string,
+  pool: PoolAsignacion,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead[]> {
+  if (pool === "ASESOR") {
+    return client.lead.findMany({
+      where: { asesorId: usuarioId, vendedorId: null, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+    });
+  }
+
+  return client.lead.findMany({
+    where: { vendedorId: usuarioId, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+  });
+}
+
 export interface AssignResponsableData {
   pool: PoolAsignacion;
   responsableId: string;
@@ -309,6 +335,29 @@ export async function assignResponsable(
 ): Promise<Lead> {
   return client.lead.update({
     where: { id },
+    data:
+      data.pool === "ASESOR"
+        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn }
+        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn },
+  });
+}
+
+/**
+ * Fix bulk writes (`deactivateUsuario`, M2): variante en lote de
+ * `assignResponsable` — un solo `updateMany` para todos los leads que caen
+ * en el MISMO receptor (mismo `pool`, mismo `responsableId`, mismo
+ * `slaInicioEn`), en vez de un `update` awaited por lead. Mismo criterio
+ * condicional ASESOR/VENDEDOR que la versión singular. Si `leadIds` está
+ * vacío, no ejecuta ninguna consulta.
+ */
+export async function assignResponsableBulk(
+  leadIds: readonly string[],
+  data: AssignResponsableData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  if (leadIds.length === 0) return;
+  await client.lead.updateMany({
+    where: { id: { in: [...leadIds] } },
     data:
       data.pool === "ASESOR"
         ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn }

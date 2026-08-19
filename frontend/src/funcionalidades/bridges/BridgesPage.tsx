@@ -9,7 +9,7 @@ import { LoadingState } from "@/componentes/states/LoadingState";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { Bridge } from "@/tipos/bridge";
 import { AvisoBridge } from "./AvisoBridge";
-import { evaluarAvisoBridge, puedeEliminarseFisicamente, tieneAvisoDestacado } from "./bridges.utils";
+import { evaluateAvisoBridge, canEliminarseFisicamente, hasAvisoDestacado } from "./bridges.utils";
 import { BridgesTable } from "./BridgesTable";
 import { ClaveBridgeModal } from "./ClaveBridgeModal";
 import { NuevoBridgeDialog } from "./NuevoBridgeDialog";
@@ -24,9 +24,8 @@ interface ClaveModalState {
 
 /**
  * Administración de bridges (F8/bridges-lifecycle-management, docs/07 --
- * solo administrador, ruta protegida en `router.tsx`). Mock en memoria --
- * ver `bridges.api.ts` para el detalle de qué se simula y el punto de
- * integración con el futuro backend real de bridges (M8, no existe todavía).
+ * solo administrador, ruta protegida en `router.tsx`). Backend real -- ver
+ * `bridges.api.ts` para el detalle de los endpoints consumidos.
  */
 export function BridgesPage() {
   usePageHeader({ title: "Bridges" });
@@ -43,8 +42,8 @@ export function BridgesPage() {
   const bridgesConAviso = useMemo(
     () =>
       (data ?? [])
-        .map((bridge) => ({ bridge, aviso: evaluarAvisoBridge(bridge) }))
-        .filter(({ aviso }) => tieneAvisoDestacado(aviso)),
+        .map((bridge) => ({ bridge, aviso: evaluateAvisoBridge(bridge) }))
+        .filter(({ aviso }) => hasAvisoDestacado(aviso)),
     [data],
   );
 
@@ -118,7 +117,7 @@ export function BridgesPage() {
           }}
           title={`Dar de baja a ${bridgeParaBaja.nombre}`}
           description={
-            puedeEliminarseFisicamente(bridgeParaBaja)
+            canEliminarseFisicamente(bridgeParaBaja)
               ? "Este bridge nunca recibió leads: se eliminará de forma permanente e irreversible."
               : "El bridge pasará a estado Inactivo. Podés reactivarlo cuando quieras, sin perder su clave ni su historial."
           }

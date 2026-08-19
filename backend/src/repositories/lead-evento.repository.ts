@@ -40,6 +40,21 @@ export async function createEvento(
 }
 
 /**
+ * Fix bulk writes (`deactivateUsuario`, M2): variante en lote de
+ * `createEvento` — un solo `createMany` para todos los eventos de una
+ * reasignación de cartera masiva, en vez de un `create` awaited por lead.
+ * `lead_eventos` sigue siendo bitácora de solo-inserción (§3 docs/03). Si
+ * `data` está vacío, no ejecuta ninguna consulta.
+ */
+export async function createEventos(
+  data: readonly CreateEventoData[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  if (data.length === 0) return;
+  await client.leadEvento.createMany({ data: [...data] });
+}
+
+/**
  * M6 (diseño, D4/DD2): consulta por lote para el filtro de idempotencia del
  * cron de SLA — un solo viaje por tick, independiente del número de leads
  * atrasados. Solo trae `leadId`/`ocurridoEn`: el filtro `ocurridoEn >=

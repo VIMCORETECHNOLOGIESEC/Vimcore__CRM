@@ -3,6 +3,7 @@ import { prisma } from "../src/lib/prisma.js";
 import * as inbox from "../src/repositories/lead-recibido.repository.js";
 import * as asignacion from "../src/services/asignacion.service.js";
 import * as committedEvents from "../src/services/committed-events.service.js";
+import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import { startIngestionWorker } from "../src/jobs/ingesta-inbox.job.js";
 import { shutdownBackend } from "../src/server-lifecycle.js";
@@ -14,11 +15,18 @@ vi.mock("../src/repositories/lead-recibido.repository.js", async (importOriginal
 });
 vi.mock("../src/services/asignacion.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/asignacion.service.js")>();
-  return { ...actual, asignarTrasCommit: vi.fn(actual.asignarTrasCommit) };
+  return { ...actual, assignAfterCommit: vi.fn(actual.assignAfterCommit) };
 });
 vi.mock("../src/services/committed-events.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/committed-events.service.js")>();
   return { ...actual, publishCommittedEvents: vi.fn(actual.publishCommittedEvents) };
+});
+// Mock puro: NO delega a la implementación real (que programaría un
+// `setTimeout` real de 2s contra el `eventBroker` singleton de producción,
+// sin que este archivo use fake timers) — solo registra la llamada.
+vi.mock("../src/lib/metricas-broadcast.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/metricas-broadcast.js")>();
+  return { ...actual, scheduleMetricasBroadcast: vi.fn() };
 });
 
 let sequence = 0;
@@ -56,19 +64,19 @@ describe("trabajador del buzón de ingesta", () => {
     vi.mocked(inbox.completeClaim).mockRejectedValueOnce(new Error("fallo de finalización"));
     await expect(procesarRecepcion(claim)).rejects.toThrow("fallo de finalización");
     expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
-    expect(vi.mocked(asignacion.asignarTrasCommit)).not.toHaveBeenCalled();
+    expect(vi.mocked(asignacion.assignAfterCommit)).not.toHaveBeenCalled();
     expect((await prisma.leadRecibido.findUniqueOrThrow({ where: { id: receipt.recepcionId } })).leadId).toBeNull();
 
     vi.mocked(inbox.completeClaim).mockImplementationOnce(async (...args) => {
       expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
-      expect(vi.mocked(asignacion.asignarTrasCommit)).not.toHaveBeenCalled();
+      expect(vi.mocked(asignacion.assignAfterCommit)).not.toHaveBeenCalled();
       return (await vi.importActual<typeof inbox>("../src/repositories/lead-recibido.repository.js")).completeClaim(...args);
     });
     expect(await procesarRecepcion(claim)).toBe(true);
     expect(vi.mocked(committedEvents.publishCommittedEvents)).toHaveBeenCalledAfter(
       vi.mocked(inbox.completeClaim),
     );
-    expect(vi.mocked(asignacion.asignarTrasCommit)).toHaveBeenCalledAfter(
+    expect(vi.mocked(asignacion.assignAfterCommit)).toHaveBeenCalledAfter(
       vi.mocked(inbox.completeClaim),
     );
 
@@ -78,6 +86,68 @@ describe("trabajador del buzón de ingesta", () => {
     expect(await procesarRecepcion(expiredClaim)).toBe(false);
     expect(await inbox.marcarFallo(expired.id, "worker-expired", "fallo tardío", new Date(0))).toBe(false);
     expect(await prisma.leadRecibido.findUniqueOrThrow({ where: { id: expired.id } })).toMatchObject({ estado: "PROCESANDO", leadId: null, ultimoError: null });
+  });
+
+  it("registra ADVERTENCIA en bridge_logs cuando el lead resuelto no tiene telefono ni correo (v1 generico, docs/05-bridges.md §8)", async () => {
+    const base = await entrada();
+    const input: LeadEntrante = { ...base, telefono: null, correo: null };
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-advertencia", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-advertencia", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" }, orderBy: { ocurridoEn: "desc" } });
+    expect(log?.mensaje).toContain("datos incompletos");
+  });
+
+  it("registra INFO en bridge_logs cuando el lead resuelto tiene telefono (v1 generico)", async () => {
+    const input = await entrada();
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-info", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-info", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    const advertencia = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" } });
+    expect(advertencia).toBeNull();
+    const info = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "INFO" }, orderBy: { ocurridoEn: "desc" } });
+    expect(info).not.toBeNull();
+  });
+
+  it("actualiza ultimoLeadEn del bridge tras procesar la recepcion (docs/05-bridges.md §8)", async () => {
+    const input = await entrada();
+    const antes = await prisma.bridge.findUniqueOrThrow({ where: { id: input.bridgeId } });
+    expect(antes.ultimoLeadEn).toBeNull();
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-ultimo-lead", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-ultimo-lead", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    const despues = await prisma.bridge.findUniqueOrThrow({ where: { id: input.bridgeId } });
+    expect(despues.ultimoLeadEn).not.toBeNull();
+    expect(despues.ultimoLeadEn!.getTime()).toBeGreaterThanOrEqual(now.getTime());
+  });
+
+  it("M9: programa la señal de métricas tras procesar la recepción con éxito (docs/08-dashboard-kpis.md §5, ingreso de lead)", async () => {
+    const input = await entrada();
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-metricas", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-metricas", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    // >=1 en vez de exactamente 1: un lead nuevo dispara TANTO el hook de
+    // "ingreso de lead" (procesarRecepcion) COMO el de "asignación"
+    // (assignAfterCommit -> applyAsignacion) cuando hay un asesor activo
+    // disponible — ambos son disparos legítimos del mismo evento de negocio,
+    // el debounce de 2s de metricas-broadcast.ts absorbe la duplicación.
+    expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast)).toHaveBeenCalled();
   });
 
   it("detiene reclamos y espera el trabajo activo antes de resolver el drenaje", async () => {

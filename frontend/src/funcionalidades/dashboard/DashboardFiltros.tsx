@@ -17,7 +17,15 @@ interface DashboardFiltrosProps {
 
 const REDES_SOCIALES: RedSocial[] = ["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"];
 
-/** Filtros combinables del dashboard: red social, campaña y responsable (docs/08 §4). */
+/**
+ * Filtros combinables del dashboard: red social, campaña y responsable
+ * (docs/08 §4). El selector de campaña manda el `nombre` como valor (texto
+ * libre, `ILIKE` contra `payload_original ->> 'nombreCampania'` en el
+ * backend real), no un id -- `campanias` sigue siendo el catálogo local fijo
+ * `getCatalogoCampanias()` (mismo gap ya documentado en
+ * `leads.api.ts::LeadsQueryParams.campaniaId`: no hay una entidad real de
+ * campaña con id, M4/F8 fuera de alcance).
+ */
 export function DashboardFiltros({
   filtros,
   onChange,
@@ -39,9 +47,9 @@ export function DashboardFiltros({
       />
       <CampoSelect
         etiqueta="Campaña"
-        valor={filtros.campaniaId}
-        onChange={(v) => update("campaniaId", v)}
-        opciones={campanias.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+        valor={filtros.campania}
+        onChange={(v) => update("campania", v)}
+        opciones={campanias.map((c) => ({ valor: c.nombre, etiqueta: c.nombre }))}
       />
       {mostrarFiltroResponsable ? (
         <ResponsableCombobox

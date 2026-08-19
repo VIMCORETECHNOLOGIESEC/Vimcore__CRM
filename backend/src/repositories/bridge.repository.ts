@@ -1,4 +1,4 @@
-import type { Bridge, CuentaPublicitaria, EstadoBridge, RedSocial } from "@prisma/client";
+import { Prisma, type Bridge, type CuentaPublicitaria, type EstadoBridge, type RedSocial } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 /**
@@ -15,9 +15,12 @@ export async function findByClaveApiHash(
 
 /**
  * Marca el momento del último lead recibido por un bridge
- * (`bridges.ultimo_lead_en`, docs/03-modelo-datos.md) — sostiene la futura
- * detección de bridges mudos (docs/05-bridges.md §8), fuera de alcance en
- * esta rebanada.
+ * (`bridges.ultimo_lead_en`, docs/03-modelo-datos.md) — sostiene la
+ * detección de bridges mudos (docs/05-bridges.md §8,
+ * `services/bridge-mudo.service.ts`). Resetea `advertenciaMudoEnviada` a
+ * `false` en el mismo `update`: un lead nuevo re-arma la detección de
+ * silencio de 72h para el próximo tick (mismo espíritu anti-spam que
+ * `Cita.recordatorioEnviado`).
  */
 export async function touchUltimoLeadEn(
   bridgeId: string,
@@ -25,7 +28,70 @@ export async function touchUltimoLeadEn(
 ): Promise<void> {
   await client.bridge.update({
     where: { id: bridgeId },
-    data: { ultimoLeadEn: new Date() },
+    data: { ultimoLeadEn: new Date(), advertenciaMudoEnviada: false },
+  });
+}
+
+/**
+ * Candidatos al trabajo programado "bridge sin actividad por 72h"
+ * (docs/05-bridges.md §8, docs/06-modulos-backend.md): `estado = ACTIVO`,
+ * `ultimoLeadEn` no nulo y anterior a `umbral` (= ahora - 72h, resuelto por
+ * el caller en `services/bridge-mudo.service.ts`), y — "campañas activas"
+ * — sin ninguna `CuentaPublicitaria` registrada o con al menos una
+ * `activa = true`. `advertenciaMudoEnviada: false` es la misma guarda
+ * anti-spam que `touchUltimoLeadEn` resetea: un bridge ya advertido no
+ * vuelve a aparecer hasta que reciba un lead nuevo.
+ *
+ * Un bridge con `ultimoLeadEn IS NULL` (nunca recibió un lead) queda
+ * excluido: no hay marca de referencia para medir "72h de silencio" sin una
+ * columna de fecha de creación en `Bridge`.
+ */
+export async function findBridgesMudos(
+  umbral: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Bridge[]> {
+  return client.bridge.findMany({
+    where: {
+      estado: "ACTIVO",
+      ultimoLeadEn: { not: null, lt: umbral },
+      advertenciaMudoEnviada: false,
+      OR: [
+        { cuentasPublicitarias: { none: {} } },
+        { cuentasPublicitarias: { some: { activa: true } } },
+      ],
+    },
+  });
+}
+
+/**
+ * Guarda anti-duplicado atómica a nivel de fila — mismo espíritu que
+ * `cita.repository.ts::marcarRecordatorioEnviado`: el `WHERE
+ * advertenciaMudoEnviada: false` en el propio `updateMany` evita que dos
+ * ticks concurrentes del job de bridges mudos registren la advertencia dos
+ * veces para el mismo bridge.
+ *
+ * `umbral` (el mismo umbral de 72h resuelto por el caller,
+ * `services/bridge-mudo.service.ts`) se revalida en este mismo `WHERE` —
+ * no solo en el `SELECT` de candidatos de `findBridgesMudos` — para cerrar
+ * la ventana de carrera entre "seleccionar candidatos" y "reclamar la
+ * advertencia": si un lead real llega en el medio (`touchUltimoLeadEn` pone
+ * `ultimoLeadEn = now()`), el bridge deja de matchear `ultimoLeadEn <
+ * umbral` y el claim no tiene efecto, en vez de marcar una advertencia
+ * falsa sobre un bridge que acaba de reactivarse.
+ */
+export async function marcarAdvertenciaMudoEnviada(
+  ids: readonly string[],
+  umbral: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Prisma.BatchPayload> {
+  if (ids.length === 0) return { count: 0 };
+  return client.bridge.updateMany({
+    where: {
+      id: { in: [...ids] },
+      advertenciaMudoEnviada: false,
+      OR: [{ ultimoLeadEn: null }, { ultimoLeadEn: { lt: umbral } }],
+    },
+    data: { advertenciaMudoEnviada: true },
   });
 }
 

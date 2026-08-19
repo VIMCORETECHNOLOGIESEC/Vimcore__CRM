@@ -1,11 +1,14 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
+import * as leadRepository from "../src/repositories/lead.repository.js";
+import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
 import {
+  applyAsignacionesEnLote,
+  assignAfterCommit,
   assignAutomatically,
   assignLead,
   assignLeadsBatch,
-  asignarTrasCommit,
 } from "../src/services/asignacion.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
@@ -19,6 +22,13 @@ vi.mock("../src/repositories/lead-evento.repository.js", async (importOriginal) 
   const actual =
     await importOriginal<typeof import("../src/repositories/lead-evento.repository.js")>();
   return { ...actual, createEvento: vi.fn(actual.createEvento) };
+});
+// Mock puro: NO delega a la implementación real (que programaría un
+// `setTimeout` real de 2s contra el `eventBroker` singleton de producción,
+// sin que este archivo use fake timers) — solo registra la llamada.
+vi.mock("../src/lib/metricas-broadcast.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/metricas-broadcast.js")>();
+  return { ...actual, scheduleMetricasBroadcast: vi.fn() };
 });
 
 let contador = 0;
@@ -192,34 +202,7 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
     expect(totalEventos).toBe(0);
   });
 });
-
-describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infraestructura abortan el lote)", () => {
-  it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
-    const asesor = await crearAsesorActivo();
-    const leadUno = await crearLeadSinAsignar();
-    const leadDos = await crearLeadSinAsignar();
-
-    // Mismo truco de inyección que la prueba obligatoria 12 arriba: el
-    // primer `createEvento` de este test (dentro del `assignLead` de
-    // `leadUno`) falla con un Error genérico (no `AppError`) — simula un
-    // fallo de infraestructura, no un fallo de negocio del lead.
-    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
-    mockCreateEvento.mockRejectedValueOnce(new Error("fallo de infraestructura simulado"));
-
-    await expect(
-      assignLeadsBatch(SUPERVISOR, { leadIds: [leadUno.id, leadDos.id], asesorId: asesor.id }),
-    ).rejects.toThrow("fallo de infraestructura simulado");
-
-    // El lote se abortó ANTES de procesar leadDos — no quedó reportado como
-    // "fallidos[]", ni tampoco se asignó (D-A1: un error de infra no debe
-    // reportarse como "estos leads son inválidos").
-    const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
-    expect(leadDosTrasFallo.asesorId).toBeNull();
-  });
-});
-
-describe("asignacion.service — asignarTrasCommit (D-A2 revisión 2: post-commit con reintento acotado)", () => {
+describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commit con reintento acotado)", () => {
   it("reintenta hasta 3 veces ante fallos transitorios, con backoff, y nunca lanza — éxito en el tercer intento", async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const lead = await crearLeadSinAsignar();
@@ -229,7 +212,7 @@ describe("asignacion.service — asignarTrasCommit (D-A2 revisión 2: post-commi
     mockCreateEvento.mockRejectedValueOnce(new Error("fallo transitorio 1"));
     mockCreateEvento.mockRejectedValueOnce(new Error("fallo transitorio 2"));
 
-    await expect(asignarTrasCommit(lead.id, new Date())).resolves.toBeUndefined();
+    await expect(assignAfterCommit(lead.id, new Date())).resolves.toBeUndefined();
 
     const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(leadActualizado.asesorId).toBe(asesor.id);
@@ -253,7 +236,7 @@ describe("asignacion.service — asignarTrasCommit (D-A2 revisión 2: post-commi
     const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
     const llamadasAntes = mockCreateEvento.mock.calls.length;
 
-    await expect(asignarTrasCommit(lead.id, new Date())).resolves.toBeUndefined();
+    await expect(assignAfterCommit(lead.id, new Date())).resolves.toBeUndefined();
 
     const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(leadActualizado.asesorId).toBeNull();
@@ -268,7 +251,7 @@ describe("asignacion.service — asignarTrasCommit (D-A2 revisión 2: post-commi
     });
     expect(eventoFallido).toBeNull();
 
-    // "Sin candidatos" no lanza, así que el bucle de asignarTrasCommit
+    // "Sin candidatos" no lanza, así que el bucle de assignAfterCommit
     // retorna tras el primer intento — un único createEvento (SIN_ASIGNAR).
     const llamadasDespues = mockCreateEvento.mock.calls.length;
     expect(llamadasDespues - llamadasAntes).toBe(1);
@@ -317,7 +300,7 @@ describe("asignacion.service — degradación tras agotar reintentos (D-A2 revis
     mockCreateEvento.mockRejectedValueOnce(new Error("fallo persistente 2"));
     mockCreateEvento.mockRejectedValueOnce(new Error("fallo persistente 3"));
 
-    await expect(asignarTrasCommit(lead.id, new Date())).resolves.toBeUndefined();
+    await expect(assignAfterCommit(lead.id, new Date())).resolves.toBeUndefined();
 
     const leadTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(leadTrasFallo.asesorId).toBeNull();
@@ -343,4 +326,106 @@ describe("asignacion.service — degradación tras agotar reintentos (D-A2 revis
     const leadListable = await prisma.lead.findFirst({ where: { id: lead.id, asesorId: null } });
     expect(leadListable).not.toBeNull();
   }, 10_000);
+});
+
+describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infraestructura abortan el lote)", () => {
+  it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const asesor = await crearAsesorActivo();
+    const leadUno = await crearLeadSinAsignar();
+    const leadDos = await crearLeadSinAsignar();
+
+    // Mismo truco de inyección que la prueba obligatoria 12 arriba: el
+    // primer `createEvento` de este test (dentro del `assignLead` de
+    // `leadUno`) falla con un Error genérico (no `AppError`) — simula un
+    // fallo de infraestructura, no un fallo de negocio del lead.
+    const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
+    mockCreateEvento.mockRejectedValueOnce(new Error("fallo de infraestructura simulado"));
+
+    await expect(
+      assignLeadsBatch(SUPERVISOR, { leadIds: [leadUno.id, leadDos.id], asesorId: asesor.id }),
+    ).rejects.toThrow("fallo de infraestructura simulado");
+
+    // El lote se abortó ANTES de procesar leadDos — no quedó reportado como
+    // "fallidos[]", ni tampoco se asignó (D-A1: un error de infra no debe
+    // reportarse como "estos leads son inválidos").
+    const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
+    expect(leadDosTrasFallo.asesorId).toBeNull();
+  });
+});
+
+describe("asignacion.service — applyAsignacionesEnLote (fix bulk writes, deactivateUsuario)", () => {
+  it("agrupa por receptor: 2 entradas al mismo receptor + 1 a otro receptor llaman assignResponsableBulk exactamente 2 veces, con los leadIds agrupados correctos, y el orden de eventos devuelto respeta el orden de las entradas de entrada", async () => {
+    const receptorA = await crearAsesorActivo();
+    const receptorB = await crearAsesorActivo();
+    const leadUno = await crearLeadSinAsignar();
+    const leadDos = await crearLeadSinAsignar();
+    const leadTres = await crearLeadSinAsignar();
+
+    const spyBulkAssign = vi.spyOn(leadRepository, "assignResponsableBulk");
+    const ahora = new Date();
+
+    const eventos = await prisma.$transaction((tx) =>
+      applyAsignacionesEnLote(
+        [
+          { leadId: leadUno.id, receptorId: receptorA.id, responsableAnteriorId: null },
+          { leadId: leadDos.id, receptorId: receptorA.id, responsableAnteriorId: null },
+          { leadId: leadTres.id, receptorId: receptorB.id, responsableAnteriorId: null },
+        ],
+        { pool: "ASESOR", tipoEvento: "REASIGNACION", motivo: "reasignacion", ejecutadoPorId: null, ahora },
+        tx,
+      ),
+    );
+
+    expect(spyBulkAssign).toHaveBeenCalledTimes(2);
+    const leadIdsPorLlamada = spyBulkAssign.mock.calls.map((call) => [...(call[0] as readonly string[])].sort());
+    expect(leadIdsPorLlamada).toContainEqual([leadUno.id, leadDos.id].sort());
+    expect(leadIdsPorLlamada).toContainEqual([leadTres.id]);
+    spyBulkAssign.mockRestore();
+
+    // Orden determinista: un evento "lead.asignado" por entrada, en el MISMO
+    // orden que las entradas de entrada (SSE determinista).
+    const eventosAsignado = eventos.filter((e) => e.type === "lead.asignado");
+    expect(eventosAsignado.map((e) => (e.data as { leadId: string }).leadId)).toEqual([
+      leadUno.id,
+      leadDos.id,
+      leadTres.id,
+    ]);
+
+    for (const lead of [leadUno, leadDos, leadTres]) {
+      const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+      expect(leadActualizado.asesorId).not.toBeNull();
+    }
+    const leadUnoActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadUno.id } });
+    const leadDosActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
+    const leadTresActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadTres.id } });
+    expect(leadUnoActualizado.asesorId).toBe(receptorA.id);
+    expect(leadDosActualizado.asesorId).toBe(receptorA.id);
+    expect(leadTresActualizado.asesorId).toBe(receptorB.id);
+  });
+});
+
+describe("asignacion.service — M9 señal de métricas (docs/08-dashboard-kpis.md §5, asignación)", () => {
+  /**
+   * Corrección de code-review: `applyAsignacion` corre DENTRO de la `tx` del
+   * llamador y NO programa la señal de métricas por su cuenta — si lo hiciera,
+   * un rollback posterior de esa misma transacción (p. ej. dentro del loop de
+   * reasignación de cartera de `usuarios.service.ts::deactivateUsuario`)
+   * dejaría un broadcast fantasma ya programado sobre datos nunca
+   * persistidos. Cada CALLER externo de `applyAsignacion` programa la señal
+   * recién DESPUÉS del commit — acá se prueba a través de `assignAfterCommit`,
+   * el camino real de asignación automática post-ingesta.
+   */
+  it("assignAfterCommit programa la señal de métricas después del commit, no dentro de la transacción", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const lead = await crearLeadSinAsignar();
+    await crearAsesorActivo();
+    const llamadasAntes = vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length;
+
+    await assignAfterCommit(lead.id, new Date());
+
+    expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length).toBeGreaterThan(
+      llamadasAntes,
+    );
+  });
 });

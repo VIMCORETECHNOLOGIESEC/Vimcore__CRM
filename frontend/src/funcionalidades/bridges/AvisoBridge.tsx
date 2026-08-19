@@ -10,16 +10,18 @@ interface AvisoBridgeProps {
 /**
  * Aviso destacado ante token expirado o bridge sin actividad (docs/07 F8).
  * Componente de presentación puro: la regla de negocio de *cuándo* mostrarlo
- * vive en `bridges.utils.ts::evaluarAvisoBridge`, no requiere test unitario
+ * vive en `bridges.utils.ts::evaluateAvisoBridge`, no requiere test unitario
  * per AGENTS.md §5 -- solo arma el texto según las dos banderas ya
  * calculadas.
  */
 export function AvisoBridge({ nombre, aviso }: AvisoBridgeProps) {
-  if (!aviso.tokenExpirado && !aviso.sinActividad) return null;
+  if (!aviso.tokenExpirado && !aviso.tokenProximoAVencer && !aviso.sinActividad) return null;
 
   const mensajes: string[] = [];
   if (aviso.tokenExpirado) {
     mensajes.push("el token expiró y dejará de recibir leads hasta que se cargue uno nuevo");
+  } else if (aviso.tokenProximoAVencer) {
+    mensajes.push("el token de alguna cuenta publicitaria está próximo a vencer");
   }
   if (aviso.sinActividad) {
     mensajes.push("no recibió leads en las últimas 72 horas a pesar de tener cuentas publicitarias activas");

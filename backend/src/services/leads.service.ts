@@ -9,9 +9,26 @@ import { applyFormulario } from "./formularios.service.js";
 import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 const ETAPAS_TERMINALES: readonly EtapaLead[] = ["VENTA", "NO_VENTA"];
+
+/**
+ * docs/02-reglas-negocio.md §6: progreso lineal hacia adelante entre etapas
+ * no terminales (NUEVO → CONTACTADO → CITA), nunca se retrocede; desde
+ * cualquier etapa no terminal se permite el salto directo a cierre (VENTA o
+ * NO_VENTA). Copia server-side de `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`
+ * — mismo criterio que `ETAPAS_TERMINALES` arriba: no compartida, replicada
+ * a propósito en este archivo.
+ */
+const TRANSICIONES_VALIDAS: Record<EtapaLead, readonly EtapaLead[]> = {
+  NUEVO: ["CONTACTADO", "VENTA", "NO_VENTA"],
+  CONTACTADO: ["CITA", "VENTA", "NO_VENTA"],
+  CITA: ["VENTA", "NO_VENTA"],
+  VENTA: [],
+  NO_VENTA: [],
+};
 
 export type LeadConSla = Lead & { estadoSla: EstadoSla };
 /**
@@ -168,6 +185,13 @@ export async function transitionEtapa(
           `El lead ya está en una etapa terminal (${lead.etapa}) y no puede reabrirse`,
         );
       }
+      if (!TRANSICIONES_VALIDAS[lead.etapa].includes(body.etapa)) {
+        throw new AppError(
+          "transicion_invalida",
+          409,
+          `No se puede pasar de ${lead.etapa} a ${body.etapa}`,
+        );
+      }
 
       const datosEtapa: Parameters<typeof leadRepository.updateEtapa>[1] = { etapa: body.etapa };
 
@@ -217,6 +241,9 @@ export async function transitionEtapa(
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): "cambio de etapa" y "cierre" — una
+  // transición a VENTA/NO_VENTA es ambas a la vez, un solo hook alcanza.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 

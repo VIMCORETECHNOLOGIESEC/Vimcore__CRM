@@ -6,7 +6,8 @@ export interface SseFrame { id: string; event: string; data: string }
 export type EventoNotificaciones =
   | { id: string; type: "notificacion.nueva"; data: Notificacion }
   | { id: string; type: "lead.asignado" | "lead.etapa-cambiada"; data: { leadId: string; [key: string]: unknown } }
-  | { id: string; type: "sincronizacion.requerida"; data: unknown };
+  | { id: string; type: "sincronizacion.requerida"; data: unknown }
+  | { id: string; type: "metricas.actualizadas"; data: Record<string, never> };
 
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000] as const;
 const TIPOS_NOTIFICACION = new Set<TipoNotificacion>([
@@ -55,7 +56,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
-  const known = ["notificacion.nueva", "lead.asignado", "lead.etapa-cambiada", "sincronizacion.requerida"];
+  const known = ["notificacion.nueva", "lead.asignado", "lead.etapa-cambiada", "sincronizacion.requerida", "metricas.actualizadas"];
   if (!known.includes(frame.event)) return null;
   const data: unknown = JSON.parse(frame.data);
   if (frame.event === "notificacion.nueva") {
@@ -69,6 +70,7 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
     return { id: frame.id, type: frame.event, data: data as unknown as Notificacion };
   }
   if (frame.event === "sincronizacion.requerida") return { id: frame.id, type: frame.event, data };
+  if (frame.event === "metricas.actualizadas") return { id: frame.id, type: frame.event, data: {} };
   if (!isRecord(data) || typeof data.leadId !== "string") throw new Error("evento_malformado");
   return {
     id: frame.id,

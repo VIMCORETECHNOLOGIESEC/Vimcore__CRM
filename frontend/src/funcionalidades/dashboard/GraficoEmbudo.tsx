@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ETAPA_ETIQUETAS } from "@/funcionalidades/leads/catalogos";
-import type { MetricasEmbudo, MetricasPorEtapa } from "@/tipos/metricas";
+import type { EmbudoPaso, MetricasEmbudo } from "@/tipos/metricas";
 import { getColorCategorico } from "./paleta";
 
 interface GraficoEmbudoProps {
@@ -45,7 +45,7 @@ export function GraficoEmbudo({ datos }: GraficoEmbudoProps) {
         </BarChart>
       </ResponsiveContainer>
       <p className="text-xs text-muted-foreground">
-        No Venta (fuera del embudo, es una salida): {datos.noVentaTotal} leads
+        No Venta (fuera del embudo, es una salida): {datos.noVenta} leads
       </p>
     </div>
   );
@@ -56,7 +56,7 @@ function TooltipEmbudo({
   payload,
 }: {
   active?: boolean;
-  payload?: { payload: MetricasPorEtapa & { etiqueta: string } }[];
+  payload?: { payload: EmbudoPaso & { etiqueta: string } }[];
 }) {
   if (!active || !payload?.length) return null;
   const fila = payload[0].payload;
@@ -65,9 +65,7 @@ function TooltipEmbudo({
       <p className="font-medium text-foreground">{fila.etiqueta}</p>
       <p className="text-muted-foreground">{fila.total} leads</p>
       <p className="text-muted-foreground">
-        {fila.caidaPorcentaje === null
-          ? "Primer paso del embudo"
-          : `Caída vs. paso anterior: ${fila.caidaPorcentaje} %`}
+        {fila.caidaPct === null ? "Primer paso del embudo" : `Caída vs. paso anterior: ${fila.caidaPct} %`}
       </p>
     </div>
   );

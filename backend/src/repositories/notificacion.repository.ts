@@ -1,4 +1,4 @@
-import type { Notificacion, Prisma, RolUsuario, TipoNotificacion } from "@prisma/client";
+import type { CanalNotificacion, Notificacion, Prisma, RolUsuario, TipoNotificacion } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 export interface CreateNotificacionData {
   usuarioId: string;
@@ -12,6 +12,28 @@ export async function createNotificacion(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Notificacion> {
   return client.notificacion.create({ data });
+}
+
+/**
+ * Fix bulk writes (`deactivateUsuario`, M2): variante en lote de
+ * `createNotificacion` — un solo `createMany` para todas las notificaciones
+ * de una reasignación de cartera masiva. A diferencia de la versión
+ * singular, `id`/`canal`/`creadaEn` se generan en memoria (`crypto.randomUUID`,
+ * mismo patrón que `auth.service.ts`) en vez de depender de los defaults de
+ * Prisma — `createMany` no devuelve las filas insertadas. Si `data` está
+ * vacío, no ejecuta ninguna consulta.
+ */
+export interface CreateNotificacionBulkData extends CreateNotificacionData {
+  id: string;
+  canal: CanalNotificacion;
+  creadaEn: Date;
+}
+export async function createNotificaciones(
+  data: readonly CreateNotificacionBulkData[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  if (data.length === 0) return;
+  await client.notificacion.createMany({ data: [...data] });
 }
 export async function listByUsuario(
   usuarioId: string,

@@ -32,6 +32,35 @@ frontend/src/
 
 ---
 
+## Estado consolidado (verificado contra código real en `test/integration`, 2026-08-19)
+
+| Módulo | Estado | Pendientes |
+|---|---|---|
+| F1 — Base | ✅ Completo | — |
+| F2 — Autenticación | ✅ Completo (frontend) | Backend no expone autoservicio de cambio de contraseña para roles no-administrador (brecha de backend M2, no de este módulo) |
+| F3 — Listado de leads | ⚠️ Completo con gaps | Tabs "Pendientes/Cerrados" sin implementar (requiere el parámetro `vista` de M5, tampoco implementado); SSE de lead nuevo real requiere un evento `lead.nuevo` que el backend no emite todavía (M9 solo emite `lead.asignado`/`lead.etapa-cambiada`, dirigidos por usuario) |
+| F4 — Detalle del lead | ⚠️ Completo con gaps | Guard local `canEdit` en timeline/formulario de etapa; redirección automática ante pérdida de acceso (403 `permiso_denegado`); la actualización SSE ya ocurre parcialmente vía el listener global de F6, sin suscripción propia de F4 |
+| F5 — Dashboard | ✅ Completo | — (actualización en tiempo real vía SSE resuelta el 2026-08-19: `decodeKnownEvent` ya reconoce `metricas.actualizadas` y `useNotificacionesRealtime` invalida `["metricas"]`) |
+| F6 — Notificaciones | ✅ Completo | — |
+| F7 — Administración de usuarios | ✅ Completo | — |
+| F8 — Administración de bridges | ✅ Completo | — |
+
+**Ningún módulo frontend propuesto está sin empezar.** 6 de 8 están terminados al 100%. Los gaps restantes en F3/F4 son de "tiempo real"/SSE o dependen de un ítem de M5 aún no implementado en el backend (`vista`) -- ninguno es un módulo sin construir, son refinamientos incrementales sobre una base ya funcional y probada.
+
+---
+
+## Backlog no bloqueante — mejoras post-lanzamiento
+
+Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometido en el scope MVP original, o ya tiene workaround funcional. No bloquean el lanzamiento.
+
+- **Autoservicio de cambio de contraseña para roles no-administrador** (F2, requiere endpoint nuevo de backend, ej. `PATCH /auth/perfil/password`): no prometido en el scope MVP; workaround 100% funcional ya existe (reset por administrador, F7, `PATCH /usuarios/:id`). Esfuerzo: medio (endpoint nuevo + verificación de contraseña actual).
+- **Tabs "Pendientes/Cerrados"** (F3): depende del parámetro `vista` del backend (M5, ver backlog de `docs/06-modulos-backend.md`), sin implementar todavía.
+- **SSE de listado/detalle de leads con alcance completo** (F3/F4): hoy la cobertura vía `lead.asignado`/`lead.etapa-cambiada` es incidental y dirigida solo al usuario destinatario del evento (`EventBroker.publish` por `userId`, no `broadcastAll`) — un supervisor mirando el listado en otra sesión no se entera de un lead nuevo o reasignado a otra persona. Esfuerzo: medio (nuevo evento `lead.nuevo` en el backend + decidir si usa `broadcastAll` como `metricas.actualizadas`).
+- **Guard `canEdit` local en `LeadTimeline`/`FormularioEtapaLead`** (F4): el backend ya rechaza correctamente con 403 — es solo un mensaje de error confuso en vez de ocultar el control proactivamente. Esfuerzo: bajo.
+- **Redirección automática ante pérdida de acceso (403 `permiso_denegado`)** (F4): mismo criterio, el backend ya protege el recurso — hoy el usuario queda atascado en un botón "Reintentar" que nunca funciona. Esfuerzo: bajo.
+
+---
+
 ## F1 — Base
 
 > **Progreso:** implementado en `configuracion-base-monorepo` (PR1
@@ -260,8 +289,46 @@ del producto.
 - [x] Vista adaptada por rol: asesor y vendedor ven solo su cartera, sin columna
       de responsable
 - [x] Acciones masivas de asignación para supervisor y administrador
-- [ ] Actualización por SSE cuando ingresa un lead nuevo (pendiente,
-      depende de infraestructura de bridges/tiempo real — F8)
+- [ ] Actualización por SSE cuando ingresa un lead nuevo (pendiente;
+      corrección 2026-08-19 -- esta nota decía "depende de F8/bridges",
+      inexacto: la infraestructura de tiempo real ya existe desde F6/M8.
+      `useNotificacionesRealtime` está montado globalmente
+      (`layouts/Header.tsx`) e invalida `["leads"]` ante
+      `lead.asignado`/`lead.etapa-cambiada` -- la tabla YA se actualiza en
+      vivo para esos dos eventos, sin código nuevo de F3. Pero
+      `EventBroker.publish` (`lib/event-broker.ts`) dirige el evento solo
+      al `userId` receptor, no a todo conectado, así que un lead
+      autoasignado refresca la sesión de quien lo recibió, no la de un
+      supervisor mirando el listado en otra sesión; y no existe ningún
+      evento `lead.nuevo`/`lead.creado` en el backend (`EventType` no lo
+      define), así que un ingreso sin autoasignación exitosa
+      (`SIN_ASIGNAR`) no refresca ninguna sesión. Pendiente real: agregar
+      `lead.nuevo` al backend con `broadcastAll` (mismo patrón que
+      `metricas.actualizadas`, M9) para que cualquier listado abierto lo
+      vea, no solo la sesión del responsable asignado.)
+- [ ] Tabs "Pendientes/En proceso" (vista por defecto) vs "Cerrados"
+      (2026-08-19, diseño): la vista principal de la tabla — la que hoy
+      existe sin distinción — pasa a filtrar por defecto `etapa NOT IN
+      (VENTA, NO_VENTA)` (mapea al nuevo parámetro `vista=activos` de
+      `GET /api/v1/leads`, ver `docs/06-modulos-backend.md` M5). Un segundo
+      tab "Cerrados" (`vista=cerrados`) muestra solo Venta/No Venta, con un
+      control adicional dentro de ese tab para acotar a una de las dos
+      (reusa el filtro `etapa` ya existente, restringido a esas dos opciones
+      mientras el tab está activo — el resto de filtros combinables sigue
+      disponible igual en ambos tabs). Cambiar de tab resetea la página a 1
+      (mismo criterio que ya aplica cualquier cambio de filtro) pero
+      conserva el resto de filtros activos.
+      **Nota de diseño a confirmar al implementar:** el filtro de rango de
+      fechas hoy filtra por `ingresadoEn` (`fechaDesde`/`fechaHasta` →
+      `desde`/`hasta` del backend). El dashboard (`docs/08-dashboard-kpis.md`
+      §2.3) ya estableció la convención "los cerrados se cuentan por fecha
+      de **cierre**, los ingresados por fecha de **ingreso**" — por
+      consistencia, el tab "Cerrados" debería filtrar ese mismo rango contra
+      `cerradoEn`, no `ingresadoEn`, mientras el tab "Pendientes" sigue
+      usando `ingresadoEn` como hoy. El backend actual (`listLeadsQuerySchema`)
+      no distingue el campo de fecha por `vista` — si se confirma este
+      criterio, hace falta agregarlo al mismo cambio de M5 de arriba, no
+      inventarlo solo del lado del frontend.
 
 > El contador de SLA se calcula en el cliente a partir de la marca de tiempo
 > recibida. No consultes al servidor cada segundo: a 100 concurrentes eso son
@@ -446,6 +513,54 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 - [x] Acción de reasignación con la regla de semáforo aplicada
 - [x] Panel de citas: agendar, reprogramar, marcar resultado
 - [x] Campos de cierre para Venta y No Venta con validación
+- [ ] Guard local de edición (`canEdit`) en `LeadTimeline`/`FormularioEtapaLead`
+      y en los botones "Cerrar como venta/no venta" (2026-08-19, gap
+      verificado leyendo el código, no solo analizado en abstracto):
+      `AccionesResponsable.tsx` sí tiene guards de UX
+      (`canHandoffToVendedor`/`canReassignLead`, `leadDetalle.guards.ts`) y
+      correctamente desaparecen tras un traspaso/reasignación exitosos (la
+      mutación invalida `lead-detalle` y el componente recalcula contra el
+      lead fresco). Pero `LeadTimeline`/`FormularioEtapaLead` **no reciben
+      `user` y no tienen ningún guard** — después de que un asesor traspasa
+      su lead a un vendedor (D4: conserva lectura, pierde edición), el
+      formulario de etapa y los botones de cierre siguen mostrándose como si
+      pudiera editar. Un envío se rechaza recién en el backend (403) con un
+      toast de error genérico, sin explicar la causa. Agregar un
+      `canEditLead(lead, user)` local (mismo criterio que
+      `leads.access.ts::canEdit` del backend: responsable operativo =
+      `vendedorId ?? asesorId`) que oculte esos controles y muestre un
+      mensaje explicativo en su lugar (ej. "Este lead ya no está bajo tu
+      responsabilidad — fue traspasado/reasignado a &lt;nombre&gt;."), no
+      solo los oculte en silencio.
+- [ ] Actualización en vivo del detalle abierto ante cambios de otro usuario
+      (corrección 2026-08-19 -- esta nota decía "depende de F8/tiempo real"
+      y "nada se actualiza hasta un refresh manual", ambos inexactos hoy):
+      el cliente SSE genérico ya existe (F6/M8) y `useNotificacionesRealtime`
+      (montado globalmente) YA invalida `["lead-detalle", leadId]` ante
+      `lead.asignado`/`lead.etapa-cambiada` de CUALQUIER lead, incluido el
+      que este usuario tiene abierto -- verificado en
+      `useNotificacionesRealtime.ts` líneas 33-36. Esto no fue construido a
+      propósito para F4 (es un efecto colateral del listener global de F6),
+      y por eso queda como pendiente real: no hay suscripción propia de
+      `LeadDetallePage`/`useLeadDetalle`, así que cualquier otro tipo de
+      evento futuro sobre este lead no se propaga acá salvo que también lo
+      maneje ese mismo listener genérico -- y, mismo matiz que F3 arriba,
+      el evento solo llega a la sesión del usuario destinatario
+      (`EventBroker.publish` por `userId`), no a un tercero con el detalle
+      abierto que no sea el afectado directo del cambio.
+- [ ] Redirección a la tabla de leads si se pierde el acceso de lectura
+      (2026-08-19, gap verificado): `canRead` en el backend es más amplio
+      que `canEdit` (D4: el asesor que traspasó conserva lectura), así que
+      un usuario solo pierde lectura completa por una REASIGNACIÓN real (no
+      un traspaso) que lo reemplaza como responsable. Si eso pasa mientras
+      tiene la página abierta, `GET /leads/:id` responde 403 y hoy
+      `LeadDetallePage.tsx` muestra el `ErrorState` genérico con un botón
+      "Reintentar" que vuelve a fallar siempre (`getErrorMessage` no
+      distingue código de error). Cuando el código de `ApiError` sea
+      `permiso_denegado`, navegar automáticamente a `/leads` con un toast
+      explicativo ("Ya no tenés acceso a este lead — fue reasignado a otra
+      persona") en vez de dejarlo atascado en un botón de reintento que
+      nunca funciona.
 
 ---
 
@@ -507,6 +622,22 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 > Fuera de alcance: conexión real a M9 (no existe) y la actualización en
 > tiempo real por SSE (docs/08 §5) -- mismo criterio que el comentario
 > `INTEGRACION-BACKEND` ya dejado en `LeadsPage.tsx` (F3).
+>
+> **Actualización (integración contra backend real de métricas, dev-front):**
+> `metricas.api.ts` reemplaza el cálculo client-side sobre `LEADS_MOCK` por
+> los siete endpoints reales `GET /api/v1/metricas/*`. `metricas.utils.ts`
+> (las funciones puras `calculate*`) y su suite
+> `tests/dashboard/metricas.utils.test.ts` se eliminan por completo: esa
+> lógica de agregación ahora vive en el backend. Dos hallazgos frente a lo
+> asumido en el mock: `/por-etapa` y `/embudo` son endpoints distintos y no
+> relacionados -- `/por-etapa` es un conteo plano por etapa, `/embudo` trae
+> el orden de etapas con el % de caída ya calculado, antes se asumía que
+> ambos salían de la misma agregación. `distribucionSemaforo` (§3.6) viene
+> plegado dentro de `/resumen`, sin endpoint propio. La comparativa contra
+> el período anterior en las siete tarjetas de resumen también la resuelve
+> el backend, por lo que no queda lógica de agregación ni de comparación de
+> períodos del lado del frontend. La actualización en tiempo real por SSE
+> sigue fuera de esta rebanada (módulo aparte ya documentado arriba).
 
 - [x] Tarjetas de resumen: total de leads, en gestión, cerrados, tasa de
       conversión, tiempo promedio de primera respuesta, tiempo promedio de cierre
@@ -525,8 +656,15 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 - [x] Selector de rango de fechas con comparativa contra el período anterior
 - [x] Alcance por rol: general para administrador y supervisor, personal para
       asesor y vendedor
-- [ ] Actualización en tiempo real vía SSE (pendiente, depende de M9 y de
-      infraestructura de tiempo real — F8)
+- [x] Actualización en tiempo real vía SSE (resuelto 2026-08-19 -- el parser
+      del canal SSE (`notificaciones.sse.ts::decodeKnownEvent`) ahora
+      reconoce `metricas.actualizadas` en la whitelist `known` en vez de
+      descartarlo en silencio, y `useNotificacionesRealtime` (el listener
+      global, montado para todas las rutas protegidas) invalida
+      `["metricas"]` al recibirlo -- sin hook nuevo, TanStack Query
+      refetchea en segundo plano las queries ya montadas por
+      `useMetricas.ts`. No dependía de bridges/F8, tal como ya aclaraba la
+      nota anterior.)
 
 **Biblioteca de gráficas:** Recharts. Es declarativa, tipada, y su tamaño de
 paquete es razonable para el volumen de gráficas de este dashboard.
@@ -536,17 +674,37 @@ paquete es razonable para el volumen de gráficas de este dashboard.
 ## F6 — Notificaciones
 
 > **Progreso:** implementado contra los endpoints REST y el canal SSE reales
-> de M8 (`docs/06-modulos-backend.md`): `GET /api/v1/notificaciones`,
-> `PATCH /api/v1/notificaciones/:id/leer`, `PATCH /api/v1/notificaciones/leer-todas`
-> y `GET /api/v1/eventos` (`funcionalidades/notificaciones/notificaciones.api.ts`,
+> de M8 (`docs/06-modulos-backend.md`), confirmado contra
+> `backend/src/routes/notificaciones.routes.ts` y
+> `notificaciones.controller.ts` (worktree `dev-back`): `GET
+> /api/v1/notificaciones` (con `soloNoLeidas` como query param opcional),
+> `PATCH /api/v1/notificaciones/:id/leer`, `PATCH
+> /api/v1/notificaciones/leer-todas` (los tres `204` sin cuerpo salvo el
+> `GET`) y `GET /api/v1/eventos`
+> (`funcionalidades/notificaciones/notificaciones.api.ts`,
 > `notificaciones.sse.ts`). Reemplaza el disparador deshabilitado que había
 > dejado F1 en `layouts/Header.tsx` por el componente real
-> `CampanaNotificaciones.tsx`.
+> `CampanaNotificaciones.tsx`, y el mock en memoria con siembra perezosa por
+> usuario que usaba `notificaciones.api.ts` hasta esta integración.
 >
 > **Decisiones propias:**
+> - `usuarioId` desapareció como parámetro de las tres funciones de
+>   `notificaciones.api.ts`: el backend lo resuelve del JWT
+>   (`assertAuthenticated`) en las tres rutas (`requireAuthentication`, sin
+>   restricción de rol), mismo criterio que `LeadsContextoRol` al desaparecer
+>   de `leads.api.ts` (F3/F4). `useNotificaciones.ts` sí sigue usando
+>   `useAuth()` para el `id` del usuario en su query key
+>   (`["notificaciones", userId]`), a propósito: `useNotificacionesRealtime.ts`
+>   escribe (`setQueryData`) e invalida sobre esa misma clave al recibir
+>   eventos del canal SSE, así que sacar `user.id` de la clave habría
+>   desincronizado en silencio el caché en tiempo real del listado que pinta
+>   `CampanaNotificaciones`.
 > - `TipoNotificacion` (`tipos/notificacion.ts`) mantiene un valor por fila
->   de la tabla de docs/02 §8; los nombres coinciden con el enum real de
->   `notificaciones.tipo` en `backend/prisma/schema.prisma`.
+>   de la tabla de docs/02 §8, corregido contra el enum real de
+>   `notificaciones.tipo` en `backend/prisma/schema.prisma`: 8 valores, uno
+>   más que la propuesta original -- `INTERACCION_REPETIDA`, sin equivalente
+>   en la lista original. Se agregó al union y a
+>   `TIPO_NOTIFICACION_ETIQUETAS` (`catalogos.ts`).
 > - El marcado masivo ("leer todas") usa `PATCH /notificaciones/leer-todas`.
 > - Se retiró `components/ui/scroll-area.tsx` de la lista de dependencias
 >   activas del panel: usar `@radix-ui/react-scroll-area` ahí disparaba
@@ -560,6 +718,20 @@ paquete es razonable para el volumen de gráficas de este dashboard.
 > F3/F4 cuando el cursor deja de ser válido. Las notificaciones nuevas
 > muestran un aviso polite de cinco segundos y el estado terminal permite
 > reintentar sin robar el foco.
+>
+> Verificado con `curl` contra el backend real (`docker compose up backend
+> db` en `dev-back`, usuario de prueba creado y eliminado con `prisma`
+> directo): `GET /notificaciones` y `?soloNoLeidas=true` devuelven `{
+> notificaciones }`; `PATCH /notificaciones/:id/leer` y `PATCH
+> /notificaciones/leer-todas` devuelven `204` y el `GET` posterior confirma
+> `leidaEn` seteado en ambas notificaciones.
+>
+> TDD: Vitest, `notificaciones.api.test.ts` mockea `httpClient` (mismo
+> patrón que `bridges.api.test.ts`) en vez del fixture en memoria;
+> `CampanaNotificaciones.test.tsx` conserva el mock de
+> `useNotificacionesRealtime`/`NotificacionToast` (el componente real los
+> sigue usando para el canal SSE). `pnpm --filter frontend test`: 417 tests
+> en verde (43 archivos). `tsc` + `vite build` sin errores.
 
 - [x] Campana con contador de no leídas
 - [x] Panel desplegable con listado y navegación al lead relacionado
@@ -696,14 +868,33 @@ Solo administrador.
 > en varios mocks (`leads.api.ts`, `bridges.api.ts`, `metricas.api.ts`), acá
 > se implementó por primera vez porque F7 es el único módulo que pega contra
 > un backend real hoy.
+>
+> **Actualización (reasignación automática de cartera pasa a ser backend
+> real, M2):** la brecha descrita arriba para "baja lógica con reasignación
+> obligatoria de la cartera activa" quedó resuelta del lado del backend --
+> `usuarios.service.ts::deactivateUsuario` ahora reasigna automáticamente
+> cada lead activo del usuario dado de baja (si es ASESOR/VENDEDOR) al
+> candidato del mismo rol con menor carga activa (desempate FIFO por
+> `ultimaAsignacionEn`, mismo criterio que la asignación automática M6),
+> todo dentro de la misma transacción de baja; si no hay ningún candidato,
+> rechaza con `409 baja_sin_candidato_reasignacion` sin persistir nada. En
+> consecuencia se eliminó del frontend todo el camino mock que hacía esto
+> manualmente: `BajaUsuarioDialog` volvió a ser un diálogo de confirmación
+> simple (sin selector de responsable), y `usuarios.api.ts`/`useUsuarios.ts`
+> perdieron `getCandidatosReasignacion`/`reassignCarteraActiva`/
+> `useCandidatosReasignacion` y la llamada previa a `POST
+> /leads/asignar-lote` en `useDeactivateUsuario` -- ahora es una única
+> llamada a `DELETE /usuarios/:id`, ya no dos llamadas HTTP no atómicas. La
+> "carga activa de leads" (columna de solo lectura de la tabla) sigue siendo
+> backend real de leads tal como se describe arriba, sin cambios.
 
-- [x] Listado con rol, estado y carga activa de leads (carga activa: mock
-      de F3, ver nota de brecha arriba; filtro y paginación real desde F7,
-      ver nota de actualización arriba)
+- [x] Listado con rol, estado y carga activa de leads (carga activa: backend
+      real de leads, ver nota arriba; filtro y paginación real desde F7, ver
+      nota de actualización arriba)
 - [x] Alta y edición de usuario
-- [x] Baja lógica con reasignación obligatoria de la cartera activa
-      (reasignación: mock de F3, ver nota de brecha arriba; la baja lógica
-      en sí es backend real)
+- [x] Baja lógica con reasignación automática de la cartera activa (backend
+      real, atómica -- M2, ver nota de actualización arriba; el frontend
+      solo confirma la baja)
 - [x] Restablecimiento de contraseña (backend real, sin brecha)
 
 ---
@@ -858,6 +1049,86 @@ Solo administrador.
 > de trabajo de backend (M5-M9) que no existe todavía -- no son ítems sin
 > hacer del frontend, son puntos de integración pendientes ya marcados con
 > `INTEGRACION-BACKEND`.
+>
+> **Actualización (integración contra backend real de bridges, M4, dev-front,
+> 2026-08-19):** `bridges.api.ts` reemplaza el mock en memoria por
+> `httpClient` contra el backend real (`backend/src/routes/bridges.routes.ts`
+> + `bridge.controller.ts`/`bridge.service.ts`/`cuenta-publicitaria.service.ts`,
+> worktree `dev-back`, verificado leyendo el código fuente, no asumido).
+> - **Gap de contrato confirmado y resuelto -- token/prueba de conexión son
+>   por CUENTA PUBLICITARIA, no por bridge:** el mock original asumía
+>   `POST /bridges/:id/token`; el backend real expone
+>   `POST /bridges/:id/cuentas/:cuentaId/token` y
+>   `.../cuentas/:cuentaId/probar-conexion`. Se rediseñó la UI: `TokenForm`/
+>   `PruebaConexionBoton` ya no se renderizan una vez a nivel de
+>   `BridgeDetallePage` -- se montan POR CADA FILA de
+>   `CuentasPublicitariasList.tsx` (que ya tenía `cuentaId` por fila).
+>   `CredencialBridgeForm.tsx` para el estilo `TOKEN_PROVEEDOR` ya no
+>   renderiza ningún formulario a nivel de bridge, solo un texto que señala
+>   la sección de cuentas. Un bridge sin cuentas no muestra ningún control
+>   de token (el `EmptyState` ya existente lo cubre sin rama adicional).
+> - **Segundo gap descubierto durante la integración (no estaba en el
+>   encargo inicial):** el endpoint real de token solo verifica contra Graph
+>   API de Meta (`meta-token.service.ts::verificarTokenPagina`) -- no hay
+>   adaptador OAuth de LinkedIn del lado del servidor todavía, aunque
+>   `ESTILO_AUTENTICACION_POR_RED` siga clasificando a LinkedIn como
+>   `TOKEN_PROVEEDOR` igual que Facebook/Instagram. Se agregó
+>   `REDES_CON_INTEGRACION_TOKEN_CONECTADA` (`catalogos.ts`) para que solo
+>   Facebook/Instagram ofrezcan el formulario funcional por cuenta; LinkedIn
+>   sigue mostrando el aviso "Fase 2 · Proveedor OAuth no conectado
+>   todavía" sin llamar por error a la verificación de Meta.
+> - **Tercer gap, documentado pero NO resuelto en este cambio (requiere
+>   trabajo de backend):** `Bridge.tokenExpiraEn` es una constante `null` en
+>   el backend real (`bridge.service.ts::TOKEN_EXPIRA_EN`) -- la expiración
+>   real vive por cuenta (`CuentaPublicitaria.estadoToken`/`tokenExpiraEn`
+>   en Prisma), pero `CuentaPublicitariaDto` no expone ninguno de los dos
+>   campos por la API todavía. Consecuencia: `EstadoBridge ===
+>   "TOKEN_EXPIRADO"` nunca lo produce el backend real para los bridges
+>   actuales, así que la rama `tokenExpirado` de
+>   `bridges.utils.ts::evaluarAvisoBridge` y la columna "Expiración de
+>   token" de `BridgesTable.tsx`/`BridgeDetallePage.tsx` quedan
+>   efectivamente inalcanzables contra datos reales -- no se eliminaron
+>   (documentan un criterio real de docs/03/docs/05) pero necesitan que el
+>   backend exponga esa señal por cuenta en un cambio futuro.
+> - `CuentaPublicitariaBridge` (`tipos/bridge.ts`) gana `bridgeId` e
+>   `instagramAccountId` para calzar con `CuentaPublicitariaDto` real.
+> - Tests actualizados junto con la implementación (TDD, no se saltó pese a
+>   ser una integración): `bridges.api.test.ts` reescrito completo contra
+>   `httpClient` mockeado (antes contra `BRIDGES_MOCK`); nuevo
+>   `tests/bridges/detalle/CuentasPublicitariasList.test.tsx` cubre el
+>   token/prueba de conexión por cuenta (Facebook conectado, LinkedIn Fase
+>   2, X/Google Forms sin controles); `BridgeDetallePage.test.tsx`/
+>   `CredencialBridgeForm.test.tsx` actualizados a la nueva forma. 393 tests
+>   en todo el frontend, todos en verde. `tsc` + `vite build` sin errores.
+>   Verificado además end-to-end contra el backend real levantado con
+>   Docker (`dev-back`): login, listado, detalle con cuentas, carga de
+>   token (rechazo real de Graph API con credenciales de prueba), prueba de
+>   conexión, alta/baja de cuenta, alta/baja/reactivación de bridge y
+>   regeneración de clave -- todas las formas de respuesta coinciden
+>   exactamente con lo que espera `bridges.api.ts`.
+>
+> **Actualización (tercer gap resuelto, dev-front, 2026-08-19):** el backend
+> (`dev-back`) expuso `estadoToken`/`tokenExpiraEn` en `CuentaPublicitariaDto`,
+> cerrando el gap documentado arriba. `tipos/bridge.ts::CuentaPublicitariaBridge`
+> gana ambos campos; `bridges.utils.ts::evaluarAvisoBridge` ahora calcula
+> `tokenExpirado`/`tokenProximoAVencer` (umbral propio de 7 días, sin plazo
+> fijado en docs/03/docs/05 -- ver comentario en el archivo) como el PEOR CASO
+> entre `bridge.cuentasPublicitarias`, en vez de leer `bridge.estado`/
+> `bridge.tokenExpiraEn` (que siguen siendo datos muertos a nivel bridge, el
+> backend los manda constantes). `BridgesTable.tsx` ("Expiración de token" y
+> "Aviso") y `BridgeDetallePage.tsx` (resumen) usan el nuevo
+> `proximaExpiracionTokenBridge`. `CuentasPublicitariasList.tsx` gana un
+> indicador de estado de token POR FILA (sin agregación, vía
+> `evaluarEstadoTokenCuenta`) -- más preciso que el agregado a nivel bridge,
+> ya que ahí se tiene el contexto de cada cuenta. Antes de este cambio el
+> aviso de "token expirado" estaba permanentemente inalcanzable contra el
+> backend real (nunca se disparaba, porque leía el campo muerto); quedó
+> detectado y corregido en un review previo a integrar. 20 tests nuevos/
+> reescritos (413 en total en el frontend, todos en verde): `bridges.utils.test.ts`
+> (peor caso entre cuentas, umbral de 7 días, `proximaExpiracionTokenBridge`,
+> `evaluarEstadoTokenCuenta`), `CuentasPublicitariasList.test.tsx` (indicador
+> por fila), `BridgesPage.test.tsx`/`BridgeDetallePage.test.tsx` actualizados
+> a la nueva forma del DTO. `tsc` + `vite build` sin errores.
 
 - [x] Listado con estado, último lead recibido y expiración de token
 - [x] Detalle con cuentas publicitarias asociadas

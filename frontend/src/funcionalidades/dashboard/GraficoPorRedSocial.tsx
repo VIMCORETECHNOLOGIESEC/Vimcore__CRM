@@ -10,7 +10,9 @@ interface GraficoPorRedSocialProps {
 interface Fila {
   etiqueta: string;
   total: number;
-  tasaConversion: MetricasPorRedSocial["tasaConversion"];
+  ventas: number;
+  noVentas: number;
+  tasaConversionPct: number | null;
   color: string;
 }
 
@@ -24,7 +26,9 @@ export function GraficoPorRedSocial({ datos }: GraficoPorRedSocialProps) {
       {
         etiqueta: RED_SOCIAL_ETIQUETAS[redSocial],
         total: metrica.total,
-        tasaConversion: metrica.tasaConversion,
+        ventas: metrica.ventas,
+        noVentas: metrica.noVentas,
+        tasaConversionPct: metrica.tasaConversionPct,
         color: getColorCategorico(indice),
       },
     ];
@@ -55,8 +59,10 @@ function TooltipRedSocial({ active, payload }: { active?: boolean; payload?: { p
       <p className="font-medium text-foreground">{fila.etiqueta}</p>
       <p className="text-muted-foreground">{fila.total} leads</p>
       <p className="text-muted-foreground">
-        Conversión: {fila.tasaConversion.porcentaje} % ({fila.tasaConversion.numerador} de{" "}
-        {fila.tasaConversion.denominador})
+        Conversión:{" "}
+        {fila.tasaConversionPct === null
+          ? "sin cerrados en el rango"
+          : `${fila.tasaConversionPct} % (${fila.ventas} de ${fila.ventas + fila.noVentas})`}
       </p>
     </div>
   );

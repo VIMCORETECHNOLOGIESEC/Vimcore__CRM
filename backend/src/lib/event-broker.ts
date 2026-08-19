@@ -4,7 +4,8 @@ export type EventType =
   | "notificacion.nueva"
   | "lead.asignado"
   | "lead.etapa-cambiada"
-  | "sincronizacion.requerida";
+  | "sincronizacion.requerida"
+  | "metricas.actualizadas";
 
 export interface BrokerEvent {
   id: string;
@@ -69,6 +70,24 @@ export class EventBroker {
 
   connectionCount(userId: string): number {
     return this.connections.get(userId)?.size ?? 0;
+  }
+
+  /**
+   * M9 (docs/08-dashboard-kpis.md §5, "Actualización en tiempo real"): señal
+   * liviana de "algo relevante cambió" — a diferencia de `publish`, NO
+   * resuelve destinatarios por rol ni recalcula métricas acá. El backend
+   * emite a TODO usuario con al menos una conexión SSE activa en este
+   * instante (`this.connections.keys()`); el filtrado por alcance de rol ya
+   * ocurre server-side en cada `GET /api/v1/metricas/*` cuando el frontend
+   * hace refetch al recibir la señal. Un usuario sin conexión activa no
+   * recibe nada retenido para este evento — aceptable porque el spec pide
+   * que el frontend recargue incondicionalmente al reconectar, no que
+   * dependa de eventos perdidos durante la desconexión.
+   */
+  broadcastAll(type: EventType, data: unknown): void {
+    for (const userId of this.connections.keys()) {
+      this.publish(userId, type, data);
+    }
   }
 
   private createEvent(type: EventType, data: unknown): BrokerEvent {

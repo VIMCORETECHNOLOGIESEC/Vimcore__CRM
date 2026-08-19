@@ -1,146 +1,166 @@
 /**
  * Tipos del dashboard de métricas (F5, docs/08-dashboard-kpis.md). Espejo de
- * lo que devolverían los endpoints de M9 (`docs/06-modulos-backend.md`,
- * `GET /api/v1/metricas/*`) -- hoy no existen ni como esqueleto, ver
- * `funcionalidades/dashboard/metricas.api.ts`.
+ * la forma real de `GET /api/v1/metricas/*` -- verificado contra
+ * `backend/src/schemas/metricas.schema.ts`,
+ * `backend/src/controllers/metricas.controller.ts` y
+ * `backend/src/services/metricas.service.ts` (worktree `dev-back`).
  */
-import type { EtapaLead, RedSocial, SemaforoLead } from "./lead";
-import type { RolUsuario } from "./usuario";
+import type { EtapaLead, RedSocial } from "./lead";
 
 /**
- * Alcance por rol (docs/08 §1): igual patrón que `LeadsContextoRol` en
- * `leads.api.ts`. En el backend real esto lo resuelve el propio endpoint a
- * partir del JWT, no un parámetro de query.
+ * Los 6 presets de rango (docs/08 §4) -- literal idéntico al enum Zod
+ * `RANGOS_PRESET` de `metricas.schema.ts`. El backend resuelve la ventana de
+ * fechas concreta a partir de este valor (y, si es `"personalizado"`, de
+ * `desde`/`hasta`) -- el frontend ya NO calcula rangos de calendario en
+ * cliente (a diferencia del mock anterior, ver `rangoFechas.ts`).
  */
-export interface MetricasContextoRol {
-  rol: RolUsuario;
-  usuarioId: string;
-}
+export type RangoMetricas = "hoy" | "7d" | "30d" | "mes_actual" | "mes_anterior" | "personalizado";
 
 /**
- * Filtros combinables del dashboard (docs/08 §4). `fechaDesde`/`fechaHasta`
- * son `YYYY-MM-DD` inclusive, mismo formato que `LeadsQueryParams` en
- * `leads.api.ts`. `responsableId` solo tiene efecto visible en la UI para
- * administrador/supervisor (docs/08 §4, "Responsable: solo administrador y
- * supervisor") -- la restricción de visibilidad del control vive en el
- * componente, no acá.
+ * Query params compartidos por los 7 endpoints (docs/08 §4,
+ * `metricasQuerySchema`). `desde`/`hasta` (`YYYY-MM-DD`) solo tienen efecto
+ * -- y son obligatorios -- cuando `rango === "personalizado"`; el backend los
+ * valida con `superRefine`, el frontend no repite esa validación.
+ * `responsableId` solo tiene efecto real si lo pide administrador/supervisor
+ * -- si lo manda un asesor/vendedor, el backend lo ignora en silencio.
+ * `campania` es texto libre (`ILIKE` contra `payload_original ->>
+ * 'nombreCampania'`), no un id de catálogo.
  */
 export interface MetricasFiltros {
-  fechaDesde: string;
-  fechaHasta: string;
+  rango: RangoMetricas;
+  desde?: string;
+  hasta?: string;
   redSocial?: RedSocial;
-  campaniaId?: string;
+  campania?: string;
   responsableId?: string;
-}
-
-/** Numerador/denominador siempre junto al porcentaje (docs/08 §2.4, "32 % (16 de 50)"). */
-export interface RatioMetrica {
-  numerador: number;
-  denominador: number;
-  /** 0 cuando `denominador` es 0 -- nunca `NaN` en la UI. */
-  porcentaje: number;
 }
 
 /**
  * Comparativa contra el período inmediatamente anterior de igual duración
- * (docs/08 §4). `variacionPorcentaje` es `null` cuando el período anterior
- * tuvo menos de 10 leads ingresados -- en ese caso la UI muestra `actual`/
- * `anterior` como valores absolutos, sin porcentaje ("ruido presentado como
- * señal").
+ * (docs/08 §4). `variacionPorcentual` es `null` cuando el período anterior
+ * tuvo menos de 10 leads en la categoría específica del indicador -- el
+ * umbral ya viene resuelto desde el backend, el frontend no lo recalcula.
  */
-export interface ComparativaValor {
+export interface Comparativa {
   actual: number;
   anterior: number;
-  variacionPorcentaje: number | null;
+  variacionPorcentual: number | null;
+}
+
+export interface TasaConversionDetalle {
+  /** `null` cuando no hay cerrados en el período (denominador 0). */
+  porcentaje: number | null;
+  venta: number;
+  total: number;
+}
+
+export interface DistribucionSemaforo {
+  rojo: number;
+  amarillo: number;
+  verde: number;
+  /** Leads sin calificar todavía (`semaforo IS NULL`, D14). */
+  sinCalificar: number;
 }
 
 export interface ResumenMetricas {
-  totalIngresados: number;
-  /** Snapshot vigente (docs/08 §2.2 no data el conteo al rango de fechas, a diferencia de §2.1/§2.3). */
-  enGestion: number;
-  cerrados: { venta: number; noVenta: number };
-  /** Sobre leads cerrados en el rango (docs/08 §2.4), nunca sobre el total ingresado. */
-  tasaConversion: RatioMetrica;
-  /**
-   * INTEGRACION-BACKEND: en el mock se aproxima con `slaInicioEn -
-   * ingresadoEn` para leads que ya salieron de NUEVO (docs/08 §2.5); el
-   * cálculo real requiere `lead_eventos.ASIGNACION`/`CAMBIO_ETAPA` (M9). En
-   * horas, un decimal. `null` cuando no hay leads elegibles en el rango.
-   */
-  tiempoPromedioPrimeraRespuestaHoras: number | null;
-  /** Leads que nunca salieron de Nuevo en el rango -- se reportan aparte (docs/08 §2.5). */
-  leadsSinPrimeraRespuesta: number;
-  /** Solo etapa VENTA (docs/08 §2.6). En días, un decimal. `null` si no hay ventas cerradas en el rango. */
-  tiempoPromedioCierreDias: number | null;
-  /** Cierres en No Venta, reportados aparte (docs/08 §2.6). */
-  tiempoPromedioCierreNoVentaDias: number | null;
-  /**
-   * INTEGRACION-BACKEND: misma simplificación que la primera respuesta
-   * (docs/08 §2.7) -- ver comentario en `metricas.utils.ts`. `null` cuando
-   * no hay leads asignados en el rango.
-   */
-  cumplimientoSla: RatioMetrica | null;
-  /**
-   * Comparativa solo para los indicadores acotados al período (conteos de
-   * ingreso/cierre) -- "en gestión" es una foto del pipeline vigente, no un
-   * conteo de ventana temporal, así que compararlo contra el período
-   * anterior no tiene la misma lectura y se deja fuera (decisión de este
-   * cambio, no una regla documentada explícitamente en docs/08 §4).
-   */
-  comparativa: {
-    totalIngresados: ComparativaValor;
-    cerradosVenta: ComparativaValor;
-    cerradosNoVenta: ComparativaValor;
+  rango: { desde: string; hasta: string };
+  totalIngresados: Comparativa;
+  /** Snapshot vigente del pipeline (docs/08 §2.2) -- el backend igual expone comparativa, se muestra si es útil en la UI. */
+  enGestion: Comparativa;
+  cerrados: { total: Comparativa; venta: Comparativa; noVenta: Comparativa };
+  tasaConversion: {
+    actual: TasaConversionDetalle;
+    anterior: TasaConversionDetalle;
+    variacionPorcentual: number | null;
   };
+  /**
+   * `null` cuando no hay leads asignados en el rango. El backend no expone
+   * el detalle por lead (`lead_eventos.ASIGNACION`/`CAMBIO_ETAPA`, M9) --
+   * solo el promedio agregado.
+   */
+  tiempoPrimeraRespuesta: {
+    horasPromedio: number | null;
+    sinPrimeraRespuesta: number;
+    anteriorHorasPromedio: number | null;
+    variacionPorcentual: number | null;
+  };
+  /**
+   * Solo etapa VENTA (docs/08 §2.6). El backend NO calcula un tiempo
+   * promedio de cierre para No Venta -- gap frente al mock anterior, que sí
+   * lo aproximaba; documentado en `docs/07-modulos-frontend.md` F5.
+   */
+  tiempoPromedioCierre: {
+    diasPromedio: number | null;
+    anteriorDiasPromedio: number | null;
+    variacionPorcentual: number | null;
+  };
+  /**
+   * Solo expone el porcentaje agregado -- a diferencia de `tasaConversion`,
+   * el backend no devuelve aquí el numerador/denominador (`atendidosDentro24h`/
+   * `totalAsignados`) en esta respuesta.
+   */
+  cumplimientoSla: {
+    porcentaje: number | null;
+    anteriorPorcentaje: number | null;
+    variacionPorcentual: number | null;
+  };
+  /** 3.6 -- viene embebida acá, no como endpoint propio (a diferencia de lo que asumía el mock). */
+  distribucionSemaforo: DistribucionSemaforo;
 }
 
 export interface MetricasPorRedSocial {
   redSocial: RedSocial;
   total: number;
-  /** Cohorte: sobre los leads de esta red ingresados en el rango que ya cerraron (docs/08 §3.1). */
-  tasaConversion: RatioMetrica;
+  ventas: number;
+  noVentas: number;
+  /** `null` cuando no hay cerrados de esa red en el período (denominador 0). */
+  tasaConversionPct: number | null;
 }
 
 export interface MetricasPorAsesor {
   responsableId: string;
   nombre: string;
   total: number;
-  tasaConversion: RatioMetrica;
-  cumplimientoSla: RatioMetrica | null;
+  ventas: number;
+  noVentas: number;
+  tasaConversionPct: number | null;
+  cumplimientoSlaPct: number | null;
 }
 
-/** Paso del embudo (docs/08 §3.3). Solo NUEVO/CONTACTADO/CITA/VENTA -- NO_VENTA no es un paso. */
+/** `GET /metricas/por-etapa`: conteo plano por las 5 etapas, SIN orden de embudo ni % de caída -- endpoint distinto de `/embudo`. */
 export interface MetricasPorEtapa {
   etapa: EtapaLead;
   total: number;
+}
+
+/** Paso del embudo real (`GET /metricas/embudo`, docs/08 §3.3). Solo NUEVO/CONTACTADO/CITA/VENTA -- NO_VENTA no es un paso. */
+export interface EmbudoPaso {
+  etapa: EtapaLead;
+  total: number;
   /** % de caída respecto del paso anterior. `null` en el primer paso. */
-  caidaPorcentaje: number | null;
+  caidaPct: number | null;
 }
 
 export interface MetricasEmbudo {
-  pasos: MetricasPorEtapa[];
+  pasos: EmbudoPaso[];
   /** No Venta, mostrado aparte del embudo (docs/08 §3.3). */
-  noVentaTotal: number;
+  noVenta: number;
 }
 
 export interface MetricasPorCampania {
-  campaniaId: string;
-  nombre: string;
-  /** Una misma campaña puede correr en redes distintas y son registros independientes (docs/08 §3.4). */
-  redSocial: RedSocial;
+  nombreCampania: string;
+  /** Puede ser `null` -- leads previos a M5 sin `redSocial` (mismo gap que `leads.api.ts::mapLeadFromApi`). */
+  redSocial: RedSocial | null;
   total: number;
 }
 
 export interface RedSocialPorSemaforo {
   redSocial: RedSocial;
-  verde: number;
-  amarillo: number;
+  total: number;
   rojo: number;
-  total: number;
-  porcentajeVerde: number;
-}
-
-export interface DistribucionSemaforo {
-  semaforo: SemaforoLead;
-  total: number;
+  amarillo: number;
+  verde: number;
+  sinCalificar: number;
+  /** `null` cuando `total` de la red es 0. */
+  pctVerde: number | null;
 }

@@ -3,7 +3,6 @@ import type { Notificacion } from "@/tipos/notificacion";
 import {
   countNoLeidas,
   formatFechaRelativa,
-  sortByFechaDesc,
 } from "@/funcionalidades/notificaciones/notificaciones.utils";
 
 function notificacionFake(overrides: Partial<Notificacion> = {}): Notificacion {
@@ -66,18 +65,5 @@ describe("formatFechaRelativa", () => {
     const hace2dias = new Date(ahora.getTime() - 2 * 24 * 60 * 60 * 1000);
     const resultado = formatFechaRelativa(hace2dias.toISOString(), ahora);
     expect(resultado).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
-  });
-});
-
-describe("sortByFechaDesc", () => {
-  it("ordena de más reciente a más antigua sin mutar el arreglo original", () => {
-    const antigua = notificacionFake({ id: "antigua", creadaEn: "2026-01-01T00:00:00.000Z" });
-    const reciente = notificacionFake({ id: "reciente", creadaEn: "2026-06-01T00:00:00.000Z" });
-    const original = [antigua, reciente];
-
-    const ordenadas = sortByFechaDesc(original);
-
-    expect(ordenadas.map((n) => n.id)).toEqual(["reciente", "antigua"]);
-    expect(original.map((n) => n.id)).toEqual(["antigua", "reciente"]);
   });
 });

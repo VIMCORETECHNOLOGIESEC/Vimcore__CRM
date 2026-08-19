@@ -76,6 +76,21 @@ describe("M8 EventBroker", () => {
     expect(evictedFrames).toEqual(["sincronizacion.requerida"]);
   });
 
+  it("M9 broadcastAll delivers to every connected userId and skips disconnected ones (docs/08-dashboard-kpis.md §5)", () => {
+    const broker = new EventBroker({ bootNonce: "boot", capacity: 100 });
+    const connectedFrames: string[] = [];
+    broker.subscribe("connected", undefined, (event) => connectedFrames.push(event.type));
+
+    broker.broadcastAll("metricas.actualizadas", {});
+
+    expect(connectedFrames).toEqual(["metricas.actualizadas"]);
+    // Sin conexión activa, "disconnected" nunca entra a `connections.keys()`
+    // — broadcastAll no le publica nada, ni siquiera lo retiene.
+    const replayed: string[] = [];
+    broker.subscribe("disconnected", undefined, (event) => replayed.push(event.type));
+    expect(replayed).toEqual([]);
+  });
+
   it("removes only a failed connection and leaves its sibling tab active", () => {
     const broker = new EventBroker({ bootNonce: "boot", capacity: 100 });
     const sibling: string[] = [];

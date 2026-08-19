@@ -8,6 +8,34 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 
 ---
 
+## Estado consolidado (verificado contra código real en `test/integration`, 2026-08-19)
+
+| Módulo | Estado | Pendientes |
+|---|---|---|
+| M1 — Base e infraestructura | ✅ Completo | — |
+| M2 — Autenticación y usuarios | ✅ Completo | — |
+| M3 — Normalización y deduplicación | ✅ Completo | — |
+| M4 — Ingesta y bridges | ⚠️ Parcial | Adaptador LinkedIn (bloqueado por aprobación externa del Marketing Developer Platform); adaptador X dedicado (trivial sobre el endpoint genérico, no implementado) |
+| M5 — Gestión de leads | ⚠️ Completo con deuda técnica | Parámetro `vista=activos\|cerrados` sin implementar (`listLeadsQuerySchema`); `limite` valida rango abierto 1-100 en vez de whitelist 10/25/50/100 (ver "Backlog no bloqueante" más abajo) |
+| M6 — Asignación, traspaso y SLA | ✅ Completo | — |
+| M7 — Citas | ✅ Completo | — |
+| M8 — Notificaciones y tiempo real | ✅ Completo | — |
+| M9 — Dashboard y métricas | ✅ Completo | — |
+
+**Ningún módulo backend propuesto está sin empezar.** 7 de 9 están terminados al 100%. M4 tiene dos adaptadores externos pendientes por diseño (dependencia externa documentada desde el inicio, no un olvido — ver "Orden de ejecución sugerido" al final de este documento). M5 tiene dos deudas técnicas puntuales y acotadas, ninguna bloqueante para el resto del sistema.
+
+---
+
+## Backlog no bloqueante — mejoras post-lanzamiento
+
+Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometido en el scope MVP original, o ya tiene workaround funcional. No bloquean el lanzamiento.
+
+- **`limite` sin whitelist** (M5, `leads.schema.ts::listLeadsQuerySchema`): valida rango abierto 1-100 en vez de la whitelist fija 10/25/50/100 que usa el frontend. Endurecimiento defensivo, sin exploit conocido (ya capado en 100). Esfuerzo: trivial (1 línea de schema).
+- **Parámetro `vista=activos|cerrados`** (M5, `GET /leads`): mejora de UX decidida durante el desarrollo de F3 (tabs "Pendientes/Cerrados"), no prometida en `01-alcance-mvp.md`. Esfuerzo: bajo (schema + `buildWhere` en `leads.service.ts`).
+- **Validación de traspaso asesor→vendedor y conflicto de rol dual, pendiente de confirmar con el cliente** (no es deuda de código): `docs/01-alcance-mvp.md` riesgos R4 y R6 pedían validar con el cliente la regla de traspaso y el conflicto "misma persona = asesor y vendedor" **antes de M6**. M6 ya está completo, implementado sobre el supuesto de `docs/02-reglas-negocio.md` §5 (marcado ahí mismo como "a confirmar"), sin evidencia documentada de que esa validación con el cliente haya ocurrido. Conviene cerrar esta decisión de producto antes de operar con usuarios reales que puedan combinar ambos roles.
+
+---
+
 ## M1 — Base e infraestructura
 
 > **Progreso:** implementado en `configuracion-base-monorepo` (PR1
@@ -19,7 +47,11 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 - [x] Monorepo pnpm con workspaces `backend` y `frontend`
 - [x] Express + TypeScript con configuración estricta del compilador
 - [x] Prisma conectado a PostgreSQL en Docker
-- [ ] Esquema inicial completo y primera migración
+- [x] Esquema inicial completo y primera migración (2026-08-19). Ítem
+      obsoleto del arranque de M1: el schema ya pasó por 14 migraciones
+      acumuladas a través de M3-M4 (`backend/prisma/migrations/`), muy por
+      encima de "la primera" — se marca completo en vez de dejarlo como deuda
+      fantasma del checklist.
 - [x] Middleware de errores centralizado con clase `AppError`
 - [x] Validación con Zod en el borde de cada controller (`auth.controller`;
       `salud.controller` no recibe body/params/query, no aplica — hallazgo H3
@@ -45,14 +77,23 @@ Desacoplado a propósito: otro equipo integrará el SSO contra esta misma API.
 - [x] Middleware `requiereAutenticacion` (identificador real: `requireAuthentication`)
 - [x] Middleware `requiereRol(...roles)` (identificador real: `requireRole(...roles)`)
 - [x] CRUD de usuarios (solo administrador — `requireRole("ADMINISTRADOR")` en los 5 endpoints)
-- [ ] Baja lógica de usuario con reasignación obligatoria de su cartera activa
-      — **implementado solo en parte**: `DELETE /api/v1/usuarios/:id` sí
-      aplica la baja lógica (`activo=false` + revocación de todos sus refresh
-      tokens en la misma transacción). La **reasignación obligatoria de la
-      cartera activa queda explícitamente fuera de alcance de este cambio**:
-      no existe todavía una tabla `leads`/cartera (llega en M5/M6); la casilla
-      se deja sin marcar hasta que ese módulo exista y la reasignación pueda
-      implementarse de verdad.
+- [x] Baja lógica de usuario con reasignación obligatoria de su cartera activa
+      — `DELETE /api/v1/usuarios/:id` (`usuarios.service.ts::deactivateUsuario`)
+      es transaccional de punta a punta: si el usuario dado de baja es
+      `ASESOR`/`VENDEDOR` y tiene cartera abierta (leads en su pool, no
+      terminales; para `ASESOR` excluye los ya traspasados con
+      `vendedorId` no nulo), cada lead se reasigna a un candidato activo del
+      mismo pool (reutiliza `selectResponsable` para elegir candidato
+      lead-por-lead en memoria; la escritura persiste agrupada por receptor
+      con `applyAsignacionesEnLote` de `asignacion.service.ts` — fix de
+      bulk writes, O(candidatos) en vez de O(cartera) — motivo
+      `baja_usuario`). **"Obligatoria" =
+      bloqueante**: si no hay ningún otro candidato activo del mismo pool
+      (p. ej. es el último asesor activo), la baja se rechaza entera con 409
+      `baja_sin_candidato_reasignacion` — nada se persiste (ni la baja ni
+      ninguna reasignación parcial). `activo=false` + revocación de refresh
+      tokens sigue en la misma transacción. `ADMINISTRADOR`/`SUPERVISOR`
+      nunca tienen cartera, así que su baja nunca dispara reasignación.
 
 **Pruebas obligatorias:** cada endpoint protegido rechaza petición sin token, con
 token expirado y con rol insuficiente.
@@ -82,10 +123,15 @@ reingreso, hace 91 días sí.
 
 ## M4 — Ingesta y bridges
 
-> **Progreso:** rebanada parcial implementada en `m4-ingesta-bridges-parcial`
-> (endpoint genérico + adaptador Google Forms). Meta, LinkedIn, X, cifrado de
-> tokens, CRUD de bridges/cuentas publicitarias y los trabajos programados
-> quedan fuera de alcance de este cambio — llegan en un cambio SDD futuro.
+> **Progreso:** rebanada inicial implementada en `m4-ingesta-bridges-parcial`
+> (endpoint genérico + adaptador Google Forms). Nota obsoleta (2026-08-19):
+> este párrafo listaba como "fuera de alcance" el CRUD de administración de
+> token y los trabajos programados de verificación de token/bridge mudo —
+> ambos ya se implementaron y están marcados abajo. LinkedIn (adaptador OAuth2
+> + consulta programada) y X (no requiere adaptador propio: reusa
+> `POST /api/v1/ingesta/generico`, ya implementado, ver §5 de
+> `05-bridges.md`) quedan como próximo desarrollo — LinkedIn bloqueado
+> externamente por la aprobación del Marketing Developer Platform (semanas).
 >
 > **Corrección retroactiva (M5, DD1):** `deduplicacion.service.ts::createLead`
 > no poblaba `redSocial`/`payloadOriginal`/`camposDinamicos` en `leads` pese a
@@ -93,27 +139,163 @@ reingreso, hace 91 días sí.
 > Corregido en `m5-gestion-leads` PR1 (commit `79f95aa`), con backfill NULL-only
 > para leads previos (`camposDinamicos` queda fuera del backfill a propósito,
 > ver `migration.sql`). El contrato y los endpoints de M4 no cambiaron.
+>
+> **Adaptador Meta (2026-08-18):** handshake + verificación de firma + consulta
+> de detalle implementados (`GET`/`POST /api/v1/ingesta/meta`,
+> `adapters/meta.adapter.ts`, `services/meta-webhook.service.ts`,
+> `lib/firma-meta.ts`). Fuera de esta rebanada, explícitamente: endpoints de
+> administración de token (carga/renovación contra `/debug_token`) y el trabajo
+> programado de verificación diaria de token — ambos ya listados abajo, sin
+> marcar. `campaign_id` se agregó a la consulta de detalle
+> (`GET /{leadgen_id}?fields=...,campaign_id`) — `LeadEntrante.idExternoCampania`
+> ya no queda `null` a propósito; se resuelve desde ahí, `null` solo si Graph
+> API no lo devuelve para ese lead puntual.
+>
+> **Webhook de Meta pasado al patrón durable (2026-08-18, cambio consciente):**
+> el `POST` ya NO consulta Graph API de forma síncrona antes de responder.
+> Encola cada `leadgen_id` en el mismo buzón `leads_recibidos` que usa
+> `POST /api/v1/ingesta/generico` (`repositories/lead-recibido.repository.ts::
+> aceptarLeadgenMetaPendiente`, sobre `META_PENDIENTE_DETALLE` v2, idempotente
+> por `(bridgeId, leadgenId)`). La consulta de detalle (con sus 3 reintentos),
+> el mapeo a `LeadEntrante` y la actualización de `estadoToken` ante token
+> inválido corren en el worker, DESPUÉS del commit del recibo
+> (`meta-webhook.service.ts::resolverLeadgenMeta`, invocado desde
+> `ingesta.service.ts::procesarRecepcion` — resuelve el `LeadEntrante` ANTES de
+> abrir la transacción de dedupe, porque la llamada a Graph API es I/O lento
+> que nunca debe correr dentro de una transacción de Postgres abierta; el
+> lease de 60s adquirido por `claimNext` protege esa ventana). Reutiliza el
+> mecanismo de reintento/`FALLA_MANUAL` ya existente del worker genérico en
+> vez de inventar uno nuevo solo para Meta — un fallo irrecuperable (cuenta no
+> encontrada, token no vigente, Graph API agotando reintentos) lanza y deja
+> que el ciclo estándar de 60s/300s decida.
+>
+> **Fix (2026-08-18):** `aceptarLeadgenMetaPendiente` inserta
+> `leads_recibidos.datos_incompletos = false` siempre, porque al encolar el
+> webhook solo se conoce `leadgen_id`/`page_id` — el teléfono/correo real
+> recién se sabe tras resolver el detalle en el worker. `completeClaim`
+> ahora recibe `datosIncompletos` (calculado sobre el `LeadEntrante` YA
+> resuelto) y lo persiste en el mismo `UPDATE` que cierra la recepción, así
+> la bitácora de auditoría queda alineada con el lead real.
+>
+> **Fix (2026-08-19):** al investigar el fix anterior se encontró que
+> `procesarRecepcion` (el worker durable que reemplazó al `ingestarLead`
+> síncrono retirado) registraba SIEMPRE `bridge_logs` nivel INFO al
+> completar, para **cualquier bridge** — v1 genérico incluido, no solo Meta.
+> Era una regresión de la migración al buzón durable: el contrato retirado
+> (`describe.skip` en `ingesta.service.test.ts`) sí distinguía
+> INFO/ADVERTENCIA según `datosIncompletos`, y esa distinción se perdió al
+> mover la lógica al worker. Corregido: `procesarRecepcion` unifica el nivel
+> para todos los bridges (`ADVERTENCIA` si `datosIncompletos`, `INFO` si no),
+> restaurando la regla de docs/05-bridges.md §8 ("notificar a supervisores")
+> sin distinguir v1/v2 — ya no hace falta una rama especial para Meta.
 
 - [x] Contrato `LeadEntrante` y normalizador compartido
 - [x] Buzón PostgreSQL `leads_recibidos` con idempotencia, lease y recuperación
 - [x] Endpoint genérico `POST /api/v1/ingesta/generico` con clave por bridge
 - [x] Adaptador Google Forms
-- [ ] Adaptador Meta: handshake, verificación de firma, consulta de detalle
+- [x] Adaptador Meta — handshake: responder `hub.challenge` en la suscripción
+      inicial (`GET /api/v1/ingesta/meta`, `META_WEBHOOK_VERIFY_TOKEN`)
+- [x] Adaptador Meta — verificación de firma `X-Hub-Signature-256`
+      (HMAC-SHA256 con `META_APP_SECRET` sobre el cuerpo crudo, `lib/firma-meta.ts`)
+- [x] Adaptador Meta — consulta de detalle (ejecutada por el worker durable,
+      no por el `POST` del webhook): `GET /{leadgen_id}` con el Page Access
+      Token descifrado, `campaign_id` incluido en los `fields`, reintento con
+      backoff exponencial (3 intentos), y registro del `leadgen_id` en
+      `bridge_logs` para reproceso manual si se agotan; token ya
+      `TOKEN_EXPIRADO`/`ERROR` u error de Graph API que indica token
+      inválido/revocado (código 190) evita/corta los reintentos y marca la
+      cuenta `TOKEN_EXPIRADO`
+- [x] Adaptador Meta — webhook encolado en `leads_recibidos` (sobre
+      `META_PENDIENTE_DETALLE`, idempotente por `(bridgeId, leadgenId)`):
+      mismo patrón de buzón/lease/worker que el endpoint genérico
 - [ ] Adaptador LinkedIn: OAuth, consulta programada, refresco de token
 - [ ] Adaptador X sobre el endpoint genérico con atribución UTM
-- [ ] Cifrado y descifrado de tokens (AES-256-GCM)
+- [x] Endpoints de administración de token de Meta (`05-bridges.md` §7): carga
+      y renovación con verificación inmediata contra `/debug_token`; el token
+      nunca se devuelve por API (2026-08-18). Contrato real por
+      `CuentaPublicitaria` (una Página), NO por `Bridge` — un bridge puede
+      tener varias Páginas, cada una con su propio Page Access Token
+      (`03-modelo-datos.md`). `POST /bridges/:id/cuentas/:cuentaId/token`
+      (`services/meta-token.service.ts::verificarTokenPagina`,
+      `services/cuenta-publicitaria.service.ts::cargarToken`): un solo intento
+      contra `/debug_token`, sin reintento/backoff (a diferencia de la consulta
+      de detalle de leadgen); un token que Graph API rechaza responde 422 y
+      NUNCA se cifra ni se persiste. `POST
+      /bridges/:id/cuentas/:cuentaId/probar-conexion`
+      (`cuenta-publicitaria.service.ts::probarConexion`): puramente
+      diagnóstica, nunca modifica `estadoToken` ni ninguna otra columna.
+      **Gap de integración**: el mock del frontend
+      (`frontend/src/funcionalidades/bridges/bridges.api.ts`) simula esto a
+      nivel de `Bridge` completo (`POST /bridges/:id/token`) — decisión de
+      mock explícita, no el contrato real; el frontend deberá adaptarse al
+      endpoint por `cuentaId` cuando integre contra el backend real.
+      `estadoToken`/`tokenExpiraEn` viajan en `CuentaPublicitariaDto`
+      (`services/cuenta-publicitaria.service.ts::toCuentaPublicitariaDto`,
+      2026-08-19) — se agregaron tras detectar que el DTO nunca los exponía
+      pese a que ya se persistían correctamente, dejando sin dato al
+      indicador visual de "token por vencer/vencido" del panel de bridges.
+      `tokenCifrado` sigue sin exponerse jamás.
+- [x] Cifrado y descifrado de tokens (AES-256-GCM) — `lib/cifrado-token.ts`;
+      migración additiva de `estado_token`/`token_cifrado`/`token_expira_en`/
+      `secreto_webhook` en `CuentaPublicitaria` (decisión 2026-08-18, granularidad
+      por Página — ver `03-modelo-datos.md` §cuentas_publicitarias). Ahora
+      consumido por el adaptador Meta (descifrado del Page Access Token antes
+      de consultar Graph API)
 - [x] CRUD de bridges y cuentas publicitarias
 - [x] Registro en `bridge_logs` de todo error de recepción
 - [x] Worker durable con reintentos fijos (60 s/300 s) y `FALLA_MANUAL`
-- [ ] Trabajo programado: verificación de expiración de tokens
-- [ ] Trabajo programado: detección de bridge sin actividad por 72 h
+- [x] Trabajo programado: verificación diaria de token vigente por Página vía
+      `/debug_token` y notificación a administradores ante invalidez/revocación
+      (2026-08-18). `services/verificacion-token.service.ts::verificarTokensVigentes`
+      + `jobs/verificacion-token.job.ts::startVerificacionTokenJob` — mismo
+      patrón que `bridge-mudo.job.ts`/`sla-atrasado.job.ts` (guarda de
+      re-entrada, `unref()`, seam de testabilidad), intervalo de 24h. Escanea
+      TODAS las `CuentaPublicitaria` con `tokenCifrado` no nulo (universo
+      completo, no filtrado por bridge — el criterio es por Página, no por
+      ventana temporal como bridge-mudo); un token inválido/revocado marca
+      `estadoToken = TOKEN_EXPIRADO` y registra `bridge_logs` nivel `ERROR` —
+      `registrarBridgeLog` en ese nivel YA dispara notificación real a
+      administradores (`bridge-log.service.ts`), cumpliendo el requisito sin
+      lógica adicional. Un token vigente con `tokenExpiraEn` distinto se
+      actualiza sin volver a cifrar (el token no cambió).
+- [x] Trabajo programado: detección de bridge sin actividad por 72 h
+      (2026-08-19). Criterio real implementado (`services/bridge-mudo.service.ts`,
+      `bridgeRepository.findBridgesMudos`): `Bridge.estado = ACTIVO`,
+      `ultimoLeadEn` no nulo y vencido hace más de 72 h, y "campaña activa" se
+      resuelve como "sin ninguna `CuentaPublicitaria` registrada o con al
+      menos una `activa = true`" — `Campania` existe en el schema pero no se
+      escribe en ningún flujo real todavía, así que no participa del filtro.
+      Un bridge con `ultimoLeadEn IS NULL` (nunca recibió un lead) queda
+      excluido: no hay columna de fecha de creación en `Bridge` para medir
+      "72 h de silencio" sin una marca de referencia. Anti-spam vía
+      `Bridge.advertenciaMudoEnviada` (mismo patrón que
+      `Cita.recordatorioEnviado`): se resetea en `touchUltimoLeadEn` cuando
+      llega un lead nuevo. La advertencia se escribe en `bridge_logs` nivel
+      `ADVERTENCIA` (visible en `GET /bridges/:id/logs`), no como notificación
+      push a administradores — `registrarBridgeLog` solo dispara notificación
+      en nivel `ERROR`; extender ese disparo a `ADVERTENCIA` queda fuera de
+      esta rebanada. `touchUltimoLeadEn` quedó wireado en
+      `ingesta.service.ts::procesarRecepcion` (antes no se llamaba desde
+      ningún flujo de producción)
 
 **Pruebas obligatorias:** `X-Bridge-Key` ausente, malformada o que no coincide
 con ningún bridge activo se rechaza con 401 y registra una fila `bridge_logs`
-ERROR (control por clave de API, no firma HMAC — eso es específico del futuro
-adaptador Meta, fuera de esta rebanada); el mismo `idExternoLead` dos veces,
-incluida entrega concurrente, produce un solo lead; lead sin teléfono ni
-correo se persiste con marca de dato incompleto.
+ERROR; el mismo `idExternoLead` dos veces, incluida entrega concurrente,
+produce un solo lead; lead sin teléfono ni correo se persiste con marca de
+dato incompleto; firma `X-Hub-Signature-256` ausente o inválida en el webhook
+de Meta se rechaza con 401 y registra `bridge_logs` ERROR sin encolar nada;
+firma válida encola el `leadgen_id` en `leads_recibidos` (sobre
+`META_PENDIENTE_DETALLE`) de forma idempotente y responde 200 sin llamar a
+Graph API; el worker resuelve ese sobre — consulta de detalle exitosa mapea
+el `LeadEntrante` y completa el mismo recibo; fallo transitorio de Graph API
+reintenta con backoff hasta 3 veces, registra `bridge_logs` ERROR y propaga
+el rechazo (el ciclo estándar de reintento/`FALLA_MANUAL` del worker se
+encarga, no un mecanismo nuevo); token ya `TOKEN_EXPIRADO` o detectado como
+inválido por Graph API (código 190) evita/corta los reintentos y marca la
+cuenta.
+
+La aceptación HTTP confirma solo el recibo durable. El worker completa deduplicación,
+eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del commit.
 
 La aceptación HTTP confirma solo el recibo durable. El worker completa deduplicación,
 eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del commit.
@@ -131,18 +313,31 @@ eventos y vínculo al lead atómicamente; SSE y asignación ocurren después del
       > cualquier entero entre 1 y 100 pasa (p. ej. `limite=37`), así que el
       > servidor no impone el mismo conjunto fijo que usa el cliente. Falta
       > acotar `limite` a esos 4 valores exactos en `leads.schema.ts`.
+- [ ] `GET /api/v1/leads` — parámetro `vista` (`activos` | `cerrados`,
+      default `activos`) (2026-08-19, decisión de diseño para la tabla de
+      leads de F3 en `dev-front`: tabs "Pendientes/En proceso" — vista por
+      defecto — vs "Cerrados", con Venta/No Venta dentro de esta última).
+      `activos` = `etapa NOT IN (VENTA, NO_VENTA)`; `cerrados` = `etapa IN
+      (VENTA, NO_VENTA)`. Si el query ya trae `etapa` puntual, esta gana
+      sobre `vista` (ya acota a una sola etapa, terminal o no) — `vista`
+      solo decide el conjunto por defecto cuando no hay una etapa específica
+      elegida, y se combina con el resto de filtros existentes sin
+      reemplazarlos. Único punto a tocar: `listLeadsQuerySchema`
+      (`leads.schema.ts`) + `buildWhere` (`leads.service.ts`). No hace falta
+      índice nuevo — `idx_leads_etapa_ingreso` ya cubre `etapa`, y el
+      volumen de esta CRM no justifica uno compuesto para un `IN`/`NOT IN`
+      de 2-3 valores.
 - [x] Filtrado automático por rol: asesor y vendedor solo ven su cartera
 - [x] `GET /api/v1/leads/:id` con verificación de acceso
 - [x] `PATCH /api/v1/leads/:id/etapa` con formulario obligatorio
-      > **Pendiente (validación server-side faltante):** `leads.service.ts::transitionEtapa`
-      > (líneas 134-201) solo rechaza reabrir una etapa terminal (línea 147,
-      > `ETAPAS_TERMINALES.includes(lead.etapa)`) pero no valida que `body.etapa`
-      > sea una transición válida desde `lead.etapa` — no hay chequeo equivalente
-      > a la whitelist de `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`
-      > (progreso lineal Nuevo → Contactado → Cita, nunca se retrocede, más salto
-      > directo a cierre desde cualquier etapa no terminal — docs/02-reglas-negocio.md
-      > §6). Hoy el endpoint acepta, por ejemplo, `CITA → NUEVO`. Falta agregar esa
-      > validación server-side antes de `leadRepository.updateEtapa` (línea 185).
+      > (2026-08-19) `leads.service.ts::transitionEtapa` ahora valida server-side
+      > que `body.etapa` sea una transición válida desde `lead.etapa` actual,
+      > vía la whitelist `TRANSICIONES_VALIDAS` (progreso lineal Nuevo →
+      > Contactado → Cita, nunca se retrocede, más salto directo a cierre desde
+      > cualquier etapa no terminal — docs/02-reglas-negocio.md §6), replicando
+      > `frontend/src/funcionalidades/leads/etapas.ts::TRANSICIONES_VALIDAS`.
+      > Responde 409 `transicion_invalida` cuando la transición pedida no está
+      > en la whitelist.
 - [x] Validación de campos obligatorios en etapas terminales
 - [x] Escritura de `lead_eventos` en la misma transacción que cada cambio
 - [x] `GET /api/v1/formularios/:etapa` — definición de formulario
@@ -327,18 +522,36 @@ productor ni un scheduler de expiración de tokens.
 
 ## M9 — Dashboard y métricas
 
-- [ ] Servicio de agregación de KPIs (ver `08-dashboard-kpis.md`)
-- [ ] `GET /api/v1/metricas/resumen`
-- [ ] `GET /api/v1/metricas/por-red-social`
-- [ ] `GET /api/v1/metricas/por-asesor`
-- [ ] `GET /api/v1/metricas/por-etapa`
-- [ ] `GET /api/v1/metricas/por-campania`
-- [ ] `GET /api/v1/metricas/embudo`
-- [ ] `GET /api/v1/metricas/red-social-x-semaforo` — matriz cruzada
-- [ ] Filtro por rango de fechas en todos los endpoints de métricas
-- [ ] Alcance por rol: general para administrador y supervisor, personal para
+- [x] Servicio de agregación de KPIs (ver `08-dashboard-kpis.md`)
+- [x] `GET /api/v1/metricas/resumen`
+- [x] `GET /api/v1/metricas/por-red-social`
+- [x] `GET /api/v1/metricas/por-asesor`
+- [x] `GET /api/v1/metricas/por-etapa`
+- [x] `GET /api/v1/metricas/por-campania`
+- [x] `GET /api/v1/metricas/embudo`
+- [x] `GET /api/v1/metricas/red-social-x-semaforo` — matriz cruzada
+- [x] Filtro por rango de fechas en todos los endpoints de métricas
+- [x] Alcance por rol: general para administrador y supervisor, personal para
       asesor y vendedor
-- [ ] Emisión de actualización de métricas por SSE ante cambios relevantes
+- [x] Emisión de actualización de métricas por SSE ante cambios relevantes —
+      diseño "broadcast a todos los conectados": el backend NO recalcula
+      métricas ni resuelve destinatarios por rol antes de emitir; emite una
+      señal liviana `metricas.actualizadas` (`EventBroker.broadcastAll`,
+      `src/lib/event-broker.ts`) a TODO usuario con una conexión SSE activa,
+      y es el frontend quien hace refetch de sus endpoints de métricas —
+      esos endpoints ya aplican el alcance por rol server-side en cada
+      request, así que el filtrado ocurre en el fetch, no en la señal (evita
+      el costo de resolver destinatarios en cada evento de negocio, que es
+      justo lo que pide evitar la nota de rendimiento del spec). Agrupado en
+      una ventana de debounce de 2s (`scheduleMetricasBroadcast`,
+      `src/lib/metricas-broadcast.ts`) para que un ingreso masivo de leads no
+      dispare un recálculo por cada uno. Tres puntos de disparo: ingreso de
+      lead (`ingesta.service.ts::procesarRecepcion`), asignación — un único
+      hook en `asignacion.service.ts::applyAsignacion`, el punto de escritura
+      compartido por los 4 caminos de asignación de ese archivo más la
+      reasignación de cartera de `usuarios.service.ts` — y cambio de
+      etapa/cierre (`leads.service.ts::transitionEtapa`, cubre VENTA/NO_VENTA
+      como caso de cierre sin lógica separada).
 
 **Pruebas obligatorias:** un asesor consultando métricas recibe solo datos de su
 cartera; los conteos por etapa suman el total de leads del período.

@@ -6,8 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Notificacion } from "@/tipos/notificacion";
 
+// `useNotificaciones.ts` sigue usando `useAuth()` para escopar la query key
+// por `user.id` (ver esa nota en el propio hook): sin este mock, el `useAuth`
+// real lanza porque este árbol no está envuelto en `<AuthProvider>`.
 vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
-  useAuth: vi.fn(),
+  useAuth: () => ({
+    user: { id: "u1", nombre: "Ana", correo: "ana@crm.test", rol: "ASESOR" },
+  }),
 }));
 
 vi.mock("@/funcionalidades/notificaciones/notificaciones.api", () => ({
@@ -31,7 +36,6 @@ vi.mock("@/funcionalidades/notificaciones/NotificacionToast", () => ({
   showNotificacionToast: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
 const { fetchNotificacionesApi, markNotificacionLeidaApi, markAllNotificacionesLeidasApi } =
   await import("@/funcionalidades/notificaciones/notificaciones.api");
 const { CampanaNotificaciones } = await import(
@@ -41,7 +45,6 @@ const { showNotificacionToast } = await import(
   "@/funcionalidades/notificaciones/NotificacionToast"
 );
 
-const useAuthMock = vi.mocked(useAuth);
 const fetchNotificacionesApiMock = vi.mocked(fetchNotificacionesApi);
 const markNotificacionLeidaApiMock = vi.mocked(markNotificacionLeidaApi);
 const markAllNotificacionesLeidasApiMock = vi.mocked(markAllNotificacionesLeidasApi);
@@ -77,14 +80,6 @@ function renderCampana() {
 }
 
 beforeEach(() => {
-  useAuthMock.mockReturnValue({
-    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol: "ASESOR" },
-    isAuthenticated: true,
-    isLoading: false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    hasRole: () => true,
-  });
   markNotificacionLeidaApiMock.mockResolvedValue(undefined);
   markAllNotificacionesLeidasApiMock.mockResolvedValue(undefined);
   realtime.estado = "connected";

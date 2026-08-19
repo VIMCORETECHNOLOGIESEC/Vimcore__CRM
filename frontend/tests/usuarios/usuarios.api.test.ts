@@ -18,8 +18,6 @@ const {
   resetPasswordApi,
   deactivateUsuarioApi,
   getCargaActivaDeUsuario,
-  getCandidatosReasignacion,
-  reassignCarteraActiva,
 } = await import("@/funcionalidades/usuarios/usuarios.api");
 
 const getMock = vi.mocked(httpClient.get);
@@ -149,7 +147,7 @@ describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
   });
 });
 
-describe("usuarios.api — carga activa y reasignación (integración F3/F4, backend real de leads)", () => {
+describe("usuarios.api — carga activa de leads (integración F3/F4, backend real de leads)", () => {
   it("getCargaActivaDeUsuario cuenta los leads no terminales devueltos por GET /leads?responsableId=", async () => {
     getMock.mockResolvedValue({
       leads: [
@@ -175,59 +173,5 @@ describe("usuarios.api — carga activa y reasignación (integración F3/F4, bac
     getMock.mockResolvedValue({ leads: [], total: 0, pagina: 1, limite: 100 });
 
     expect(await getCargaActivaDeUsuario("00000000-0000-0000-0000-000000000000")).toBe(0);
-  });
-
-  it("getCandidatosReasignacion solo ofrece usuarios del mismo rol operativo, sin incluir al propio usuario", async () => {
-    // getCatalogoResponsablesConRol combina rol=ASESOR + rol=VENDEDOR (2 llamadas).
-    getMock
-      .mockResolvedValueOnce({
-        responsables: [
-          { id: "asesor-1", nombre: "Marta Herrera", rol: "ASESOR" },
-          { id: "asesor-2", nombre: "Julián Peña", rol: "ASESOR" },
-        ],
-      })
-      .mockResolvedValueOnce({ responsables: [{ id: "vendedor-1", nombre: "Sofía Vintimilla", rol: "VENDEDOR" }] });
-
-    const candidatos = await getCandidatosReasignacion("ASESOR", "asesor-1");
-
-    expect(candidatos.map((c) => c.id)).toEqual(["asesor-2"]);
-  });
-
-  it("getCandidatosReasignacion devuelve una lista vacía para administrador/supervisor (no cargan cartera), sin llamar al backend", async () => {
-    expect(await getCandidatosReasignacion("ADMINISTRADOR", "admin-1")).toEqual([]);
-    expect(await getCandidatosReasignacion("SUPERVISOR", "sup-1")).toEqual([]);
-    expect(getMock).not.toHaveBeenCalled();
-  });
-
-  it("reassignCarteraActiva trae la cartera activa del usuario y llama a POST /leads/asignar-lote con esos ids", async () => {
-    getMock.mockResolvedValue({
-      leads: [leadBackendFake({ id: "lead-01" }), leadBackendFake({ id: "lead-03" })],
-      total: 2,
-      pagina: 1,
-      limite: 100,
-    });
-    postMock.mockResolvedValue({
-      exitosos: [
-        { leadId: "lead-01", asesorId: "asesor-2" },
-        { leadId: "lead-03", asesorId: "asesor-2" },
-      ],
-      fallidos: [],
-      resumen: { solicitados: 2, exitosos: 2, fallidos: 0 },
-    });
-
-    await reassignCarteraActiva("asesor-1", "asesor-2");
-
-    expect(postMock).toHaveBeenCalledWith("/leads/asignar-lote", {
-      leadIds: ["lead-01", "lead-03"],
-      asesorId: "asesor-2",
-    });
-  });
-
-  it("reassignCarteraActiva no llama al backend de asignación si el usuario no tiene cartera activa", async () => {
-    getMock.mockResolvedValue({ leads: [], total: 0, pagina: 1, limite: 100 });
-
-    await reassignCarteraActiva("asesor-1", "asesor-2");
-
-    expect(postMock).not.toHaveBeenCalled();
   });
 });
