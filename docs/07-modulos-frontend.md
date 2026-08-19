@@ -573,6 +573,22 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 > Fuera de alcance: conexión real a M9 (no existe) y la actualización en
 > tiempo real por SSE (docs/08 §5) -- mismo criterio que el comentario
 > `INTEGRACION-BACKEND` ya dejado en `LeadsPage.tsx` (F3).
+>
+> **Actualización (integración contra backend real de métricas, dev-front):**
+> `metricas.api.ts` reemplaza el cálculo client-side sobre `LEADS_MOCK` por
+> los siete endpoints reales `GET /api/v1/metricas/*`. `metricas.utils.ts`
+> (las funciones puras `calculate*`) y su suite
+> `tests/dashboard/metricas.utils.test.ts` se eliminan por completo: esa
+> lógica de agregación ahora vive en el backend. Dos hallazgos frente a lo
+> asumido en el mock: `/por-etapa` y `/embudo` son endpoints distintos y no
+> relacionados -- `/por-etapa` es un conteo plano por etapa, `/embudo` trae
+> el orden de etapas con el % de caída ya calculado, antes se asumía que
+> ambos salían de la misma agregación. `distribucionSemaforo` (§3.6) viene
+> plegado dentro de `/resumen`, sin endpoint propio. La comparativa contra
+> el período anterior en las siete tarjetas de resumen también la resuelve
+> el backend, por lo que no queda lógica de agregación ni de comparación de
+> períodos del lado del frontend. La actualización en tiempo real por SSE
+> sigue fuera de esta rebanada (módulo aparte ya documentado arriba).
 
 - [x] Tarjetas de resumen: total de leads, en gestión, cerrados, tasa de
       conversión, tiempo promedio de primera respuesta, tiempo promedio de cierre

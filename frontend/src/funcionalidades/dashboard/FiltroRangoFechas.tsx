@@ -1,31 +1,33 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { calculateRangoPreset, ETIQUETAS_RANGO_PRESET, type RangoFechas, type RangoPreset } from "./rangoFechas";
-
-export type PresetSeleccionado = RangoPreset | "PERSONALIZADO";
+import type { RangoSeleccionado } from "./dashboard.utils";
+import { ETIQUETAS_RANGO_PRESET, PRESETS_AUTOMATICOS } from "./rangoFechas";
 
 interface FiltroRangoFechasProps {
-  presetSeleccionado: PresetSeleccionado;
-  rango: RangoFechas;
-  onChange: (presetSeleccionado: PresetSeleccionado, rango: RangoFechas) => void;
+  rango: RangoSeleccionado;
+  onChange: (rango: RangoSeleccionado) => void;
 }
 
-const PRESETS: RangoPreset[] = ["HOY", "SIETE_DIAS", "TREINTA_DIAS", "MES_ACTUAL", "MES_ANTERIOR"];
-
-/** Selector de rango de fechas con presets (docs/08 §4). Componente de presentación: el cálculo de cada preset vive en `rangoFechas.ts`. */
-export function FiltroRangoFechas({ presetSeleccionado, rango, onChange }: FiltroRangoFechasProps) {
+/**
+ * Selector de rango de fechas con presets (docs/08 §4). Componente de
+ * presentación puro: el cálculo de la ventana concreta de cada preset lo
+ * hace el backend real (`resolveRangoFechas`), acá solo se elige el literal
+ * (`MetricasFiltros["rango"]`) -- salvo "Personalizado", que sí necesita
+ * `desde`/`hasta` explícitos porque el backend los exige para ese preset.
+ */
+export function FiltroRangoFechas({ rango, onChange }: FiltroRangoFechasProps) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Rango de fechas">
-        {PRESETS.map((preset) => (
+        {PRESETS_AUTOMATICOS.map((preset) => (
           <Button
             key={preset}
             type="button"
             size="sm"
-            variant={presetSeleccionado === preset ? "default" : "outline"}
-            aria-pressed={presetSeleccionado === preset}
-            onClick={() => onChange(preset, calculateRangoPreset(preset))}
+            variant={rango.preset === preset ? "default" : "outline"}
+            aria-pressed={rango.preset === preset}
+            onClick={() => onChange({ ...rango, preset })}
           >
             {ETIQUETAS_RANGO_PRESET[preset]}
           </Button>
@@ -33,15 +35,15 @@ export function FiltroRangoFechas({ presetSeleccionado, rango, onChange }: Filtr
         <Button
           type="button"
           size="sm"
-          variant={presetSeleccionado === "PERSONALIZADO" ? "default" : "outline"}
-          aria-pressed={presetSeleccionado === "PERSONALIZADO"}
-          onClick={() => onChange("PERSONALIZADO", rango)}
+          variant={rango.preset === "personalizado" ? "default" : "outline"}
+          aria-pressed={rango.preset === "personalizado"}
+          onClick={() => onChange({ ...rango, preset: "personalizado" })}
         >
-          Personalizado
+          {ETIQUETAS_RANGO_PRESET.personalizado}
         </Button>
       </div>
 
-      {presetSeleccionado === "PERSONALIZADO" ? (
+      {rango.preset === "personalizado" ? (
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="dashboard-fecha-desde" className="text-xs text-muted-foreground">
@@ -50,8 +52,8 @@ export function FiltroRangoFechas({ presetSeleccionado, rango, onChange }: Filtr
             <Input
               id="dashboard-fecha-desde"
               type="date"
-              value={rango.fechaDesde}
-              onChange={(event) => onChange("PERSONALIZADO", { ...rango, fechaDesde: event.target.value })}
+              value={rango.desde}
+              onChange={(event) => onChange({ ...rango, desde: event.target.value })}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -61,8 +63,8 @@ export function FiltroRangoFechas({ presetSeleccionado, rango, onChange }: Filtr
             <Input
               id="dashboard-fecha-hasta"
               type="date"
-              value={rango.fechaHasta}
-              onChange={(event) => onChange("PERSONALIZADO", { ...rango, fechaHasta: event.target.value })}
+              value={rango.hasta}
+              onChange={(event) => onChange({ ...rango, hasta: event.target.value })}
             />
           </div>
         </div>

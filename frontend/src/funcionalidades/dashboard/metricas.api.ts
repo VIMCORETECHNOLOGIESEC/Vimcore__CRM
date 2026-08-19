@@ -1,141 +1,117 @@
+import { httpClient, type QueryParamValue } from "@/api/httpClient";
 import type {
-  DistribucionSemaforo,
-  MetricasContextoRol,
   MetricasEmbudo,
   MetricasFiltros,
   MetricasPorAsesor,
   MetricasPorCampania,
+  MetricasPorEtapa,
   MetricasPorRedSocial,
   RedSocialPorSemaforo,
   ResumenMetricas,
 } from "@/tipos/metricas";
-import { LEADS_MOCK } from "../leads/leads.api";
-import {
-  calculateDistribucionSemaforo,
-  calculateEmbudoPorEtapa,
-  calculateMetricasPorAsesor,
-  calculateMetricasPorCampania,
-  calculateMetricasPorRedSocial,
-  calculateRedSocialPorSemaforo,
-  calculateResumenMetricas,
-} from "./metricas.utils";
 
 /**
- * Capa de datos del dashboard -- **mock hasta que exista el backend real**
- * (M9, `docs/06-modulos-backend.md`: ninguno de los endpoints
- * `GET /api/v1/metricas/*` está implementado todavía, ni siquiera como
- * esqueleto). Reutiliza el mismo fixture mutable `LEADS_MOCK` que F3/F4
- * (`leads.api.ts`) en vez de duplicarlo, para que el dashboard quede
- * consistente con el listado y el detalle dentro de una misma sesión de la
- * app. La lógica de agregación real vive en `metricas.utils.ts` (pura,
- * testeada con fixtures propios); acá solo se envuelve con el retardo
- * simulado y el fixture compartido, mismo patrón que F3.
+ * Capa de datos del dashboard -- backend real (M9, integración F5). Verificado
+ * contra `backend/src/routes/metricas.routes.ts`,
+ * `backend/src/controllers/metricas.controller.ts` y
+ * `backend/src/services/metricas.service.ts` (worktree `dev-back`).
+ * Reemplaza el mock que agregaba `LEADS_MOCK` client-side en
+ * `metricas.utils.ts` (eliminado con esta integración).
  *
- * Todo punto de integración pendiente está marcado con el token
- * `INTEGRACION-BACKEND`.
+ * Todos los endpoints exigen sesión (`requireAuthentication`) pero NO tienen
+ * un `requireRole` fijo -- el alcance por rol lo resuelve el propio servicio
+ * a partir del JWT, igual criterio que `leads.api.ts`/`notificaciones.api.ts`
+ * ya integrados: ninguna de estas funciones recibe `contexto`/rol como
+ * parámetro.
+ *
+ * `/metricas/por-asesor` es la única excepción de autorización: 403 real si
+ * la pide un ASESOR/VENDEDOR (`metricas.service.ts::getPorAsesor`). Ese 403
+ * lo maneja `httpClient`/`ApiError` como cualquier otro error de dominio --
+ * `useMetricasPorAsesor` además evita la llamada innecesaria con `enabled`
+ * cuando el rol no debería verla (ver `useMetricas.ts`).
  */
 
-function delay(ms = 150): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function toParams(filtros: MetricasFiltros): Record<string, QueryParamValue> {
+  return {
+    rango: filtros.rango,
+    desde: filtros.desde,
+    hasta: filtros.hasta,
+    redSocial: filtros.redSocial,
+    campania: filtros.campania,
+    responsableId: filtros.responsableId,
+  };
 }
 
-/**
- * INTEGRACION-BACKEND: reemplazar por
- * `httpClient.get<ResumenMetricas>("/metricas/resumen", { params: filtros })`
- * cuando exista `GET /api/v1/metricas/resumen` (M9).
- */
-export async function fetchResumenMetricasApi(
-  filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
-): Promise<ResumenMetricas> {
-  await delay();
-  return calculateResumenMetricas(LEADS_MOCK, filtros, contexto);
+/** `GET /metricas/resumen` -- devuelve el objeto de resumen tal cual, sin envolver (incluye `distribucionSemaforo`, 3.6). */
+export async function fetchResumenMetricasApi(filtros: MetricasFiltros): Promise<ResumenMetricas> {
+  return httpClient.get<ResumenMetricas>("/metricas/resumen", { params: toParams(filtros) });
 }
 
-/**
- * INTEGRACION-BACKEND: reemplazar por
- * `httpClient.get<MetricasPorRedSocial[]>("/metricas/por-red-social", { params: filtros })`
- * cuando exista (M9).
- */
+interface ItemsResponse<T> {
+  items: T[];
+}
+
+/** `GET /metricas/por-red-social` -- desenvuelve `{ items }`. */
 export async function fetchMetricasPorRedSocialApi(
   filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
 ): Promise<MetricasPorRedSocial[]> {
-  await delay();
-  return calculateMetricasPorRedSocial(LEADS_MOCK, filtros, contexto);
+  const { items } = await httpClient.get<ItemsResponse<MetricasPorRedSocial>>("/metricas/por-red-social", {
+    params: toParams(filtros),
+  });
+  return items;
 }
 
 /**
- * INTEGRACION-BACKEND: reemplazar por
- * `httpClient.get<MetricasPorAsesor[]>("/metricas/por-asesor", { params: filtros })`
- * cuando exista (M9). Solo administrador/supervisor la consultan
- * (docs/08 §3.2) -- la restricción de visibilidad vive en `DashboardPage.tsx`.
+ * `GET /metricas/por-asesor` -- desenvuelve `{ items }`. Solo
+ * administrador/supervisor la consultan (docs/08 §3.2, 403 real en el
+ * backend si no); la restricción de visibilidad vive en `DashboardPage.tsx`
+ * + `useMetricasPorAsesor` (`enabled`), no acá.
  */
-export async function fetchMetricasPorAsesorApi(
-  filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
-): Promise<MetricasPorAsesor[]> {
-  await delay();
-  return calculateMetricasPorAsesor(LEADS_MOCK, filtros, contexto);
+export async function fetchMetricasPorAsesorApi(filtros: MetricasFiltros): Promise<MetricasPorAsesor[]> {
+  const { items } = await httpClient.get<ItemsResponse<MetricasPorAsesor>>("/metricas/por-asesor", {
+    params: toParams(filtros),
+  });
+  return items;
 }
 
 /**
- * INTEGRACION-BACKEND: reemplazar por
- * `httpClient.get<MetricasEmbudo>("/metricas/embudo", { params: filtros })`
- * cuando exista (M9). El backend documenta también
- * `GET /api/v1/metricas/por-etapa` por separado (docs/06 M9) -- se asume que
- * es el mismo dato que alimenta el embudo (`/embudo` agrega el % de caída
- * sobre el conteo de `/por-etapa`); a validar contra la implementación real
- * antes de conectar.
+ * `GET /metricas/por-etapa` -- desenvuelve `{ items }`. Conteo PLANO por las
+ * 5 etapas, sin orden de embudo ni % de caída -- endpoint distinto de
+ * `/embudo` (`fetchMetricasEmbudoApi`), no lo alimenta. Ninguna gráfica del
+ * dashboard documentada en `docs/08-dashboard-kpis.md` consume este conteo
+ * plano hoy (el widget de "Embudo por etapa", §3.3, usa `/embudo`); se deja
+ * disponible e integrado contra el contrato real por completitud.
  */
-export async function fetchMetricasPorEtapaApi(
-  filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
-): Promise<MetricasEmbudo> {
-  await delay();
-  return calculateEmbudoPorEtapa(LEADS_MOCK, filtros, contexto);
+export async function fetchMetricasPorEtapaApi(filtros: MetricasFiltros): Promise<MetricasPorEtapa[]> {
+  const { items } = await httpClient.get<ItemsResponse<MetricasPorEtapa>>("/metricas/por-etapa", {
+    params: toParams(filtros),
+  });
+  return items;
+}
+
+/** `GET /metricas/por-campania` -- desenvuelve `{ items }`, top 10 ya resuelto por el backend. */
+export async function fetchMetricasPorCampaniaApi(filtros: MetricasFiltros): Promise<MetricasPorCampania[]> {
+  const { items } = await httpClient.get<ItemsResponse<MetricasPorCampania>>("/metricas/por-campania", {
+    params: toParams(filtros),
+  });
+  return items;
 }
 
 /**
- * INTEGRACION-BACKEND: reemplazar por
- * `httpClient.get<MetricasPorCampania[]>("/metricas/por-campania", { params: filtros })`
- * cuando exista (M9).
+ * `GET /metricas/embudo` (docs/08 §3.3) -- devuelve el objeto de embudo tal
+ * cual, sin envolver (a diferencia de los demás endpoints de lista). Endpoint
+ * DISTINTO de `/por-etapa`: acá sí viene el orden NUEVO→CONTACTADO→CITA→VENTA
+ * con `caidaPct`, y No Venta reportado aparte (`noVenta`), nunca como paso.
  */
-export async function fetchMetricasPorCampaniaApi(
-  filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
-): Promise<MetricasPorCampania[]> {
-  await delay();
-  return calculateMetricasPorCampania(LEADS_MOCK, filtros, contexto);
+export async function fetchMetricasEmbudoApi(filtros: MetricasFiltros): Promise<MetricasEmbudo> {
+  return httpClient.get<MetricasEmbudo>("/metricas/embudo", { params: toParams(filtros) });
 }
 
-/**
- * INTEGRACION-BACKEND: reemplazar por
- * `httpClient.get<RedSocialPorSemaforo[]>("/metricas/red-social-x-semaforo", { params: filtros })`
- * cuando exista (M9).
- */
-export async function fetchRedSocialPorSemaforoApi(
-  filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
-): Promise<RedSocialPorSemaforo[]> {
-  await delay();
-  return calculateRedSocialPorSemaforo(LEADS_MOCK, filtros, contexto);
-}
-
-/**
- * Distribución por semáforo (docs/08 §3.6). No tiene un endpoint listado
- * aparte en docs/06 M9 -- ninguno de los siete endpoints documentados ahí
- * coincide con esta agregación (que excluye VENTA/NO_VENTA, a diferencia de
- * "red social × semáforo"). Se asume que la implementación real la sirve
- * `GET /api/v1/metricas/resumen` (como parte del resumen) o un endpoint
- * adicional no documentado todavía; a definir con backend antes de M9.
- *
- * INTEGRACION-BACKEND: ver nota arriba -- endpoint real a confirmar.
- */
-export async function fetchDistribucionSemaforoApi(
-  filtros: MetricasFiltros,
-  contexto?: MetricasContextoRol,
-): Promise<DistribucionSemaforo[]> {
-  await delay();
-  return calculateDistribucionSemaforo(LEADS_MOCK, filtros, contexto);
+/** `GET /metricas/red-social-x-semaforo` -- desenvuelve `{ items }`. */
+export async function fetchRedSocialPorSemaforoApi(filtros: MetricasFiltros): Promise<RedSocialPorSemaforo[]> {
+  const { items } = await httpClient.get<ItemsResponse<RedSocialPorSemaforo>>(
+    "/metricas/red-social-x-semaforo",
+    { params: toParams(filtros) },
+  );
+  return items;
 }

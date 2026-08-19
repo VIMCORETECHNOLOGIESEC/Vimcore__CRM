@@ -3,7 +3,7 @@ import type { MetricasPorAsesor } from "@/tipos/metricas";
 import { getColorCategorico } from "./paleta";
 
 interface GraficoPorAsesorProps {
-  /** Ya viene ordenado de mayor a menor (`calculateMetricasPorAsesor`). */
+  /** Ya viene ordenado de mayor a menor (`getPorAsesorConSla`, `ORDER BY total DESC`, `metricas.repository.ts`). */
   datos: MetricasPorAsesor[];
 }
 
@@ -48,13 +48,15 @@ function TooltipAsesor({ active, payload }: { active?: boolean; payload?: { payl
       <p className="font-medium text-foreground">{fila.nombre}</p>
       <p className="text-muted-foreground">{fila.total} leads</p>
       <p className="text-muted-foreground">
-        Conversión: {fila.tasaConversion.porcentaje} % ({fila.tasaConversion.numerador} de{" "}
-        {fila.tasaConversion.denominador})
+        Conversión:{" "}
+        {fila.tasaConversionPct === null
+          ? "sin cerrados en el rango"
+          : `${fila.tasaConversionPct} % (${fila.ventas} de ${fila.ventas + fila.noVentas})`}
       </p>
       <p className="text-muted-foreground">
-        {fila.cumplimientoSla
-          ? `Cumplimiento de SLA: ${fila.cumplimientoSla.porcentaje} % (${fila.cumplimientoSla.numerador} de ${fila.cumplimientoSla.denominador})`
-          : "Cumplimiento de SLA: sin leads asignados en el rango"}
+        {fila.cumplimientoSlaPct === null
+          ? "Cumplimiento de SLA: sin leads asignados en el rango"
+          : `Cumplimiento de SLA: ${fila.cumplimientoSlaPct} %`}
       </p>
     </div>
   );

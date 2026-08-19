@@ -1,7 +1,9 @@
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { RED_SOCIAL_ETIQUETAS, SEMAFORO_ETIQUETAS } from "@/funcionalidades/leads/catalogos";
 import type { RedSocialPorSemaforo } from "@/tipos/metricas";
-import { PALETA_SEMAFORO } from "./paleta";
+import { COLOR_SIN_CALIFICAR, PALETA_SEMAFORO } from "./paleta";
+
+const ETIQUETA_SIN_CALIFICAR = "Sin calificar";
 
 interface GraficoRedSocialPorSemaforoProps {
   datos: RedSocialPorSemaforo[];
@@ -13,7 +15,10 @@ interface GraficoRedSocialPorSemaforoProps {
  * categórica -- son colores de negocio con significado fijo, no series
  * arbitrarias). Es la gráfica clave del cliente: de qué red llegan los
  * leads con más probabilidad de cierre, no solo de cuál llegan más.
- * % de leads verdes sobre el total de cada red, en el tooltip.
+ * % de leads verdes sobre el total de cada red, en el tooltip. Incluye
+ * "Sin calificar" como cuarto segmento (leads NUEVO sin calificar, D14) --
+ * el backend real sí distingue ese bucket, a diferencia del mock anterior;
+ * omitirlo dejaría el total apilado por debajo del `total` real de la red.
  */
 export function GraficoRedSocialPorSemaforo({ datos }: GraficoRedSocialPorSemaforoProps) {
   const filas = datos.map((d) => ({ ...d, etiqueta: RED_SOCIAL_ETIQUETAS[d.redSocial] }));
@@ -27,7 +32,9 @@ export function GraficoRedSocialPorSemaforo({ datos }: GraficoRedSocialPorSemafo
         <Tooltip cursor={{ fill: "rgba(15, 23, 42, 0.04)" }} content={<TooltipRedSocialSemaforo />} />
         <Legend
           formatter={(value: string) =>
-            SEMAFORO_ETIQUETAS[value as keyof typeof SEMAFORO_ETIQUETAS] ?? value
+            value === ETIQUETA_SIN_CALIFICAR
+              ? value
+              : (SEMAFORO_ETIQUETAS[value as keyof typeof SEMAFORO_ETIQUETAS] ?? value)
           }
         />
         {/*
@@ -39,7 +46,16 @@ export function GraficoRedSocialPorSemaforo({ datos }: GraficoRedSocialPorSemafo
         */}
         <Bar dataKey="verde" name="VERDE" stackId="semaforo" fill={PALETA_SEMAFORO.VERDE} stroke="#fff" strokeWidth={2} />
         <Bar dataKey="amarillo" name="AMARILLO" stackId="semaforo" fill={PALETA_SEMAFORO.AMARILLO} stroke="#fff" strokeWidth={2} />
-        <Bar dataKey="rojo" name="ROJO" stackId="semaforo" fill={PALETA_SEMAFORO.ROJO} stroke="#fff" strokeWidth={2} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="rojo" name="ROJO" stackId="semaforo" fill={PALETA_SEMAFORO.ROJO} stroke="#fff" strokeWidth={2} />
+        <Bar
+          dataKey="sinCalificar"
+          name={ETIQUETA_SIN_CALIFICAR}
+          stackId="semaforo"
+          fill={COLOR_SIN_CALIFICAR}
+          stroke="#fff"
+          strokeWidth={2}
+          radius={[4, 4, 0, 0]}
+        />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -60,7 +76,10 @@ function TooltipRedSocialSemaforo({
       <p className="text-muted-foreground">Verde: {fila.verde}</p>
       <p className="text-muted-foreground">Amarillo: {fila.amarillo}</p>
       <p className="text-muted-foreground">Rojo: {fila.rojo}</p>
-      <p className="text-muted-foreground">% verde sobre el total: {fila.porcentajeVerde} %</p>
+      <p className="text-muted-foreground">Sin calificar: {fila.sinCalificar}</p>
+      <p className="text-muted-foreground">
+        % verde sobre el total: {fila.pctVerde === null ? "sin leads en esta red" : `${fila.pctVerde} %`}
+      </p>
     </div>
   );
 }

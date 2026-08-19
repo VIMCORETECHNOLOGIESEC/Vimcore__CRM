@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
-import type { ResumenMetricas } from "@/tipos/metricas";
+import type { Comparativa, ResumenMetricas } from "@/tipos/metricas";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
@@ -13,8 +13,10 @@ import {
   buildMetricasFiltros,
   FILTROS_DASHBOARD_VACIOS,
   type DashboardFiltrosState,
+  type RangoSeleccionado,
 } from "./dashboard.utils";
-import { FiltroRangoFechas, type PresetSeleccionado } from "./FiltroRangoFechas";
+import { FiltroRangoFechas } from "./FiltroRangoFechas";
+import { formatFechaLocal } from "./rangoFechas";
 import { GraficoCard } from "./GraficoCard";
 import { GraficoDistribucionSemaforo } from "./GraficoDistribucionSemaforo";
 import { GraficoEmbudo } from "./GraficoEmbudo";
@@ -23,26 +25,21 @@ import { GraficoPorCampania } from "./GraficoPorCampania";
 import { GraficoPorRedSocial } from "./GraficoPorRedSocial";
 import { GraficoRedSocialPorSemaforo } from "./GraficoRedSocialPorSemaforo";
 import { KpiCard } from "./KpiCard";
-import { calculateRangoPreset, type RangoFechas } from "./rangoFechas";
 import {
-  useDistribucionSemaforo,
+  useMetricasEmbudo,
   useMetricasPorAsesor,
   useMetricasPorCampania,
-  useMetricasPorEtapa,
   useMetricasPorRedSocial,
   useRedSocialPorSemaforo,
   useResumenMetricas,
 } from "./useMetricas";
 
-const RANGO_INICIAL: PresetSeleccionado = "SIETE_DIAS";
-
 /**
- * Dashboard de métricas (F5, docs/07 + docs/08-dashboard-kpis.md).
- * Alcance por rol (docs/08 §1): administrador/supervisor ven "Dashboard
- * general" (todos los leads), asesor/vendedor ven "Dashboard personal"
- * (solo su cartera) -- el recorte real de datos lo aplica el mock en
- * `metricas.utils.ts` a partir de `useAuth().user`, igual patrón que F3
- * (`LeadsPage.tsx`/`useLeads.ts`).
+ * Dashboard de métricas (F5, docs/07 + docs/08-dashboard-kpis.md). Alcance
+ * por rol (docs/08 §1): administrador/supervisor ven "Dashboard general"
+ * (todos los leads), asesor/vendedor ven "Dashboard personal" (solo su
+ * cartera) -- el recorte real de datos lo aplica el backend real desde el
+ * JWT, no la UI.
  */
 export function DashboardPage() {
   const { hasRole } = useAuth();
@@ -50,8 +47,10 @@ export function DashboardPage() {
 
   usePageHeader({ title: esGestorDeCartera ? "Dashboard general" : "Dashboard personal" });
 
-  const [presetSeleccionado, setPresetSeleccionado] = useState<PresetSeleccionado>(RANGO_INICIAL);
-  const [rango, setRango] = useState<RangoFechas>(() => calculateRangoPreset("SIETE_DIAS"));
+  const [rango, setRango] = useState<RangoSeleccionado>(() => {
+    const hoy = formatFechaLocal(new Date());
+    return { preset: "7d", desde: hoy, hasta: hoy };
+  });
   const [filtrosDashboard, setFiltrosDashboard] = useState<DashboardFiltrosState>(FILTROS_DASHBOARD_VACIOS);
 
   const filtros = useMemo(() => buildMetricasFiltros(filtrosDashboard, rango), [filtrosDashboard, rango]);
@@ -66,36 +65,33 @@ export function DashboardPage() {
   const resumen = useResumenMetricas(filtros);
   const porRedSocial = useMetricasPorRedSocial(filtros);
   const porAsesor = useMetricasPorAsesor(filtros, esGestorDeCartera);
-  const embudo = useMetricasPorEtapa(filtros);
+  const embudo = useMetricasEmbudo(filtros);
   const porCampania = useMetricasPorCampania(filtros);
   const redSocialPorSemaforo = useRedSocialPorSemaforo(filtros);
-  const distribucionSemaforo = useDistribucionSemaforo(filtros);
 
-  function onChangeRango(preset: PresetSeleccionado, nuevoRango: RangoFechas) {
-    setPresetSeleccionado(preset);
-    setRango(nuevoRango);
-  }
-
-  const embudoVacio =
-    !embudo.data || (embudo.data.pasos.every((p) => p.total === 0) && embudo.data.noVentaTotal === 0);
-  const distribucionVacia = !distribucionSemaforo.data || distribucionSemaforo.data.every((d) => d.total === 0);
+  const embudoVacio = !embudo.data || (embudo.data.pasos.every((p) => p.total === 0) && embudo.data.noVenta === 0);
+  const distribucionVacia =
+    !resumen.data ||
+    (resumen.data.distribucionSemaforo.rojo === 0 &&
+      resumen.data.distribucionSemaforo.amarillo === 0 &&
+      resumen.data.distribucionSemaforo.verde === 0 &&
+      resumen.data.distribucionSemaforo.sinCalificar === 0);
 
   return (
     <div className="flex flex-col gap-4">
       {/*
         INTEGRACION-BACKEND: acá se conecta la actualización en tiempo real
-        por SSE (docs/08 §5 -- M9/F5, todavía no existen ni el endpoint de
-        eventos ni el motor de notificaciones en el backend). Cuando
-        exista, el servidor reemite indicadores recalculados en ventanas
-        de 2s ante ingreso de lead/cambio de etapa/cierre/asignación; el
-        cliente debe invalidar las queries ["metricas", ...] (ver
-        `useMetricas.ts`) en vez de hacer polling -- mismo criterio que el
-        comentario SSE ya dejado en `LeadsPage.tsx` (F3), y con el mismo
-        indicador de reconexión pedido en docs/08 §5 ante interrupción del
-        canal.
+        por SSE (docs/08 §5 -- F8, todavía no existe el canal de eventos ni
+        el motor de notificaciones en el backend). Cuando exista, el
+        servidor reemite indicadores recalculados en ventanas de 2s ante
+        ingreso de lead/cambio de etapa/cierre/asignación; el cliente debe
+        invalidar las queries ["metricas", ...] (ver `useMetricas.ts`) en vez
+        de hacer polling -- mismo criterio que el comentario SSE ya dejado en
+        `LeadsPage.tsx` (F3), y con el mismo indicador de reconexión pedido
+        en docs/08 §5 ante interrupción del canal.
       */}
 
-      <FiltroRangoFechas presetSeleccionado={presetSeleccionado} rango={rango} onChange={onChangeRango} />
+      <FiltroRangoFechas rango={rango} onChange={setRango} />
       <DashboardFiltros
         filtros={filtrosDashboard}
         onChange={setFiltrosDashboard}
@@ -180,15 +176,13 @@ export function DashboardPage() {
         <GraficoCard
           titulo="Distribución por semáforo"
           descripcion="Solo leads en gestión (excluye Venta y No Venta)"
-          isLoading={distribucionSemaforo.isLoading}
-          isError={distribucionSemaforo.isError}
-          error={distribucionSemaforo.error}
-          onRetry={() => void distribucionSemaforo.refetch()}
+          isLoading={resumen.isLoading}
+          isError={resumen.isError}
+          error={resumen.error}
+          onRetry={() => void resumen.refetch()}
           vacio={distribucionVacia}
         >
-          {distribucionSemaforo.data ? (
-            <GraficoDistribucionSemaforo datos={distribucionSemaforo.data} />
-          ) : null}
+          {resumen.data ? <GraficoDistribucionSemaforo datos={resumen.data.distribucionSemaforo} /> : null}
         </GraficoCard>
       </div>
     </div>
@@ -196,6 +190,18 @@ export function DashboardPage() {
 }
 
 const FORMATO_NUMERO = new Intl.NumberFormat("es-EC");
+
+/**
+ * Arma un `Comparativa` a partir de un indicador cuyo `actual`/`anterior`
+ * pueden venir `null` desde el backend (denominador 0, sin leads asignados,
+ * etc. -- docs/08 §4). `Comparativa` exige `number`, así que sin dato
+ * suficiente en alguno de los dos períodos no hay comparación posible: se
+ * omite (`null`) en vez de mostrar un 0 engañoso.
+ */
+function toComparativa(actual: number | null, anterior: number | null, variacionPorcentual: number | null): Comparativa | null {
+  if (actual === null || anterior === null) return null;
+  return { actual, anterior, variacionPorcentual };
+}
 
 interface ResumenKpisProps {
   isLoading: boolean;
@@ -221,51 +227,68 @@ function ResumenKpis({ isLoading, isError, error, onRetry, datos }: ResumenKpisP
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <KpiCard
         titulo="Total de leads ingresados"
-        valor={FORMATO_NUMERO.format(datos.totalIngresados)}
+        valor={FORMATO_NUMERO.format(datos.totalIngresados.actual)}
         detalle="Incluye reingresos"
-        comparativa={datos.comparativa.totalIngresados}
+        comparativa={datos.totalIngresados}
       />
       <KpiCard
         titulo="Leads en gestión"
-        valor={FORMATO_NUMERO.format(datos.enGestion)}
+        valor={FORMATO_NUMERO.format(datos.enGestion.actual)}
         detalle="Etapa distinta de Venta/No Venta"
+        comparativa={datos.enGestion}
       />
       <KpiCard
         titulo="Leads cerrados"
-        valor={FORMATO_NUMERO.format(datos.cerrados.venta + datos.cerrados.noVenta)}
-        detalle={`Venta: ${FORMATO_NUMERO.format(datos.cerrados.venta)} · No Venta: ${FORMATO_NUMERO.format(datos.cerrados.noVenta)}`}
+        valor={FORMATO_NUMERO.format(datos.cerrados.venta.actual + datos.cerrados.noVenta.actual)}
+        detalle={`Venta: ${FORMATO_NUMERO.format(datos.cerrados.venta.actual)} · No Venta: ${FORMATO_NUMERO.format(datos.cerrados.noVenta.actual)}`}
+        comparativa={datos.cerrados.total}
       />
       <KpiCard
         titulo="Tasa de conversión"
-        valor={`${datos.tasaConversion.porcentaje} %`}
-        detalle={`${datos.tasaConversion.numerador} de ${datos.tasaConversion.denominador} cerrados`}
+        valor={datos.tasaConversion.actual.porcentaje === null ? "Sin datos" : `${datos.tasaConversion.actual.porcentaje} %`}
+        detalle={`${datos.tasaConversion.actual.venta} de ${datos.tasaConversion.actual.total} cerrados`}
+        comparativa={toComparativa(
+          datos.tasaConversion.actual.porcentaje,
+          datos.tasaConversion.anterior.porcentaje,
+          datos.tasaConversion.variacionPorcentual,
+        )}
       />
       <KpiCard
         titulo="Tiempo promedio de primera respuesta"
         valor={
-          datos.tiempoPromedioPrimeraRespuestaHoras === null
+          datos.tiempoPrimeraRespuesta.horasPromedio === null
             ? "Sin datos"
-            : `${datos.tiempoPromedioPrimeraRespuestaHoras} h`
+            : `${datos.tiempoPrimeraRespuesta.horasPromedio} h`
         }
-        detalle={`${FORMATO_NUMERO.format(datos.leadsSinPrimeraRespuesta)} leads sin primera respuesta`}
+        detalle={`${FORMATO_NUMERO.format(datos.tiempoPrimeraRespuesta.sinPrimeraRespuesta)} leads sin primera respuesta`}
+        comparativa={toComparativa(
+          datos.tiempoPrimeraRespuesta.horasPromedio,
+          datos.tiempoPrimeraRespuesta.anteriorHorasPromedio,
+          datos.tiempoPrimeraRespuesta.variacionPorcentual,
+        )}
       />
       <KpiCard
         titulo="Tiempo promedio de cierre (Venta)"
-        valor={datos.tiempoPromedioCierreDias === null ? "Sin datos" : `${datos.tiempoPromedioCierreDias} d`}
-        detalle={
-          datos.tiempoPromedioCierreNoVentaDias === null
-            ? "No Venta: sin datos"
-            : `No Venta: ${datos.tiempoPromedioCierreNoVentaDias} d`
+        valor={
+          datos.tiempoPromedioCierre.diasPromedio === null
+            ? "Sin datos"
+            : `${datos.tiempoPromedioCierre.diasPromedio} d`
         }
+        comparativa={toComparativa(
+          datos.tiempoPromedioCierre.diasPromedio,
+          datos.tiempoPromedioCierre.anteriorDiasPromedio,
+          datos.tiempoPromedioCierre.variacionPorcentual,
+        )}
       />
       <KpiCard
         titulo="Cumplimiento de SLA"
-        valor={datos.cumplimientoSla === null ? "Sin datos" : `${datos.cumplimientoSla.porcentaje} %`}
-        detalle={
-          datos.cumplimientoSla === null
-            ? "Sin leads asignados en el rango"
-            : `${datos.cumplimientoSla.numerador} de ${datos.cumplimientoSla.denominador} atendidos en 24 h`
-        }
+        valor={datos.cumplimientoSla.porcentaje === null ? "Sin datos" : `${datos.cumplimientoSla.porcentaje} %`}
+        detalle={datos.cumplimientoSla.porcentaje === null ? "Sin leads asignados en el rango" : "Atendidos dentro de 24 h"}
+        comparativa={toComparativa(
+          datos.cumplimientoSla.porcentaje,
+          datos.cumplimientoSla.anteriorPorcentaje,
+          datos.cumplimientoSla.variacionPorcentual,
+        )}
       />
     </div>
   );
