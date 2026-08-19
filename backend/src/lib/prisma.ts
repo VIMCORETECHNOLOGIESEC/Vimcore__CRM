@@ -86,6 +86,19 @@ export const BRIDGE_TRANSACTION_BOUNDS: TransactionBounds = {
 };
 
 /**
+ * Límites de la transacción de `usuarios.service::deactivateUsuario` (M2,
+ * baja lógica con reasignación obligatoria de cartera activa): independiente,
+ * mismo criterio que `BRIDGE_TRANSACTION_BOUNDS` — la baja de un usuario es
+ * un flujo de escritura propio que nunca anida con dedup/ingesta/gestión de
+ * leads/asignación/citas/bridges, aunque REUSA `applyAsignacion` de
+ * `asignacion.service.ts` dentro de su propia transacción.
+ */
+export const USUARIOS_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+/**
  * Seam D1 (diseño M4, DD1c): si el llamador ya trae una transacción externa
  * (`txExterna`), `fn` corre dentro de ella y `bounds` se ignora — nunca se
  * abre una segunda transacción/conexión (precondición de DD2). Si no,

@@ -19,7 +19,11 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 - [x] Monorepo pnpm con workspaces `backend` y `frontend`
 - [x] Express + TypeScript con configuración estricta del compilador
 - [x] Prisma conectado a PostgreSQL en Docker
-- [ ] Esquema inicial completo y primera migración
+- [x] Esquema inicial completo y primera migración (2026-08-19). Ítem
+      obsoleto del arranque de M1: el schema ya pasó por 14 migraciones
+      acumuladas a través de M3-M4 (`backend/prisma/migrations/`), muy por
+      encima de "la primera" — se marca completo en vez de dejarlo como deuda
+      fantasma del checklist.
 - [x] Middleware de errores centralizado con clase `AppError`
 - [x] Validación con Zod en el borde de cada controller (`auth.controller`;
       `salud.controller` no recibe body/params/query, no aplica — hallazgo H3
@@ -45,14 +49,20 @@ Desacoplado a propósito: otro equipo integrará el SSO contra esta misma API.
 - [x] Middleware `requiereAutenticacion` (identificador real: `requireAuthentication`)
 - [x] Middleware `requiereRol(...roles)` (identificador real: `requireRole(...roles)`)
 - [x] CRUD de usuarios (solo administrador — `requireRole("ADMINISTRADOR")` en los 5 endpoints)
-- [ ] Baja lógica de usuario con reasignación obligatoria de su cartera activa
-      — **implementado solo en parte**: `DELETE /api/v1/usuarios/:id` sí
-      aplica la baja lógica (`activo=false` + revocación de todos sus refresh
-      tokens en la misma transacción). La **reasignación obligatoria de la
-      cartera activa queda explícitamente fuera de alcance de este cambio**:
-      no existe todavía una tabla `leads`/cartera (llega en M5/M6); la casilla
-      se deja sin marcar hasta que ese módulo exista y la reasignación pueda
-      implementarse de verdad.
+- [x] Baja lógica de usuario con reasignación obligatoria de su cartera activa
+      — `DELETE /api/v1/usuarios/:id` (`usuarios.service.ts::deactivateUsuario`)
+      es transaccional de punta a punta: si el usuario dado de baja es
+      `ASESOR`/`VENDEDOR` y tiene cartera abierta (leads en su pool, no
+      terminales; para `ASESOR` excluye los ya traspasados con
+      `vendedorId` no nulo), cada lead se reasigna a un candidato activo del
+      mismo pool (reutiliza `selectResponsable`/`applyAsignacion` de
+      `asignacion.service.ts`, motivo `baja_usuario`). **"Obligatoria" =
+      bloqueante**: si no hay ningún otro candidato activo del mismo pool
+      (p. ej. es el último asesor activo), la baja se rechaza entera con 409
+      `baja_sin_candidato_reasignacion` — nada se persiste (ni la baja ni
+      ninguna reasignación parcial). `activo=false` + revocación de refresh
+      tokens sigue en la misma transacción. `ADMINISTRADOR`/`SUPERVISOR`
+      nunca tienen cartera, así que su baja nunca dispara reasignación.
 
 **Pruebas obligatorias:** cada endpoint protegido rechaza petición sin token, con
 token expirado y con rol insuficiente.
@@ -82,11 +92,15 @@ reingreso, hace 91 días sí.
 
 ## M4 — Ingesta y bridges
 
-> **Progreso:** rebanada parcial implementada en `m4-ingesta-bridges-parcial`
-> (endpoint genérico + adaptador Google Forms). LinkedIn, X, CRUD de
-> administración de token (carga/renovación contra `/debug_token`) y los
-> trabajos programados (verificación diaria de token, bridge sin actividad por
-> 72 h) quedan fuera de alcance — llegan en un cambio SDD futuro.
+> **Progreso:** rebanada inicial implementada en `m4-ingesta-bridges-parcial`
+> (endpoint genérico + adaptador Google Forms). Nota obsoleta (2026-08-19):
+> este párrafo listaba como "fuera de alcance" el CRUD de administración de
+> token y los trabajos programados de verificación de token/bridge mudo —
+> ambos ya se implementaron y están marcados abajo. LinkedIn (adaptador OAuth2
+> + consulta programada) y X (no requiere adaptador propio: reusa
+> `POST /api/v1/ingesta/generico`, ya implementado, ver §5 de
+> `05-bridges.md`) quedan como próximo desarrollo — LinkedIn bloqueado
+> externamente por la aprobación del Marketing Developer Platform (semanas).
 >
 > **Corrección retroactiva (M5, DD1):** `deduplicacion.service.ts::createLead`
 > no poblaba `redSocial`/`payloadOriginal`/`camposDinamicos` en `leads` pese a

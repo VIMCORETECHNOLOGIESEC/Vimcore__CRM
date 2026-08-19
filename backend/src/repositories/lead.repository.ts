@@ -260,6 +260,32 @@ export async function countCargaActivaPorResponsable(
   return groupByRowsToCountMap(filas, "vendedorId");
 }
 
+/**
+ * M2 (baja lógica con reasignación obligatoria de cartera activa): leads
+ * "abiertos" de un usuario en su pool de responsabilidad —
+ * `ASESOR`: `asesorId = usuarioId` Y `vendedorId IS NULL` (un lead ya
+ * traspasado a un vendedor dejó de ser cartera operativa del asesor
+ * original); `VENDEDOR`: `vendedorId = usuarioId`. Ambos casos excluyen
+ * `ETAPAS_CERRADAS` (un lead cerrado no tiene responsable operativo
+ * pendiente). Reutiliza el mismo filtro de "abierto" que
+ * `countCargaActivaPorResponsable`, sin declarar una quinta copia.
+ */
+export async function findCarteraAbierta(
+  usuarioId: string,
+  pool: PoolAsignacion,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Lead[]> {
+  if (pool === "ASESOR") {
+    return client.lead.findMany({
+      where: { asesorId: usuarioId, vendedorId: null, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+    });
+  }
+
+  return client.lead.findMany({
+    where: { vendedorId: usuarioId, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+  });
+}
+
 export interface AssignResponsableData {
   pool: PoolAsignacion;
   responsableId: string;

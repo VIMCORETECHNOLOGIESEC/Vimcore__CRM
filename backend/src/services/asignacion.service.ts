@@ -117,7 +117,17 @@ export type MotivoAsignacion =
   | "reasignacion"
   | "traspaso"
   | "sin_candidatos"
-  | "sla_vencido";
+  | "sla_vencido"
+  /**
+   * M2 (baja lógica con reasignación obligatoria de cartera activa): un lead
+   * de la cartera de un usuario dado de baja se reasigna (pool ASESOR,
+   * `tipoEvento REASIGNACION`) o traspasa (pool VENDEDOR, `tipoEvento
+   * TRASPASO`) a otro candidato activo del mismo pool — distinto de
+   * "reasignacion"/"traspaso" manuales porque `ejecutadoPorId` es siempre
+   * `null` (nadie lo ejecutó a mano, lo disparó la baja) y el motivo real de
+   * negocio es la baja, no una decisión operativa sobre ESE lead puntual.
+   */
+  | "baja_usuario";
 
 /**
  * D5 (diseño M6) — interfaz NUEVA, no extiende `DetalleEventoLead` de M3: su
@@ -146,15 +156,19 @@ interface ApplyAsignacionInput {
 }
 
 /**
- * Interna, no exportada (D11, diseño M6): el ÚNICO punto de escritura
- * compartido por los cuatro caminos de asignación. Tres escrituras atómicas,
- * juntas o ninguna — todo dentro del `tx` del llamador, nunca abre una
- * transacción propia:
+ * D11 (diseño M6): el ÚNICO punto de escritura compartido por los cuatro
+ * caminos de asignación de ESTE archivo, más el quinto camino de M2 (baja
+ * lógica con reasignación obligatoria de cartera, `usuarios.service.ts`).
+ * Tres escrituras atómicas, juntas o ninguna — todo dentro del `tx` del
+ * llamador, nunca abre una transacción propia:
  *   1. `leads` — responsable (asesorId/vendedorId según `pool`) + `slaInicioEn`.
  *   2. `usuarios.ultima_asignacion_en` del receptor (D10).
  *   3. `lead_eventos` del tipo correspondiente (bitácora inmutable, D-lead_eventos).
+ *
+ * Exportada (M2): antes era interna a este archivo; `usuarios.service.ts`
+ * la reutiliza en vez de duplicar las tres escrituras atómicas.
  */
-async function applyAsignacion(
+export async function applyAsignacion(
   input: ApplyAsignacionInput,
   tx: Prisma.TransactionClient,
 ): Promise<{ lead: Lead; events: CommittedEvent[] }> {
