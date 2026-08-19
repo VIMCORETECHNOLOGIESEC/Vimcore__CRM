@@ -9,6 +9,7 @@ import { applyFormulario } from "./formularios.service.js";
 import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 const ETAPAS_TERMINALES: readonly EtapaLead[] = ["VENTA", "NO_VENTA"];
@@ -217,6 +218,9 @@ export async function transitionEtapa(
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): "cambio de etapa" y "cierre" — una
+  // transición a VENTA/NO_VENTA es ambas a la vez, un solo hook alcanza.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 

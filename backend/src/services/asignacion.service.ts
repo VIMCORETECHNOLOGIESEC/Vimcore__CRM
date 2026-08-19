@@ -19,6 +19,7 @@ import { calculateEstadoSla } from "./sla.calculator.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { createForActiveSupervisorsAndAdmins } from "./notificaciones.service.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
 
@@ -201,6 +202,13 @@ export async function applyAsignacion(
 
   const tipo = input.tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
   const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId }, tx);
+  // M9 (docs/08-dashboard-kpis.md §5): "asignación" — el hook de métricas NO
+  // se llama acá: `applyAsignacion` corre dentro de la `tx` del llamador y
+  // esa transacción puede todavía hacer rollback (p. ej. dentro del loop de
+  // reasignación de cartera de `usuarios.service.ts::deactivateUsuario`, si
+  // un paso posterior de la misma transacción falla). `scheduleMetricasBroadcast`
+  // se llama en cada CALLER externo de `applyAsignacion`, después del commit,
+  // en el mismo lugar donde cada uno ya llama `publishCommittedEvents`.
   return { lead, events: [...notificationEvents(notification), { userId: input.receptorId, type: "lead.asignado", data: { leadId: input.leadId, responsableId: input.receptorId } }] };
 }
 
@@ -328,6 +336,9 @@ export async function asignarTrasCommit(leadId: string, ahora: Date): Promise<vo
         ASIGNACION_TRANSACTION_BOUNDS,
       );
       publishCommittedEvents(events);
+      // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+      // `publishCommittedEvents` — la `tx` de este intento ya confirmó.
+      scheduleMetricasBroadcast();
       return;
     } catch (error) {
       ultimoError = error;
@@ -503,6 +514,9 @@ export async function assignLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 
@@ -613,6 +627,9 @@ export async function reassignLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }
 
@@ -663,5 +680,8 @@ export async function transferLead(
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(result.events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba ya confirmó.
+  scheduleMetricasBroadcast();
   return result.lead;
 }

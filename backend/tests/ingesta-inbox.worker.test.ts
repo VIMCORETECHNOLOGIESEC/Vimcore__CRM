@@ -3,6 +3,7 @@ import { prisma } from "../src/lib/prisma.js";
 import * as inbox from "../src/repositories/lead-recibido.repository.js";
 import * as asignacion from "../src/services/asignacion.service.js";
 import * as committedEvents from "../src/services/committed-events.service.js";
+import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import { startIngestionWorker } from "../src/jobs/ingesta-inbox.job.js";
 import { shutdownBackend } from "../src/server-lifecycle.js";
@@ -19,6 +20,13 @@ vi.mock("../src/services/asignacion.service.js", async (importOriginal) => {
 vi.mock("../src/services/committed-events.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/committed-events.service.js")>();
   return { ...actual, publishCommittedEvents: vi.fn(actual.publishCommittedEvents) };
+});
+// Mock puro: NO delega a la implementación real (que programaría un
+// `setTimeout` real de 2s contra el `eventBroker` singleton de producción,
+// sin que este archivo use fake timers) — solo registra la llamada.
+vi.mock("../src/lib/metricas-broadcast.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/metricas-broadcast.js")>();
+  return { ...actual, scheduleMetricasBroadcast: vi.fn() };
 });
 
 let sequence = 0;
@@ -123,6 +131,23 @@ describe("trabajador del buzón de ingesta", () => {
     const despues = await prisma.bridge.findUniqueOrThrow({ where: { id: input.bridgeId } });
     expect(despues.ultimoLeadEn).not.toBeNull();
     expect(despues.ultimoLeadEn!.getTime()).toBeGreaterThanOrEqual(now.getTime());
+  });
+
+  it("M9: programa la señal de métricas tras procesar la recepción con éxito (docs/08-dashboard-kpis.md §5, ingreso de lead)", async () => {
+    const input = await entrada();
+    const now = new Date();
+    const receipt = await inbox.aceptarLeadRecibido(input, now);
+    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-metricas", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-metricas", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+
+    expect(await procesarRecepcion(claim)).toBe(true);
+
+    // >=1 en vez de exactamente 1: un lead nuevo dispara TANTO el hook de
+    // "ingreso de lead" (procesarRecepcion) COMO el de "asignación"
+    // (asignarTrasCommit -> applyAsignacion) cuando hay un asesor activo
+    // disponible — ambos son disparos legítimos del mismo evento de negocio,
+    // el debounce de 2s de metricas-broadcast.ts absorbe la duplicación.
+    expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast)).toHaveBeenCalled();
   });
 
   it("detiene reclamos y espera el trabajo activo antes de resolver el drenaje", async () => {

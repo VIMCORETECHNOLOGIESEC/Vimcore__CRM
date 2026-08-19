@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
+import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
 import {
   assignAutomatically,
   assignLead,
@@ -19,6 +20,13 @@ vi.mock("../src/repositories/lead-evento.repository.js", async (importOriginal) 
   const actual =
     await importOriginal<typeof import("../src/repositories/lead-evento.repository.js")>();
   return { ...actual, createEvento: vi.fn(actual.createEvento) };
+});
+// Mock puro: NO delega a la implementación real (que programaría un
+// `setTimeout` real de 2s contra el `eventBroker` singleton de producción,
+// sin que este archivo use fake timers) — solo registra la llamada.
+vi.mock("../src/lib/metricas-broadcast.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/metricas-broadcast.js")>();
+  return { ...actual, scheduleMetricasBroadcast: vi.fn() };
 });
 
 let contador = 0;
@@ -341,5 +349,30 @@ describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infra
     // reportarse como "estos leads son inválidos").
     const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
     expect(leadDosTrasFallo.asesorId).toBeNull();
+  });
+});
+
+describe("asignacion.service — M9 señal de métricas (docs/08-dashboard-kpis.md §5, asignación)", () => {
+  /**
+   * Corrección de code-review: `applyAsignacion` corre DENTRO de la `tx` del
+   * llamador y NO programa la señal de métricas por su cuenta — si lo hiciera,
+   * un rollback posterior de esa misma transacción (p. ej. dentro del loop de
+   * reasignación de cartera de `usuarios.service.ts::deactivateUsuario`)
+   * dejaría un broadcast fantasma ya programado sobre datos nunca
+   * persistidos. Cada CALLER externo de `applyAsignacion` programa la señal
+   * recién DESPUÉS del commit — acá se prueba a través de `asignarTrasCommit`,
+   * el camino real de asignación automática post-ingesta.
+   */
+  it("asignarTrasCommit programa la señal de métricas después del commit, no dentro de la transacción", async () => {
+    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    const lead = await crearLeadSinAsignar();
+    await crearAsesorActivo();
+    const llamadasAntes = vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length;
+
+    await asignarTrasCommit(lead.id, new Date());
+
+    expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length).toBeGreaterThan(
+      llamadasAntes,
+    );
   });
 });

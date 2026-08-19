@@ -464,9 +464,25 @@ productor ni un scheduler de expiración de tokens.
 - [x] Filtro por rango de fechas en todos los endpoints de métricas
 - [x] Alcance por rol: general para administrador y supervisor, personal para
       asesor y vendedor
-- [ ] Emisión de actualización de métricas por SSE ante cambios relevantes —
-      pendiente A PROPÓSITO, queda para una tarea futura separada (fuera de
-      alcance de la tarea que cerró el resto de M9).
+- [x] Emisión de actualización de métricas por SSE ante cambios relevantes —
+      diseño "broadcast a todos los conectados": el backend NO recalcula
+      métricas ni resuelve destinatarios por rol antes de emitir; emite una
+      señal liviana `metricas.actualizadas` (`EventBroker.broadcastAll`,
+      `src/lib/event-broker.ts`) a TODO usuario con una conexión SSE activa,
+      y es el frontend quien hace refetch de sus endpoints de métricas —
+      esos endpoints ya aplican el alcance por rol server-side en cada
+      request, así que el filtrado ocurre en el fetch, no en la señal (evita
+      el costo de resolver destinatarios en cada evento de negocio, que es
+      justo lo que pide evitar la nota de rendimiento del spec). Agrupado en
+      una ventana de debounce de 2s (`scheduleMetricasBroadcast`,
+      `src/lib/metricas-broadcast.ts`) para que un ingreso masivo de leads no
+      dispare un recálculo por cada uno. Tres puntos de disparo: ingreso de
+      lead (`ingesta.service.ts::procesarRecepcion`), asignación — un único
+      hook en `asignacion.service.ts::applyAsignacion`, el punto de escritura
+      compartido por los 4 caminos de asignación de ese archivo más la
+      reasignación de cartera de `usuarios.service.ts` — y cambio de
+      etapa/cierre (`leads.service.ts::transitionEtapa`, cubre VENTA/NO_VENTA
+      como caso de cierre sin lógica separada).
 
 **Pruebas obligatorias:** un asesor consultando métricas recibe solo datos de su
 cartera; los conteos por etapa suman el total de leads del período.

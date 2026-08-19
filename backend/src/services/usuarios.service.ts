@@ -12,6 +12,7 @@ import type {
 } from "../repositories/usuario.repository.js";
 import { applyAsignacion, chooseCandidato, type CandidatoAsignacion } from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 function userNotFound(): AppError {
   return new AppError("usuario_no_encontrado", 404, "Usuario no encontrado");
@@ -233,4 +234,8 @@ export async function deactivateUsuario(id: string): Promise<void> {
     USUARIOS_TRANSACTION_BOUNDS,
   );
   publishCommittedEvents(events);
+  // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
+  // `publishCommittedEvents` — la `tx` de arriba (que puede haber reasignado
+  // toda la cartera vía `applyAsignacion`) ya confirmó.
+  scheduleMetricasBroadcast();
 }

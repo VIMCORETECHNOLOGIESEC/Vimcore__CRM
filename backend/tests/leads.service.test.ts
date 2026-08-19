@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
+import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
 import { findLeadById, findLeads, transitionEtapa } from "../src/services/leads.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
@@ -12,6 +13,13 @@ vi.mock("../src/repositories/lead-evento.repository.js", async (importOriginal) 
   const actual =
     await importOriginal<typeof import("../src/repositories/lead-evento.repository.js")>();
   return { ...actual, createEvento: vi.fn(actual.createEvento) };
+});
+// Mock puro: NO delega a la implementación real (que programaría un
+// `setTimeout` real de 2s contra el `eventBroker` singleton de producción,
+// sin que este archivo use fake timers) — solo registra la llamada.
+vi.mock("../src/lib/metricas-broadcast.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/metricas-broadcast.js")>();
+  return { ...actual, scheduleMetricasBroadcast: vi.fn() };
 });
 
 let contador = 0;
@@ -321,5 +329,17 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(sinCambios.montoVenta).toBeNull();
     const eventos = await prisma.leadEvento.count({ where: { leadId: lead.id } });
     expect(eventos).toBe(0);
+  });
+
+  it("M9: programa la señal de métricas tras una transición exitosa (docs/08-dashboard-kpis.md §5, cambio de etapa/cierre)", async () => {
+    const asesor = await crearUsuario("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO" });
+    const llamadasAntes = vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length;
+
+    await transitionEtapa(asesor, lead.id, { etapa: "CONTACTADO", respuestas: RESPUESTAS_ALTAS_NUEVO });
+
+    expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length).toBeGreaterThan(
+      llamadasAntes,
+    );
   });
 });

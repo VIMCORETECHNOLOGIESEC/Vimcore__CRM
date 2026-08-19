@@ -10,6 +10,7 @@ import { publishCommittedEvents } from "./committed-events.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 import { resolverLeadgenMeta } from "./meta-webhook.service.js";
+import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export interface IngestaResultado {
   recepcionId: string;
@@ -106,6 +107,9 @@ export async function procesarRecepcion(
     payload: { recepcionId: claim.recepcionId, leadId: resultado.dedup.leadId },
   });
   await touchUltimoLeadEnSeguro(resultado.entrada.bridgeId);
+  // M9 (docs/08-dashboard-kpis.md §5): "ingreso de lead" dispara la señal de
+  // métricas — se agrupa en la ventana de 2s de metricas-broadcast.ts.
+  scheduleMetricasBroadcast();
   return true;
 }
 
