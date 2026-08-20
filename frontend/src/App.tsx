@@ -14,7 +14,7 @@ function App() {
           <RouterProvider router={router} />
         </TooltipProvider>
       </AuthProvider>
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="bottom-right" closeButton />
     </QueryClientProvider>
   );
 }

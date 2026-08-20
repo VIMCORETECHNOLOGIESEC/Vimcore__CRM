@@ -68,9 +68,11 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   /*
    * Ancla la contención de scroll en la raíz real del documento, no solo en
    * el div de AppLayout. Sin esto, un redondeo de subpíxel en la cadena de
@@ -102,13 +104,16 @@
     scrollbar-width: thin;
     scrollbar-color: var(--muted-foreground) transparent;
   }
+
   .scrollbar-themed::-webkit-scrollbar {
     width: 9px;
     height: 9px;
   }
+
   .scrollbar-themed::-webkit-scrollbar-track {
     background: transparent;
   }
+
   .scrollbar-themed::-webkit-scrollbar-thumb {
     background-color: var(--muted-foreground);
     border-radius: var(--radius);
@@ -116,9 +121,51 @@
     background-clip: padding-box;
     transition: background-color 0.15s ease;
   }
+
   .scrollbar-themed::-webkit-scrollbar-thumb:hover,
   .scrollbar-themed::-webkit-scrollbar-thumb:active,
   .scrollbar-themed.is-scrolling::-webkit-scrollbar-thumb {
     background-color: var(--primary);
   }
+}
+
+/*
+ * Botón de cierre de los toasts (sonner). Por defecto queda superpuesto en
+ * la esquina superior izquierda de la tarjeta (mitad afuera, vía
+ * `--toast-close-button-transform` del paquete) y su `background` se fija
+ * igual al `--{tipo}-bg` del propio toast en modo `richColors`, así que no
+ * se distingue del fondo y no lee como "al final del toast". `!important`
+ * es necesario porque sonner inyecta su hoja de estilos en runtime
+ * (`__insertCSS` al importar el paquete), así que el orden de carga en el
+ * DOM no es confiable para ganarle por especificidad sola.
+ *
+ * El color del ícono NO se toca a propósito: sonner ya fija el `color` del
+ * botón al mismo `--{tipo}-text` que usan las letras del toast (rojo sólido
+ * en error, ver `node_modules/sonner/dist/styles.css`), que es exactamente
+ * el color de énfasis pedido -- solo había que quitarle el fondo/borde que
+ * lo camuflaban y reubicarlo.
+ *
+ * El ícono de la X no es texto, es un `<svg>` de 12x12 con dos `<line>` y
+ * `stroke-width: 1.5` (`node_modules/sonner/dist/index.mjs::CloseIcon`) --
+ * por eso `font-weight` no tiene ningún efecto sobre su grosor. El grosor de
+ * un trazo SVG se sube con `stroke-width`, y el tamaño con `width`/`height`
+ * (los atributos inline del propio svg pierden contra CSS).
+ */
+[data-sonner-toast]:has([data-close-button]) [data-content] {
+  padding-right: 20px !important;
+}
+
+[data-sonner-toast] [data-close-button] {
+  top: 50% !important;
+  left: auto !important;
+  right: 8px !important;
+  transform: translateY(-50%) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+[data-sonner-toast] [data-close-button] svg {
+  width: 14px !important;
+  height: 14px !important;
+  stroke-width: 2.5 !important;
 }
