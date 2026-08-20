@@ -60,6 +60,7 @@ export function DashboardPage() {
   const { data: responsables = [] } = useQuery({
     queryKey: ["catalogo-responsables", "TODOS"],
     queryFn: () => getCatalogoResponsables("TODOS"),
+    enabled: esGestorDeCartera,
   });
 
   const resumen = useResumenMetricas(filtros);

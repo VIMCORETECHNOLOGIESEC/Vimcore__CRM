@@ -2,16 +2,37 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RolUsuario } from "@/tipos/usuario";
 import { FILTRO_TODOS, FILTROS_LEADS_VACIOS, type LeadsFiltrosState } from "@/funcionalidades/leads/leads.utils";
 
 vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
   fetchRedesSocialesActivasApi: vi.fn(),
 }));
 
+// `LeadsFiltros` gatea `GET /bridges/redes-activas` por rol (ADMINISTRADOR,
+// `bridges.routes.ts`) -- se mockea igual que en `LeadsPage.test.tsx` para
+// no depender de `<AuthProvider>` real.
+vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+  useAuth: vi.fn(),
+}));
+
 const { fetchRedesSocialesActivasApi } = await import("@/funcionalidades/bridges/bridges.api");
+const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
 const { LeadsFiltros } = await import("@/funcionalidades/leads/LeadsFiltros");
 
 const fetchRedesSocialesActivasApiMock = vi.mocked(fetchRedesSocialesActivasApi);
+const useAuthMock = vi.mocked(useAuth);
+
+function mockearAuth(rol: RolUsuario) {
+  useAuthMock.mockReturnValue({
+    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol },
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    hasRole: (allowedRoles) => !allowedRoles || allowedRoles.length === 0 || allowedRoles.includes(rol),
+  });
+}
 
 const RESPONSABLES = [
   { id: "asesor-1", nombre: "Marta Herrera" },
@@ -58,6 +79,10 @@ async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
   fetchRedesSocialesActivasApiMock.mockReset();
   fetchRedesSocialesActivasApiMock.mockResolvedValue([]);
+  // ADMINISTRADOR por defecto: es el único rol con permiso para
+  // /bridges/redes-activas, y la mayoría de estos tests ejercitan ese
+  // filtro. Los tests de gating de rol lo pisan explícitamente.
+  mockearAuth("ADMINISTRADOR");
 });
 
 afterEach(() => {
@@ -120,6 +145,16 @@ describe("LeadsFiltros — red social sourced from active bridges (Requirement: 
     await user.click(await screen.findByRole("option", { name: "Instagram" }));
 
     expect(onChange).toHaveBeenCalledWith({ ...FILTROS_LEADS_VACIOS, redSocial: "INSTAGRAM" });
+  });
+
+  it("un rol sin permiso (ej. ASESOR) ni siquiera dispara la petición ni renderiza el selector", async () => {
+    mockearAuth("ASESOR");
+    const user = userEvent.setup();
+    renderFiltros();
+    await abrirFiltros(user);
+
+    expect(screen.queryByRole("combobox", { name: "Red social" })).not.toBeInTheDocument();
+    expect(fetchRedesSocialesActivasApiMock).not.toHaveBeenCalled();
   });
 });
 

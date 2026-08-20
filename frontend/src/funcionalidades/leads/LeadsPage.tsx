@@ -51,6 +51,7 @@ export function LeadsPage() {
   const { data: responsables = [] } = useQuery({
     queryKey: ["catalogo-responsables", "TODOS"],
     queryFn: () => getCatalogoResponsables("TODOS"),
+    enabled: esGestorDeCartera,
   });
 
   function updateFiltros(nuevos: LeadsFiltrosState) {

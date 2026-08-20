@@ -175,11 +175,15 @@ export function useRedesSocialesSoportadas() {
 /**
  * Catálogo de redes activas (Requirement: Active Red-Social Catalog
  * Endpoint), consumido por el filtro de red social de F3
- * (`leads/LeadsFiltros.tsx`).
+ * (`leads/LeadsFiltros.tsx`). `GET /bridges/redes-activas` exige
+ * ADMINISTRADOR (`bridges.routes.ts`) -- `enabled` deja que el llamador
+ * gatee el fetch por rol en vez de dispararlo para cualquier usuario
+ * autenticado.
  */
-export function useRedesSocialesActivas() {
+export function useRedesSocialesActivas(enabled = true) {
   return useQuery({
     queryKey: [REDES_SOCIALES_ACTIVAS_QUERY_KEY],
     queryFn: fetchRedesSocialesActivasApi,
+    enabled,
   });
 }
