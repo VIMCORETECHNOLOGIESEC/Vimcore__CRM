@@ -1,6 +1,7 @@
 import { Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useMemo } from "react";
 import { useRedesSocialesActivas } from "@/funcionalidades/bridges/useBridges";
+import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +60,13 @@ export function LeadsFiltros({
     update(campo, FILTROS_LEADS_VACIOS[campo] as never);
   }
 
-  const { data: redesSocialesActivas, isLoading: cargandoRedesSociales } = useRedesSocialesActivas();
+  // `GET /bridges/redes-activas` exige ADMINISTRADOR (`bridges.routes.ts`) --
+  // sin este gate, asesor/supervisor/vendedor disparaban la petición igual
+  // (y recibían 403) al abrir el popover de filtros.
+  const { hasRole } = useAuth();
+  const puedeVerRedesActivas = hasRole(["ADMINISTRADOR"]);
+  const { data: redesSocialesActivas, isLoading: cargandoRedesSociales } =
+    useRedesSocialesActivas(puedeVerRedesActivas);
 
   /**
    * Requirement: Red-Social Filter Sourced from Active Bridges. Edge case
@@ -144,13 +151,15 @@ export function LeadsFiltros({
                   onChange={(v) => update("semaforo", v as LeadsFiltrosState["semaforo"])}
                   opciones={SEMAFOROS.map((s) => ({ valor: s, etiqueta: SEMAFORO_ETIQUETAS[s] }))}
                 />
-                <CampoSelect
-                  etiqueta="Red social"
-                  valor={filtros.redSocial}
-                  onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
-                  opciones={opcionesRedSocial.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
-                  disabled={cargandoRedesSociales}
-                />
+                {puedeVerRedesActivas ? (
+                  <CampoSelect
+                    etiqueta="Red social"
+                    valor={filtros.redSocial}
+                    onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
+                    opciones={opcionesRedSocial.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
+                    disabled={cargandoRedesSociales}
+                  />
+                ) : null}
                 <CampoSelect
                   etiqueta="Campaña"
                   valor={filtros.campaniaId}

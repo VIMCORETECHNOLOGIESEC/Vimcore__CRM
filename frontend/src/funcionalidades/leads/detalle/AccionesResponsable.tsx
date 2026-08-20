@@ -33,21 +33,27 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
 
   const handoff = useHandoffToVendedor(lead.id);
   const reassign = useReassignLead(lead.id);
+  const eligeVendedorManualmente = user.rol === "ADMINISTRADOR" || user.rol === "SUPERVISOR";
 
   // Backend real (D-A2, integración F3/F4): `getCatalogoVendedores`/
-  // `getCatalogoResponsables` ahora son async.
+  // `getCatalogoResponsables` ahora son async. `GET /usuarios/responsables`
+  // exige ADMINISTRADOR/SUPERVISOR (`usuarios.routes.ts`) -- mismos roles que
+  // `eligeVendedorManualmente`, que ya decide si el combobox correspondiente
+  // se renderiza. Sin `enabled`, un asesor/vendedor disparaba ambas
+  // peticiones igual (y recibía 403) aunque el combobox nunca se mostrara.
   const { data: vendedores = [] } = useQuery({
     queryKey: ["catalogo-responsables", "VENDEDORES"],
     queryFn: () => getCatalogoVendedores(),
+    enabled: eligeVendedorManualmente,
   });
   const { data: asesores = [] } = useQuery({
     queryKey: ["catalogo-responsables", "ASESORES"],
     queryFn: () => getCatalogoResponsables("ASESORES"),
+    enabled: eligeVendedorManualmente,
   });
 
   const puedeTraspasar = canHandoffToVendedor(lead, user);
   const puedeReasignar = canReassignLead(lead, user);
-  const eligeVendedorManualmente = user.rol === "ADMINISTRADOR" || user.rol === "SUPERVISOR";
 
   if (!puedeTraspasar && !puedeReasignar) return null;
 
