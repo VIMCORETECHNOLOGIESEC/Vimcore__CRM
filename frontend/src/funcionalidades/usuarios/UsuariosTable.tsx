@@ -1,8 +1,17 @@
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import { MoreHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { AdminUsuario } from "@/tipos/usuario";
 import { ROL_ETIQUETAS } from "./catalogos";
 import { EstadoUsuarioBadge } from "./EstadoUsuarioBadge";
@@ -13,6 +22,15 @@ interface UsuariosTableProps {
   onEditar: (usuario: AdminUsuario) => void;
   onRestablecerPassword: (usuario: AdminUsuario) => void;
   onDarDeBaja: (usuario: AdminUsuario) => void;
+  onReactivar: (usuarioId: string) => void;
+  reactivando: boolean;
+  /**
+   * Atenúa (opacidad) la fila de un usuario inactivo -- solo tiene sentido
+   * cuando el filtro de estado no está acotado a "Activos" (ver
+   * `UsuariosPage.tsx`), momento en el que activos e inactivos se muestran
+   * mezclados en la misma tabla.
+   */
+  atenuarInactivos: boolean;
 }
 
 const columnHelper = createColumnHelper<AdminUsuario>();
@@ -31,7 +49,7 @@ const COLUMN_WIDTHS: Record<string, string> = {
   rol: "w-32",
   estado: "w-28",
   cargaActiva: "w-36",
-  acciones: "w-80",
+  acciones: "w-16",
 };
 
 /** Celda de texto libre truncada con elipsis + tooltip con el valor completo. */
@@ -69,6 +87,9 @@ export function UsuariosTable({
   onEditar,
   onRestablecerPassword,
   onDarDeBaja,
+  onReactivar,
+  reactivando,
+  atenuarInactivos,
 }: UsuariosTableProps) {
   const columns = useMemo(
     () => [
@@ -109,43 +130,46 @@ export function UsuariosTable({
         cell: ({ row }) => {
           const usuario = row.original;
           return (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => onEditar(usuario)}>
-                Editar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRestablecerPassword(usuario)}
-              >
-                Restablecer contraseña
-              </Button>
-              {usuario.activo ? (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => onDarDeBaja(usuario)}
-                >
-                  Dar de baja
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label={`Acciones de ${usuario.nombre}`}>
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
                 </Button>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <Button variant="destructive" size="sm" disabled>
-                        Dar de baja
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>Este usuario ya está inactivo</TooltipContent>
-                </Tooltip>
-              )}
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEditar(usuario)}>Editar perfil</DropdownMenuItem>
+                {usuario.activo ? (
+                  <>
+                    <DropdownMenuItem onClick={() => onRestablecerPassword(usuario)}>
+                      Restablecer contraseña
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => onDarDeBaja(usuario)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Dar de baja
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => onReactivar(usuario.id)}
+                      disabled={reactivando}
+                      className="text-success focus:text-success"
+                    >
+                      Reactivar
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           );
         },
       }),
     ],
-    [onEditar, onRestablecerPassword, onDarDeBaja],
+    [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivando],
   );
 
   const table = useReactTable({ data: usuarios, columns, getCoreRowModel: getCoreRowModel() });
@@ -165,7 +189,10 @@ export function UsuariosTable({
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id}>
+          <TableRow
+            key={row.id}
+            className={cn(atenuarInactivos && !row.original.activo && "opacity-60")}
+          >
             {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id} className={COLUMN_WIDTHS[cell.column.id]}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}

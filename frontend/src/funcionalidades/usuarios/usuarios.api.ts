@@ -131,6 +131,19 @@ export async function deactivateUsuarioApi(id: string): Promise<void> {
   await httpClient.delete<void>(`/usuarios/${id}`);
 }
 
+/**
+ * Reactivación de un usuario dado de baja -- `PATCH /usuarios/:id` con
+ * `{ activo: true }`, mismo endpoint que edición/restablecimiento de
+ * contraseña, que ahora también acepta `activo` (backend real). Arranca con
+ * cartera vacía: no restaura los leads reasignados durante la baja. No-op
+ * idempotente si el usuario ya está activo. Mismo criterio que
+ * `bridges/bridges.api.ts::reactivateBridgeApi`.
+ */
+export async function reactivateUsuarioApi(id: string): Promise<AdminUsuario> {
+  const { user } = await httpClient.patch<UsuarioResponse>(`/usuarios/${id}`, { activo: true });
+  return user;
+}
+
 // ---------------------------------------------------------------------------
 // "Carga activa de leads" (F7, checklist) -- backend real de leads
 // (integración F3/F4), ya no depende del mock en memoria que usaba

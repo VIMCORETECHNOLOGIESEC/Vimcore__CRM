@@ -13,6 +13,7 @@ vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   updateUsuarioApi: vi.fn(),
   resetPasswordApi: vi.fn(),
   deactivateUsuarioApi: vi.fn(),
+  reactivateUsuarioApi: vi.fn(),
   getCargaActivaDeUsuario: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -26,6 +27,7 @@ const createUsuarioApiMock = vi.mocked(usuariosApi.createUsuarioApi);
 const updateUsuarioApiMock = vi.mocked(usuariosApi.updateUsuarioApi);
 const resetPasswordApiMock = vi.mocked(usuariosApi.resetPasswordApi);
 const deactivateUsuarioApiMock = vi.mocked(usuariosApi.deactivateUsuarioApi);
+const reactivateUsuarioApiMock = vi.mocked(usuariosApi.reactivateUsuarioApi);
 const getCargaActivaDeUsuarioMock = vi.mocked(usuariosApi.getCargaActivaDeUsuario);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
@@ -74,6 +76,7 @@ beforeEach(() => {
   updateUsuarioApiMock.mockReset();
   resetPasswordApiMock.mockReset();
   deactivateUsuarioApiMock.mockReset();
+  reactivateUsuarioApiMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
@@ -83,6 +86,15 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+/**
+ * Abre el menú de acciones (icono `MoreHorizontal`) de la fila de `nombre`
+ * -- reemplaza los botones sueltos que tenía la tabla antes (ver
+ * `UsuariosTable.tsx`).
+ */
+async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombre: string) {
+  await user.click(screen.getByRole("button", { name: `Acciones de ${nombre}` }));
+}
 
 describe("UsuariosPage — estados de carga, vacío y error", () => {
   it("muestra un esqueleto de carga mientras llega la respuesta", async () => {
@@ -151,13 +163,18 @@ describe("UsuariosPage — listado con rol, estado y carga activa de leads", () 
     expect(getCargaActivaDeUsuarioMock).not.toHaveBeenCalled();
   });
 
-  it("un usuario inactivo se muestra con la etiqueta «Inactivo» y «Dar de baja» deshabilitado", async () => {
+  it("un usuario inactivo se muestra con la etiqueta «Inactivo» y el menú de acciones ofrece «Reactivar» en vez de «Dar de baja»", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake({ activo: false })]));
+    const user = userEvent.setup();
 
     renderUsuariosPage();
 
     expect(await screen.findByText("Inactivo")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Dar de baja" })).toBeDisabled();
+
+    await abrirMenuAcciones(user, "Marta Herrera");
+    expect(await screen.findByRole("menuitem", { name: "Reactivar" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Dar de baja" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Restablecer contraseña" })).not.toBeInTheDocument();
   });
 });
 
@@ -360,7 +377,8 @@ describe("UsuariosPage — edición de usuario", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await abrirMenuAcciones(user, "Marta Herrera");
+    await user.click(await screen.findByRole("menuitem", { name: "Editar perfil" }));
     const inputNombre = await screen.findByLabelText("Nombre");
     expect(inputNombre).toHaveValue("Marta Herrera");
     expect(screen.getByLabelText("Correo")).toHaveValue("marta@crm.test");
@@ -389,7 +407,8 @@ describe("UsuariosPage — restablecimiento de contraseña (F7, sin brecha de ba
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Restablecer contraseña" }));
+    await abrirMenuAcciones(user, "Marta Herrera");
+    await user.click(await screen.findByRole("menuitem", { name: "Restablecer contraseña" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByLabelText(/contraseña actual/i)).not.toBeInTheDocument();
 
@@ -412,7 +431,8 @@ describe("UsuariosPage — restablecimiento de contraseña (F7, sin brecha de ba
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Restablecer contraseña" }));
+    await abrirMenuAcciones(user, "Marta Herrera");
+    await user.click(await screen.findByRole("menuitem", { name: "Restablecer contraseña" }));
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText("Nueva contraseña"), "contraseña-larga-1");
     await user.type(within(dialog).getByLabelText("Confirmar nueva contraseña"), "otra-diferente-1");
@@ -431,7 +451,8 @@ describe("UsuariosPage — baja lógica con reasignación automática de la cart
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Dar de baja" }));
+    await abrirMenuAcciones(user, "Marta Herrera");
+    await user.click(await screen.findByRole("menuitem", { name: "Dar de baja" }));
     expect(
       await screen.findByText(
         "El usuario no podrá volver a iniciar sesión. Esta acción es irreversible. Si tiene cartera activa, el sistema la reasigna automáticamente al compañero del mismo rol con menor carga activa (mismo criterio que la asignación automática de leads nuevos).",
@@ -457,7 +478,8 @@ describe("UsuariosPage — baja lógica con reasignación automática de la cart
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Dar de baja" }));
+    await abrirMenuAcciones(user, "Marta Herrera");
+    await user.click(await screen.findByRole("menuitem", { name: "Dar de baja" }));
     await user.click(screen.getByRole("button", { name: "Confirmar baja" }));
 
     await waitFor(() =>
@@ -466,5 +488,57 @@ describe("UsuariosPage — baja lógica con reasignación automática de la cart
       ),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("UsuariosPage — reactivación de usuario (F7, sin diálogo de confirmación)", () => {
+  it("elegir «Reactivar» en el menú llama a reactivateUsuarioApi con el id y avisa éxito, sin pedir confirmación", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake({ activo: false })]));
+    reactivateUsuarioApiMock.mockResolvedValue(usuarioFake({ activo: true }));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await abrirMenuAcciones(user, "Marta Herrera");
+    await user.click(await screen.findByRole("menuitem", { name: "Reactivar" }));
+
+    await waitFor(() => expect(reactivateUsuarioApiMock).toHaveBeenCalledWith("u1"));
+    expect(toastSuccessMock).toHaveBeenCalledWith("Usuario reactivado correctamente.");
+    // Sin diálogo: a diferencia de la baja, la reactivación no abre nada que confirmar.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
+  it("arranca con el filtro de estado en «Activos», mandando `activo: true` desde la primera consulta", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    expect(fetchUsuariosApiMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ activo: true }),
+    );
+    expect(screen.getByRole("combobox", { name: "Estado" })).toHaveTextContent("Activos");
+  });
+
+  it("al cambiar a «Todos los estados», la fila de un usuario inactivo se muestra atenuada", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake({ activo: false })]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await user.click(screen.getByRole("combobox", { name: "Estado" }));
+    await user.click(await screen.findByRole("option", { name: "Todos los estados" }));
+
+    const fila = (await screen.findByText("Marta Herrera")).closest("tr");
+    expect(fila).toHaveClass("opacity-60");
+  });
+
+  it("mientras el filtro sigue en «Activos», la fila de un usuario inactivo NO se atenúa", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake({ activo: false })]));
+    renderUsuariosPage();
+
+    const fila = (await screen.findByText("Marta Herrera")).closest("tr");
+    expect(fila).not.toHaveClass("opacity-60");
   });
 });

@@ -17,6 +17,7 @@ const {
   updateUsuarioApi,
   resetPasswordApi,
   deactivateUsuarioApi,
+  reactivateUsuarioApi,
   getCargaActivaDeUsuario,
 } = await import("@/funcionalidades/usuarios/usuarios.api");
 
@@ -144,6 +145,16 @@ describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
     await deactivateUsuarioApi("u1");
 
     expect(deleteMock).toHaveBeenCalledWith("/usuarios/u1");
+  });
+
+  it("reactivateUsuarioApi llama a PATCH /usuarios/:id con `{ activo: true }` y devuelve `user`", async () => {
+    const reactivado = usuarioFake({ activo: true });
+    patchMock.mockResolvedValue({ user: reactivado });
+
+    const resultado = await reactivateUsuarioApi("u1");
+
+    expect(patchMock).toHaveBeenCalledWith("/usuarios/u1", { activo: true });
+    expect(resultado).toEqual(reactivado);
   });
 });
 

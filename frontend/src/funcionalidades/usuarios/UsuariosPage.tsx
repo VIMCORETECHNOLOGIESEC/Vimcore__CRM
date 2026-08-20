@@ -22,6 +22,7 @@ import {
 import {
   useCreateUsuario,
   useDeactivateUsuario,
+  useReactivateUsuario,
   useResetPassword,
   useUpdateUsuario,
   useUsuarios,
@@ -36,12 +37,15 @@ const USUARIOS_POR_PAGINA = 10;
 /**
  * Administración de usuarios (F7, docs/07 -- solo administrador, ruta
  * protegida en `router.tsx`). Backend real para listado/alta/edición/
- * restablecimiento de contraseña/baja lógica (`usuarios.api.ts`), con
- * filtro (búsqueda, rol, estado) y paginación reales desde el backend. La
- * reasignación de la cartera activa al dar de baja un usuario también es
- * backend real (M2, atómica) -- el frontend solo confirma la baja, ver
- * `BajaUsuarioDialog`. La columna "carga activa de leads" es de solo
- * lectura -- ver el comentario de brecha en `usuarios.api.ts`.
+ * restablecimiento de contraseña/baja lógica/reactivación (`usuarios.api.ts`),
+ * con filtro (búsqueda, rol, estado -- default "Activos") y paginación reales
+ * desde el backend. La reasignación de la cartera activa al dar de baja un
+ * usuario también es backend real (M2, atómica) -- el frontend solo confirma
+ * la baja, ver `BajaUsuarioDialog`. Reactivar, en cambio, no pide
+ * confirmación (mismo criterio que `bridges/BridgesPage.tsx`): arranca con
+ * cartera vacía, sin restaurar nada, acción reversible de un clic. La
+ * columna "carga activa de leads" es de solo lectura -- ver el comentario de
+ * brecha en `usuarios.api.ts`.
  */
 export function UsuariosPage() {
   usePageHeader({ title: "Usuarios" });
@@ -59,6 +63,7 @@ export function UsuariosPage() {
   const actualizar = useUpdateUsuario();
   const restablecer = useResetPassword();
   const darDeBaja = useDeactivateUsuario();
+  const reactivar = useReactivateUsuario();
 
   const [dialogAltaAbierto, setDialogAltaAbierto] = useState(false);
   const [usuarioEnEdicion, setUsuarioEnEdicion] = useState<AdminUsuario | null>(null);
@@ -71,7 +76,9 @@ export function UsuariosPage() {
   }
 
   const hayFiltrosActivos =
-    filtros.busqueda !== "" || filtros.rol !== FILTRO_TODOS || filtros.estado !== "TODOS";
+    filtros.busqueda !== "" ||
+    filtros.rol !== FILTRO_TODOS ||
+    filtros.estado !== FILTROS_USUARIOS_VACIOS.estado;
 
   const usuarios = data?.users ?? [];
   const total = data?.total ?? 0;
@@ -114,6 +121,9 @@ export function UsuariosPage() {
             onEditar={setUsuarioEnEdicion}
             onRestablecerPassword={setUsuarioParaPassword}
             onDarDeBaja={setUsuarioParaBaja}
+            onReactivar={(usuarioId) => reactivar.mutate(usuarioId)}
+            reactivando={reactivar.isPending}
+            atenuarInactivos={filtros.estado !== "ACTIVOS"}
           />
 
           <div className="flex items-center justify-between text-sm text-muted-foreground">

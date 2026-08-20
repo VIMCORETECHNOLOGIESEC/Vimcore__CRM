@@ -12,10 +12,16 @@ export interface UsuariosFiltrosState {
   estado: "TODOS" | "ACTIVOS" | "INACTIVOS";
 }
 
+/**
+ * Default "Activos" (no "Todos"): un usuario dado de baja no debería
+ * aparecer en el listado por defecto -- hay que elegir explícitamente
+ * "Todos los estados" o "Inactivos" para verlo (ver `UsuariosTable.tsx`,
+ * que atenúa la fila cuando el filtro deja de estar acotado a "Activos").
+ */
 export const FILTROS_USUARIOS_VACIOS: UsuariosFiltrosState = {
   busqueda: "",
   rol: FILTRO_TODOS,
-  estado: "TODOS",
+  estado: "ACTIVOS",
 };
 
 /**
