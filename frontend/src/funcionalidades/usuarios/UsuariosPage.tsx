@@ -122,7 +122,7 @@ export function UsuariosPage() {
             onRestablecerPassword={setUsuarioParaPassword}
             onDarDeBaja={setUsuarioParaBaja}
             onReactivar={(usuarioId) => reactivar.mutate(usuarioId)}
-            reactivando={reactivar.isPending}
+            reactivandoId={reactivar.isPending ? (reactivar.variables ?? null) : null}
             atenuarInactivos={filtros.estado !== "ACTIVOS"}
           />
 

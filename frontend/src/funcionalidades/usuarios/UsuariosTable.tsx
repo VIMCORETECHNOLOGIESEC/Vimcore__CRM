@@ -23,7 +23,8 @@ interface UsuariosTableProps {
   onRestablecerPassword: (usuario: AdminUsuario) => void;
   onDarDeBaja: (usuario: AdminUsuario) => void;
   onReactivar: (usuarioId: string) => void;
-  reactivando: boolean;
+  /** `id` del usuario que se está reactivando ahora mismo, o `null` -- acota el `disabled` a SU fila, no a toda la tabla (la mutación es una sola, compartida por todas las filas). */
+  reactivandoId: string | null;
   /**
    * Atenúa (opacidad) la fila de un usuario inactivo -- solo tiene sentido
    * cuando el filtro de estado no está acotado a "Activos" (ver
@@ -88,7 +89,7 @@ export function UsuariosTable({
   onRestablecerPassword,
   onDarDeBaja,
   onReactivar,
-  reactivando,
+  reactivandoId,
   atenuarInactivos,
 }: UsuariosTableProps) {
   const columns = useMemo(
@@ -156,7 +157,7 @@ export function UsuariosTable({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => onReactivar(usuario.id)}
-                      disabled={reactivando}
+                      disabled={reactivandoId === usuario.id}
                       className="text-success focus:text-success"
                     >
                       Reactivar
@@ -169,7 +170,7 @@ export function UsuariosTable({
         },
       }),
     ],
-    [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivando],
+    [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivandoId],
   );
 
   const table = useReactTable({ data: usuarios, columns, getCoreRowModel: getCoreRowModel() });
