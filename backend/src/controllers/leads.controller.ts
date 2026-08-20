@@ -12,7 +12,13 @@ import {
   traspasarBodySchema,
 } from "../schemas/leads.schema.js";
 import { assignLead, assignLeadsBatch, reassignLead, transferLead } from "../services/asignacion.service.js";
-import { findLeadById, findLeads, recalificarLead, transitionEtapa } from "../services/leads.service.js";
+import {
+  findLeadById,
+  findLeads,
+  listRedesSocialesVisibles,
+  recalificarLead,
+  transitionEtapa,
+} from "../services/leads.service.js";
 
 function zodValidationError(): AppError {
   return new AppError("validacion_invalida", 400, "La petición es inválida");
@@ -32,6 +38,24 @@ export async function getLeads(req: Request, res: Response): Promise<void> {
 
   const resultado = await findLeads(usuario, parsed.data);
   res.status(200).json(resultado);
+}
+
+/**
+ * `GET /leads/catalogo/redes-sociales`: catálogo de redes sociales, acotado
+ * al rol del usuario y en cascada con los demás filtros activos de `/leads`
+ * (reutiliza `listLeadsQuerySchema` — los campos de paginación que no aplican
+ * al catálogo simplemente se ignoran en `buildWhere`). Sin `requireRole`: el
+ * scoping por rol de `buildWhere` ya es la autorización, mismo principio que
+ * `getLeads`.
+ */
+export async function getLeadsRedesSociales(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsed = listLeadsQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw zodValidationError();
+
+  const redesSociales = await listRedesSocialesVisibles(usuario, parsed.data);
+  res.status(200).json({ redesSociales });
 }
 
 export async function getLeadById(req: Request, res: Response): Promise<void> {

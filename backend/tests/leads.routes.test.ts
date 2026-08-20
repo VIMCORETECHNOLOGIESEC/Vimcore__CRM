@@ -34,6 +34,7 @@ async function crearLead(
     semaforo: "ROJO" | "AMARILLO" | "VERDE" | null;
     asesorId: string | null;
     vendedorId: string | null;
+    redSocial: "FACEBOOK" | "INSTAGRAM" | "X" | "LINKEDIN" | "GOOGLE_FORMS" | null;
   }> = {},
 ): Promise<{ id: string; clienteNombre: string }> {
   contador += 1;
@@ -49,6 +50,7 @@ async function crearLead(
       semaforo: overrides.semaforo ?? null,
       asesorId: overrides.asesorId ?? null,
       vendedorId: overrides.vendedorId ?? null,
+      redSocial: overrides.redSocial ?? null,
       ingresadoEn: new Date(),
     },
   });
@@ -118,6 +120,55 @@ describe("GET /api/v1/leads", () => {
     expect(respuesta.body.leads[0].asesor).not.toHaveProperty("refreshTokens");
     expect(respuesta.body.leads[0].vendedor).not.toHaveProperty("passwordHash");
     expect(respuesta.body.leads[0].vendedor).not.toHaveProperty("refreshTokens");
+  });
+});
+
+describe("GET /api/v1/leads/catalogo/redes-sociales (catálogo en cascada, reemplazo de GET /bridges/redes-activas)", () => {
+  it("401 sin token de acceso", async () => {
+    const respuesta = await request(app).get("/api/v1/leads/catalogo/redes-sociales");
+    expect(respuesta.status).toBe(401);
+  });
+
+  it("200: un ASESOR solo ve las redes sociales de su propia cartera", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const otroAsesor = await crearUsuarioConToken("ASESOR");
+    await crearLead({ asesorId: asesor.id, redSocial: "FACEBOOK" });
+    await crearLead({ asesorId: otroAsesor.id, redSocial: "GOOGLE_FORMS" });
+
+    const respuesta = await request(app)
+      .get("/api/v1/leads/catalogo/redes-sociales")
+      .set("Authorization", `Bearer ${asesor.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.redesSociales).toEqual(["FACEBOOK"]);
+  });
+
+  it("200: un ADMINISTRADOR ve las redes sociales de todos los leads", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    await crearLead({ redSocial: "FACEBOOK" });
+    await crearLead({ redSocial: "GOOGLE_FORMS" });
+
+    const respuesta = await request(app)
+      .get("/api/v1/leads/catalogo/redes-sociales")
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.redesSociales).toEqual(expect.arrayContaining(["FACEBOOK", "GOOGLE_FORMS"]));
+  });
+
+  it("200: el filtro en cascada por etapa reduce el catálogo devuelto", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    await crearLead({ etapa: "VENTA", redSocial: "FACEBOOK" });
+    await crearLead({ etapa: "NUEVO", redSocial: "GOOGLE_FORMS" });
+
+    const respuesta = await request(app)
+      .get("/api/v1/leads/catalogo/redes-sociales")
+      .query({ etapa: "VENTA" })
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.redesSociales).toContain("FACEBOOK");
+    expect(respuesta.body.redesSociales).not.toContain("GOOGLE_FORMS");
   });
 });
 

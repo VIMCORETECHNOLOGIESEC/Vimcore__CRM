@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getLeadById,
   getLeads,
+  getLeadsRedesSociales,
   patchLeadEtapa,
   postLeadAsignar,
   postLeadFormulario,
@@ -17,6 +18,11 @@ export const leadsRouter = Router();
 // DD5 (diseño M5): sin `requireRole` — D4 es autorización por recurso, no
 // expresable con roles fijos; vive en `leads.service.ts`.
 leadsRouter.get("/leads", requireAuthentication, getLeads);
+// Segmento literal registrado ANTES de "/leads/:id" (mismo cuidado de orden
+// de rutas que "/bridges/catalogo/redes-soportadas" en bridges.routes.ts y
+// "/usuarios/responsables" en usuarios.routes.ts) — si se registrara después,
+// Express capturaría "catalogo" como el parámetro `:id`.
+leadsRouter.get("/leads/catalogo/redes-sociales", requireAuthentication, getLeadsRedesSociales);
 leadsRouter.get("/leads/:id", requireAuthentication, getLeadById);
 leadsRouter.patch("/leads/:id/etapa", requireAuthentication, patchLeadEtapa);
 // D16: recalificación sin mover la etapa — reutiliza applyFormulario (PR2).

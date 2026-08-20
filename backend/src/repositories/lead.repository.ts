@@ -1,4 +1,4 @@
-import type { Lead } from "@prisma/client";
+import type { Lead, RedSocial } from "@prisma/client";
 import { EtapaLead, Prisma } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
@@ -350,6 +350,33 @@ export async function assignResponsable(
  * condicional ASESOR/VENDEDOR que la versión singular. Si `leadIds` está
  * vacío, no ejecuta ninguna consulta.
  */
+/**
+ * `GET /leads/catalogo/redes-sociales` (catálogo en cascada, mismo espíritu
+ * que `bridge.repository.ts::listRedesActivas`): `where` completo —incluido
+ * el scoping por rol— lo construye `leads.service.ts`; este repositorio solo
+ * ejecuta el `distinct`. `Lead.redSocial` es nullable (`schema.prisma`, un
+ * lead sin bridge de origen no tiene red social), así que se filtran los
+ * `null` acá antes de devolver — el catálogo nunca incluye un valor `null`.
+ */
+export async function listRedesSocialesDistintas(
+  where: Prisma.LeadWhereInput,
+  busqueda: string | undefined,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<RedSocial[]> {
+  // Mismo merge que `findMany` (línea ~170): `busqueda` no forma parte del
+  // `where` que arma `buildWhere` en el servicio, así que si no se aplica acá
+  // también, el catálogo no cascadea con el término de búsqueda ya escrito.
+  const whereFinal = busqueda ? { ...where, cliente: buildBusquedaClienteWhere(busqueda) } : where;
+  const filas = await client.lead.findMany({
+    where: whereFinal,
+    distinct: ["redSocial"],
+    select: { redSocial: true },
+  });
+  return filas
+    .map((fila) => fila.redSocial)
+    .filter((redSocial): redSocial is RedSocial => redSocial !== null);
+}
+
 export async function assignResponsableBulk(
   leadIds: readonly string[],
   data: AssignResponsableData,
