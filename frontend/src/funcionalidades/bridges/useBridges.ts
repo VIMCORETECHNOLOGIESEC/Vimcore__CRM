@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { CrearBridgeInput } from "@/tipos/bridge";
 import {
@@ -15,6 +15,7 @@ import {
   testConnectionApi,
   toggleCuentaActivaApi,
   type BridgeLogsFiltros,
+  type BridgesQueryParams,
 } from "./bridges.api";
 
 const BRIDGES_QUERY_KEY = "bridges";
@@ -22,9 +23,18 @@ const BRIDGE_LOGS_QUERY_KEY = "bridge-logs";
 const REDES_SOCIALES_SOPORTADAS_QUERY_KEY = "redes-sociales-soportadas";
 const REDES_SOCIALES_ACTIVAS_QUERY_KEY = "redes-sociales-activas";
 
-/** Listado de bridges (F8). Backend real -- ver `bridges.api.ts`. */
-export function useBridges() {
-  return useQuery({ queryKey: [BRIDGES_QUERY_KEY], queryFn: fetchBridgesApi });
+/**
+ * Listado de bridges, paginado y filtrado (F8). Backend real -- ver
+ * `bridges.api.ts`. `keepPreviousData` evita el parpadeo a "cargando" al
+ * cambiar de página o filtro, mismo criterio que
+ * `usuarios/useUsuarios.ts::useUsuarios`.
+ */
+export function useBridges(params: BridgesQueryParams) {
+  return useQuery({
+    queryKey: [BRIDGES_QUERY_KEY, params],
+    queryFn: () => fetchBridgesApi(params),
+    placeholderData: keepPreviousData,
+  });
 }
 
 /** Detalle de un bridge, con sus cuentas publicitarias asociadas (F8). */

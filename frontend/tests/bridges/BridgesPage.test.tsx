@@ -1,9 +1,10 @@
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getErrorMessage } from "@/api/httpClient";
+import type { BridgesResponse } from "@/funcionalidades/bridges/bridges.api";
 import type { Bridge } from "@/tipos/bridge";
 
 vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
@@ -50,6 +51,14 @@ function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
   };
 }
 
+/** Envoltura de la respuesta paginada real (F8, breaking change) -- por defecto asume que `bridges` es la página completa. */
+function bridgesResponse(
+  bridges: Bridge[],
+  overrides: Partial<Omit<BridgesResponse, "bridges">> = {},
+): BridgesResponse {
+  return { bridges, total: bridges.length, pagina: 1, limite: 10, ...overrides };
+}
+
 /** Mismo `mutationCache` que `api/queryClient.ts` -- fiel al manejo global de errores real. */
 function renderBridgesPage() {
   const client = new QueryClient({
@@ -81,7 +90,7 @@ afterEach(() => {
 
 describe("BridgesPage — estados de carga, vacío y error", () => {
   it("muestra un esqueleto de carga mientras llega la respuesta", async () => {
-    let resolver: (value: Bridge[]) => void = () => {};
+    let resolver: (value: BridgesResponse) => void = () => {};
     fetchBridgesApiMock.mockReturnValue(
       new Promise((resolve) => {
         resolver = resolve;
@@ -91,14 +100,14 @@ describe("BridgesPage — estados de carga, vacío y error", () => {
     renderBridgesPage();
 
     expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
-    resolver([bridgeFake()]);
+    resolver(bridgesResponse([bridgeFake()]));
     await waitFor(() =>
       expect(screen.queryByRole("status", { name: "Cargando" })).not.toBeInTheDocument(),
     );
   });
 
   it("muestra un estado vacío honesto cuando no hay bridges configurados", async () => {
-    fetchBridgesApiMock.mockResolvedValue([]);
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
     renderBridgesPage();
     expect(await screen.findByText("Todavía no hay bridges configurados")).toBeInTheDocument();
   });
@@ -115,7 +124,7 @@ describe("BridgesPage — estados de carga, vacío y error", () => {
 
 describe("BridgesPage — listado con estado, último lead recibido y expiración de token", () => {
   it("muestra red social, nombre, estado con texto, último lead recibido y expiración", async () => {
-    fetchBridgesApiMock.mockResolvedValue([bridgeFake()]);
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
     renderBridgesPage();
 
     expect(await screen.findByText("Meta Ads — Facebook")).toBeInTheDocument();
@@ -124,9 +133,9 @@ describe("BridgesPage — listado con estado, último lead recibido y expiració
   });
 
   it("muestra «Nunca» y «No expira» cuando no hay último lead ni ninguna cuenta con expiración", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({ ultimoLeadEn: null, cuentasPublicitarias: [] }),
-    ]);
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([bridgeFake({ ultimoLeadEn: null, cuentasPublicitarias: [] })]),
+    );
     renderBridgesPage();
 
     expect(await screen.findByText("Nunca")).toBeInTheDocument();
@@ -134,122 +143,260 @@ describe("BridgesPage — listado con estado, último lead recibido y expiració
   });
 });
 
-describe("BridgesPage — aviso destacado ante token expirado o bridge sin actividad", () => {
-  it("no muestra ningún aviso cuando ningún bridge lo necesita", async () => {
-    fetchBridgesApiMock.mockResolvedValue([bridgeFake()]);
+describe("BridgesPage — ícono de aviso por fila (F8, reemplaza la pila de <AvisoBridge> sobre la tabla)", () => {
+  it("no muestra el ícono de aviso cuando ningún bridge lo necesita", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
     renderBridgesPage();
 
     await screen.findByText("Meta Ads — Facebook");
-    expect(screen.queryByText(/necesita atención/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Avisos de/ })).not.toBeInTheDocument();
   });
 
-  it("muestra un aviso destacado (con nombre del bridge) cuando el token de una cuenta expiró", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({
-        id: "bridge-li",
-        nombre: "LinkedIn Lead Sync",
-        cuentasPublicitarias: [
-          {
-            id: "c1",
-            bridgeId: "bridge-li",
-            idExterno: "act_1",
-            nombre: "Cuenta",
-            instagramAccountId: null,
-            activa: true,
-            estadoToken: "TOKEN_EXPIRADO",
-            tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          },
-        ],
-      }),
-    ]);
+  it("muestra el ícono de aviso y, al hacer clic, el popover con el texto del token expirado", async () => {
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([
+        bridgeFake({
+          id: "bridge-li",
+          nombre: "LinkedIn Lead Sync",
+          cuentasPublicitarias: [
+            {
+              id: "c1",
+              bridgeId: "bridge-li",
+              idExterno: "act_1",
+              nombre: "Cuenta",
+              instagramAccountId: null,
+              activa: true,
+              estadoToken: "TOKEN_EXPIRADO",
+              tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ],
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
     renderBridgesPage();
+    await screen.findByText("LinkedIn Lead Sync");
 
-    expect(await screen.findByText("LinkedIn Lead Sync necesita atención")).toBeInTheDocument();
-    expect(screen.getByText(/el token expiró/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Avisos de LinkedIn Lead Sync" }));
+
+    expect(await screen.findByText(/el token expiró/i)).toBeInTheDocument();
   });
 
-  it("un bridge con una cuenta con el token expirado y otra sana muestra el peor caso (aviso destacado)", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({
-        id: "bridge-mixto",
-        nombre: "Bridge Mixto",
-        cuentasPublicitarias: [
-          {
-            id: "c1",
-            bridgeId: "bridge-mixto",
-            idExterno: "act_1",
-            nombre: "Cuenta Expirada",
-            instagramAccountId: null,
-            activa: true,
-            estadoToken: "TOKEN_EXPIRADO",
-            tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: "c2",
-            bridgeId: "bridge-mixto",
-            idExterno: "act_2",
-            nombre: "Cuenta Sana",
-            instagramAccountId: null,
-            activa: true,
-            estadoToken: "VALIDO",
-            tokenExpiraEn: new Date(Date.now() + 200 * 24 * 60 * 60 * 1000).toISOString(),
-          },
-        ],
-      }),
-    ]);
+  it("un bridge con una cuenta con el token expirado y otra sana muestra el peor caso (ícono de aviso)", async () => {
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([
+        bridgeFake({
+          id: "bridge-mixto",
+          nombre: "Bridge Mixto",
+          cuentasPublicitarias: [
+            {
+              id: "c1",
+              bridgeId: "bridge-mixto",
+              idExterno: "act_1",
+              nombre: "Cuenta Expirada",
+              instagramAccountId: null,
+              activa: true,
+              estadoToken: "TOKEN_EXPIRADO",
+              tokenExpiraEn: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            },
+            {
+              id: "c2",
+              bridgeId: "bridge-mixto",
+              idExterno: "act_2",
+              nombre: "Cuenta Sana",
+              instagramAccountId: null,
+              activa: true,
+              estadoToken: "VALIDO",
+              tokenExpiraEn: new Date(Date.now() + 200 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ],
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
     renderBridgesPage();
+    await screen.findByText("Bridge Mixto");
 
-    expect(await screen.findByText("Bridge Mixto necesita atención")).toBeInTheDocument();
-    expect(screen.getByText(/el token expiró/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Avisos de Bridge Mixto" }));
+
+    expect(await screen.findByText(/el token expiró/i)).toBeInTheDocument();
   });
 
-  it("muestra un aviso destacado cuando el bridge no tiene actividad reciente", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({
-        id: "bridge-ig",
-        nombre: "Meta Ads — Instagram",
-        ultimoLeadEn: new Date(Date.now() - 100 * 60 * 60 * 1000).toISOString(),
-      }),
-    ]);
+  it("muestra el ícono de aviso cuando el bridge no tiene actividad reciente", async () => {
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([
+        bridgeFake({
+          id: "bridge-ig",
+          nombre: "Meta Ads — Instagram",
+          ultimoLeadEn: new Date(Date.now() - 100 * 60 * 60 * 1000).toISOString(),
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
     renderBridgesPage();
+    await screen.findByText("Meta Ads — Instagram");
 
-    expect(await screen.findByText("Meta Ads — Instagram necesita atención")).toBeInTheDocument();
-    expect(screen.getByText(/no recibió leads en las últimas 72 horas/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Avisos de Meta Ads — Instagram" }));
+
+    expect(await screen.findByText(/no recibió leads en las últimas 72 horas/i)).toBeInTheDocument();
   });
 
   it("no marca el aviso de un bridge INACTIVO aunque nunca haya recibido leads", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({
-        id: "bridge-gf",
-        nombre: "Google Forms — Pruebas",
-        estado: "INACTIVO",
-        ultimoLeadEn: null,
-        tokenExpiraEn: null,
-      }),
-    ]);
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([
+        bridgeFake({
+          id: "bridge-gf",
+          nombre: "Google Forms — Pruebas",
+          estado: "INACTIVO",
+          ultimoLeadEn: null,
+          tokenExpiraEn: null,
+        }),
+      ]),
+    );
     renderBridgesPage();
 
     await screen.findByText("Google Forms — Pruebas");
-    expect(screen.queryByText(/necesita atención/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Avisos de/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("BridgesPage — filtro (búsqueda, red social, estado, F8)", () => {
+  it("escribir en el buscador manda `busqueda` a fetchBridgesApi y reinicia la página a 1", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    await user.type(screen.getByLabelText("Buscar bridges"), "meta");
+
+    await waitFor(() => {
+      const ultimaLlamada = fetchBridgesApiMock.mock.calls.at(-1)?.[0];
+      expect(ultimaLlamada?.busqueda).toBe("meta");
+      expect(ultimaLlamada?.pagina).toBe(1);
+    });
+  });
+
+  it("elegir un estado manda `estado` a fetchBridgesApi", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    await user.click(screen.getByRole("combobox", { name: "Estado" }));
+    await user.click(await screen.findByRole("option", { name: "Inactivo" }));
+
+    await waitFor(() => {
+      expect(fetchBridgesApiMock.mock.calls.at(-1)?.[0]?.estado).toBe("INACTIVO");
+    });
+  });
+
+  it("elegir una red social manda `redSocial` a fetchBridgesApi", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    await user.click(screen.getByRole("combobox", { name: "Red social" }));
+    await user.click(await screen.findByRole("option", { name: "Google Forms" }));
+
+    await waitFor(() => {
+      expect(fetchBridgesApiMock.mock.calls.at(-1)?.[0]?.redSocial).toBe("GOOGLE_FORMS");
+    });
+  });
+
+  it("sin resultados con filtros activos, muestra un estado vacío distinto al de 'sin bridges configurados'", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
+    await user.type(screen.getByLabelText("Buscar bridges"), "nadie-coincide");
+
+    expect(
+      await screen.findByText("No hay bridges que coincidan con estos filtros"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("BridgesPage — paginación (F8)", () => {
+  it("muestra «Mostrando X–Y de Z bridges» según el total real devuelto por el backend", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()], { total: 25, pagina: 1 }));
+
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    expect(screen.getByText("Mostrando 1–10 de 25 bridges")).toBeInTheDocument();
+  });
+
+  it("«Anterior» está deshabilitado en la página 1", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()], { total: 25, pagina: 1 }));
+
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    expect(screen.getByRole("button", { name: "Anterior" })).toBeDisabled();
+  });
+
+  it("«Siguiente» avanza de página y manda `pagina: 2` a fetchBridgesApi", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()], { total: 25, pagina: 1 }));
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+
+    await waitFor(() => {
+      expect(fetchBridgesApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2);
+    });
+  });
+
+  it("«Siguiente» está deshabilitado en la última página", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()], { total: 5, pagina: 1 }));
+
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+  });
+
+  it("cambiar el estado filtrado reinicia la paginación a la página 1", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()], { total: 25, pagina: 1 }));
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Meta Ads — Facebook");
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await waitFor(() => expect(fetchBridgesApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2));
+
+    await user.click(screen.getByRole("combobox", { name: "Estado" }));
+    await user.click(await screen.findByRole("option", { name: "Activo" }));
+
+    await waitFor(() => {
+      const ultimaLlamada = fetchBridgesApiMock.mock.calls.at(-1)?.[0];
+      expect(ultimaLlamada?.estado).toBe("ACTIVO");
+      expect(ultimaLlamada?.pagina).toBe(1);
+    });
   });
 });
 
 describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
   it("el selector de red social se puebla desde el catálogo del backend, nunca un arreglo fijo", async () => {
-    fetchBridgesApiMock.mockResolvedValue([]);
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
     const user = userEvent.setup();
     renderBridgesPage();
     await screen.findByText("Todavía no hay bridges configurados");
 
     await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
-    await user.click(screen.getByRole("combobox", { name: "Red social" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("combobox", { name: "Red social" }));
 
     expect(await screen.findByRole("option", { name: "Google Forms" })).toBeInTheDocument();
     expect(fetchRedesSocialesSoportadasApiMock).toHaveBeenCalled();
   });
 
   it("con datos válidos, crea el bridge y encadena el modal de clave de un solo uso", async () => {
-    fetchBridgesApiMock.mockResolvedValue([]);
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
     createBridgeApiMock.mockResolvedValue({
       bridge: bridgeFake({ id: "bridge-nuevo", nombre: "Formulario Ventas", estado: "INACTIVO" }),
       claveApi: "brg_recien-generada-123",
@@ -259,10 +406,11 @@ describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
     await screen.findByText("Todavía no hay bridges configurados");
 
     await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
-    await user.click(screen.getByRole("combobox", { name: "Red social" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("combobox", { name: "Red social" }));
     await user.click(await screen.findByRole("option", { name: "Google Forms" }));
-    await user.type(screen.getByLabelText("Nombre"), "Formulario Ventas");
-    await user.click(screen.getByRole("button", { name: "Crear bridge" }));
+    await user.type(within(dialog).getByLabelText("Nombre"), "Formulario Ventas");
+    await user.click(within(dialog).getByRole("button", { name: "Crear bridge" }));
 
     await waitFor(() =>
       expect(createBridgeApiMock).toHaveBeenCalledWith({ redSocial: "GOOGLE_FORMS", nombre: "Formulario Ventas" }),
@@ -272,7 +420,7 @@ describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
   });
 
   it("rechaza el envío sin elegir red social ni escribir nombre, sin llamar a createBridgeApi", async () => {
-    fetchBridgesApiMock.mockResolvedValue([]);
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
     const user = userEvent.setup();
     renderBridgesPage();
     await screen.findByText("Todavía no hay bridges configurados");
@@ -287,9 +435,9 @@ describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
 
 describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and Reactivate, Hard Delete Only Without Leads)", () => {
   it("un bridge que nunca recibió leads: advierte eliminación permanente y llama a deleteBridgeApi al confirmar", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({ id: "bridge-sin-leads", nombre: "Sin Leads", ultimoLeadEn: null }),
-    ]);
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([bridgeFake({ id: "bridge-sin-leads", nombre: "Sin Leads", ultimoLeadEn: null })]),
+    );
     deleteBridgeApiMock.mockResolvedValue({
       resultado: "BAJA_FISICA",
       bridge: bridgeFake({ id: "bridge-sin-leads", nombre: "Sin Leads", ultimoLeadEn: null }),
@@ -310,7 +458,9 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
   });
 
   it("un bridge que ya recibió leads: advierte baja reversible y llama a deleteBridgeApi al confirmar", async () => {
-    fetchBridgesApiMock.mockResolvedValue([bridgeFake({ id: "bridge-con-leads", nombre: "Con Leads" })]);
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([bridgeFake({ id: "bridge-con-leads", nombre: "Con Leads" })]),
+    );
     deleteBridgeApiMock.mockResolvedValue({
       resultado: "BAJA_LOGICA",
       bridge: bridgeFake({ id: "bridge-con-leads", nombre: "Con Leads", estado: "INACTIVO" }),
@@ -331,9 +481,9 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
   });
 
   it("un bridge INACTIVO muestra «Reactivar» en vez de «Dar de baja», y al hacer clic llama a reactivateBridgeApi", async () => {
-    fetchBridgesApiMock.mockResolvedValue([
-      bridgeFake({ id: "bridge-inactivo", nombre: "Bridge Pausado", estado: "INACTIVO" }),
-    ]);
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([bridgeFake({ id: "bridge-inactivo", nombre: "Bridge Pausado", estado: "INACTIVO" })]),
+    );
     reactivateBridgeApiMock.mockResolvedValue(
       bridgeFake({ id: "bridge-inactivo", nombre: "Bridge Pausado", estado: "ACTIVO" }),
     );

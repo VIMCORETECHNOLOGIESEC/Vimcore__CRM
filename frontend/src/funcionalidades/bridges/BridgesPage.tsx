@@ -8,14 +8,24 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { Bridge } from "@/tipos/bridge";
-import { AvisoBridge } from "./AvisoBridge";
-import { evaluateAvisoBridge, canEliminarseFisicamente, hasAvisoDestacado } from "./bridges.utils";
+import { BridgesFiltros } from "./BridgesFiltros";
+import {
+  FILTRO_TODOS,
+  FILTROS_BRIDGES_VACIOS,
+  buildBridgesQueryParams,
+  canEliminarseFisicamente,
+  type BridgesFiltrosState,
+} from "./bridges.utils";
 import { BridgesTable } from "./BridgesTable";
 import { ClaveBridgeModal } from "./ClaveBridgeModal";
 import { NuevoBridgeDialog } from "./NuevoBridgeDialog";
 import { useBridges, useCreateBridge, useDeleteBridge, useReactivateBridge } from "./useBridges";
 
-const BRIDGES_POR_ESQUELETO = 5;
+/**
+ * Sin selector de tamaño de página todavía, mismo criterio que
+ * `leads/LeadsPage.tsx::LEADS_POR_PAGINA`/`usuarios/UsuariosPage.tsx::USUARIOS_POR_PAGINA`.
+ */
+const BRIDGES_POR_PAGINA = 10;
 
 interface ClaveModalState {
   bridgeNombre: string;
@@ -25,12 +35,30 @@ interface ClaveModalState {
 /**
  * Administración de bridges (F8/bridges-lifecycle-management, docs/07 --
  * solo administrador, ruta protegida en `router.tsx`). Backend real -- ver
- * `bridges.api.ts` para el detalle de los endpoints consumidos.
+ * `bridges.api.ts` para el detalle de los endpoints consumidos. Filtro
+ * (búsqueda, red social, estado) y paginación reales desde el backend
+ * (`GET /bridges`, breaking change de contrato -- ver `bridges.api.ts`),
+ * mismo patrón manual server-side que `leads/LeadsPage.tsx`/
+ * `usuarios/UsuariosPage.tsx` (sin librería de paginación).
+ *
+ * El aviso destacado por bridge (token expirado/próximo a vencer, sin
+ * actividad) ya NO se apila arriba de la tabla (una alerta completa por
+ * bridge no escalaba con varios bridges problemáticos a la vez) -- ahora es
+ * un ícono por fila con popover, ver `BridgesTable.tsx`/
+ * `AvisoBridgeIndicador.tsx`.
  */
 export function BridgesPage() {
   usePageHeader({ title: "Bridges" });
 
-  const { data, isLoading, isError, error, refetch } = useBridges();
+  const [filtros, setFiltros] = useState<BridgesFiltrosState>(FILTROS_BRIDGES_VACIOS);
+  const [pagina, setPagina] = useState(1);
+
+  const params = useMemo(
+    () => buildBridgesQueryParams(filtros, pagina, BRIDGES_POR_PAGINA),
+    [filtros, pagina],
+  );
+
+  const { data, isLoading, isError, error, refetch } = useBridges(params);
   const crear = useCreateBridge();
   const eliminar = useDeleteBridge();
   const reactivar = useReactivateBridge();
@@ -39,13 +67,19 @@ export function BridgesPage() {
   const [claveModal, setClaveModal] = useState<ClaveModalState | null>(null);
   const [bridgeParaBaja, setBridgeParaBaja] = useState<Bridge | null>(null);
 
-  const bridgesConAviso = useMemo(
-    () =>
-      (data ?? [])
-        .map((bridge) => ({ bridge, aviso: evaluateAvisoBridge(bridge) }))
-        .filter(({ aviso }) => hasAvisoDestacado(aviso)),
-    [data],
-  );
+  function updateFiltros(nuevos: BridgesFiltrosState) {
+    setFiltros(nuevos);
+    setPagina(1);
+  }
+
+  const hayFiltrosActivos =
+    filtros.busqueda !== "" || filtros.redSocial !== FILTRO_TODOS || filtros.estado !== FILTRO_TODOS;
+
+  const bridges = data?.bridges ?? [];
+  const total = data?.total ?? 0;
+  const totalPaginas = Math.max(1, Math.ceil(total / BRIDGES_POR_PAGINA));
+  const desde = total === 0 ? 0 : (pagina - 1) * BRIDGES_POR_PAGINA + 1;
+  const hasta = Math.min(pagina * BRIDGES_POR_PAGINA, total);
 
   return (
     <div className="flex flex-col gap-4">
@@ -56,30 +90,61 @@ export function BridgesPage() {
         </Button>
       </div>
 
-      {bridgesConAviso.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {bridgesConAviso.map(({ bridge, aviso }) => (
-            <AvisoBridge key={bridge.id} nombre={bridge.nombre} aviso={aviso} />
-          ))}
-        </div>
-      ) : null}
+      <BridgesFiltros filtros={filtros} onChange={updateFiltros} />
 
       {isLoading ? (
-        <LoadingState rows={BRIDGES_POR_ESQUELETO} rowHeight="h-12" />
+        <LoadingState rows={BRIDGES_POR_PAGINA} rowHeight="h-12" />
       ) : isError ? (
         <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
-      ) : !data || data.length === 0 ? (
+      ) : bridges.length === 0 ? (
         <EmptyState
-          title="Todavía no hay bridges configurados"
-          description="Creá el primero con el botón «Nuevo bridge»."
+          title={
+            hayFiltrosActivos
+              ? "No hay bridges que coincidan con estos filtros"
+              : "Todavía no hay bridges configurados"
+          }
+          description={
+            hayFiltrosActivos
+              ? "Probá ajustar o limpiar los filtros aplicados."
+              : "Creá el primero con el botón «Nuevo bridge»."
+          }
         />
       ) : (
-        <BridgesTable
-          bridges={data}
-          onDarDeBaja={setBridgeParaBaja}
-          onReactivar={(bridgeId) => reactivar.mutate(bridgeId)}
-          reactivando={reactivar.isPending}
-        />
+        <>
+          <BridgesTable
+            bridges={bridges}
+            onDarDeBaja={setBridgeParaBaja}
+            onReactivar={(bridgeId) => reactivar.mutate(bridgeId)}
+            reactivando={reactivar.isPending}
+          />
+
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              Mostrando {desde}–{hasta} de {total} bridges
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagina <= 1}
+                onClick={() => setPagina((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span>
+                Página {pagina} de {totalPaginas}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagina >= totalPaginas}
+                onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </>
       )}
 
       {dialogAltaAbierto ? (

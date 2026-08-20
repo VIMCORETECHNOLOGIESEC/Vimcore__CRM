@@ -39,6 +39,11 @@
        etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
     --success: #16A34A;
     --success-foreground: #FFFFFF;
+    /* Token de advertencia para íconos de estado (ej. aviso de bridge),
+       separado de --semaforo-tibio: mismo criterio que --success arriba --
+       el semáforo queda reservado al chip con etiqueta de texto (docs/09 §3). */
+    --warning: #D97706;
+    --warning-foreground: #FFFFFF;
     --chart-1: #4F46E5;
     --chart-2: #2563EB;
     --chart-3: #0D9488;

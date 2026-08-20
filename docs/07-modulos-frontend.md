@@ -1160,6 +1160,58 @@ Solo administrador.
 
 > El campo de token siempre se muestra vacío, nunca precargado. Se envía solo al
 > guardar.
+>
+> **Actualización (paginación/filtros reales + rediseño del aviso por fila,
+> dev-front, 2026-08-20):** `GET /bridges` ganó paginación y filtro real del
+> lado del backend (fix, contrato confirmado contra
+> `backend/src/schemas/bridges.schema.ts::listBridgesQuerySchema` --
+> `busqueda`/`redSocial`/`estado`/`pagina`/`limite`, mismo shape que
+> `GET /usuarios`). **BREAKING CHANGE de contrato:** antes respondía
+> `{ bridges }` (array plano sin envolver); ahora responde
+> `{ bridges, total, pagina, limite }`. `bridges.api.ts::fetchBridgesApi`
+> devuelve la respuesta completa (no solo `bridges`) y `useBridges.ts` acepta
+> los query params en la `queryKey` (con `keepPreviousData`, mismo criterio
+> que `useUsuarios`). `BridgesPage.tsx` ganó paginación manual server-side
+> ("Mostrando X–Y de Z"/"Página X de Y", sin librería) y un buscador +
+> filtros de red social/estado (`BridgesFiltros.tsx`, mismo patrón simple de
+> `usuarios/UsuariosFiltros.tsx`, sin el `Popover` de F3) -- `bridges.utils.ts`
+> gana `buildBridgesQueryParams` (con test dedicado) siguiendo el criterio de
+> `buildUsuariosQueryParams`.
+> - **Rediseño del aviso destacado (decisión de diseño ya cerrada, no
+>   consultada de nuevo):** la pila de `<AvisoBridge>` que `BridgesPage.tsx`
+>   mostraba arriba de toda la tabla (una alerta `Alert variant="destructive"`
+>   completa por bridge con aviso) no escalaba con varios bridges
+>   problemáticos a la vez -- se reemplazó por un ícono `AlertTriangle`
+>   SOLO delineado (`text-warning`, el token de color nuevo agregado a
+>   `index.css`/`tailwind.config.js`) por fila de `BridgesTable.tsx`
+>   (`AvisoBridgeIndicador.tsx`, componente nuevo), con `aria-label`
+>   descriptivo y un `Popover` que muestra hasta dos avisos (el de mayor
+>   severidad primero) y una fila "+N más" que expande el popover con
+>   `max-h-96 overflow-y-auto` para el resto -- nunca solo color (docs/07,
+>   criterio transversal de accesibilidad), y sin espacio reservado para un
+>   bridge sano (`AvisoBridgeIndicador` devuelve `null`). `AvisoBridge.tsx`/
+>   `evaluateAvisoBridge()` quedaron explícitamente fuera de alcance de este
+>   cambio -- siguen usándose tal cual en `detalle/BridgeDetallePage.tsx`
+>   (ahí solo hay un bridge, no hay problema de apilamiento); `bridges.utils.ts`
+>   gana `listAvisosBridge` (lista discreta ordenada por severidad, con test
+>   dedicado), con los mismos textos que arma `AvisoBridge.tsx` mantenidos a
+>   mano en los dos archivos (documentado en el propio código) porque
+>   `AvisoBridge.tsx` no se tocó.
+> - Tests actualizados junto con la implementación (TDD): 27 tests nuevos/
+>   reescritos (440 en total en el frontend, todos en verde) --
+>   `bridges.utils.test.ts` (`buildBridgesQueryParams`, `listAvisosBridge`),
+>   `bridges.api.test.ts` (contrato paginado/filtrado de `fetchBridgesApi`) y
+>   `BridgesPage.test.tsx` (filtro, paginación, ícono+popover de aviso en vez
+>   de la pila de alertas). `tsc` + `vite build` sin errores (typecheck
+>   corrido también dentro del contenedor Docker del worktree, sin
+>   diferencias). Verificado end-to-end contra el backend real levantado con
+>   Docker: `GET /bridges` con `pagina`/`limite`/`busqueda`/`redSocial`/
+>   `estado` combinados responde 200 con el contrato nuevo (`total`/`pagina`/
+>   `limite` reales, filtro exacto aplicado) -- sin acceso a un navegador
+>   real en esta sesión (sin herramienta Playwright disponible), así que la
+>   verificación visual del ícono/popover quedó cubierta por
+>   `BridgesPage.test.tsx` (Testing Library) en vez de una captura de
+>   pantalla real.
 
 ---
 

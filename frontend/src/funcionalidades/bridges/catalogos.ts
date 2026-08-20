@@ -43,6 +43,9 @@ export const ESTADO_BRIDGE_ETIQUETAS: Record<EstadoBridge, string> = {
   INACTIVO: "Inactivo",
 };
 
+/** Derivado de `ESTADO_BRIDGE_ETIQUETAS` para no duplicar el enum -- filtro de estado de `BridgesFiltros.tsx` (F8). */
+export const ESTADOS_BRIDGE = Object.keys(ESTADO_BRIDGE_ETIQUETAS) as EstadoBridge[];
+
 export const NIVEL_LOG_ETIQUETAS: Record<NivelBridgeLog, string> = {
   INFO: "Información",
   ADVERTENCIA: "Advertencia",

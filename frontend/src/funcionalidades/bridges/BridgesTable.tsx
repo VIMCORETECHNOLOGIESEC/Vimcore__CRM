@@ -1,16 +1,11 @@
-import { AlertTriangle } from "lucide-react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Bridge } from "@/tipos/bridge";
-import {
-  evaluateAvisoBridge,
-  formatFecha,
-  proximaExpiracionTokenBridge,
-  hasAvisoDestacado,
-} from "./bridges.utils";
+import { AvisoBridgeIndicador } from "./AvisoBridgeIndicador";
+import { formatFecha, proximaExpiracionTokenBridge } from "./bridges.utils";
 import { RED_SOCIAL_ETIQUETAS } from "./catalogos";
 import { EstadoBridgeBadge } from "./EstadoBridgeBadge";
 
@@ -26,9 +21,11 @@ const columnHelper = createColumnHelper<Bridge>();
 
 /**
  * Listado de bridges (F8, "Listado con estado, último lead recibido y
- * expiración de token"). El indicador de aviso combina ícono **y** texto
- * (docs/07, criterio transversal de accesibilidad -- nunca solo un ícono de
- * color) y enlaza al detalle, donde el aviso completo se repite destacado.
+ * expiración de token"). El indicador de aviso por fila
+ * (`AvisoBridgeIndicador`) nunca es solo color: ícono delineado **y**
+ * `aria-label`/popover con texto completo (docs/07, criterio transversal de
+ * accesibilidad) -- y enlaza al detalle, donde el aviso completo se repite
+ * destacado (`AvisoBridge.tsx`, sin cambios en este trabajo).
  */
 export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }: BridgesTableProps) {
   const columns = useMemo(
@@ -74,23 +71,10 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
       columnHelper.display({
         id: "aviso",
         header: "Aviso",
-        cell: ({ row }) => {
-          const aviso = evaluateAvisoBridge(row.original);
-          if (!hasAvisoDestacado(aviso)) {
-            return <span className="text-muted-foreground">—</span>;
-          }
-          const partes: string[] = [];
-          if (aviso.tokenExpirado) partes.push("Token expirado");
-          else if (aviso.tokenProximoAVencer) partes.push("Token próximo a vencer");
-          if (aviso.sinActividad) partes.push("Sin actividad");
-          const etiqueta = partes.join(" y ");
-          return (
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
-              <AlertTriangle className="size-3" aria-hidden="true" />
-              {etiqueta}
-            </span>
-          );
-        },
+        // Ícono por fila con popover (F8) -- reemplaza el badge de texto
+        // apilado que tenía esta columna antes; `AvisoBridgeIndicador`
+        // devuelve `null` para un bridge sano, la celda queda vacía.
+        cell: ({ row }) => <AvisoBridgeIndicador bridge={row.original} />,
       }),
       columnHelper.display({
         id: "acciones",
