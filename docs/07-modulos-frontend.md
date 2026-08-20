@@ -249,6 +249,27 @@ del producto.
 > como opción renderizada en vez de desaparecer (si no, un filtro aplicado
 > se "esfumaría" solo). Test dedicado en `tests/leads/LeadsFiltros.test.tsx`.
 
+> **Actualización (`GET /leads/catalogo/redes-sociales`, backend real, commit
+> `e753fdc`):** el filtro de red social dejó de consumir
+> `useRedesSocialesActivas()` (`GET /bridges/redes-activas`, admin-only) y
+> ahora consume `useRedesSocialesCatalogo()`
+> (`funcionalidades/leads/useLeads.ts`), que llama a
+> `GET /leads/catalogo/redes-sociales` -- solo exige sesión (el scoping por
+> rol lo hace el propio query del backend, sin `requireRole`), así que el
+> gate `hasRole(["ADMINISTRADOR"])` que ocultaba el `CampoSelect` para
+> asesor/supervisor/vendedor se eliminó: el filtro vuelve a estar visible
+> para todos los roles. El catálogo también se recalcula EN CASCADA con
+> cualquier OTRO filtro ya activo en pantalla (etapa, semáforo, campaña,
+> responsable, estado de SLA, rango de fechas, búsqueda) --
+> `leads.utils.ts::buildRedesSocialesCatalogoParams` arma esos parámetros
+> excluyendo siempre `redSocial` (es el campo que el catálogo alimenta, así
+> nunca se autoexcluye de sus propias opciones). El edge case de "red ya
+> elegida que dejó de tener leads en el resto de los filtros se mantiene
+> como opción" sigue vigente con el nuevo catálogo. Test dedicado
+> actualizado en `tests/leads/LeadsFiltros.test.tsx` (visibilidad por rol +
+> recálculo en cascada) y `tests/leads/LeadsPage.test.tsx` (mock
+> actualizado).
+
 > **Actualización (rediseño de la barra de filtros, dev-front):**
 > `LeadsFiltros.tsx` reorganiza los filtros avanzados detrás de un botón
 > "Filtros" (`SlidersHorizontal`) que abre un `Popover` anclado debajo del

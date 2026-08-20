@@ -5,7 +5,7 @@ import {
   RED_SOCIAL_ETIQUETAS,
   SEMAFORO_ETIQUETAS,
 } from "./catalogos";
-import type { LeadsQueryParams } from "./leads.api";
+import type { LeadsQueryParams, RedesSocialesCatalogoParams } from "./leads.api";
 
 /**
  * Responsable operativo vigente de un lead (docs/02-reglas-negocio.md §5):
@@ -52,18 +52,19 @@ export const FILTROS_LEADS_VACIOS: LeadsFiltrosState = {
  * real que se le manda a la capa de datos -- justo el tipo de lógica que
  * AGENTS.md §5 exige cubrir, aunque viva en el frontend.
  */
-export function buildLeadsQueryParams(
-  filtros: LeadsFiltrosState,
-  pagina: number,
-  porPagina: number,
-): LeadsQueryParams {
+/**
+ * Filtros comunes a `buildLeadsQueryParams` y `buildRedesSocialesCatalogoParams`
+ * -- todo el estado de `LeadsFiltrosState` salvo `redSocial` (cada llamador
+ * decide si lo incluye: `fetchLeadsApi` sí lo manda, el catálogo de redes
+ * sociales lo excluye a propósito, ver `leads.api.ts`).
+ */
+function buildFiltrosComunes(filtros: LeadsFiltrosState): RedesSocialesCatalogoParams {
   const busqueda = filtros.busqueda.trim();
-  const params: LeadsQueryParams = { pagina, porPagina };
+  const params: RedesSocialesCatalogoParams = {};
 
   if (busqueda) params.busqueda = busqueda;
   if (filtros.etapa !== FILTRO_TODOS) params.etapa = filtros.etapa;
   if (filtros.semaforo !== FILTRO_TODOS) params.semaforo = filtros.semaforo;
-  if (filtros.redSocial !== FILTRO_TODOS) params.redSocial = filtros.redSocial;
   if (filtros.campaniaId !== FILTRO_TODOS) params.campaniaId = filtros.campaniaId;
   if (filtros.responsableId !== FILTRO_TODOS) params.responsableId = filtros.responsableId;
   if (filtros.estadoSla !== FILTRO_TODOS) params.estadoSla = filtros.estadoSla;
@@ -71,6 +72,28 @@ export function buildLeadsQueryParams(
   if (filtros.fechaHasta) params.fechaHasta = filtros.fechaHasta;
 
   return params;
+}
+
+export function buildLeadsQueryParams(
+  filtros: LeadsFiltrosState,
+  pagina: number,
+  porPagina: number,
+): LeadsQueryParams {
+  const params: LeadsQueryParams = { pagina, porPagina, ...buildFiltrosComunes(filtros) };
+  if (filtros.redSocial !== FILTRO_TODOS) params.redSocial = filtros.redSocial;
+  return params;
+}
+
+/**
+ * Filtros para `GET /leads/catalogo/redes-sociales` (Requirement: cascada
+ * con los demás filtros de F3) -- mismo criterio que `buildLeadsQueryParams`
+ * pero sin `redSocial` (es el campo que este catálogo alimenta) ni
+ * paginación (el backend la ignora). Se recalcula cada vez que cambia
+ * cualquier OTRO filtro activo en pantalla, así `LeadsFiltros` sabe cuándo
+ * refetchear el catálogo (ver `LeadsFiltros.tsx`/`useLeads.ts`).
+ */
+export function buildRedesSocialesCatalogoParams(filtros: LeadsFiltrosState): RedesSocialesCatalogoParams {
+  return buildFiltrosComunes(filtros);
 }
 
 export interface FiltroActivo {

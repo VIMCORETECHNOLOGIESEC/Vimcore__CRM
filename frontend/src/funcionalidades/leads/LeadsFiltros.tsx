@@ -1,7 +1,5 @@
 import { Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useMemo } from "react";
-import { useRedesSocialesActivas } from "@/funcionalidades/bridges/useBridges";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,11 +21,13 @@ import {
 } from "./catalogos";
 import {
   buildFiltrosActivos,
+  buildRedesSocialesCatalogoParams,
   FILTRO_TODOS,
   FILTROS_LEADS_VACIOS,
   type LeadsFiltrosState,
 } from "./leads.utils";
 import { ResponsableCombobox } from "./ResponsableCombobox";
+import { useRedesSocialesCatalogo } from "./useLeads";
 
 interface LeadsFiltrosProps {
   filtros: LeadsFiltrosState;
@@ -60,29 +60,36 @@ export function LeadsFiltros({
     update(campo, FILTROS_LEADS_VACIOS[campo] as never);
   }
 
-  // `GET /bridges/redes-activas` exige ADMINISTRADOR (`bridges.routes.ts`) --
-  // sin este gate, asesor/supervisor/vendedor disparaban la petición igual
-  // (y recibían 403) al abrir el popover de filtros.
-  const { hasRole } = useAuth();
-  const puedeVerRedesActivas = hasRole(["ADMINISTRADOR"]);
-  const { data: redesSocialesActivas, isLoading: cargandoRedesSociales } =
-    useRedesSocialesActivas(puedeVerRedesActivas);
+  /**
+   * `GET /leads/catalogo/redes-sociales` (Requirement: cascada con los
+   * demás filtros de F3): solo exige sesión, el scoping por rol ya lo hace
+   * el propio query en el backend -- a diferencia del extinto
+   * `GET /bridges/redes-activas` (admin-only), no hace falta gatear la
+   * petición ni ocultar el `CampoSelect` por rol. El catálogo se recalcula
+   * cada vez que cambia cualquier OTRO filtro activo en pantalla (todo
+   * `LeadsFiltrosState` salvo `redSocial`, ya excluido por
+   * `buildRedesSocialesCatalogoParams`).
+   */
+  const catalogoRedesSocialesParams = useMemo(() => buildRedesSocialesCatalogoParams(filtros), [filtros]);
+  const { data: redesSocialesCatalogo, isLoading: cargandoRedesSociales } = useRedesSocialesCatalogo(
+    catalogoRedesSocialesParams,
+  );
 
   /**
    * Requirement: Red-Social Filter Sourced from Active Bridges. Edge case
-   * documentado en el diseño: si el `redSocial` ya elegido dejó de estar
-   * activo (se desactivó su bridge DESPUÉS de aplicar el filtro), se
-   * mantiene como opción renderizada en vez de desaparecer -- si no,
-   * un filtro activo se "esfumaría" silenciosamente sin que el usuario lo
-   * haya tocado.
+   * documentado en el diseño (vigente con el nuevo catálogo): si el
+   * `redSocial` ya elegido dejó de tener leads en el resto de los filtros
+   * activos, se mantiene como opción renderizada en vez de desaparecer --
+   * si no, un filtro activo se "esfumaría" silenciosamente sin que el
+   * usuario lo haya tocado.
    */
   const opcionesRedSocial = useMemo<RedSocial[]>(() => {
-    const activas = redesSocialesActivas ?? [];
-    if (filtros.redSocial !== FILTRO_TODOS && !activas.includes(filtros.redSocial)) {
-      return [...activas, filtros.redSocial];
+    const disponibles = redesSocialesCatalogo ?? [];
+    if (filtros.redSocial !== FILTRO_TODOS && !disponibles.includes(filtros.redSocial)) {
+      return [...disponibles, filtros.redSocial];
     }
-    return activas;
-  }, [redesSocialesActivas, filtros.redSocial]);
+    return disponibles;
+  }, [redesSocialesCatalogo, filtros.redSocial]);
 
   const filtrosActivos = useMemo(
     () => buildFiltrosActivos(filtros, campanias, responsables),
@@ -151,15 +158,13 @@ export function LeadsFiltros({
                   onChange={(v) => update("semaforo", v as LeadsFiltrosState["semaforo"])}
                   opciones={SEMAFOROS.map((s) => ({ valor: s, etiqueta: SEMAFORO_ETIQUETAS[s] }))}
                 />
-                {puedeVerRedesActivas ? (
-                  <CampoSelect
-                    etiqueta="Red social"
-                    valor={filtros.redSocial}
-                    onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
-                    opciones={opcionesRedSocial.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
-                    disabled={cargandoRedesSociales}
-                  />
-                ) : null}
+                <CampoSelect
+                  etiqueta="Red social"
+                  valor={filtros.redSocial}
+                  onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
+                  opciones={opcionesRedSocial.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
+                  disabled={cargandoRedesSociales}
+                />
                 <CampoSelect
                   etiqueta="Campaña"
                   valor={filtros.campaniaId}
