@@ -74,6 +74,7 @@ export interface UpdateUsuarioInput {
   correo?: string;
   password?: string;
   rol?: RolUsuario;
+  activo?: boolean;
 }
 
 /** Alta de usuario (D9: solo `ADMINISTRADOR` llega hasta acá vía `requireRole`). */
@@ -149,11 +150,20 @@ export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
   return user;
 }
 
+/**
+ * `activo` (reactivación, mismo patrón que `bridge.service.ts::updateBridge`
+ * con `estado: "ACTIVO"`): SOLO fija el flag, sin validar el estado previo —
+ * reactivar a un usuario ya activo es un no-op idempotente, no un error. NO
+ * restaura la cartera de leads redistribuida por `deactivateUsuario` (abajo)
+ * ni reemite tokens/sesión; el usuario reactivado arranca con cartera vacía
+ * y vuelve a recibir leads por asignación normal hacia adelante.
+ */
 export async function updateUsuario(id: string, input: UpdateUsuarioInput): Promise<AdminUsuarioView> {
   const data: UpdateUsuarioData = {
     nombre: input.nombre,
     correo: input.correo,
     rol: input.rol,
+    activo: input.activo,
   };
   if (input.password) {
     data.passwordHash = await hashPassword(input.password);

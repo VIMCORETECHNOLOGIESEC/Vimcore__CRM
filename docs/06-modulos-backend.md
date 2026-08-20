@@ -77,6 +77,13 @@ Desacoplado a propósito: otro equipo integrará el SSO contra esta misma API.
 - [x] Middleware `requiereAutenticacion` (identificador real: `requireAuthentication`)
 - [x] Middleware `requiereRol(...roles)` (identificador real: `requireRole(...roles)`)
 - [x] CRUD de usuarios (solo administrador — `requireRole("ADMINISTRADOR")` en los 5 endpoints)
+- [x] Reactivación de usuario dado de baja — `PATCH /api/v1/usuarios/:id
+      { activo: true }` (mismo endpoint de update, mismo patrón que
+      `PATCH /bridges/:id { estado: "ACTIVO" }`, 2026-08-20): SOLO fija
+      `activo=true`, sin validar el estado previo (no-op idempotente si ya
+      está activo). NO restaura la cartera reasignada por `deactivateUsuario`
+      ni reemite tokens/sesión — el usuario reactivado arranca con cartera
+      vacía y vuelve a recibir leads por asignación normal hacia adelante.
 - [x] Baja lógica de usuario con reasignación obligatoria de su cartera activa
       — `DELETE /api/v1/usuarios/:id` (`usuarios.service.ts::deactivateUsuario`)
       es transaccional de punta a punta: si el usuario dado de baja es

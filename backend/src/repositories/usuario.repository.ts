@@ -47,6 +47,12 @@ export interface UpdateUsuarioData {
   correo?: string;
   passwordHash?: string;
   rol?: RolUsuario;
+  // Reactivación (PATCH /usuarios/:id { activo: true }): mismo endpoint que
+  // el resto del update, sin validación de estado previo (no-op idempotente
+  // si ya está activo) — mismo criterio que `bridge.repository.ts::update`
+  // con `estado`. NO reemite tokens ni restaura la cartera reasignada por
+  // `deactivateUsuario` abajo; el usuario reactivado arranca sin cartera.
+  activo?: boolean;
 }
 
 function isRecordNotFoundError(error: unknown): boolean {
