@@ -319,14 +319,16 @@ describe(
   "GET /api/v1/bridges/catalogo/redes-soportadas (Requirement: Network catalogs are enum-derived and " +
     "deduplicated; guarda de orden de rutas: segmento literal registrado antes de /bridges/:id)",
   () => {
-    it("200 devuelve exactamente los valores del enum RedSocial, nunca un 400 por id-swallowing", async () => {
+    it("200 devuelve solo las redes con integración de ingesta real, nunca un 400 por id-swallowing", async () => {
       const respuesta = await request(app)
         .get("/api/v1/bridges/catalogo/redes-soportadas")
         .set("Authorization", `Bearer ${adminAccessToken}`);
 
       expect(respuesta.status).toBe(200);
-      expect(respuesta.body.redesSociales).toHaveLength(Object.values(RedSocial).length);
-      expect(new Set(respuesta.body.redesSociales)).toEqual(new Set(Object.values(RedSocial)));
+      expect(new Set(respuesta.body.redesSociales)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS"]));
+      expect(respuesta.body.redesSociales).not.toContain("INSTAGRAM" satisfies RedSocial);
+      expect(respuesta.body.redesSociales).not.toContain("X" satisfies RedSocial);
+      expect(respuesta.body.redesSociales).not.toContain("LINKEDIN" satisfies RedSocial);
     });
 
     it("403 cuando un VENDEDOR intenta leer el catálogo", async () => {
