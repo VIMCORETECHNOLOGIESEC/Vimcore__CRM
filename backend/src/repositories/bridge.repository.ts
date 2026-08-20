@@ -116,8 +116,24 @@ export async function create(
   return client.bridge.create({ data });
 }
 
-/** Orden estable por nombre — no hay requerimiento de paginación en esta rebanada. */
+export interface FindManyBridgesOptions {
+  skip: number;
+  take: number;
+}
+
+export interface FindManyBridgesResult {
+  bridges: BridgeConCuentas[];
+  total: number;
+}
+
 /**
+ * Fix (GET /bridges no pagina ni filtra): mismo patrón `Promise.all` de
+ * `usuario.repository.ts::findUsuarios` — página + conteo total en
+ * paralelo, un único `where` compartido entre ambas consultas.
+ *
+ * Orden estable por nombre (sin requerimiento de orden alternativo en esta
+ * rebanada, igual que el `list()` original que reemplaza).
+ *
  * Fix (2026-08-19, hallazgo de correlación end-to-end): el listado embebe
  * `cuentasPublicitarias` -- igual que `findById` -- porque el frontend
  * (`bridges.utils.ts::evaluateAvisoBridge`) calcula el aviso de "token
@@ -126,12 +142,24 @@ export async function create(
  * `evaluateAvisoBridge` rompía en runtime contra datos reales (`Cannot read
  * properties of undefined (reading 'some')`) -- nunca lo cubrió el mock del
  * frontend, que siempre construye un `Bridge` completo por contrato de tipo.
+ * Esta invariante se preserva acá, con o sin filtros/paginación aplicados.
  */
-export async function list(client: PrismaClientOrTransaction = prisma): Promise<BridgeConCuentas[]> {
-  return client.bridge.findMany({
-    orderBy: { nombre: "asc" },
-    include: { cuentasPublicitarias: true },
-  });
+export async function findMany(
+  where: Prisma.BridgeWhereInput,
+  options: FindManyBridgesOptions,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<FindManyBridgesResult> {
+  const [bridges, total] = await Promise.all([
+    client.bridge.findMany({
+      where,
+      orderBy: { nombre: "asc" },
+      include: { cuentasPublicitarias: true },
+      skip: options.skip,
+      take: options.take,
+    }),
+    client.bridge.count({ where }),
+  ]);
+  return { bridges, total };
 }
 
 export type BridgeConCuentas = Bridge & { cuentasPublicitarias: CuentaPublicitaria[] };

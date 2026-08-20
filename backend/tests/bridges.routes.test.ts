@@ -24,13 +24,13 @@ function claveApiUnica(): string {
 }
 
 async function crearBridgeDirecto(
-  overrides: Partial<{ estado: "ACTIVO" | "INACTIVO" }> = {},
+  overrides: Partial<{ estado: "ACTIVO" | "INACTIVO"; redSocial: RedSocial; nombre: string }> = {},
 ): Promise<{ id: string }> {
   contador += 1;
   const bridge = await prisma.bridge.create({
     data: {
-      redSocial: "GOOGLE_FORMS",
-      nombre: `Bridge ruta ${contador}`,
+      redSocial: overrides.redSocial ?? "GOOGLE_FORMS",
+      nombre: overrides.nombre ?? `Bridge ruta ${contador}`,
       claveApiHash: hashClaveBridge(claveApiUnica()),
       estado: overrides.estado ?? "ACTIVO",
     },
@@ -107,7 +107,7 @@ describe("POST /api/v1/bridges (Requirement: Bridge creation starts inactive wit
 });
 
 describe("GET /api/v1/bridges y GET /api/v1/bridges/:id", () => {
-  it("200 lista bridges sin exponer claveApiHash, con cuentasPublicitarias embebidas", async () => {
+  it("200 lista bridges sin exponer claveApiHash, con cuentasPublicitarias embebidas, junto con total/pagina/limite", async () => {
     await crearBridgeDirecto();
 
     const respuesta = await request(app)
@@ -116,12 +116,99 @@ describe("GET /api/v1/bridges y GET /api/v1/bridges/:id", () => {
 
     expect(respuesta.status).toBe(200);
     expect(Array.isArray(respuesta.body.bridges)).toBe(true);
+    expect(typeof respuesta.body.total).toBe("number");
+    expect(respuesta.body.pagina).toBe(1);
+    expect(respuesta.body.limite).toBe(20);
     for (const bridge of respuesta.body.bridges) {
       expect(bridge.claveApiHash).toBeUndefined();
       // Fix (2026-08-19): sin esto, el listado real del frontend rompía en
       // runtime -- evaluateAvisoBridge asume esta relación en cada fila.
       expect(Array.isArray(bridge.cuentasPublicitarias)).toBe(true);
     }
+  });
+
+  it("200 filtra por busqueda contra el nombre (insensible a mayúsculas)", async () => {
+    const { id } = await crearBridgeDirecto({ nombre: "Bridge Buscable Ñandú" });
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ busqueda: "buscable ñandú" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridges).toHaveLength(1);
+    expect(respuesta.body.bridges[0].id).toBe(id);
+  });
+
+  it("200 filtra por redSocial exacto", async () => {
+    const { id } = await crearBridgeDirecto({ redSocial: "FACEBOOK", nombre: "Bridge Filtro RedSocial" });
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ redSocial: "FACEBOOK", busqueda: "Bridge Filtro RedSocial" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridges).toHaveLength(1);
+    expect(respuesta.body.bridges[0].id).toBe(id);
+    expect(respuesta.body.bridges[0].redSocial).toBe("FACEBOOK");
+  });
+
+  it("200 filtra por estado exacto", async () => {
+    const { id } = await crearBridgeDirecto({ estado: "INACTIVO", nombre: "Bridge Filtro Estado" });
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ estado: "INACTIVO", busqueda: "Bridge Filtro Estado" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridges).toHaveLength(1);
+    expect(respuesta.body.bridges[0].id).toBe(id);
+    expect(respuesta.body.bridges[0].estado).toBe("INACTIVO");
+  });
+
+  it("200 pagina el listado respetando limite", async () => {
+    await crearBridgeDirecto({ nombre: "Bridge Paginacion A" });
+    await crearBridgeDirecto({ nombre: "Bridge Paginacion B" });
+
+    const primeraPagina = await request(app)
+      .get("/api/v1/bridges")
+      .query({ busqueda: "Bridge Paginacion", pagina: 1, limite: 1 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(primeraPagina.status).toBe(200);
+    expect(primeraPagina.body.bridges).toHaveLength(1);
+    expect(primeraPagina.body.total).toBe(2);
+    expect(primeraPagina.body.pagina).toBe(1);
+    expect(primeraPagina.body.limite).toBe(1);
+
+    const segundaPagina = await request(app)
+      .get("/api/v1/bridges")
+      .query({ busqueda: "Bridge Paginacion", pagina: 2, limite: 1 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(segundaPagina.status).toBe(200);
+    expect(segundaPagina.body.bridges).toHaveLength(1);
+    expect(segundaPagina.body.bridges[0].id).not.toBe(primeraPagina.body.bridges[0].id);
+  });
+
+  it("400 con pagina fuera de rango (menor a 1)", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ pagina: 0 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("400 con limite fuera de rango (mayor a 100)", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ limite: 101 })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(400);
   });
 
   it("200 obtiene un bridge por id, incluye cuentasPublicitarias y nunca expone claveApiHash", async () => {

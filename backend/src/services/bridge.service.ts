@@ -1,10 +1,11 @@
-import { RedSocial, type Bridge, type BridgeLog, type EstadoBridge, type NivelBridgeLog } from "@prisma/client";
+import { Prisma, RedSocial, type Bridge, type BridgeLog, type EstadoBridge, type NivelBridgeLog } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { generarClaveBridge, hashClaveBridge } from "../lib/clave-bridge.js";
 import { BRIDGE_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import type { BridgeConCuentas } from "../repositories/bridge.repository.js";
+import type { ListBridgesQuery } from "../schemas/bridges.schema.js";
 import { toCuentaPublicitariaDto, type CuentaPublicitariaDto } from "./cuenta-publicitaria.service.js";
 
 function bridgeNotFound(): AppError {
@@ -81,9 +82,39 @@ export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiRe
   return { bridge: toBridgeDto(bridge), claveApi };
 }
 
-export async function listBridges(): Promise<BridgeDetalleDto[]> {
-  const bridges = await bridgeRepository.list();
-  return bridges.map(toBridgeDetalleDto);
+export interface FindBridgesResult {
+  bridges: BridgeDetalleDto[];
+  total: number;
+  pagina: number;
+  limite: number;
+}
+
+/**
+ * Fix (GET /bridges no pagina ni filtra): mismo patrón de
+ * `usuarios.service.ts::buildWhere` + `findUsuarios` — `where` armado acá
+ * (búsqueda por `nombre`, filtros exactos por `redSocial`/`estado`),
+ * paginación/conteo resueltos por el repositorio.
+ */
+function buildBridgeWhere(query: ListBridgesQuery): Prisma.BridgeWhereInput {
+  const where: Prisma.BridgeWhereInput = {};
+
+  if (query.busqueda) {
+    where.nombre = { contains: query.busqueda, mode: "insensitive" };
+  }
+  if (query.redSocial) where.redSocial = query.redSocial;
+  if (query.estado) where.estado = query.estado;
+
+  return where;
+}
+
+export async function findBridges(query: ListBridgesQuery): Promise<FindBridgesResult> {
+  const where = buildBridgeWhere(query);
+  const { bridges, total } = await bridgeRepository.findMany(where, {
+    skip: (query.pagina - 1) * query.limite,
+    take: query.limite,
+  });
+
+  return { bridges: bridges.map(toBridgeDetalleDto), total, pagina: query.pagina, limite: query.limite };
 }
 
 export async function getBridgeById(id: string): Promise<BridgeDetalleDto> {

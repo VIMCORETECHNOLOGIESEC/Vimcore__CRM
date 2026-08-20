@@ -243,7 +243,7 @@ describe("repositories/bridge — list (m4-bridges-crud-fundacion, PR1.7)", () =
       claveApiHash: hashClaveBridge(claveApiUnica()),
     });
 
-    const lista = await bridgeRepository.list();
+    const { bridges: lista } = await bridgeRepository.findMany({}, { skip: 0, take: 500 });
     const ids = lista.map((bridge) => bridge.id);
     const indiceA = ids.indexOf(a.id);
     const indiceB = ids.indexOf(b.id);
@@ -389,7 +389,7 @@ describe("repositories/bridge — list (m4-bridges-crud-fundacion, PR1.7)", () =
       claveApiHash: hashClaveBridge(claveApiUnica()),
     });
 
-    const lista = await bridgeRepository.list();
+    const { bridges: lista } = await bridgeRepository.findMany({}, { skip: 0, take: 500 });
     const ids = lista.map((bridge) => bridge.id);
     const indiceA = ids.indexOf(a.id);
     const indiceB = ids.indexOf(b.id);
