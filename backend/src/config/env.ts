@@ -43,6 +43,12 @@ const envSchema = z.object({
   // inspeccionar el Page Access Token de un tercero (docs/05-bridges.md §3,
   // §7) — un solo App ID por app, no por Página. Mismo patrón fail-fast.
   META_APP_ID: z.string().min(1, "META_APP_ID es obligatoria"),
+  // QA local (test/integration): override exclusivo para redirigir Graph API
+  // a un mock dentro de docker-compose (`meta-mock`, backend/scripts/) sin
+  // credenciales reales. Opcional — nunca se setea fuera de ese compose, así
+  // que en el resto de los entornos `meta-webhook.service.ts` usa la URL real
+  // de Meta sin cambio de comportamiento.
+  META_GRAPH_API_BASE_URL: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
