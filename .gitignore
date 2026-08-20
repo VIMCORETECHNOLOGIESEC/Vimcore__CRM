@@ -12,3 +12,6 @@ dist/
 .env
 *.env
 !.env.example
+
+# Overrides locales de docker compose
+docker-compose.override.yml
