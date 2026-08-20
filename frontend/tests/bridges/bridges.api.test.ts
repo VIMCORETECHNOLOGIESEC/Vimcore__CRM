@@ -82,15 +82,37 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("fetchBridgesApi — GET /bridges", () => {
-  it("desenvuelve `{ bridges }` y lo devuelve tal cual", async () => {
-    const bridges = [bridgeBackendFake(), bridgeBackendFake({ id: "bridge-2", redSocial: "X" })];
-    getMock.mockResolvedValue({ bridges });
+describe("fetchBridgesApi — GET /bridges (breaking change: paginado y filtrado)", () => {
+  it("manda pagina/limite y filtros opcionales como query params", async () => {
+    const respuesta = {
+      bridges: [bridgeBackendFake(), bridgeBackendFake({ id: "bridge-2", redSocial: "X" })],
+      total: 2,
+      pagina: 1,
+      limite: 20,
+    };
+    getMock.mockResolvedValue(respuesta);
 
-    const resultado = await fetchBridgesApi();
+    const resultado = await fetchBridgesApi({
+      pagina: 1,
+      limite: 20,
+      busqueda: "meta",
+      redSocial: "FACEBOOK",
+      estado: "ACTIVO",
+    });
 
-    expect(getMock).toHaveBeenCalledWith("/bridges");
-    expect(resultado).toEqual(bridges);
+    expect(getMock).toHaveBeenCalledWith("/bridges", {
+      params: { pagina: 1, limite: 20, busqueda: "meta", redSocial: "FACEBOOK", estado: "ACTIVO" },
+    });
+    expect(resultado).toEqual(respuesta);
+  });
+
+  it("devuelve `{ bridges, total, pagina, limite }` completo, no solo el arreglo de bridges", async () => {
+    const respuesta = { bridges: [bridgeBackendFake()], total: 1, pagina: 1, limite: 20 };
+    getMock.mockResolvedValue(respuesta);
+
+    const resultado = await fetchBridgesApi({ pagina: 1, limite: 20 });
+
+    expect(resultado).toEqual(respuesta);
   });
 });
 

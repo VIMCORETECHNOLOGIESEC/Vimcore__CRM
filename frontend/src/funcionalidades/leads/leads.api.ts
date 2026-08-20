@@ -185,6 +185,51 @@ export async function fetchLeadsApi(params: LeadsQueryParams): Promise<LeadsResp
   };
 }
 
+/**
+ * Filtros aceptados por `GET /leads/catalogo/redes-sociales` (backend real,
+ * commit `e753fdc`): los mismos que `LeadsQueryParams`, salvo `redSocial`
+ * (es justamente el campo que este catálogo alimenta -- se excluye para que
+ * nunca se autoexcluya de sus propias opciones) y la paginación (el backend
+ * la ignora, reutiliza `listLeadsQuerySchema` completo).
+ */
+export type RedesSocialesCatalogoParams = Omit<LeadsQueryParams, "redSocial" | "pagina" | "porPagina">;
+
+interface BackendRedesSocialesCatalogoResponse {
+  redesSociales: RedSocial[];
+}
+
+/**
+ * `GET /leads/catalogo/redes-sociales` (Requirement: cascada con los demás
+ * filtros de F3). Reemplaza a `fetchRedesSocialesActivasApi`
+ * (`GET /bridges/redes-activas`, admin-only) como fuente del filtro "Red
+ * social" de `LeadsFiltros.tsx` -- este endpoint solo exige sesión (el
+ * scoping por rol lo hace el propio query en el backend, igual que
+ * `fetchLeadsApi`), así que ya no hace falta gatear la petición por rol en
+ * el frontend. `campaniaId` no se manda -- mismo
+ * INTEGRACION-BACKEND-GAP que `fetchLeadsApi` (arriba): el backend no tiene
+ * una entidad `campania` con `id`.
+ */
+export async function fetchRedesSocialesCatalogoApi(
+  params: RedesSocialesCatalogoParams,
+): Promise<RedSocial[]> {
+  const respuesta = await httpClient.get<BackendRedesSocialesCatalogoResponse>(
+    "/leads/catalogo/redes-sociales",
+    {
+      params: {
+        busqueda: params.busqueda,
+        etapa: params.etapa,
+        semaforo: params.semaforo,
+        responsableId: params.responsableId,
+        desde: params.fechaDesde,
+        hasta: params.fechaHasta,
+        estadoSla: mapEstadoSlaToBackend(params.estadoSla),
+      } as Record<string, QueryParamValue>,
+    },
+  );
+
+  return respuesta.redesSociales;
+}
+
 function mapEstadoSlaToBackend(estado: EstadoSla | undefined): string | undefined {
   if (!estado) return undefined;
   switch (estado) {

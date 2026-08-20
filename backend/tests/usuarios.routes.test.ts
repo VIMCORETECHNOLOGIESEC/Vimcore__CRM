@@ -293,6 +293,81 @@ describe("PATCH /api/v1/usuarios/:id", () => {
 
     expect(respuesta.status).toBe(404);
   });
+
+  it("200 reactiva (activo: true) a un usuario dado de baja y puede volver a loguearse", async () => {
+    const passwordReactivada = "clave-reactivada-123456";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Usuario Para Reactivar",
+        correo: "reactivar@integracion.test",
+        passwordHash: await hashPassword(passwordReactivada),
+        rol: "ASESOR",
+        activo: false,
+      },
+    });
+
+    // Un usuario inactivo no puede loguearse (control previo al fix).
+    const loginAntes = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: usuario.correo, password: passwordReactivada });
+    expect(loginAntes.status).toBe(401);
+
+    const reactivacion = await request(app)
+      .patch(`/api/v1/usuarios/${usuario.id}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ activo: true });
+
+    expect(reactivacion.status).toBe(200);
+    expect(reactivacion.body.user.activo).toBe(true);
+    expect(reactivacion.body.user.passwordHash).toBeUndefined();
+
+    const usuarioTrasReactivar = await prisma.usuario.findUniqueOrThrow({
+      where: { id: usuario.id },
+    });
+    expect(usuarioTrasReactivar.activo).toBe(true);
+
+    const loginDespues = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: usuario.correo, password: passwordReactivada });
+    expect(loginDespues.status).toBe(200);
+  });
+
+  it("200 reactivar (activo: true) a un usuario que YA está activo es un no-op, sin error", async () => {
+    const respuesta = await request(app)
+      .patch(`/api/v1/usuarios/${vendedorId}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ activo: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.user.activo).toBe(true);
+
+    const usuarioTrasNoOp = await prisma.usuario.findUniqueOrThrow({
+      where: { id: vendedorId },
+    });
+    expect(usuarioTrasNoOp.activo).toBe(true);
+  });
+
+  it("200 sigue actualizando correo/rol sin regresión tras agregar activo al schema", async () => {
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Usuario Sin Regresión",
+        correo: "sin-regresion@integracion.test",
+        passwordHash: await hashPassword("clave-sin-regresion-123456"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+
+    const respuesta = await request(app)
+      .patch(`/api/v1/usuarios/${usuario.id}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ correo: "sin-regresion-nuevo@integracion.test", rol: "VENDEDOR" });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.user.correo).toBe("sin-regresion-nuevo@integracion.test");
+    expect(respuesta.body.user.rol).toBe("VENDEDOR");
+    expect(respuesta.body.user.passwordHash).toBeUndefined();
+  });
 });
 
 describe("DELETE /api/v1/usuarios/:id — baja lógica (D3)", () => {

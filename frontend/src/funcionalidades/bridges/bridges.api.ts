@@ -1,10 +1,11 @@
-import { httpClient } from "@/api/httpClient";
+import { httpClient, type QueryParamValue } from "@/api/httpClient";
 import type { RedSocial } from "@/tipos/lead";
 import type {
   Bridge,
   BridgeLog,
   CrearBridgeInput,
   CuentaPublicitariaBridge,
+  EstadoBridge,
   NivelBridgeLog,
   ResultadoBajaBridge,
   RespuestaClaveBridge,
@@ -38,8 +39,27 @@ import type {
 // (worktree dev-back).
 // ---------------------------------------------------------------------------
 
-interface BridgesListResponse {
+/**
+ * Query params de `GET /bridges` (fix, backend real: pagina y filtra por
+ * `busqueda`/`redSocial`/`estado`, mismo shape que `GET /usuarios` --
+ * contrato confirmado contra `backend/src/schemas/bridges.schema.ts::listBridgesQuerySchema`).
+ * `busqueda` filtra por `nombre` (texto libre, insensible a mayúsculas).
+ */
+export interface BridgesQueryParams {
+  /** 1-based, default 1 en el backend. */
+  pagina: number;
+  /** Default 20 en el backend, máximo 100. */
+  limite: number;
+  busqueda?: string;
+  redSocial?: RedSocial;
+  estado?: EstadoBridge;
+}
+
+export interface BridgesResponse {
   bridges: Bridge[];
+  total: number;
+  pagina: number;
+  limite: number;
 }
 
 interface BridgeDetalleResponse {
@@ -63,10 +83,23 @@ export interface ResultadoPruebaConexion {
   mensaje: string;
 }
 
-/** `GET /bridges`: listado con estado, último lead recibido y expiración de token (docs/07 F8). */
-export async function fetchBridgesApi(): Promise<Bridge[]> {
-  const { bridges } = await httpClient.get<BridgesListResponse>("/bridges");
-  return bridges;
+/**
+ * `GET /bridges`: listado con estado, último lead recibido y expiración de
+ * token (docs/07 F8), paginado y filtrado por `busqueda`/`redSocial`/`estado`
+ * (backend real). BREAKING CHANGE de contrato respecto a la integración
+ * original (`{ bridges }`, array plano sin envolver): ahora responde
+ * `{ bridges, total, pagina, limite }` -- esta función devuelve la respuesta
+ * completa (no solo `bridges`) para que `BridgesPage.tsx` arme "Mostrando
+ * X–Y de Z"/"Página X de Y" con datos reales del servidor, mismo criterio
+ * que `usuarios.api.ts::fetchUsuariosApi`.
+ */
+export async function fetchBridgesApi(params: BridgesQueryParams): Promise<BridgesResponse> {
+  // El cast es solo de tipos, mismo criterio que `fetchUsuariosApi`:
+  // `BridgesQueryParams` no declara un índice de string explícito, pero sus
+  // valores ya cumplen `QueryParamValue` uno por uno.
+  return httpClient.get<BridgesResponse>("/bridges", {
+    params: params as unknown as Record<string, QueryParamValue>,
+  });
 }
 
 /** `GET /bridges/:id`: incluye las cuentas publicitarias asociadas (docs/07 F8, "Detalle con cuentas publicitarias asociadas"). */

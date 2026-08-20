@@ -6,6 +6,11 @@ import {
   proximaExpiracionTokenBridge,
   canEliminarseFisicamente,
   hasAvisoDestacado,
+  listAvisosBridge,
+  buildBridgesQueryParams,
+  FILTRO_TODOS,
+  FILTROS_BRIDGES_VACIOS,
+  type BridgesFiltrosState,
 } from "@/funcionalidades/bridges/bridges.utils";
 import type { Bridge, CuentaPublicitariaBridge } from "@/tipos/bridge";
 
@@ -255,5 +260,100 @@ describe("canEliminarseFisicamente — señal de baja física vs. lógica (Requi
   it("es false cuando el bridge ya recibió al menos un lead", () => {
     const bridge = bridgeFake({ ultimoLeadEn: horasAntes(5) });
     expect(canEliminarseFisicamente(bridge)).toBe(false);
+  });
+});
+
+describe("listAvisosBridge — lista discreta de avisos para el ícono por fila (F8)", () => {
+  it("devuelve un arreglo vacío para un bridge sano", () => {
+    const bridge = bridgeFake({
+      ultimoLeadEn: horasAntes(1),
+      cuentasPublicitarias: [cuentaFake({ activa: true })],
+    });
+    expect(listAvisosBridge(bridge, AHORA)).toEqual([]);
+  });
+
+  it("token expirado: un único aviso de severidad alta", () => {
+    const bridge = bridgeFake({
+      ultimoLeadEn: horasAntes(1),
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "TOKEN_EXPIRADO" })],
+    });
+    const avisos = listAvisosBridge(bridge, AHORA);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toEqual({
+      severidad: "alta",
+      mensaje: "El token expiró y dejará de recibir leads hasta que se cargue uno nuevo.",
+    });
+  });
+
+  it("token próximo a vencer: un único aviso de severidad media", () => {
+    const bridge = bridgeFake({
+      ultimoLeadEn: horasAntes(1),
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "VALIDO", tokenExpiraEn: diasDesde(3) })],
+    });
+    const avisos = listAvisosBridge(bridge, AHORA);
+    expect(avisos).toEqual([
+      {
+        severidad: "media",
+        mensaje: "El token de alguna cuenta publicitaria está próximo a vencer.",
+      },
+    ]);
+  });
+
+  it("sin actividad: un único aviso de severidad media", () => {
+    const bridge = bridgeFake({
+      ultimoLeadEn: horasAntes(200),
+      cuentasPublicitarias: [cuentaFake({ activa: true })],
+    });
+    const avisos = listAvisosBridge(bridge, AHORA);
+    expect(avisos).toEqual([
+      {
+        severidad: "media",
+        mensaje: "No recibió leads en las últimas 72 horas a pesar de tener cuentas publicitarias activas.",
+      },
+    ]);
+  });
+
+  it("token expirado y sin actividad a la vez: dos avisos, el de severidad alta primero", () => {
+    const bridge = bridgeFake({
+      ultimoLeadEn: horasAntes(200),
+      cuentasPublicitarias: [cuentaFake({ estadoToken: "TOKEN_EXPIRADO", activa: true })],
+    });
+    const avisos = listAvisosBridge(bridge, AHORA);
+    expect(avisos).toHaveLength(2);
+    expect(avisos[0].severidad).toBe("alta");
+    expect(avisos[1].severidad).toBe("media");
+  });
+});
+
+describe("buildBridgesQueryParams — contrato de query de fetchBridgesApi (F8)", () => {
+  it("sin filtros activos, solo manda pagina y limite", () => {
+    expect(buildBridgesQueryParams(FILTROS_BRIDGES_VACIOS, 1, 10)).toEqual({ pagina: 1, limite: 10 });
+  });
+
+  it("recorta espacios de la búsqueda y la omite si queda vacía", () => {
+    const filtros: BridgesFiltrosState = { ...FILTROS_BRIDGES_VACIOS, busqueda: "  meta ads  " };
+    expect(buildBridgesQueryParams(filtros, 1, 10)).toEqual({ pagina: 1, limite: 10, busqueda: "meta ads" });
+
+    const filtrosVacios: BridgesFiltrosState = { ...FILTROS_BRIDGES_VACIOS, busqueda: "   " };
+    expect(buildBridgesQueryParams(filtrosVacios, 1, 10)).toEqual({ pagina: 1, limite: 10 });
+  });
+
+  it("incluye redSocial y estado solo cuando no son el sentinela FILTRO_TODOS", () => {
+    const filtros: BridgesFiltrosState = { busqueda: "", redSocial: "FACEBOOK", estado: "ACTIVO" };
+    expect(buildBridgesQueryParams(filtros, 2, 20)).toEqual({
+      pagina: 2,
+      limite: 20,
+      redSocial: "FACEBOOK",
+      estado: "ACTIVO",
+    });
+  });
+
+  it("con FILTRO_TODOS en ambos, no manda redSocial ni estado", () => {
+    const filtros: BridgesFiltrosState = {
+      busqueda: "",
+      redSocial: FILTRO_TODOS,
+      estado: FILTRO_TODOS,
+    };
+    expect(buildBridgesQueryParams(filtros, 1, 10)).toEqual({ pagina: 1, limite: 10 });
   });
 });

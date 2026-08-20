@@ -1,8 +1,15 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { assignLeadsMasivoApi, fetchLeadsApi, type LeadsQueryParams } from "./leads.api";
+import {
+  assignLeadsMasivoApi,
+  fetchLeadsApi,
+  fetchRedesSocialesCatalogoApi,
+  type LeadsQueryParams,
+  type RedesSocialesCatalogoParams,
+} from "./leads.api";
 
 const LEADS_QUERY_KEY = "leads";
+const REDES_SOCIALES_CATALOGO_QUERY_KEY = "leads-redes-sociales-catalogo";
 
 /**
  * Trae el listado de leads paginado y filtrado (F3), backend real -- ver
@@ -18,6 +25,24 @@ export function useLeads(params: LeadsQueryParams) {
     queryKey: [LEADS_QUERY_KEY, params],
     queryFn: () => fetchLeadsApi(params),
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Catálogo de `redSocial` en cascada con los demás filtros activos de F3
+ * (backend real, `GET /leads/catalogo/redes-sociales`) -- reemplaza a
+ * `useRedesSocialesActivas` (`GET /bridges/redes-activas`, admin-only,
+ * `funcionalidades/bridges/useBridges.ts`) como fuente del filtro "Red
+ * social" de `LeadsFiltros.tsx`. Sin `enabled` gateado por rol: el propio
+ * endpoint ya scopea por rol (`buildWhere`, sin `requireRole`), visible para
+ * cualquier usuario autenticado. La query key incluye `params` (sin
+ * `redSocial`, ya excluido del tipo) para que TanStack Query refetchee el
+ * catálogo cada vez que cambia cualquier OTRO filtro.
+ */
+export function useRedesSocialesCatalogo(params: RedesSocialesCatalogoParams) {
+  return useQuery({
+    queryKey: [REDES_SOCIALES_CATALOGO_QUERY_KEY, params],
+    queryFn: () => fetchRedesSocialesCatalogoApi(params),
   });
 }
 

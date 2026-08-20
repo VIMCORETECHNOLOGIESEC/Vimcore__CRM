@@ -1,4 +1,4 @@
-import { NivelBridgeLog, RedSocial } from "@prisma/client";
+import { EstadoBridge, NivelBridgeLog, RedSocial } from "@prisma/client";
 import { z } from "zod";
 
 // D-M4-fundacion (diseño m4-bridges-crud-fundacion): Zod 4.4.3, mismo patrón
@@ -24,6 +24,21 @@ export const updateBridgeBodySchema = z
   .refine((v) => Object.keys(v).length > 0, "Debes enviar al menos un campo");
 
 export const idParamSchema = z.object({ id: z.uuid() });
+
+/**
+ * `GET /bridges` (fix, GET /bridges no pagina ni filtra): mismo patrón que
+ * `usuarios.schema.ts::listUsuariosQuerySchema` — `pagina`/`limite` con
+ * idénticos defaults/topes (1..∞ / 1..100, default 20), `busqueda` de texto
+ * libre (filtra por `nombre` en `bridge.service.ts`, ILIKE insensible), y
+ * `redSocial`/`estado` como enums nativos de Prisma para filtro exacto.
+ */
+export const listBridgesQuerySchema = z.object({
+  busqueda: z.string().trim().min(1).optional(),
+  redSocial: z.enum(RedSocial).optional(),
+  estado: z.enum(EstadoBridge).optional(),
+  pagina: z.coerce.number().int().min(1).default(1),
+  limite: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 /**
  * `GET /bridges/:id/logs` (diseño m4-bridges-crud-fundacion, DD "log reads
@@ -78,6 +93,7 @@ export const cargarTokenBodySchema = z.object({
 export type CreateBridgeBody = z.infer<typeof createBridgeBodySchema>;
 export type UpdateBridgeBody = z.infer<typeof updateBridgeBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
+export type ListBridgesQuery = z.infer<typeof listBridgesQuerySchema>;
 export type LogsQuery = z.infer<typeof logsQuerySchema>;
 export type CreateCuentaPublicitariaBody = z.infer<typeof createCuentaPublicitariaBodySchema>;
 export type UpdateCuentaPublicitariaBody = z.infer<typeof updateCuentaPublicitariaBodySchema>;

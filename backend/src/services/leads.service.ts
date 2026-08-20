@@ -1,4 +1,4 @@
-import type { EtapaLead, Lead, Prisma, RolUsuario } from "@prisma/client";
+import type { EtapaLead, Lead, Prisma, RedSocial, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { GESTION_LEAD_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
@@ -137,6 +137,25 @@ export async function findLeads(usuario: UsuarioAcceso, query: ListLeadsQuery): 
     pagina: query.pagina,
     limite: query.limite,
   };
+}
+
+/**
+ * `GET /leads/catalogo/redes-sociales` (catálogo en cascada, reemplaza
+ * `GET /bridges/redes-activas` como fuente del filtro "Red social" en
+ * `/leads`): reutiliza `buildWhere` — mismo scoping por rol (D4) y mismos
+ * demás filtros ya activos en pantalla (etapa, semáforo, campaña, rango de
+ * fechas, estado de SLA, búsqueda) — para que el catálogo se recalcule en
+ * cascada con el resto de filtros. `redSocial` se descarta explícitamente del
+ * query ANTES de construir el `where`: si el usuario ya filtró por
+ * `redSocial=GOOGLE_FORMS`, igual queremos ofrecer esa opción en el catálogo,
+ * no que el propio filtro activo la haga desaparecer de sus propias opciones.
+ */
+export async function listRedesSocialesVisibles(
+  usuario: UsuarioAcceso,
+  query: ListLeadsQuery,
+): Promise<RedSocial[]> {
+  const where = buildWhere(usuario, { ...query, redSocial: undefined }, new Date());
+  return leadRepository.listRedesSocialesDistintas(where, query.busqueda);
 }
 
 /**

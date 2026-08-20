@@ -1,10 +1,11 @@
-import { RedSocial, type Bridge, type BridgeLog, type EstadoBridge, type NivelBridgeLog } from "@prisma/client";
+import { Prisma, RedSocial, type Bridge, type BridgeLog, type EstadoBridge, type NivelBridgeLog } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { generarClaveBridge, hashClaveBridge } from "../lib/clave-bridge.js";
 import { BRIDGE_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import type { BridgeConCuentas } from "../repositories/bridge.repository.js";
+import type { ListBridgesQuery } from "../schemas/bridges.schema.js";
 import { toCuentaPublicitariaDto, type CuentaPublicitariaDto } from "./cuenta-publicitaria.service.js";
 
 function bridgeNotFound(): AppError {
@@ -12,9 +13,8 @@ function bridgeNotFound(): AppError {
 }
 
 /**
- * Requirement: no token/expiry placeholder columns in this change — el DTO
- * emite `tokenExpiraEn: null` como constante documentada, no una columna
- * (diseño DD "no token/expiry placeholder columns").
+ * El DTO emite `tokenExpiraEn: null` como constante documentada, no una
+ * columna (diseño DD "no token/expiry placeholder columns in this change").
  */
 const TOKEN_EXPIRA_EN = null;
 
@@ -28,10 +28,11 @@ export interface BridgeDto {
 }
 
 /**
- * Requirement: Bridge detail embeds its accounts. `cuentasPublicitarias` se
- * mapea vía `cuenta-publicitaria.service.ts::toCuentaPublicitariaDto` —
- * expone `instagramAccountId`, nunca el nombre de campo interno de Prisma
- * `idExternoVinculado` (diseño m4-bridges-crud-fundacion, tarea PR3.3/3.5).
+ * `cuentasPublicitarias` se mapea vía
+ * `cuenta-publicitaria.service.ts::toCuentaPublicitariaDto` — expone
+ * `instagramAccountId`, nunca el nombre de campo interno de Prisma
+ * `idExternoVinculado` (diseño m4-bridges-crud-fundacion, tarea PR3.3/3.5,
+ * requirement "Bridge detail embeds its accounts").
  */
 export interface BridgeDetalleDto extends BridgeDto {
   cuentasPublicitarias: CuentaPublicitariaDto[];
@@ -66,10 +67,10 @@ export interface ClaveApiResult {
 }
 
 /**
- * Requirement: Bridge creation starts inactive with one-time plaintext key.
  * `estado=INACTIVO` ya es el default del schema (`bridge.repository.ts`
  * pasa `data` tal cual), así que no se envía `estado` acá — una sola fuente
- * de verdad para el default (ver docstring de `bridge.repository.create`).
+ * de verdad para el default (ver docstring de `bridge.repository.create`,
+ * requirement "Bridge creation starts inactive with one-time plaintext key").
  */
 export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiResult> {
   const claveApi = generarClaveBridge();
@@ -81,9 +82,39 @@ export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiRe
   return { bridge: toBridgeDto(bridge), claveApi };
 }
 
-export async function listBridges(): Promise<BridgeDetalleDto[]> {
-  const bridges = await bridgeRepository.list();
-  return bridges.map(toBridgeDetalleDto);
+export interface FindBridgesResult {
+  bridges: BridgeDetalleDto[];
+  total: number;
+  pagina: number;
+  limite: number;
+}
+
+/**
+ * Fix (GET /bridges no pagina ni filtra): mismo patrón de
+ * `usuarios.service.ts::buildWhere` + `findUsuarios` — `where` armado acá
+ * (búsqueda por `nombre`, filtros exactos por `redSocial`/`estado`),
+ * paginación/conteo resueltos por el repositorio.
+ */
+function buildBridgeWhere(query: ListBridgesQuery): Prisma.BridgeWhereInput {
+  const where: Prisma.BridgeWhereInput = {};
+
+  if (query.busqueda) {
+    where.nombre = { contains: query.busqueda, mode: "insensitive" };
+  }
+  if (query.redSocial) where.redSocial = query.redSocial;
+  if (query.estado) where.estado = query.estado;
+
+  return where;
+}
+
+export async function findBridges(query: ListBridgesQuery): Promise<FindBridgesResult> {
+  const where = buildBridgeWhere(query);
+  const { bridges, total } = await bridgeRepository.findMany(where, {
+    skip: (query.pagina - 1) * query.limite,
+    take: query.limite,
+  });
+
+  return { bridges: bridges.map(toBridgeDetalleDto), total, pagina: query.pagina, limite: query.limite };
 }
 
 export async function getBridgeById(id: string): Promise<BridgeDetalleDto> {
@@ -122,10 +153,10 @@ export interface DeleteBridgeResult {
 }
 
 /**
- * Requirement: Delete mode is decided by lead count, never ultimoLeadEn.
  * Cuenta y borra/desactiva dentro de la misma transacción interactiva
- * (diseño DD "delete mode from leadsRecibidos.count") — evita una carrera
- * con una ingesta concurrente entre el conteo y la decisión.
+ * (diseño DD "delete mode from leadsRecibidos.count", requirement
+ * "Delete mode is decided by lead count, never ultimoLeadEn") — evita una
+ * carrera con una ingesta concurrente entre el conteo y la decisión.
  */
 export async function deleteBridge(id: string): Promise<DeleteBridgeResult> {
   return runInTransaction(
@@ -150,9 +181,9 @@ export async function deleteBridge(id: string): Promise<DeleteBridgeResult> {
 }
 
 /**
- * Requirement: Key regeneration never changes bridge state. Nunca toca
- * `estado` — solo reemplaza el hash (diseño DD "generarClaveBridge() shape
- * and lifecycle", user-confirmed).
+ * Nunca toca `estado` — solo reemplaza el hash (diseño DD
+ * "generarClaveBridge() shape and lifecycle", user-confirmed; requirement
+ * "Key regeneration never changes bridge state").
  */
 export async function regenerateClave(id: string): Promise<ClaveApiResult> {
   const existente = await bridgeRepository.findById(id);
@@ -166,12 +197,38 @@ export async function regenerateClave(id: string): Promise<ClaveApiResult> {
 }
 
 /**
+ * Fix (2026-08-19, docs/05-bridges.md §5): "tener una integración de ingesta
+ * real" es un juicio de producto, no algo derivable del enum `RedSocial` —
+ * `listRedesSoportadas` ya no puede ser un passthrough de
+ * `Object.values(RedSocial)`. X y GOOGLE_FORMS comparten exactamente el mismo
+ * mecanismo genérico (`POST /ingesta/generico`), pero solo GOOGLE_FORMS tiene
+ * una fuente real construida (Apps Script) — X está pendiente de confirmación
+ * con el cliente ("nadie construyó/probó una fuente real todavía").
+ * INSTAGRAM no es un tipo de bridge creable: viaja como `instagramAccountId`
+ * dentro de un bridge FACEBOOK (ver `cuenta-publicitaria.service.ts`).
+ * LINKEDIN requiere OAuth + polling cada 5 minutos, un mecanismo sin
+ * adaptador ni job en este código hoy. Esta tabla es la única fuente de
+ * verdad de "implementado".
+ */
+const RED_SOCIAL_IMPLEMENTACION: Record<
+  RedSocial,
+  { implementado: boolean; mecanismo: "webhook-meta" | "generico" | "polling-linkedin" }
+> = {
+  FACEBOOK: { implementado: true, mecanismo: "webhook-meta" },
+  INSTAGRAM: { implementado: false, mecanismo: "webhook-meta" },
+  GOOGLE_FORMS: { implementado: true, mecanismo: "generico" },
+  X: { implementado: false, mecanismo: "generico" },
+  LINKEDIN: { implementado: false, mecanismo: "polling-linkedin" },
+};
+
+/**
  * `GET /bridges/catalogo/redes-soportadas` (Requirement: Network catalogs
- * are enum-derived and deduplicated). Función pura — no toca la BD, así que
- * no es `async` (preferencia de funciones puras del ciclo TDD).
+ * are enum-derived and deduplicated, acotado por el filtro de "implementado"
+ * de arriba). Función pura — no toca la BD, así que no es `async`
+ * (preferencia de funciones puras del ciclo TDD).
  */
 export function listRedesSoportadas(): RedSocial[] {
-  return Object.values(RedSocial);
+  return Object.values(RedSocial).filter((red) => RED_SOCIAL_IMPLEMENTACION[red].implementado);
 }
 
 /** `GET /bridges/redes-activas`: redes con al menos un bridge no eliminado, sin duplicados (Requirement: Network catalogs are enum-derived and deduplicated). */

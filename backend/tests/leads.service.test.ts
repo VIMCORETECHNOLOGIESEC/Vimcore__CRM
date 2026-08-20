@@ -3,7 +3,12 @@ import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
-import { findLeadById, findLeads, transitionEtapa } from "../src/services/leads.service.js";
+import {
+  findLeadById,
+  findLeads,
+  listRedesSocialesVisibles,
+  transitionEtapa,
+} from "../src/services/leads.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
 // D-M3 (mismo patrón que deduplicacion.service.test.ts): delega a la
@@ -47,6 +52,7 @@ async function crearLead(
     slaInicioEn: Date | null;
     cerradoEn: Date | null;
     ingresadoEn: Date;
+    redSocial: "FACEBOOK" | "INSTAGRAM" | "X" | "LINKEDIN" | "GOOGLE_FORMS" | null;
   }> = {},
 ): Promise<{ id: string }> {
   contador += 1;
@@ -64,6 +70,7 @@ async function crearLead(
       slaInicioEn: overrides.slaInicioEn ?? null,
       cerradoEn: overrides.cerradoEn ?? null,
       ingresadoEn: overrides.ingresadoEn ?? new Date(),
+      redSocial: overrides.redSocial ?? null,
     },
   });
   return { id: lead.id };
@@ -365,5 +372,123 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length).toBeGreaterThan(
       llamadasAntes,
     );
+  });
+});
+
+describe("services/leads.service — listRedesSocialesVisibles (catálogo en cascada, reemplazo de GET /bridges/redes-activas)", () => {
+  it("un ADMINISTRADOR ve las redes sociales de todos los leads", async () => {
+    const admin = await crearUsuario("ADMINISTRADOR");
+    await crearLead({ redSocial: "FACEBOOK" });
+    await crearLead({ redSocial: "GOOGLE_FORMS" });
+
+    const redes = await listRedesSocialesVisibles(admin, {
+      pagina: 1,
+      limite: 20,
+      direccion: "desc",
+    } as Parameters<typeof listRedesSocialesVisibles>[1]);
+
+    expect(redes).toEqual(expect.arrayContaining(["FACEBOOK", "GOOGLE_FORMS"]));
+  });
+
+  it("un ASESOR solo ve las redes sociales de su propia cartera, no las de otro asesor", async () => {
+    const asesorA = await crearUsuario("ASESOR");
+    const asesorB = await crearUsuario("ASESOR");
+    await crearLead({ asesorId: asesorA.id, redSocial: "FACEBOOK" });
+    await crearLead({ asesorId: asesorB.id, redSocial: "GOOGLE_FORMS" });
+
+    const redes = await listRedesSocialesVisibles(asesorA, {
+      pagina: 1,
+      limite: 20,
+      direccion: "desc",
+    } as Parameters<typeof listRedesSocialesVisibles>[1]);
+
+    expect(redes).toEqual(["FACEBOOK"]);
+  });
+
+  it("el filtro en cascada por etapa reduce las redes sociales devueltas", async () => {
+    const supervisor = await crearUsuario("SUPERVISOR");
+    const cliente = await prisma.cliente.create({
+      data: { nombre: `Cliente cascada ${Date.now()}`, telefonoValido: false },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: cliente.id,
+        origen: "NUEVO",
+        etapa: "VENTA",
+        redSocial: "FACEBOOK",
+        ingresadoEn: new Date(),
+      },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: cliente.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        redSocial: "GOOGLE_FORMS",
+        ingresadoEn: new Date(),
+      },
+    });
+
+    const redes = await listRedesSocialesVisibles(supervisor, {
+      pagina: 1,
+      limite: 20,
+      direccion: "desc",
+      etapa: "VENTA",
+    } as Parameters<typeof listRedesSocialesVisibles>[1]);
+
+    expect(redes).toEqual(expect.arrayContaining(["FACEBOOK"]));
+    expect(redes).not.toContain("GOOGLE_FORMS");
+  });
+
+  it("el filtro redSocial ya activo en el query no se autolimita: sigue devolviendo esa misma red como opción", async () => {
+    const supervisor = await crearUsuario("SUPERVISOR");
+    await crearLead({ redSocial: "GOOGLE_FORMS" });
+
+    const redes = await listRedesSocialesVisibles(supervisor, {
+      pagina: 1,
+      limite: 20,
+      direccion: "desc",
+      redSocial: "GOOGLE_FORMS",
+    } as Parameters<typeof listRedesSocialesVisibles>[1]);
+
+    expect(redes).toContain("GOOGLE_FORMS");
+  });
+
+  it("el filtro en cascada por busqueda (nombre de cliente) reduce las redes sociales devueltas", async () => {
+    const supervisor = await crearUsuario("SUPERVISOR");
+    const clienteBuscado = await prisma.cliente.create({
+      data: { nombre: `Cliente busqueda cascada ${Date.now()}`, telefonoValido: false },
+    });
+    const otroCliente = await prisma.cliente.create({
+      data: { nombre: `Otro cliente ${Date.now()}`, telefonoValido: false },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: clienteBuscado.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        redSocial: "FACEBOOK",
+        ingresadoEn: new Date(),
+      },
+    });
+    await prisma.lead.create({
+      data: {
+        clienteId: otroCliente.id,
+        origen: "NUEVO",
+        etapa: "NUEVO",
+        redSocial: "GOOGLE_FORMS",
+        ingresadoEn: new Date(),
+      },
+    });
+
+    const redes = await listRedesSocialesVisibles(supervisor, {
+      pagina: 1,
+      limite: 20,
+      direccion: "desc",
+      busqueda: "busqueda cascada",
+    } as Parameters<typeof listRedesSocialesVisibles>[1]);
+
+    expect(redes).toEqual(expect.arrayContaining(["FACEBOOK"]));
+    expect(redes).not.toContain("GOOGLE_FORMS");
   });
 });

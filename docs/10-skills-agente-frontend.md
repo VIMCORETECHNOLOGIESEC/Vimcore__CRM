@@ -6,7 +6,7 @@ Code Skills instaladas para el desarrollo de las 8 pantallas (F1-F8), el
 comando para descargar cada una, y en qué caso debe usarlas el agente.
 
 Si el desarrollo de este frontend se hace con un agente de IA compatible con
-Claude Code Skills, instalá estas 10 skills en `.claude/skills/` para
+Claude Code Skills, instalá estas 12 skills en `.claude/skills/` para
 mantener el mismo criterio de craft, accesibilidad y rendimiento en las 8
 pantallas. Se cargan solas cuando la tarea del agente calza con su trigger
 (ver `.atl/skill-registry.md`); no hace falta invocarlas a mano.
@@ -32,6 +32,24 @@ repo de su autor porque no está en el registro de ui-skills.com.
 Procedencia completa y criterio de selección de cada una:
 `.claude/skills/_shared/ui-skills-sources.md`.
 
+Las dos últimas de la tabla (`transitions-dev`/`transitions-polish`) son una
+segunda excepción: vienen de
+[github.com/Jakubantalik/transitions.dev](https://github.com/Jakubantalik/transitions.dev)
+(2.8k★, no está en el registro de ui-skills.com), instaladas vía su propio
+CLI, que además fija la fuente/hash en `skills-lock.json` (raíz del repo):
+
+```bash
+npx skills add Jakubantalik/transitions.dev
+```
+
+El instalador crea el contenido real en `.agents/skills/<slug>/` y un enlace
+simbólico desde `.claude/skills/<slug>/` — en este repo (Windows,
+`core.symlinks=false`) ese symlink no sobrevive un commit real (git lo
+guardaría como un archivo de texto con una ruta absoluta, roto en cualquier
+otro checkout o dentro de Docker). Por eso lo versionado en `.claude/skills/`
+es una **copia real** de esos dos directorios, no el symlink que deja el
+instalador — mismo patrón que el resto de las skills de esta tabla.
+
 ---
 
 ## Lista de skills
@@ -48,3 +66,5 @@ Procedencia completa y criterio de selección de cada una:
 | `harden` | `npx ui-skills get harden` | Al cerrar cada pantalla — estados de carga, vacío y error, no solo el camino feliz (ver "Criterios transversales de calidad" en `docs/07`). |
 | `vercel-react-best-practices` | `npx ui-skills get react-best-practices > .claude/skills/vercel-react-best-practices/SKILL.md` (el slug del CLI es `react-best-practices`; el `name` interno de la skill es `vercel-react-best-practices` — la carpeta usa este último) | Al implementar data fetching con TanStack Query, la tabla densa de F3, o el contador de SLA en vivo (rendimiento, re-render, bundle). La categoría "server-side" no aplica — este repo es Vite, no Next.js. |
 | `accessibility` | `curl -fsSL https://raw.githubusercontent.com/addyosmani/web-quality-skills/HEAD/skills/accessibility/SKILL.md -o .claude/skills/accessibility/SKILL.md` | Auditoría formal WCAG 2.2 (POUR, niveles A/AA/AAA, protocolo de testing con Lighthouse/axe-core). Usarla en particular para verificar la regla "el semáforo nunca es solo color" (Criterios transversales de calidad, `docs/07`). |
+| `transitions-dev` | `npx skills add Jakubantalik/transitions.dev` | Al agregar o modificar una transición puntual (modal, dropdown, toast, tooltip, skeleton loader, badge, acordeón, etc.) — 27 patrones CSS listos, namespaced `t-*`, cada uno con guarda `prefers-reduced-motion` ya integrada (mismo requisito que exige `better-accessibility` §10). Sin dependencia de framework — copiar/pegar el snippet documentado. |
+| `transitions-polish` | (mismo comando, instala ambas skills juntas) | Add-on de `transitions-dev`: para AJUSTAR motion que ya existe (duración, distancia, escala, blur, easing) contra la escala de tokens de la librería, nunca para agregar transiciones nuevas. Usarla al revisar timing/easing que "se siente raro" o al auditar animaciones ad hoc antes de tokenizarlas. |

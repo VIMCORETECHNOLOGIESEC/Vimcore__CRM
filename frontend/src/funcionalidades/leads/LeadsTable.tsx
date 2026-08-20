@@ -35,10 +35,14 @@ const columnHelper = createColumnHelper<Lead>();
  * alcanza un ancho chico y determinístico.
  */
 const COLUMN_WIDTHS: Record<string, string> = {
-  cliente: "w-[26%]",
+  // Anchos fijos acotados, no porcentuales (F3, feedback QA: la tabla no debe
+  // extenderse tanto que las columnas de ESTADO -- etapa/semáforo/SLA --
+  // queden fuera de la vista inicial sin scroll). truncate + Tooltip ya
+  // cubren el desborde de texto largo en ambas.
+  cliente: "w-48",
   telefono: "w-32",
   redSocial: "w-28",
-  campania: "w-[18%]",
+  campania: "w-36",
   etapa: "w-28",
   semaforo: "w-32",
   responsable: "w-32",
@@ -81,9 +85,18 @@ export function LeadsTable({
             <div className="flex min-w-0 items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
+                  {/* Fila clickeable completa (F3, accesos en pantallas angostas donde
+                      esta es la única columna que sobrevive el scroll horizontal):
+                      único <a> semántico de la fila (un solo tab-stop, Cmd/Ctrl/click
+                      medio abren en pestaña nueva, igual que antes), con su hit-area
+                      estirada a todo el <tr> vía `after:absolute after:inset-0` -- el
+                      pseudo-elemento se posiciona contra el ancestro posicionado más
+                      cercano (el `<tr>` de abajo tiene `relative`), no contra su <td>.
+                      El checkbox de selección se eleva con `relative z-10` para no
+                      quedar debajo de este overlay invisible. */}
                   <Link
                     to={`/leads/${row.original.id}`}
-                    className="min-w-0 truncate font-medium text-foreground underline-offset-2 hover:underline"
+                    className="min-w-0 truncate font-medium text-foreground underline-offset-2 hover:underline after:absolute after:inset-0 after:content-[''] after:rounded-sm focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-1"
                   >
                     {row.original.cliente.nombre}
                   </Link>
@@ -195,7 +208,15 @@ export function LeadsTable({
   const table = useReactTable({ data: leads, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
-    <Table className="table-fixed">
+    // `min-w` fijo en la <table> (no en celdas sueltas -- `table-fixed` solo
+    // respeta `width` de la primera fila e ignora `min-width` por celda, que
+    // es justo lo que causaba el choque de columnas de antes): suma exacta
+    // de las columnas, todas con ancho fijo desde el fix de COLUMN_WIDTHS
+    // (768px teléfono/red social/etapa/semáforo/SLA/ingreso + 192px Cliente +
+    // 144px Campaña + 128px Responsable + 40px checkbox, caso admin
+    // completo) -- por debajo de ese piso, gana el scroll horizontal del
+    // wrapper (`overflow-auto` en `Table`), nunca la compresión.
+    <Table className="table-fixed min-w-[1280px]">
       <TableHeader>
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
@@ -221,9 +242,12 @@ export function LeadsTable({
           <TableRow
             key={row.id}
             data-state={seleccionados.has(row.original.id) ? "selected" : undefined}
+            // `relative`: ancla la fila estirada del <Link> de Cliente (ver comentario
+            // ahí). `.leads-table-row` trae el glow de hover (index.css).
+            className="leads-table-row relative"
           >
             {permitirSeleccion ? (
-              <TableCell>
+              <TableCell className="relative z-10">
                 <Checkbox
                   checked={seleccionados.has(row.original.id)}
                   onCheckedChange={() => onToggleSeleccion(row.original.id)}

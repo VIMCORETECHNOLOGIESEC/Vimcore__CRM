@@ -1,4 +1,6 @@
-import type { Bridge, CuentaPublicitariaBridge } from "@/tipos/bridge";
+import type { RedSocial } from "@/tipos/lead";
+import type { Bridge, CuentaPublicitariaBridge, EstadoBridge } from "@/tipos/bridge";
+import type { BridgesQueryParams } from "./bridges.api";
 
 /**
  * Lógica pura de bridges (F8, docs/07), separada de la capa mock
@@ -98,6 +100,57 @@ export function hasAvisoDestacado(aviso: AvisoBridge): boolean {
 }
 
 /**
+ * MISMA REDACCIÓN que arma `AvisoBridge.tsx` para la alerta apilada del
+ * detalle de UN bridge (`BridgeDetallePage.tsx`) -- ese componente queda
+ * explícitamente fuera de alcance de este cambio (no se toca), así que estos
+ * textos se mantienen acá como fuente propia para `listAvisosBridge` en vez
+ * de importarlos desde ahí. Si el copy cambia, hay que actualizar los dos
+ * lugares a mano.
+ */
+const MENSAJE_TOKEN_EXPIRADO =
+  "El token expiró y dejará de recibir leads hasta que se cargue uno nuevo.";
+const MENSAJE_TOKEN_PROXIMO_A_VENCER =
+  "El token de alguna cuenta publicitaria está próximo a vencer.";
+const MENSAJE_SIN_ACTIVIDAD =
+  "No recibió leads en las últimas 72 horas a pesar de tener cuentas publicitarias activas.";
+
+export type SeveridadAvisoBridge = "alta" | "media";
+
+export interface AvisoBridgeItem {
+  severidad: SeveridadAvisoBridge;
+  mensaje: string;
+}
+
+const SEVERIDAD_ORDEN: Record<SeveridadAvisoBridge, number> = { alta: 0, media: 1 };
+
+/**
+ * Lista discreta de avisos de UN bridge puntual (a diferencia de
+ * `evaluateAvisoBridge`, que agrega en tres banderas) -- fuente del ícono de
+ * aviso por fila de `BridgesTable.tsx` (F8, reemplaza la pila de
+ * `<AvisoBridge>` que `BridgesPage.tsx` mostraba arriba de toda la tabla,
+ * una por bridge -- ver nota de progreso en docs/07). Token expirado es
+ * "alta"; el resto, "media" -- la lista queda ordenada por severidad
+ * descendente para que el popover muestre primero lo más urgente. Diseñada
+ * para soportar N avisos sin cambios (hoy el máximo real es 2, dado que
+ * `tokenExpirado`/`tokenProximoAVencer` son mutuamente excluyentes).
+ */
+export function listAvisosBridge(bridge: Bridge, ahora: Date = new Date()): AvisoBridgeItem[] {
+  const aviso = evaluateAvisoBridge(bridge, ahora);
+  const avisos: AvisoBridgeItem[] = [];
+
+  if (aviso.tokenExpirado) {
+    avisos.push({ severidad: "alta", mensaje: MENSAJE_TOKEN_EXPIRADO });
+  } else if (aviso.tokenProximoAVencer) {
+    avisos.push({ severidad: "media", mensaje: MENSAJE_TOKEN_PROXIMO_A_VENCER });
+  }
+  if (aviso.sinActividad) {
+    avisos.push({ severidad: "media", mensaje: MENSAJE_SIN_ACTIVIDAD });
+  }
+
+  return [...avisos].sort((a, b) => SEVERIDAD_ORDEN[a.severidad] - SEVERIDAD_ORDEN[b.severidad]);
+}
+
+/**
  * Fecha de expiración de token más urgente entre las cuentas publicitarias
  * del bridge (la más próxima -- si alguna ya venció, esa fecha pasada gana
  * igual, porque es la más chica). Reemplaza la lectura de
@@ -165,4 +218,43 @@ export function formatFecha(iso: string): string {
   const horas = String(fecha.getHours()).padStart(2, "0");
   const minutos = String(fecha.getMinutes()).padStart(2, "0");
   return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
+}
+
+/** Sentinela para "todos/todas" en los `<Select>` de filtros (Radix Select no admite `value=""`), mismo criterio que `leads/leads.utils.ts::FILTRO_TODOS`. */
+export const FILTRO_TODOS = "TODOS";
+
+export interface BridgesFiltrosState {
+  /** Filtra por `nombre` (backend real, texto libre, insensible a mayúsculas). */
+  busqueda: string;
+  redSocial: RedSocial | typeof FILTRO_TODOS;
+  estado: EstadoBridge | typeof FILTRO_TODOS;
+}
+
+export const FILTROS_BRIDGES_VACIOS: BridgesFiltrosState = {
+  busqueda: "",
+  redSocial: FILTRO_TODOS,
+  estado: FILTRO_TODOS,
+};
+
+/**
+ * Traduce el estado de los filtros de la UI al contrato de query de
+ * `fetchBridgesApi` (`GET /bridges`, backend real -- F8, breaking change de
+ * contrato: ver `bridges.api.ts`). Pura y con test dedicado
+ * (`bridges.utils.test.ts`) porque compone la consulta real que se le manda
+ * al backend, mismo criterio que
+ * `usuarios/usuarios.utils.ts::buildUsuariosQueryParams`.
+ */
+export function buildBridgesQueryParams(
+  filtros: BridgesFiltrosState,
+  pagina: number,
+  limite: number,
+): BridgesQueryParams {
+  const busqueda = filtros.busqueda.trim();
+  const params: BridgesQueryParams = { pagina, limite };
+
+  if (busqueda) params.busqueda = busqueda;
+  if (filtros.redSocial !== FILTRO_TODOS) params.redSocial = filtros.redSocial;
+  if (filtros.estado !== FILTRO_TODOS) params.estado = filtros.estado;
+
+  return params;
 }

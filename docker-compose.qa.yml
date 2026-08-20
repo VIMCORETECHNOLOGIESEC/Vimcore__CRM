@@ -1,0 +1,20 @@
+## QA local (test/integration): override opcional, NUNCA parte del `docker
+## compose up` normal (docker-compose.yml queda intacto para cualquier otro
+## desarrollador). Agrega un mock de Graph API para ejercitar el webhook de
+## Meta (backend/scripts/meta-graph-mock.ts) sin credenciales reales.
+##
+## Uso: docker compose -f docker-compose.yml -f docker-compose.qa.yml up -d
+services:
+  meta-mock:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./backend/scripts:/app/scripts:ro
+    command: node --experimental-strip-types scripts/meta-graph-mock.ts
+
+  backend:
+    depends_on:
+      meta-mock:
+        condition: service_started
+    environment:
+      META_GRAPH_API_BASE_URL: http://meta-mock:4000

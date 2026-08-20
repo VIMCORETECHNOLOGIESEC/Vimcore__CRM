@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { hashClaveBridge } from "../src/lib/clave-bridge.js";
+import { generarClaveBridge, hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
 
 /**
@@ -72,7 +72,37 @@ async function main(): Promise<void> {
       },
     });
 
-    console.log(`Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + 1 bridge.`);
+    // Bridges de pruebas Facebook/Instagram (docs/05-bridges.md §3): la clave
+    // en claro solo existe en memoria durante la siembra, igual que en el
+    // flujo real de creación — se imprime una única vez para uso manual de QA.
+    const bridgesMeta = [
+      { redSocial: "FACEBOOK" as const, nombre: "Facebook (pruebas)" },
+      { redSocial: "INSTAGRAM" as const, nombre: "Instagram (pruebas)" },
+    ];
+
+    for (const bridge of bridgesMeta) {
+      // findFirst + create (no upsert): la clave se genera de nuevo en cada
+      // corrida, así que el hash nunca coincidiría con el de una fila previa.
+      // Re-ejecutar el script no debe duplicar el bridge — se identifica por
+      // nombre, que es exclusivo de este seed.
+      const existente = await prisma.bridge.findFirst({ where: { nombre: bridge.nombre } });
+      if (existente) {
+        continue;
+      }
+
+      const claveApi = generarClaveBridge();
+      await prisma.bridge.create({
+        data: {
+          redSocial: bridge.redSocial,
+          nombre: bridge.nombre,
+          claveApiHash: hashClaveBridge(claveApi),
+          estado: "INACTIVO",
+        },
+      });
+      console.log(`Bridge ${bridge.nombre} — X-Bridge-Key: ${claveApi}`);
+    }
+
+    console.log(`Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + 3 bridges.`);
   } finally {
     await prisma.$disconnect();
   }

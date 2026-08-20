@@ -6,6 +6,7 @@ import {
   createBridgeBodySchema,
   createCuentaPublicitariaBodySchema,
   idParamSchema,
+  listBridgesQuerySchema,
   logsQuerySchema,
   updateBridgeBodySchema,
   updateCuentaPublicitariaBodySchema,
@@ -13,9 +14,9 @@ import {
 import {
   createBridge,
   deleteBridge,
+  findBridges,
   getBridgeById,
   listLogs,
-  listBridges,
   listRedesActivas,
   listRedesSoportadas,
   regenerateClave,
@@ -35,9 +36,15 @@ function invalidCuentaParams(): AppError {
   return new AppError("validacion_invalida", 400, "Los identificadores de bridge/cuenta son inválidos");
 }
 
-export async function getBridges(_req: Request, res: Response): Promise<void> {
-  const bridges = await listBridges();
-  res.status(200).json({ bridges });
+/** `GET /bridges`: pagina y filtra por `busqueda`/`redSocial`/`estado` (fix, mismo contrato de forma que `GET /usuarios`). */
+export async function getBridges(req: Request, res: Response): Promise<void> {
+  const parsedQuery = listBridgesQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw zodValidationError();
+  }
+
+  const { bridges, total, pagina, limite } = await findBridges(parsedQuery.data);
+  res.status(200).json({ bridges, total, pagina, limite });
 }
 
 export async function postBridge(req: Request, res: Response): Promise<void> {

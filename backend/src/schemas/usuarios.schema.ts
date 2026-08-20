@@ -15,8 +15,19 @@ export const createUsuarioBodySchema = z.object({
   rol: z.enum(RolUsuario),
 });
 
+/**
+ * `activo` reactiva/desactiva por este mismo endpoint — mismo patrón que
+ * `bridges.schema.ts::updateBridgeBodySchema` con `estado: "ACTIVO"`. Solo
+ * fija el flag; NO restaura la cartera de leads redistribuida al dar de baja
+ * (`usuarios.service.ts::deactivateUsuario`) — el usuario reactivado arranca
+ * con cartera vacía y vuelve a recibir leads por asignación normal. Baja
+ * lógica completa (revocación de refresh tokens + reasignación obligatoria
+ * de cartera) sigue siendo exclusiva de `DELETE /usuarios/:id`
+ * (`deactivateUsuario`), no de este PATCH.
+ */
 export const updateUsuarioBodySchema = createUsuarioBodySchema
   .partial()
+  .extend({ activo: z.boolean().optional() })
   .refine((v) => Object.keys(v).length > 0, "Debes enviar al menos un campo");
 
 export const idParamSchema = z.object({ id: z.uuid() });

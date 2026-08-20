@@ -11,9 +11,18 @@ vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
+/**
+ * `LeadsFiltros` (F3) consume `useRedesSocialesCatalogo()`
+ * (`GET /leads/catalogo/redes-sociales`) -- se mockea acá junto con
+ * `fetchLeadsApi` para que estas pruebas sigan siendo deterministas y no
+ * dependan de datos reales. El comportamiento del filtro en sí (visibilidad
+ * por rol, cascada con los demás filtros) tiene su propio test dedicado en
+ * `tests/leads/LeadsFiltros.test.tsx`.
+ */
 vi.mock("@/funcionalidades/leads/leads.api", () => ({
   fetchLeadsApi: vi.fn(),
   assignLeadsMasivoApi: vi.fn(),
+  fetchRedesSocialesCatalogoApi: vi.fn(),
   getCatalogoCampanias: vi.fn(() => [{ id: "camp-1", nombre: "Verano 2026" }]),
   // `getCatalogoResponsables` es backend real (D-A2) -- async en la app real,
   // pero `useQuery` acepta igual un `queryFn` síncrono en tests.
@@ -25,26 +34,16 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   ),
 }));
 
-/**
- * `LeadsFiltros` (F3) consume `useRedesSocialesActivas()` desde
- * bridge-lifecycle-management -- se mockea acá para que estas pruebas sigan
- * siendo deterministas y no dependan de `BRIDGES_MOCK` (fixture de otra
- * funcionalidad). El comportamiento del filtro en sí tiene su propio test
- * dedicado en `tests/leads/LeadsFiltros.test.tsx`.
- */
-vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
-  fetchRedesSocialesActivasApi: vi.fn(),
-}));
-
 const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
-const { fetchLeadsApi, assignLeadsMasivoApi } = await import("@/funcionalidades/leads/leads.api");
-const { fetchRedesSocialesActivasApi } = await import("@/funcionalidades/bridges/bridges.api");
+const { fetchLeadsApi, assignLeadsMasivoApi, fetchRedesSocialesCatalogoApi } = await import(
+  "@/funcionalidades/leads/leads.api"
+);
 const { LeadsPage } = await import("@/funcionalidades/leads/LeadsPage");
 
 const useAuthMock = vi.mocked(useAuth);
 const fetchLeadsApiMock = vi.mocked(fetchLeadsApi);
 const assignLeadsMasivoApiMock = vi.mocked(assignLeadsMasivoApi);
-const fetchRedesSocialesActivasApiMock = vi.mocked(fetchRedesSocialesActivasApi);
+const fetchRedesSocialesCatalogoApiMock = vi.mocked(fetchRedesSocialesCatalogoApi);
 
 function mockearAuth(rol: RolUsuario) {
   useAuthMock.mockReturnValue({
@@ -102,8 +101,8 @@ beforeEach(() => {
   fetchLeadsApiMock.mockReset();
   assignLeadsMasivoApiMock.mockReset();
   assignLeadsMasivoApiMock.mockResolvedValue(undefined);
-  fetchRedesSocialesActivasApiMock.mockReset();
-  fetchRedesSocialesActivasApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"]);
+  fetchRedesSocialesCatalogoApiMock.mockReset();
+  fetchRedesSocialesCatalogoApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"]);
 });
 
 afterEach(() => {

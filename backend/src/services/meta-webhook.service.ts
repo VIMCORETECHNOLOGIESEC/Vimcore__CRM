@@ -13,7 +13,11 @@ import {
 } from "../schemas/meta-webhook.schema.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 
-export const GRAPH_API_BASE_URL = "https://graph.facebook.com";
+// QA local (test/integration): `env.META_GRAPH_API_BASE_URL` solo existe
+// seteado dentro de ese docker-compose (ver config/env.ts) — en cualquier
+// otro entorno queda `undefined` y se usa la URL real de Meta sin cambio de
+// comportamiento.
+export const GRAPH_API_BASE_URL = env.META_GRAPH_API_BASE_URL ?? "https://graph.facebook.com";
 const DETALLE_CAMPOS = "field_data,ad_id,form_id,campaign_id,campaign_name,ad_name";
 
 /** 3 intentos totales (docs/05-bridges.md §8): 2 backoffs entre los 3, exponencial (250ms, 500ms). */

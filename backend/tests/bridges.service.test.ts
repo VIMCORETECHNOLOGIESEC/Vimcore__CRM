@@ -6,9 +6,9 @@ import { prisma } from "../src/lib/prisma.js";
 import {
   createBridge,
   deleteBridge,
+  findBridges,
   getBridgeById,
   listLogs,
-  listBridges,
   listRedesActivas,
   listRedesSoportadas,
   regenerateClave,
@@ -70,16 +70,67 @@ describe("bridge.service — createBridge (Requirement: Bridge creation starts i
   });
 });
 
-describe("bridge.service — listBridges/getBridgeById", () => {
-  it("listBridges nunca expone claveApiHash", async () => {
+describe("bridge.service — findBridges/getBridgeById", () => {
+  it("findBridges nunca expone claveApiHash y devuelve total/pagina/limite", async () => {
     await crearBridgeDirecto();
 
-    const bridges = await listBridges();
+    const resultado = await findBridges({ pagina: 1, limite: 20 });
 
-    expect(bridges.length).toBeGreaterThan(0);
-    for (const bridge of bridges) {
+    expect(resultado.bridges.length).toBeGreaterThan(0);
+    expect(typeof resultado.total).toBe("number");
+    expect(resultado.pagina).toBe(1);
+    expect(resultado.limite).toBe(20);
+    for (const bridge of resultado.bridges) {
       expect(bridge).not.toHaveProperty("claveApiHash");
     }
+  });
+
+  it("findBridges filtra por busqueda contra el nombre (insensible a mayúsculas)", async () => {
+    const { id } = await crearBridgeDirecto();
+    const nombreUnico = (await prisma.bridge.findUniqueOrThrow({ where: { id } })).nombre;
+
+    const resultado = await findBridges({
+      pagina: 1,
+      limite: 20,
+      busqueda: nombreUnico.toUpperCase(),
+    });
+
+    expect(resultado.bridges.map((b) => b.id)).toContain(id);
+  });
+
+  it("findBridges filtra por redSocial exacto", async () => {
+    const { id } = await crearBridgeDirecto({ redSocial: "FACEBOOK" });
+
+    const resultado = await findBridges({ pagina: 1, limite: 100, redSocial: "FACEBOOK" });
+
+    expect(resultado.bridges.map((b) => b.id)).toContain(id);
+    for (const bridge of resultado.bridges) {
+      expect(bridge.redSocial).toBe("FACEBOOK");
+    }
+  });
+
+  it("findBridges filtra por estado exacto", async () => {
+    const { id } = await crearBridgeDirecto({ estado: "INACTIVO" });
+
+    const resultado = await findBridges({ pagina: 1, limite: 100, estado: "INACTIVO" });
+
+    expect(resultado.bridges.map((b) => b.id)).toContain(id);
+    for (const bridge of resultado.bridges) {
+      expect(bridge.estado).toBe("INACTIVO");
+    }
+  });
+
+  it("findBridges pagina respetando limite", async () => {
+    await crearBridgeDirecto();
+    await crearBridgeDirecto();
+
+    const primeraPagina = await findBridges({ pagina: 1, limite: 1 });
+    expect(primeraPagina.bridges).toHaveLength(1);
+    expect(primeraPagina.total).toBeGreaterThanOrEqual(2);
+
+    const segundaPagina = await findBridges({ pagina: 2, limite: 1 });
+    expect(segundaPagina.bridges).toHaveLength(1);
+    expect(segundaPagina.bridges[0]?.id).not.toBe(primeraPagina.bridges[0]?.id);
   });
 
   it("getBridgeById incluye cuentasPublicitarias embebidas", async () => {
@@ -187,11 +238,18 @@ describe("bridge.service — regenerateClave (Requirement: Key regeneration neve
 });
 
 describe("bridge.service — listRedesSoportadas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
-  it("devuelve exactamente los valores del enum RedSocial", () => {
+  it("devuelve solo las redes con integración de ingesta real (FACEBOOK y GOOGLE_FORMS)", () => {
     const redes = listRedesSoportadas();
 
-    expect(redes).toHaveLength(Object.values(RedSocial).length);
-    expect(new Set(redes)).toEqual(new Set(Object.values(RedSocial)));
+    expect(new Set(redes)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS"]));
+  });
+
+  it("excluye INSTAGRAM, X y LINKEDIN aunque formen parte del enum RedSocial", () => {
+    const redes = listRedesSoportadas();
+
+    expect(redes).not.toContain("INSTAGRAM" satisfies RedSocial);
+    expect(redes).not.toContain("X" satisfies RedSocial);
+    expect(redes).not.toContain("LINKEDIN" satisfies RedSocial);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   deactivateUsuarioApi,
   fetchUsuariosApi,
   getCargaActivaDeUsuario,
+  reactivateUsuarioApi,
   resetPasswordApi,
   updateUsuarioApi,
   type UpdateUsuarioInput,
@@ -97,6 +98,22 @@ export function useDeactivateUsuario() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
       toast.success("Usuario dado de baja correctamente.");
+    },
+  });
+}
+
+/**
+ * Reactivación de un usuario dado de baja (F7). Sin diálogo de confirmación
+ * -- acción directa desde el menú de la fila, mismo criterio que
+ * `bridges/useBridges.ts::useReactivateBridge`.
+ */
+export function useReactivateUsuario() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reactivateUsuarioApi(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
+      toast.success("Usuario reactivado correctamente.");
     },
   });
 }

@@ -39,6 +39,11 @@
        etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
     --success: #16A34A;
     --success-foreground: #FFFFFF;
+    /* Token de advertencia para íconos de estado (ej. aviso de bridge),
+       separado de --semaforo-tibio: mismo criterio que --success arriba --
+       el semáforo queda reservado al chip con etiqueta de texto (docs/09 §3). */
+    --warning: #D97706;
+    --warning-foreground: #FFFFFF;
     --chart-1: #4F46E5;
     --chart-2: #2563EB;
     --chart-3: #0D9488;
@@ -168,4 +173,22 @@
   width: 14px !important;
   height: 14px !important;
   stroke-width: 2.5 !important;
+}
+
+/*
+ * Fila resaltada de LeadsTable (F3, "fila completa clickeable"): gris suave
+ * de --muted-foreground a baja opacidad, no --ring/--primary (casi negro) --
+ * la idea es orientar ("estás pasando por acá"), no un glow llamativo. Clase
+ * propia en vez de un `hover:shadow-[...]` arbitrario de Tailwind porque
+ * `color-mix()` anidado dentro de un `box-shadow` de varias capas es más
+ * legible como CSS declarado que como bracket-string de una sola línea.
+ */
+.leads-table-row {
+  transition: box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.leads-table-row:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--muted-foreground) 35%, transparent),
+    0 2px 10px -3px color-mix(in srgb, var(--muted-foreground) 30%, transparent);
 }

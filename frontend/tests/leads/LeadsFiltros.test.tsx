@@ -5,22 +5,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RolUsuario } from "@/tipos/usuario";
 import { FILTRO_TODOS, FILTROS_LEADS_VACIOS, type LeadsFiltrosState } from "@/funcionalidades/leads/leads.utils";
 
-vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
-  fetchRedesSocialesActivasApi: vi.fn(),
+// `LeadsFiltros` consume `GET /leads/catalogo/redes-sociales` (backend real,
+// visible para cualquier rol autenticado) -- se mockea igual que
+// `LeadsPage.test.tsx` para no depender de datos reales.
+vi.mock("@/funcionalidades/leads/leads.api", () => ({
+  fetchRedesSocialesCatalogoApi: vi.fn(),
 }));
 
-// `LeadsFiltros` gatea `GET /bridges/redes-activas` por rol (ADMINISTRADOR,
-// `bridges.routes.ts`) -- se mockea igual que en `LeadsPage.test.tsx` para
-// no depender de `<AuthProvider>` real.
+// `LeadsPage` (no `LeadsFiltros` en sí, ya no gatea nada por rol) sigue
+// dependiendo de `<AuthProvider>` real en la app -- se mockea igual que en
+// `LeadsPage.test.tsx` por si algún test futuro de este archivo lo necesita.
 vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
-const { fetchRedesSocialesActivasApi } = await import("@/funcionalidades/bridges/bridges.api");
+const { fetchRedesSocialesCatalogoApi } = await import("@/funcionalidades/leads/leads.api");
 const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
 const { LeadsFiltros } = await import("@/funcionalidades/leads/LeadsFiltros");
 
-const fetchRedesSocialesActivasApiMock = vi.mocked(fetchRedesSocialesActivasApi);
+const fetchRedesSocialesCatalogoApiMock = vi.mocked(fetchRedesSocialesCatalogoApi);
 const useAuthMock = vi.mocked(useAuth);
 
 function mockearAuth(rol: RolUsuario) {
@@ -58,7 +61,7 @@ function renderFiltros(
 ) {
   const onChange = overrides.onChange ?? vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const { rerender } = render(
     <QueryClientProvider client={client}>
       <LeadsFiltros
         filtros={overrides.filtros ?? FILTROS_LEADS_VACIOS}
@@ -69,7 +72,24 @@ function renderFiltros(
       />
     </QueryClientProvider>,
   );
-  return { onChange };
+  // Reutiliza el mismo `client` para que el `rerender` con filtros nuevos
+  // dispare el refetch en cascada dentro del mismo árbol de React Query
+  // (`LeadsFiltros — catálogo de red social en cascada`), en vez de perder
+  // el caché al montar un `QueryClientProvider` nuevo.
+  function rerenderConFiltros(filtros: LeadsFiltrosState) {
+    rerender(
+      <QueryClientProvider client={client}>
+        <LeadsFiltros
+          filtros={filtros}
+          onChange={onChange}
+          campanias={overrides.campanias ?? CAMPANIAS}
+          mostrarFiltroResponsable={overrides.mostrarFiltroResponsable ?? false}
+          responsables={overrides.responsables ?? RESPONSABLES}
+        />
+      </QueryClientProvider>,
+    );
+  }
+  return { onChange, rerenderConFiltros };
 }
 
 async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
@@ -77,11 +97,8 @@ async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
 }
 
 beforeEach(() => {
-  fetchRedesSocialesActivasApiMock.mockReset();
-  fetchRedesSocialesActivasApiMock.mockResolvedValue([]);
-  // ADMINISTRADOR por defecto: es el único rol con permiso para
-  // /bridges/redes-activas, y la mayoría de estos tests ejercitan ese
-  // filtro. Los tests de gating de rol lo pisan explícitamente.
+  fetchRedesSocialesCatalogoApiMock.mockReset();
+  fetchRedesSocialesCatalogoApiMock.mockResolvedValue([]);
   mockearAuth("ADMINISTRADOR");
 });
 
@@ -89,10 +106,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("LeadsFiltros — red social sourced from active bridges (Requirement: Red-Social Filter Sourced from Active Bridges)", () => {
+describe("LeadsFiltros — catálogo de red social en cascada (GET /leads/catalogo/redes-sociales)", () => {
   it("mientras carga, el selector queda deshabilitado con solo la opción «Todos»", async () => {
     let resolver: (value: string[]) => void = () => {};
-    fetchRedesSocialesActivasApiMock.mockReturnValue(
+    fetchRedesSocialesCatalogoApiMock.mockReturnValue(
       new Promise((resolve) => {
         resolver = resolve;
       }),
@@ -106,8 +123,8 @@ describe("LeadsFiltros — red social sourced from active bridges (Requirement: 
     resolver(["FACEBOOK"]);
   });
 
-  it("una vez cargado, solo ofrece las redes activas devueltas por el backend, no las 5 del enum completo", async () => {
-    fetchRedesSocialesActivasApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM"]);
+  it("una vez cargado, solo ofrece las redes devueltas por el backend, no las 5 del enum completo", async () => {
+    fetchRedesSocialesCatalogoApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM"]);
     const user = userEvent.setup();
     renderFiltros();
     await abrirFiltros(user);
@@ -122,8 +139,8 @@ describe("LeadsFiltros — red social sourced from active bridges (Requirement: 
     expect(screen.queryByRole("option", { name: "X" })).not.toBeInTheDocument();
   });
 
-  it("un redSocial ya seleccionado que dejó de estar activo se mantiene como opción, no desaparece", async () => {
-    fetchRedesSocialesActivasApiMock.mockResolvedValue(["FACEBOOK"]);
+  it("un redSocial ya seleccionado que dejó de tener leads en el resto de los filtros se mantiene como opción, no desaparece", async () => {
+    fetchRedesSocialesCatalogoApiMock.mockResolvedValue(["FACEBOOK"]);
     const user = userEvent.setup();
     renderFiltros({ filtros: { ...FILTROS_LEADS_VACIOS, redSocial: "GOOGLE_FORMS" } });
     await abrirFiltros(user);
@@ -135,7 +152,7 @@ describe("LeadsFiltros — red social sourced from active bridges (Requirement: 
   });
 
   it("elegir una red social dispara onChange con el valor elegido", async () => {
-    fetchRedesSocialesActivasApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM"]);
+    fetchRedesSocialesCatalogoApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM"]);
     const user = userEvent.setup();
     const { onChange } = renderFiltros();
     await abrirFiltros(user);
@@ -147,14 +164,40 @@ describe("LeadsFiltros — red social sourced from active bridges (Requirement: 
     expect(onChange).toHaveBeenCalledWith({ ...FILTROS_LEADS_VACIOS, redSocial: "INSTAGRAM" });
   });
 
-  it("un rol sin permiso (ej. ASESOR) ni siquiera dispara la petición ni renderiza el selector", async () => {
-    mockearAuth("ASESOR");
-    const user = userEvent.setup();
-    renderFiltros();
-    await abrirFiltros(user);
+  it.each<RolUsuario>(["ADMINISTRADOR", "SUPERVISOR", "ASESOR", "VENDEDOR"])(
+    "el filtro está visible y dispara la petición para el rol %s (el scoping por rol lo hace el propio endpoint, sin gate en frontend)",
+    async (rol) => {
+      mockearAuth(rol);
+      const user = userEvent.setup();
+      renderFiltros();
+      await abrirFiltros(user);
 
-    expect(screen.queryByRole("combobox", { name: "Red social" })).not.toBeInTheDocument();
-    expect(fetchRedesSocialesActivasApiMock).not.toHaveBeenCalled();
+      expect(screen.getByRole("combobox", { name: "Red social" })).toBeInTheDocument();
+      await waitFor(() => expect(fetchRedesSocialesCatalogoApiMock).toHaveBeenCalled());
+    },
+  );
+
+  it("recalcula el catálogo en cascada cuando cambia otro filtro activo (etapa)", async () => {
+    fetchRedesSocialesCatalogoApiMock.mockResolvedValue(["FACEBOOK"]);
+    const { rerenderConFiltros } = renderFiltros();
+
+    await waitFor(() =>
+      expect(fetchRedesSocialesCatalogoApiMock).toHaveBeenCalledWith(
+        expect.not.objectContaining({ etapa: expect.anything() }),
+      ),
+    );
+
+    rerenderConFiltros({ ...FILTROS_LEADS_VACIOS, etapa: "VENTA" });
+
+    await waitFor(() =>
+      expect(fetchRedesSocialesCatalogoApiMock).toHaveBeenCalledWith(
+        expect.objectContaining({ etapa: "VENTA" }),
+      ),
+    );
+    // Nunca se manda `redSocial` -- es justamente el campo que este catálogo alimenta.
+    for (const llamada of fetchRedesSocialesCatalogoApiMock.mock.calls) {
+      expect(llamada[0]).not.toHaveProperty("redSocial");
+    }
   });
 });
 

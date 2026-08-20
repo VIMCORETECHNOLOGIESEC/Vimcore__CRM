@@ -99,9 +99,13 @@ export function LeadTimeline({ lead }: LeadTimelineProps) {
                     </span>
                   ) : null}
 
-                  {estado === "actual" && etapaObjetivo ? (
+                  {estado === "actual" && etapaObjetivo && isEtapaCalificable(lead.etapa) ? (
                     <div className="mt-2">
-                      <FormularioEtapaLead leadId={lead.id} etapa={etapaObjetivo} />
+                      <FormularioEtapaLead
+                        leadId={lead.id}
+                        etapaActual={lead.etapa}
+                        etapaDestino={etapaObjetivo}
+                      />
                     </div>
                   ) : null}
                 </div>

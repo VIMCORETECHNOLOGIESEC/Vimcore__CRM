@@ -6,13 +6,17 @@ import {
 } from "@/funcionalidades/usuarios/usuarios.utils";
 
 describe("buildUsuariosQueryParams", () => {
-  it("con filtros vacíos, solo manda paginación (ningún filtro 'todos'/vacío se envía)", () => {
+  it("con filtros vacíos, el default 'Activos' manda `activo: true` (nunca se ve un usuario dado de baja sin elegirlo)", () => {
     const params = buildUsuariosQueryParams(FILTROS_USUARIOS_VACIOS, 2, 10);
-    expect(params).toEqual({ pagina: 2, limite: 10 });
+    expect(params).toEqual({ pagina: 2, limite: 10, activo: true });
   });
 
   it("recorta espacios de la búsqueda y la manda solo si queda contenido", () => {
-    const filtros: UsuariosFiltrosState = { ...FILTROS_USUARIOS_VACIOS, busqueda: "  ana  " };
+    const filtros: UsuariosFiltrosState = {
+      ...FILTROS_USUARIOS_VACIOS,
+      estado: "TODOS",
+      busqueda: "  ana  ",
+    };
     expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({
       pagina: 1,
       limite: 20,
@@ -21,12 +25,20 @@ describe("buildUsuariosQueryParams", () => {
   });
 
   it("una búsqueda de solo espacios no se manda", () => {
-    const filtros: UsuariosFiltrosState = { ...FILTROS_USUARIOS_VACIOS, busqueda: "   " };
+    const filtros: UsuariosFiltrosState = {
+      ...FILTROS_USUARIOS_VACIOS,
+      estado: "TODOS",
+      busqueda: "   ",
+    };
     expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({ pagina: 1, limite: 20 });
   });
 
   it("traduce el rol seleccionado al campo `rol`", () => {
-    const filtros: UsuariosFiltrosState = { ...FILTROS_USUARIOS_VACIOS, rol: "SUPERVISOR" };
+    const filtros: UsuariosFiltrosState = {
+      ...FILTROS_USUARIOS_VACIOS,
+      estado: "TODOS",
+      rol: "SUPERVISOR",
+    };
     expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({
       pagina: 1,
       limite: 20,
