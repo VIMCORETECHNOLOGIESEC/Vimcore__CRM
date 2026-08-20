@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router";
 import { loginBodySchema } from "schemas";
 import { z } from "zod";
+import arcanoIsotipo from "@/assets/arcano-isotipo.png";
 import { getErrorMessage } from "@/api/httpClient";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -47,10 +48,13 @@ export function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-background p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-xl font-semibold text-foreground">
-          CRM Embudo de Leads
-        </h1>
+      <div className="w-full max-w-sm rounded-lg border border-border bg-background p-8 shadow-sm border-t-[3px] [border-top-color:var(--arcano-gold)]">
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <img src={arcanoIsotipo} alt="" aria-hidden="true" className="h-12 w-auto" />
+          <h1 className="text-center text-xl font-semibold text-foreground">
+            ARCANO CRM
+          </h1>
+        </div>
 
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
           {errorEnvio ? (

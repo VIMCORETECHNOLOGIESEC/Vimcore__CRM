@@ -21,8 +21,17 @@
     --card-foreground: #18181B;
     --popover: #FFFFFF;
     --popover-foreground: #18181B;
-    --primary: #111113;
+    --primary: #241F1B;
     --primary-foreground: #FFFFFF;
+    /* Acentos de marca ARCANO (docs/branding/arcano-linea-grafica.md) --
+       nunca reemplazan --primary como color de acción; --arcano-gold falla
+       AA para texto sobre blanco (3.08:1), solo sirve para bordes/íconos/UI
+       grande. Usar --arcano-gold-deep cuando se necesite texto o link dorado
+       con contraste AA real. */
+    --arcano-graphite-700: #4D4B46;
+    --arcano-gold: #B98A4E;
+    --arcano-gold-deep: #6B4A25;
+    --arcano-gold-tint: #F3E4C9;
     --secondary: #F5F5F5;
     --secondary-foreground: #18181B;
     --muted: #F5F5F5;
@@ -33,7 +42,7 @@
     --destructive-foreground: #FFFFFF;
     --border: #E8E8E8;
     --input: #E8E8E8;
-    --ring: #111113;
+    --ring: #241F1B;
     /* Token de éxito para acciones (ej. cierre de venta), separado de
        --semaforo-frio: ese verde está reservado al chip de semáforo con
        etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
@@ -52,12 +61,12 @@
     --radius: 0.5rem;
     --sidebar: #FFFFFF;
     --sidebar-foreground: #18181B;
-    --sidebar-primary: #111113;
+    --sidebar-primary: #241F1B;
     --sidebar-primary-foreground: #FFFFFF;
     --sidebar-accent: #F5F5F5;
     --sidebar-accent-foreground: #18181B;
     --sidebar-border: #E8E8E8;
-    --sidebar-ring: #111113;
+    --sidebar-ring: #241F1B;
 
     /* Semáforo -- siempre acompañado de etiqueta de texto (ver F3, F4). */
     --semaforo-frio: #16A34A;
