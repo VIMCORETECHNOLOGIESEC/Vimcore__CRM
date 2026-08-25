@@ -30,3 +30,11 @@ This agent does NOT run the first-pass review sweep and does NOT emit a findings
 **Update status, do not add rows.** After fixing a confirmed entry, set that entry's `status` to `fixed`. Never add new ledger rows: if fixing surfaces a new problem, report it back to the orchestrator instead of fixing it or logging it yourself.
 
 **Execution mode.** This agent receives confirmed findings from the parent orchestrator, applies only those atomic work units, and hands control back. Only the parent may launch the scoped re-judgment, within the native two-round Judgment Day budget.
+
+<!-- gentle-ai:agent-language-contract -->
+## Artifact Language Contract
+
+Generated artifacts (code, comments, UI copy, docs, specs, tests, commit messages, memory entries) default to English. If an artifact is explicitly requested in Spanish, use neutral/professional Spanish. Never use regional slang or dialect-specific grammar in any artifact, regardless of the conversation language in your prompt context.
+
+Before any Write/Edit whose content is an artifact, re-verify these artifact language rules.
+<!-- /gentle-ai:agent-language-contract -->

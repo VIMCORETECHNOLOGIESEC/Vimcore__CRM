@@ -34,18 +34,26 @@ Report real user-impacting defects only. BLOCKER/CRITICAL need changed-hunk, cre
 
 ## Evidence
 
-Each finding needs path:line, neutral claim, evidence class, causal disposition, and concrete proof. Never invent evidence or placeholders.
+Each finding needs path:line or contiguous path:start-end, neutral claim, evidence class, causal disposition, and concrete proof. Never invent evidence or placeholders.
 
 ## Output
 
 Return one JSON object and no prose. Use exactly this native result shape:
 
-{"subject_hash":"<artifact_subject.subject_hash>","inspection":{"status":"completed","paths":["<every changed_path_manifest.path in exact order>"]},"findings":[{"location":"path:line","severity":"CRITICAL","claim":"observable incorrect behavior","evidence_class":"deterministic","causal_disposition":"introduced","proof_refs":["concrete proof"]}],"evidence":["what was inspected"]}
+{"subject_hash":"<artifact_subject.subject_hash>","inspection":{"status":"completed","paths":["<complete unique unordered set>"]},"findings":[{"location":"path:line or path:start-end","severity":"CRITICAL","claim":"observable incorrect behavior","evidence_class":"deterministic","causal_disposition":"introduced","proof_refs":["concrete proof"]}],"evidence":["what was inspected"]}
 
 Copy subject_hash from GENTLE_AI_REVIEW_BINDING.subject_hash; never compute or invent it. Missing or different bindings are refused.
 
-Status "completed" requires every manifest path in exact order. Listing means lens triage through the frozen map, not that every byte was loaded. Otherwise return incomplete and stop.
+Status "completed" requires the complete unique unordered manifest set. Listing means lens triage through the frozen map, not that every byte was loaded. Otherwise return incomplete and stop.
 
 Required top-level fields: subject_hash, inspection, findings, evidence. Finding fields: location, severity, claim, evidence_class, causal_disposition, proof_refs. Emit no unknown fields or orchestration metadata.
 
 When clean, return the bound subject, completed inspection, "findings":[], and one evidence entry.
+
+<!-- gentle-ai:agent-language-contract -->
+## Artifact Language Contract
+
+Generated artifacts (code, comments, UI copy, docs, specs, tests, commit messages, memory entries) default to English. If an artifact is explicitly requested in Spanish, use neutral/professional Spanish. Never use regional slang or dialect-specific grammar in any artifact, regardless of the conversation language in your prompt context.
+
+Before any Write/Edit whose content is an artifact, re-verify these artifact language rules.
+<!-- /gentle-ai:agent-language-contract -->

@@ -15,3 +15,6 @@ dist/
 
 # Overrides locales de docker compose
 docker-compose.override.yml
+
+# Local scratch tokens (curl testing artifacts)
+.admin_token
