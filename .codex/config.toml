@@ -1,5 +1,5 @@
-model_instructions_file = ".codex/engram-instructions.md"
-experimental_compact_prompt_file = ".codex/engram-compact-prompt.md"
+model_instructions_file = "engram-instructions.md"
+experimental_compact_prompt_file = "engram-compact-prompt.md"
 [features]
 multi_agent = true
 
