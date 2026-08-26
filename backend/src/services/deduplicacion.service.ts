@@ -9,6 +9,7 @@ import * as leadEventoRepository from "../repositories/lead-evento.repository.js
 import * as leadRepository from "../repositories/lead.repository.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { resolverAtribucion, type AtribucionResuelta } from "./atribucion.service.js";
 import {
   decideAccionDeduplicacion,
   type DeduplicacionAction,
@@ -34,6 +35,17 @@ export interface DeduplicacionInput {
   redSocial?: RedSocial;
   payloadOriginal?: unknown;
   camposDinamicos?: Record<string, unknown>;
+  /**
+   * M-hardening Bloque A (WU4, spec lead-attribution, D6): igual criterio de
+   * opcionalidad que los tres campos de arriba — un `LeadEntrante` completo
+   * (M4) los trae todos juntos; un `DeduplicacionInput` levantado a mano
+   * (pruebas de M3) los deja `undefined` y la atribución degrada a `null`
+   * sin romper.
+   */
+  bridgeId?: string;
+  idExternoCuenta?: string | null;
+  idExternoCampania?: string | null;
+  nombreCampania?: string | null;
 }
 
 export interface DeduplicacionResult {
@@ -184,6 +196,30 @@ export async function deduplicateLead(
       let tipoEvento: "INGRESO" | "INTERACCION_REPETIDA";
 
       if (accion.kind === "crear_lead") {
+        // M-hardening Bloque A (WU4, spec lead-attribution, D6): solo se
+        // intenta resolver atribución si la entrada trae `bridgeId` — un
+        // `DeduplicacionInput` levantado a mano (M3, sin M4) nunca lo trae,
+        // y `resolverAtribucion` necesita `bridgeId` para el primer paso del
+        // lookup. Sin `bridgeId`, las 5 columnas quedan `null`/lo que venga
+        // crudo en la entrada, mismo criterio de degradación silenciosa.
+        const atribucion: AtribucionResuelta = entrada.bridgeId
+          ? await resolverAtribucion(
+              {
+                bridgeId: entrada.bridgeId,
+                idExternoCuenta: entrada.idExternoCuenta ?? null,
+                idExternoCampania: entrada.idExternoCampania ?? null,
+                nombreCampania: entrada.nombreCampania ?? null,
+              },
+              tx,
+            )
+          : {
+              cuentaPublicitariaId: null,
+              campaniaId: null,
+              idExternoCuenta: entrada.idExternoCuenta ?? null,
+              idExternoCampania: entrada.idExternoCampania ?? null,
+              nombreCampania: entrada.nombreCampania ?? null,
+            };
+
         const lead = await leadRepository.createLead(
           {
             clienteId,
@@ -198,6 +234,12 @@ export async function deduplicateLead(
             redSocial: entrada.redSocial,
             payloadOriginal: entrada.payloadOriginal as Prisma.InputJsonValue | undefined,
             camposDinamicos: entrada.camposDinamicos as Prisma.InputJsonValue | undefined,
+            // WU4: atribución canónica + escalares crudos, siempre juntos.
+            cuentaPublicitariaId: atribucion.cuentaPublicitariaId,
+            campaniaId: atribucion.campaniaId,
+            idExternoCuenta: atribucion.idExternoCuenta,
+            idExternoCampania: atribucion.idExternoCampania,
+            nombreCampania: atribucion.nombreCampania,
           },
           tx,
         );

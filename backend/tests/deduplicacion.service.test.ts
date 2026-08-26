@@ -283,4 +283,20 @@ describe("deduplicacion.service — deduplicateLead", () => {
     expect(lead.payloadOriginal).toBeNull();
     expect(lead.camposDinamicos).toBeNull();
   });
+
+  it("M-hardening Bloque A (WU4, D6): sin bridgeId (compatibilidad M3) la atribución degrada a null sin lanzar", async () => {
+    const entrada: DeduplicacionInput = {
+      ...entradaBase(),
+      idExternoCuenta: "cuenta-sin-bridge",
+      idExternoCampania: "campania-sin-bridge",
+    };
+
+    const resultado = await deduplicateLead(entrada);
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+    expect(lead.cuentaPublicitariaId).toBeNull();
+    expect(lead.campaniaId).toBeNull();
+    expect(lead.idExternoCuenta).toBe("cuenta-sin-bridge");
+    expect(lead.idExternoCampania).toBe("campania-sin-bridge");
+  });
 });

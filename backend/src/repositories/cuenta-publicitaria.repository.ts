@@ -130,3 +130,55 @@ export async function updateTokenExpiraEn(
 ): Promise<CuentaPublicitaria> {
   return client.cuentaPublicitaria.update({ where: { id }, data: { tokenExpiraEn } });
 }
+
+/**
+ * M-hardening Bloque A (WU4, spec lead-attribution, D6): primer paso del
+ * lookup de dos pasos de `atribucion.service.ts::resolverAtribucion` — mismo
+ * criterio que `@@unique([bridgeId, idExterno])`. `null` es un resultado
+ * válido (degradación silenciosa); el llamador nunca lanza por un miss.
+ */
+export async function findByBridgeEIdExterno(
+  bridgeId: string,
+  idExterno: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria | null> {
+  return client.cuentaPublicitaria.findUnique({
+    where: { bridgeId_idExterno: { bridgeId, idExterno } },
+  });
+}
+
+/**
+ * M-hardening Bloque A (WU5, spec token-expiry-alerting): universo de
+ * cuentas con `tokenExpiraEn` dentro de la ventana (`ahora`, `ahora +
+ * fronteraDias`] — el filtro de ventana temporal es expresable en SQL vía
+ * Prisma. El filtro de idempotencia ("¿ya se alertó ESTE `tokenExpiraEn`
+ * exacto?") NO lo es: Prisma no soporta comparar dos columnas de la misma
+ * fila en un `where` sin SQL crudo, así que `producirAlertaTokenPorExpirar`
+ * (el servicio) hace esa comparación en memoria sobre este universo —
+ * suficientemente acotado por la ventana de 7 días para no justificar SQL
+ * crudo.
+ */
+export async function listPorExpirar(
+  ahora: Date,
+  fronteraDias: number,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria[]> {
+  const limite = new Date(ahora.getTime() + fronteraDias * 24 * 60 * 60 * 1000);
+  return client.cuentaPublicitaria.findMany({
+    where: { tokenExpiraEn: { not: null, gt: ahora, lte: limite } },
+  });
+}
+
+/**
+ * M-hardening Bloque A (WU5): marca el `tokenExpiraEn` exacto ya alertado —
+ * la única escritura del marcador de idempotencia (D-autorearme: nunca hay
+ * un "reseteo" separado, solo se vuelve a escribir cuando `tokenExpiraEn`
+ * cambia).
+ */
+export async function updateAlertaExpiracionParaEn(
+  id: string,
+  alertaExpiracionParaEn: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria> {
+  return client.cuentaPublicitaria.update({ where: { id }, data: { alertaExpiracionParaEn } });
+}

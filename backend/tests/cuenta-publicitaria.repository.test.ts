@@ -99,3 +99,33 @@ describe("repositories/cuenta-publicitaria — updateActiva (m4-bridges-crud-fun
     expect(actualizada.nombre).toBe("Cuenta a desactivar");
   });
 });
+
+describe("repositories/cuenta-publicitaria — findByBridgeEIdExterno (M-hardening Bloque A, WU4, D6)", () => {
+  it("encuentra la cuenta por bridgeId + idExterno (mismo criterio que @@unique([bridgeId, idExterno]))", async () => {
+    const bridge = await crearBridge();
+    contador += 1;
+    const creada = await cuentaPublicitariaRepository.create({
+      bridgeId: bridge.id,
+      idExterno: `page-lookup-${contador}`,
+      nombre: "Cuenta encontrable por lookup",
+    });
+
+    const encontrada = await cuentaPublicitariaRepository.findByBridgeEIdExterno(
+      bridge.id,
+      `page-lookup-${contador}`,
+    );
+
+    expect(encontrada?.id).toBe(creada.id);
+  });
+
+  it("degrada a null cuando el idExterno no tiene match para ese bridge (sin lanzar)", async () => {
+    const bridge = await crearBridge();
+
+    const encontrada = await cuentaPublicitariaRepository.findByBridgeEIdExterno(
+      bridge.id,
+      "page-inexistente",
+    );
+
+    expect(encontrada).toBeNull();
+  });
+});

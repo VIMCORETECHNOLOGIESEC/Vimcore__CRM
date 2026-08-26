@@ -71,6 +71,18 @@ export interface CreateLeadData {
   redSocial?: Lead["redSocial"];
   payloadOriginal?: Prisma.InputJsonValue;
   camposDinamicos?: Prisma.InputJsonValue;
+  /**
+   * M-hardening Bloque A (WU4, spec lead-attribution, D6): atribución
+   * canónica resuelta por `atribucion.service.ts::resolverAtribucion`.
+   * Mismo criterio de opcionalidad que `redSocial` arriba — un llamador que
+   * no las provee (p. ej. pruebas que no simulan un `LeadEntrante`
+   * atribuido) deja las 5 columnas en `null`/`undefined`, sin romper.
+   */
+  cuentaPublicitariaId?: Lead["cuentaPublicitariaId"];
+  campaniaId?: Lead["campaniaId"];
+  idExternoCuenta?: Lead["idExternoCuenta"];
+  idExternoCampania?: Lead["idExternoCampania"];
+  nombreCampania?: Lead["nombreCampania"];
 }
 
 export async function createLead(
