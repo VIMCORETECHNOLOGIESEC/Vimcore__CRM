@@ -50,7 +50,7 @@ forma parte del comportamiento actual.
 | `AGENTS.md` | Vigente | Políticas obligatorias para agentes | Define el baseline single-company actual y separa la evolución multi-tenant aún no aprobada. |
 | `docs/01-alcance-mvp.md` | Vigente con reservas | Baseline funcional del MVP v1 | Mezcla alcance comprometido con elementos todavía parciales: LinkedIn, X y atribución normalizada de campaña/cuenta. No representa el target multi-tenant. |
 | `docs/02-reglas-negocio.md` | Vigente con reservas | Reglas del embudo v1 | El AS-IS de traspaso en `NUEVO` y SLA fue reconciliado; autoridad de cierre, rol dual y reglas TO-BE siguen pendientes. |
-| `docs/03-modelo-datos.md` | No confiable | Intención inicial del modelo | Para el esquema AS-IS mandan `schema.prisma` y las migraciones. Contiene relaciones y columnas que no existen. |
+| `docs/03-modelo-datos.md` | Vigente con reservas | Lectura resumida del modelo AS-IS | Regenerado desde `schema.prisma`; `schema.prisma` y las migraciones siguen mandando ante cualquier discrepancia futura. |
 | `docs/04-formularios-semaforo.md` | Vigente con reservas | Formularios y rúbrica fija v1 | Los formularios calificables y la rúbrica están alineados. El cierre no: la API fija `cerradoEn`, no acepta una fecha enviada por el cliente y Venta no admite `observaciones`; solo No Venta acepta `observacionCierre`. |
 | `docs/05-bridges.md` | Mixto | Contrato funcional de captación | Combina requisitos, diseño futuro y comportamiento ya implementado. Verificar transacciones, tokens y notificaciones contra M4. |
 | `docs/06-modulos-backend.md` | Mixto | Checklist técnico backend | La tabla consolidada inicial es útil; el cuerpo conserva un diario histórico extenso y algunas notas superadas. |
@@ -92,7 +92,7 @@ archivo). Esta sección solo declara qué queda pendiente hoy.
 
 ### Lote 2 — Contratos AS-IS exactos
 
-- [ ] Sincronizar `03-modelo-datos.md` con Prisma y migraciones.
+- [x] Sincronizar `03-modelo-datos.md` con Prisma y migraciones.
 - [x] Corregir `02-reglas-negocio.md` en traspaso y SLA.
 - [ ] Reconciliar el contrato de cierre de docs 02/04 con el schema y servicio.
 - [ ] Separar requisitos y comportamiento implementado en `05-bridges.md`.
