@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
+import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
 
 let contador = 0;
@@ -102,5 +103,97 @@ describe("buzón durable de ingesta", () => {
       }),
     );
     expect(propietarioAnteriorAceptado).toBe(false);
+  });
+});
+
+describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening Bloque A, WU7, spec bridge-log-notifications)", () => {
+  async function crearSupervisor(): Promise<{ id: string }> {
+    contador += 1;
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: `Supervisor WU7 ${contador}`,
+        correo: `supervisor-wu7-${contador}@test.local`,
+        passwordHash: "unused",
+        rol: "SUPERVISOR",
+        activo: true,
+      },
+    });
+    return { id: usuario.id };
+  }
+
+  /**
+   * Construye el claim directamente sobre LA FILA insertada por esta prueba
+   * — NO usa `claimNext` (recoge "la próxima fila disponible" en TODA la
+   * tabla `leads_recibidos`, sin scoping por bridge/entrada; filas
+   * abandonadas con lease vencido de otras pruebas del mismo archivo — p.
+   * ej. "buzón durable de ingesta" arriba, que deja `PROCESANDO` sin
+   * completar — competirían por el mismo `claimNext` y harían que esta
+   * prueba procese la entrada equivocada). Mismo patrón manual que
+   * `ingesta-inbox.worker.test.ts`.
+   */
+  async function reclamar(entrada: LeadEntrante, ahora: Date): Promise<leadRecibidoRepository.InboxClaim> {
+    const owner = `worker-wu7-${++contador}`;
+    const receipt = await leadRecibidoRepository.aceptarLeadRecibido(entrada, ahora);
+    const row = await prisma.leadRecibido.update({
+      where: { id: receipt.recepcionId },
+      data: { estado: "PROCESANDO", intentos: 1, leaseOwner: owner, leaseHasta: new Date(ahora.getTime() + 60_000) },
+    });
+    return {
+      recepcionId: row.id,
+      leaseOwner: owner,
+      intento: 1,
+      leaseHasta: row.leaseHasta!,
+      entradaProcesamiento: row.entradaProcesamiento as unknown as leadRecibidoRepository.PersistedLeadEntranteV1,
+    };
+  }
+
+  it("Scenario 'Incomplete-data lead notifies supervisors individually': lead sin telefono ni correo crea LEAD_DATO_INCOMPLETO por cada supervisor activo", async () => {
+    const supervisor = await crearSupervisor();
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date();
+    const entrada = entradaBase(bridgeId, { telefono: null, correo: null });
+    const claim = await reclamar(entrada, ahora);
+
+    const procesado = await procesarRecepcion(claim);
+
+    expect(procesado).toBe(true);
+    const notificaciones = await prisma.notificacion.findMany({
+      where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
+    });
+    expect(notificaciones).toHaveLength(1);
+    expect(notificaciones[0]?.leadId).not.toBeNull();
+  });
+
+  it("Scenario 'Two incomplete leads in quick succession each notify separately': sin agregacion, dos notificaciones distintas", async () => {
+    const supervisor = await crearSupervisor();
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date();
+    const antes = await prisma.notificacion.count({
+      where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
+    });
+
+    const claim1 = await reclamar(entradaBase(bridgeId, { telefono: null, correo: null }), ahora);
+    await procesarRecepcion(claim1);
+    const claim2 = await reclamar(entradaBase(bridgeId, { telefono: null, correo: null }), ahora);
+    await procesarRecepcion(claim2);
+
+    const notificaciones = await prisma.notificacion.findMany({
+      where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
+    });
+    expect(notificaciones.length - antes).toBe(2);
+    expect(new Set(notificaciones.map((n) => n.leadId)).size).toBe(notificaciones.length);
+  });
+
+  it("Scenario 'ERROR level notification path unchanged': un lead con datos completos no crea LEAD_DATO_INCOMPLETO", async () => {
+    const supervisor = await crearSupervisor();
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date();
+    const claim = await reclamar(entradaBase(bridgeId), ahora); // entradaBase ya trae telefono
+
+    await procesarRecepcion(claim);
+
+    expect(
+      await prisma.notificacion.count({ where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" } }),
+    ).toBe(0);
   });
 });

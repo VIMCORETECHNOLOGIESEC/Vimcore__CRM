@@ -6,9 +6,10 @@ import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
 import { assignAfterCommit } from "./asignacion.service.js";
-import { publishCommittedEvents } from "./committed-events.service.js";
+import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
+import { createForActiveRoles } from "./notificaciones.service.js";
 import { resolverLeadgenMeta } from "./meta-webhook.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
@@ -86,7 +87,28 @@ export async function procesarRecepcion(
         tx,
       );
       if (!completed) throw new AppError("lease_ingesta_perdido", 409, "El lease de ingesta venció");
-      return { entrada, dedup, datosIncompletos };
+
+      // M-hardening Bloque A (WU7, spec bridge-log-notifications, D5): vive
+      // ACÁ (no en `bridge-log.service.ts::registrarBridgeLog`), porque
+      // `bridge-mudo.service.ts` también emite ADVERTENCIA para un evento no
+      // relacionado (bridge mudo) — una rama genérica por nivel notificaría
+      // "datos incompletos" para ese caso también. Solo `procesarRecepcion`
+      // tiene `dedup.leadId` para poblar `NotificationInput.leadId`. Una
+      // notificación individual por lead, sin agregación (spec).
+      const notificacionesDatoIncompleto = datosIncompletos
+        ? await createForActiveRoles(
+            ["SUPERVISOR"],
+            {
+              tipo: "LEAD_DATO_INCOMPLETO",
+              titulo: "Lead con datos incompletos",
+              mensaje: "Un lead ingresó sin teléfono ni correo — requiere seguimiento manual",
+              leadId: dedup.leadId,
+            },
+            tx,
+          )
+        : [];
+
+      return { entrada, dedup, datosIncompletos, notificacionesDatoIncompleto };
     },
     INGESTA_TRANSACTION_BOUNDS,
   );
@@ -94,7 +116,9 @@ export async function procesarRecepcion(
     logger.warn({ recepcionId: claim.recepcionId }, "ingesta: lease obsoleto rechazado");
     return false;
   }
-  publishCommittedEvents(resultado.dedup.events);
+  const eventosDatoIncompleto: CommittedEvent[] =
+    resultado.notificacionesDatoIncompleto.flatMap(notificationEvents);
+  publishCommittedEvents([...resultado.dedup.events, ...eventosDatoIncompleto]);
   if (resultado.dedup.leadCreado) {
     await assignAfterCommit(resultado.dedup.leadId, new Date(claim.entradaProcesamiento.recibidoEn));
   }
