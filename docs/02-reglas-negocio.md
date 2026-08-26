@@ -253,10 +253,10 @@ atómica, persisten la notificación junto con el evento o marca que la origina 
 publican SSE solo después del commit. `ERROR_BRIDGE` se emite solo junto con una
 fila `bridge_logs.ERROR` confirmada.
 
-`TOKEN_POR_EXPIRAR` permanece en el contrato y ya dispone de los datos de origen:
-`CuentaPublicitaria` persiste el token cifrado y `token_expira_en`. El pendiente
-real es implementar un productor y scheduler idempotentes que creen la alerta
-preventiva sin duplicarla dentro de una misma ventana de expiración.
+`TOKEN_POR_EXPIRAR` ✅ implementado (Bloque A, WU5, 2026-08-26): productor idempotente en
+`verificacion-token.service.ts::produceAlertaTokenPorExpirar` notifica a administradores 7 días
+antes de la expiración, con marker anti-duplicación en `CuentaPublicitaria.alertaExpiracionParaEn`
+que se rearma automáticamente al renovar el token. Registrado en `scheduledNotificationProducers`.
 
 ---
 

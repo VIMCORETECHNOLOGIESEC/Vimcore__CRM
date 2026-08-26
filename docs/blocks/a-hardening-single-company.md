@@ -1,5 +1,9 @@
 # Bloque A — Endurecimiento single-company
 
+> **Estado:** ✅ CERRADO — 2026-08-26  
+> **Commits:** e08867d, 5cf78e8, 2eed0cb, 07b1d40, fd85e5e, b55708d, cb45de9, dffca94  
+> **Criterios de salida:** Todos cumplidos — atribución, autoridad de cierre/traspaso, alertas preventivas, rango de fechas y whitelist de límite implementados y verificados con 717/717 tests.
+
 > Fase 2 de `docs/16-hallazgos-y-preguntas.md` §7. Sin decisión D directa: este
 > bloque corrige defectos deterministas del AS-IS actual, previo a tocar
 > esquema multi-tenant. Fase 0 de `docs/14-evolucion-multitenant.md` §13
