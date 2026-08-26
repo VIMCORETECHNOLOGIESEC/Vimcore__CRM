@@ -297,11 +297,11 @@ describe("M8 scheduled and bridge producers", () => {
       mensaje: "Error real sin metadatos de expiración",
     });
     const slaResult = await scheduledNotificationProducers.sla(ahora);
-    const appointmentResult = await scheduledNotificationProducers.appointments(ahora);
+    const citaResult = await scheduledNotificationProducers.citas(ahora);
 
     expect(bridgeLog.nivel).toBe("ERROR");
     expect(slaResult.eventosCreados).toBeGreaterThan(0);
-    expect(appointmentResult.recordatoriosMarcados).toBeGreaterThan(0);
+    expect(citaResult.recordatoriosMarcados).toBeGreaterThan(0);
     expect(
       await prisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "ERROR_BRIDGE" } }),
     ).toBeGreaterThan(0);

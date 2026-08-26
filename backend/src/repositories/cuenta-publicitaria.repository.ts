@@ -153,7 +153,7 @@ export async function findByBridgeEIdExterno(
  * fronteraDias`] — el filtro de ventana temporal es expresable en SQL vía
  * Prisma. El filtro de idempotencia ("¿ya se alertó ESTE `tokenExpiraEn`
  * exacto?") NO lo es: Prisma no soporta comparar dos columnas de la misma
- * fila en un `where` sin SQL crudo, así que `producirAlertaTokenPorExpirar`
+ * fila en un `where` sin SQL crudo, así que `produceAlertaTokenPorExpirar`
  * (el servicio) hace esa comparación en memoria sobre este universo —
  * suficientemente acotado por la ventana de 7 días para no justificar SQL
  * crudo.

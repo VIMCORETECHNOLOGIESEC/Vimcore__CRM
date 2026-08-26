@@ -3,6 +3,7 @@ import { decrypt } from "../lib/cifrado-token.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
+import { createForActiveRoles } from "./notificaciones.service.js";
 import { verificarTokenPagina, type VerificacionTokenPagina } from "./meta-token.service.js";
 
 export interface ResultadoVerificacionToken {
@@ -30,7 +31,7 @@ export interface ResultadoVerificacionToken {
  * fecha de expiración distinta entre verificaciones), se actualiza esa sola
  * columna — nunca se vuelve a cifrar el token, que no cambió.
  */
-export async function verificarTokensVigentes(
+export async function verifyTokensVigentes(
   _ahora: Date = new Date(),
 ): Promise<ResultadoVerificacionToken> {
   const candidatos = await cuentaPublicitariaRepository.listConTokenCargado();
@@ -53,7 +54,7 @@ export async function verificarTokensVigentes(
       // token inválido: TOKEN_EXPIRADO + bridge_logs ERROR, y se continúa
       // con el resto del loop.
       await cuentaPublicitariaRepository.updateEstadoToken(cuenta.id, "TOKEN_EXPIRADO");
-      await registrarLogSeguro({
+      await recordLogSeguro({
         bridgeId: cuenta.bridgeId,
         nivel: "ERROR",
         mensaje:
@@ -71,7 +72,7 @@ export async function verificarTokensVigentes(
 
     if (!verificacion.valido) {
       await cuentaPublicitariaRepository.updateEstadoToken(cuenta.id, "TOKEN_EXPIRADO");
-      await registrarLogSeguro({
+      await recordLogSeguro({
         bridgeId: cuenta.bridgeId,
         nivel: "ERROR",
         mensaje:
@@ -92,6 +93,51 @@ export async function verificarTokensVigentes(
   return { candidatos: candidatos.length, invalidados };
 }
 
+export interface ResultadoAlertaTokenPorExpirar {
+  alertadas: number;
+}
+
+const ADMIN_ROLES = ["ADMINISTRADOR"] as const;
+
+/** Ventana preventiva (spec token-expiry-alerting): 7 días antes de la expiración. */
+const VENTANA_ALERTA_DIAS = 7;
+
+/**
+ * M-hardening Bloque A (WU5, spec token-expiry-alerting): productor
+ * preventivo — a diferencia de `verifyTokensVigentes` (verifica contra
+ * Graph API si el token SIGUE siendo válido HOY), esta función avisa con
+ * anticipación cuando un token AÚN válido está por vencer, para que se
+ * renueve antes de que deje de funcionar. Idempotente por `tokenExpiraEn`
+ * exacto (D-idempotencia): `cuenta-publicitaria.repository.ts::listPorExpirar`
+ * ya acota por la ventana temporal; el filtro "¿ya se alertó ESTE
+ * `tokenExpiraEn`?" se hace acá en memoria (no expresable en un `where` de
+ * Prisma sin SQL crudo — comparación de dos columnas de la misma fila).
+ */
+export async function produceAlertaTokenPorExpirar(
+  ahora: Date = new Date(),
+): Promise<ResultadoAlertaTokenPorExpirar> {
+  const candidatas = await cuentaPublicitariaRepository.listPorExpirar(ahora, VENTANA_ALERTA_DIAS);
+
+  let alertadas = 0;
+  for (const cuenta of candidatas) {
+    // `listPorExpirar` ya garantiza `tokenExpiraEn != null` — no-null
+    // assertion segura acá, no una nueva invariante.
+    const tokenExpiraEn = cuenta.tokenExpiraEn as Date;
+    const yaAlertada = cuenta.alertaExpiracionParaEn?.getTime() === tokenExpiraEn.getTime();
+    if (yaAlertada) continue;
+
+    await createForActiveRoles(ADMIN_ROLES, {
+      tipo: "TOKEN_POR_EXPIRAR",
+      titulo: "Token de red social por expirar",
+      mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
+    });
+    await cuentaPublicitariaRepository.updateAlertaExpiracionParaEn(cuenta.id, tokenExpiraEn);
+    alertadas += 1;
+  }
+
+  return { alertadas };
+}
+
 /**
  * Mismo patrón que `meta-webhook.service.ts::registrarLogSeguro`/
  * `bridge-mudo.service.ts::registrarLogSeguro` (DD5, diseño M4): un fallo al
@@ -99,7 +145,7 @@ export async function verificarTokensVigentes(
  * duplica acá en vez de extraerse a un helper compartido para no tocar los
  * otros dos archivos que ya lo repiten (ver reporte de la tarea).
  */
-async function registrarLogSeguro(data: RegistrarLogData): Promise<void> {
+async function recordLogSeguro(data: RegistrarLogData): Promise<void> {
   try {
     await registrarBridgeLog(data);
   } catch (error) {

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { startVerificacionTokenJob } from "../src/jobs/verificacion-token.job.js";
+import { scheduledNotificationProducers } from "../src/jobs/notificaciones-programadas.js";
+import { produceAlertaTokenPorExpirar } from "../src/services/verificacion-token.service.js";
 import type { ResultadoVerificacionToken } from "../src/services/verificacion-token.service.js";
 
 /** Mismo patrón que `bridge-mudo.job.test.ts` — guarda de re-entrada por flag en closure. */
@@ -29,5 +31,14 @@ describe("verificacion-token.job — startVerificacionTokenJob, guarda de re-ent
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("notificaciones-programadas — scheduledNotificationProducers.tokenPorExpirar (M-hardening Bloque A, WU5)", () => {
+  it("registra el productor preventivo produceAlertaTokenPorExpirar, distinto de verificacionToken", () => {
+    expect(scheduledNotificationProducers.tokenPorExpirar).toBe(produceAlertaTokenPorExpirar);
+    expect(scheduledNotificationProducers.tokenPorExpirar).not.toBe(
+      scheduledNotificationProducers.verificacionToken,
+    );
   });
 });
