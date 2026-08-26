@@ -125,6 +125,54 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     expect(resultado.total).toBe(totalAntes + 2);
   });
 
+  it("M-hardening Bloque A (WU8): vista=activos devuelve solo leads con cerradoEn null", async () => {
+    const supervisor = await crearUsuario("SUPERVISOR");
+    const abierto = await crearLead({ cerradoEn: null });
+    await crearLead({ etapa: "VENTA", cerradoEn: new Date() });
+
+    const resultado = await findLeads(supervisor, {
+      pagina: 1,
+      limite: 100,
+      direccion: "desc",
+      vista: "activos",
+    } as Parameters<typeof findLeads>[1]);
+
+    expect(resultado.leads.some((l) => l.id === abierto.id)).toBe(true);
+    expect(resultado.leads.every((l) => l.cerradoEn === null)).toBe(true);
+  });
+
+  it("M-hardening Bloque A (WU8): vista=cerrados devuelve solo leads con cerradoEn no nulo", async () => {
+    const supervisor = await crearUsuario("SUPERVISOR");
+    await crearLead({ cerradoEn: null });
+    const cerrado = await crearLead({ etapa: "VENTA", cerradoEn: new Date() });
+
+    const resultado = await findLeads(supervisor, {
+      pagina: 1,
+      limite: 100,
+      direccion: "desc",
+      vista: "cerrados",
+    } as Parameters<typeof findLeads>[1]);
+
+    expect(resultado.leads.some((l) => l.id === cerrado.id)).toBe(true);
+    expect(resultado.leads.every((l) => l.cerradoEn !== null)).toBe(true);
+  });
+
+  it("M-hardening Bloque A (WU8): vista omitida no filtra por cerradoEn (comportamiento sin cambios)", async () => {
+    const supervisor = await crearUsuario("SUPERVISOR");
+    const abierto = await crearLead({ cerradoEn: null });
+    const cerrado = await crearLead({ etapa: "VENTA", cerradoEn: new Date() });
+
+    const resultado = await findLeads(supervisor, {
+      pagina: 1,
+      limite: 100,
+      direccion: "desc",
+    } as Parameters<typeof findLeads>[1]);
+
+    const ids = resultado.leads.map((l) => l.id);
+    expect(ids).toContain(abierto.id);
+    expect(ids).toContain(cerrado.id);
+  });
+
   it("filtro semaforo=sin_calificar devuelve únicamente leads con semaforo null", async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const marcador = `marcador-${Date.now()}`;

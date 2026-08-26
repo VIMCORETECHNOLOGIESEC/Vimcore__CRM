@@ -91,6 +91,18 @@ function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date):
     };
   }
 
+  // M-hardening Bloque A (WU8, spec lead-listing): aplicado ANTES del bloque
+  // `estadoSla` de abajo — ese bloque también escribe `cerradoEn` (siempre
+  // `null` para cualquier valor de `estadoSla`, D6 de M6), así que el orden
+  // determina cuál gana si ambos coexistieran. El schema (`D7`,
+  // `leads.schema.ts`) ya rechaza `vista=cerrados` + `estadoSla` antes de
+  // llegar acá, así que en la práctica nunca compiten por la misma escritura.
+  if (query.vista === "activos") {
+    where.cerradoEn = null;
+  } else if (query.vista === "cerrados") {
+    where.cerradoEn = { not: null };
+  }
+
   // DD6: fronteras precomputadas, comparadas contra `sla_inicio_en`, nunca
   // recalculadas columna por columna. Acotado a `cerrado_en IS NULL` — forma
   // exacta del índice parcial `idx_leads_sla` (D11).
