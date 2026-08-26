@@ -18,13 +18,14 @@ despliegue aislado con su propia base de datos. Todo mantenimiento del producto
 actual debe preservar este comportamiento salvo que una iniciativa aprobada
 indique expresamente lo contrario.
 
-**Evolución propuesta (TO-BE): holdings y múltiples empresas.** Esta dirección
-de producto está en análisis y puede investigarse o documentarse cuando la
-tarea lo solicite, pero **no está aprobada ni implementada**. No se deben crear
-entidades de tenant, membresías, roles globales, migraciones ni cambios de
-autorización hasta contar con decisiones de producto, especificación técnica,
-estrategia de migración y aprobación explícita. Nunca documentar el TO-BE como
-si describiera el comportamiento actual.
+**Evolución propuesta (TO-BE): holdings y múltiples empresas.** Las decisiones
+D1-D14 (frontera tenant, membresías, roles, routing, Oportunidad, dashboards,
+integraciones compartidas) ya están **resueltas** en `docs/16-hallazgos-y-preguntas.md`
+§8 y desglosadas por bloque de implementación en `docs/blocks/`; la migración
+y la implementación siguen **pendientes**. No crear entidades de tenant,
+membresías, roles globales ni cambios de autorización fuera de la SDD change
+del bloque correspondiente (`docs/blocks/{a..f}-*.md`). Nunca documentar el
+TO-BE como si describiera el comportamiento actual.
 
 **Alcance MVP: formato fijo, no personalizable.** Los formularios de seguimiento,
 las reglas de puntuación del semáforo, las etapas y los tiempos de SLA están
@@ -224,8 +225,10 @@ Estos elementos no forman parte del producto single-company vigente. Pueden
 analizarse como evolución, pero requieren alcance y aprobación explícitos antes
 de modificar código, datos o despliegue:
 
-- Multi-tenant, super-administrador y panel matriz entre empresas — evolución
-  TO-BE en análisis; no asumir su modelo de aislamiento ni de roles
+- Multi-tenant, super-administrador y panel matriz entre empresas — D1-D14
+  resueltas en `docs/16` §8; migración e implementación pendientes. No crear
+  entidades de tenant/membresía fuera de la SDD change del bloque
+  correspondiente (`docs/blocks/`)
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado)
@@ -241,27 +244,10 @@ de modificar código, datos o despliegue:
 
 ## 8. Documentos de referencia
 
-| Documento | Contenido |
-|---|---|
-| `docs/00-estado-documentacion.md` | Mapa de confianza, autoridad y lotes de corrección documental |
-| `docs/01-alcance-mvp.md` | Qué entra y qué no, con justificación |
-| `docs/02-reglas-negocio.md` | Deduplicación, asignación, SLA, traspaso, reingreso |
-| `docs/03-modelo-datos.md` | Diseño inicial; no usar para implementar hasta reconciliarlo con Prisma |
-| `docs/04-formularios-semaforo.md` | Formularios por etapa y rúbrica de puntuación |
-| `docs/05-bridges.md` | Contrato de ingesta y particularidades por red |
-| `docs/06-modulos-backend.md` | Módulos backend con checklist de avance |
-| `docs/07-modulos-frontend.md` | Módulos frontend con checklist de avance |
-| `docs/08-dashboard-kpis.md` | Definición exacta de cada KPI |
-| `docs/09-skills-agentes-backend.md` | Skills de IA habilitadas para backend: fuente, instalación y caso de uso |
-| `docs/09-linea-grafica-frontend.md` | Línea gráfica del frontend: paleta, tipografía, librerías de UI candidatas y flujo de mockups con Stitch AI |
-| `docs/10-skills-agente-frontend.md` | Skills de Claude Code Skills para el frontend: lista, comando de instalación por skill y en qué caso debe usarla el agente |
-| `docs/11-plan-integracion.md` | Snapshot vigente de integración front-back y brechas confirmadas |
-| `docs/12-pruebas-manuales-qa.md` | Catálogo histórico de QA; bloqueado hasta reconstruir fixtures reproducibles |
-| `docs/13-configuracion-bridges.md` | Guía operativa de Meta y Google Forms |
-| `docs/14-evolucion-multitenant.md` | Arquitectura TO-BE candidata; no aprobada ni implementable todavía |
-| `docs/15-benchmark-crm-y-roadmap.md` | Benchmark de mercado y priorización futura; no es contrato vigente |
-| `docs/16-hallazgos-y-preguntas.md` | Entrada ejecutiva entre equipos; hallazgos y decisiones vigentes para revisión, no contrato de implementación |
-| `docs/17-seguridad-y-ciberseguridad.md` | Lineamientos de seguridad, revisión a demanda con `/security-review` y checklist de QA por módulo |
+El índice completo de documentos, su estado de confianza y su autoridad
+declarada vive en un único lugar: `docs/00-estado-documentacion.md`. Para
+variables de entorno, comandos y estructura de carpetas, ver
+`docs/18-desarrollo-local.md`. No se duplica esa tabla acá.
 
 ---
 
