@@ -1,0 +1,480 @@
+<title>Propuesta C — Torre de control nocturna</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 200ms;
+    --dur-med: 280ms;
+    --verde: #16A34A;
+    --amarillo: #D97706;
+    --rojo: #DC2626;
+    --gris-semaforo: #94A3B8;
+    --cat-1: #DB2777;
+    --cat-2: #2563EB;
+    --cat-3: #7C3AED;
+    --cat-4: #0891B2;
+    --grafito: #232622;
+    --grafito-2: #2c2f2a;
+    --acero: #5B8DB8;
+  }
+  html,body{ height:100%; }
+  body{
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    background: radial-gradient(circle at 30% 0%, #34382f 0%, var(--grafito) 55%, #1b1d19 100%);
+    color: #F4F3EF;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100dvh;
+  }
+  .tabular{ font-variant-numeric: tabular-nums; }
+  .view{ display:none; }
+  .fade-in{ animation: fadeIn var(--dur-med) var(--ease-out) both; }
+  @keyframes fadeIn{ from{ opacity:0; transform: translateY(6px) scale(0.98); } to{ opacity:1; transform: translateY(0) scale(1); } }
+
+  .glass{
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.10);
+    position: relative;
+  }
+  .glass::before{
+    content:'';
+    position:absolute; top:0; left:8%; right:8%; height:1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  }
+
+  /* Boot: semaforo sequential check */
+  #boot-screen{ background: radial-gradient(circle at 50% 40%, #34382f 0%, var(--grafito) 60%, #17190f 100%); }
+  .boot-light{ width:16px; height:16px; border-radius:9999px; background:#3a3d37; opacity:0.35; transition: opacity 300ms var(--ease-out), box-shadow 300ms var(--ease-out); }
+  .boot-light.lit-red{ background: var(--rojo); opacity:1; box-shadow: 0 0 18px 4px rgba(220,38,38,0.65); }
+  .boot-light.lit-amarillo{ background: var(--amarillo); opacity:1; box-shadow: 0 0 18px 4px rgba(217,119,6,0.65); }
+  .boot-light.lit-verde{ background: var(--verde); opacity:1; box-shadow: 0 0 18px 4px rgba(22,163,74,0.65); }
+  #boot-title{ opacity:0; transform: translateY(6px); transition: opacity 400ms var(--ease-out), transform 400ms var(--ease-out); }
+  #boot-title.show{ opacity:1; transform: translateY(0); }
+  #boot-screen.hide{ opacity:0; transition: opacity 400ms var(--ease-out); pointer-events:none; }
+
+  .skeleton-block{ background: rgba(255,255,255,0.06); border-radius:8px; position:relative; overflow:hidden; border:1px solid rgba(255,255,255,0.06); }
+  .skeleton-block::after{ content:''; position:absolute; inset:0; background: rgba(255,255,255,0.06); animation: pulseOpacity 1.6s ease-in-out infinite; }
+  @keyframes pulseOpacity{ 0%,100%{ opacity:0.35; } 50%{ opacity:0.9; } }
+
+  .nav-item{ border-left:3px solid transparent; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+  .nav-item.active{ border-left-color: var(--acero); background: rgba(91,141,184,0.14); color:#fff; }
+  .nav-item:hover:not(.active){ background: rgba(255,255,255,0.05); }
+
+  .btn-primary{ transition: transform 150ms var(--ease-out), opacity 150ms var(--ease-out); }
+  .btn-primary:active{ transform: scale(0.97); }
+
+  .dropdown-panel{
+    transform-origin: top right;
+    transform: scale(0.97);
+    opacity:0;
+    pointer-events:none;
+    transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  }
+  .dropdown-panel.open{ transform: scale(1); opacity:1; pointer-events:auto; }
+
+  .funnel-bar{ transition: width 500ms var(--ease-out); }
+
+  .semaforo-ping{ position:relative; }
+  .semaforo-ping::after{ content:''; position:absolute; inset:-3px; border-radius:9999px; border:1.5px solid currentColor; opacity:0; }
+  .semaforo-ping.pinging::after{ animation: semaforoPing 900ms var(--ease-out); }
+  @keyframes semaforoPing{ 0%{ opacity:0.8; transform:scale(0.9); } 100%{ opacity:0; transform:scale(1.6); } }
+
+  .semaforo-glow{ box-shadow: 0 0 10px 1px currentColor; }
+
+  /* Empresa selection tilt */
+  .tilt-panel{ transform: perspective(900px) rotateX(4deg); transition: transform 400ms var(--ease-out); }
+  .tilt-panel:hover{ transform: perspective(900px) rotateX(0deg) translateY(-2px); }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background: rgba(255,255,255,0.15); border-radius:8px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+
+<!-- ============ BOOT ============ -->
+<div id="boot-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6">
+  <div class="flex items-center gap-4">
+    <span id="light-rojo" class="boot-light"></span>
+    <span id="light-amarillo" class="boot-light"></span>
+    <span id="light-verde" class="boot-light"></span>
+  </div>
+  <div id="boot-title" class="text-center">
+    <p class="text-[11px] tracking-widest uppercase text-white/50 mb-2">Chequeo de sistemas</p>
+    <h1 class="text-2xl font-bold">CRM Embudo de Leads</h1>
+  </div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="view-login" class="view min-h-dvh flex items-center justify-center px-4" data-display="flex">
+  <div class="fade-in glass w-full max-w-sm rounded-2xl p-8">
+    <h1 class="text-xl font-bold text-center mb-6 text-white">CRM Embudo de Leads</h1>
+    <form id="login-form" class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-white/70 mb-1.5">Correo</label>
+        <input type="email" required value="asesor@arcano.test" class="w-full rounded-lg border border-white/15 bg-black/25 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--acero)] focus:border-[color:var(--acero)]">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-white/70 mb-1.5">Contraseña</label>
+        <input type="password" required value="••••••••" class="w-full rounded-lg border border-white/15 bg-black/25 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[color:var(--acero)] focus:border-[color:var(--acero)]">
+      </div>
+      <button id="login-btn" type="submit" class="btn-primary w-full text-white text-sm font-semibold rounded-lg py-2.5" style="background: var(--acero)">
+        <span id="login-btn-text">Iniciar sesión</span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ SELECCION DE EMPRESA (TO-BE) ============ -->
+<div id="view-empresa" class="view min-h-dvh flex items-center justify-center px-4" data-display="flex">
+  <div class="fade-in w-full max-w-md text-center">
+    <span class="inline-block text-[10px] font-semibold tracking-wide uppercase border border-[color:var(--acero)] text-[color:var(--acero)] rounded-full px-2.5 py-1 mb-4">Nuevo · TO-BE</span>
+    <h1 class="text-lg font-bold text-white mb-1">Seleccioná tu empresa</h1>
+    <p class="text-xs text-white/60 max-w-xs mx-auto mb-6">Sos parte de más de una empresa dentro del holding Arcano. Esto solo define el contexto de navegación — el acceso real lo valida el servidor.</p>
+    <div class="space-y-3">
+      <button class="empresa-btn tilt-panel glass w-full text-left rounded-xl px-4 py-3" data-empresa="Arcano Motos">
+        <p class="text-sm font-semibold text-white">Arcano Motos</p>
+        <p class="text-xs text-white/55">Vendedor · 3 fuentes activas</p>
+      </button>
+      <button class="empresa-btn tilt-panel glass w-full text-left rounded-xl px-4 py-3" data-empresa="Arcano Repuestos">
+        <p class="text-sm font-semibold text-white">Arcano Repuestos</p>
+        <p class="text-xs text-white/55">Asesor · 2 fuentes activas</p>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="view-app" class="view min-h-dvh">
+  <div class="flex min-h-dvh">
+    <!-- Sidebar -->
+    <aside class="hidden md:flex md:w-[240px] md:flex-shrink-0 glass flex-col rounded-none border-l-0 border-t-0 border-b-0">
+      <div class="h-14 flex items-center px-4 border-b border-white/10">
+        <span class="text-sm font-bold text-white">CRM Embudo de Leads</span>
+      </div>
+      <nav class="flex-1 py-2">
+        <a href="#" data-target="dashboard" class="nav-item active flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-white/80">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a href="#" data-target="kanban" class="nav-item flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-white/80">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          Leads
+        </a>
+        <a href="#" class="nav-item flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-white/30 cursor-not-allowed" title="Solo rol ADMINISTRADOR">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          Usuarios
+        </a>
+        <a href="#" class="nav-item flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-white/30 cursor-not-allowed" title="Solo rol ADMINISTRADOR">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h6M14 12h6M9 8l-3 4 3 4M15 8l3 4-3 4"/></svg>
+          Bridges
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <!-- Header -->
+      <header class="h-14 glass rounded-none border-t-0 border-x-0 flex items-center justify-between px-4 md:px-6 relative">
+        <button class="md:hidden text-white" aria-label="Abrir menú">
+          <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="md:hidden text-sm font-bold text-white">CRM Embudo de Leads</span>
+        <div class="ml-auto flex items-center gap-4">
+          <button aria-label="Notificaciones" class="relative text-white/70 hover:text-white">
+            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+            <span class="absolute -top-0.5 -right-0.5 size-2 rounded-full" style="background:var(--acero)"></span>
+          </button>
+          <div class="relative">
+            <button id="user-menu-btn" class="flex items-center gap-2">
+              <span class="size-8 rounded-full text-white text-xs font-semibold flex items-center justify-center" style="background:var(--acero)">MP</span>
+            </button>
+            <div id="user-menu" class="dropdown-panel absolute right-0 top-11 w-56 glass rounded-xl py-2 z-20">
+              <div class="px-4 py-2 border-b border-white/10">
+                <p class="text-sm font-semibold text-white">María Pérez</p>
+                <p class="text-xs text-white/55">maria.perez@arcano.test</p>
+              </div>
+              <a href="#" class="block px-4 py-2 text-sm text-white/85 hover:bg-white/5">Mi perfil</a>
+              <a href="#" class="block px-4 py-2 text-sm text-white/85 hover:bg-white/5">Cerrar sesión</a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Dashboard -->
+      <main id="panel-dashboard" class="flex-1 overflow-y-auto p-4 md:p-6">
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          <button class="text-xs font-medium rounded-full px-3 py-1.5 text-white" style="background:var(--acero)">Hoy</button>
+          <button class="text-xs font-medium rounded-full px-3 py-1.5 border border-white/15 text-white/70">7d</button>
+          <button class="text-xs font-medium rounded-full px-3 py-1.5 border border-white/15 text-white/70">30d</button>
+          <button class="text-xs font-medium rounded-full px-3 py-1.5 border border-white/15 text-white/70">Mes actual</button>
+          <button class="text-xs font-medium rounded-full px-3 py-1.5 border border-white/15 text-white/70">Mes anterior</button>
+          <button class="text-xs font-medium rounded-full px-3 py-1.5 border border-white/15 text-white/70">Personalizado</button>
+        </div>
+        <div class="flex flex-wrap gap-3 mb-6">
+          <select class="text-xs rounded-md px-2.5 py-1.5 bg-black/25 border border-white/15 text-white/80"><option>Red social: Todas</option></select>
+          <select class="text-xs rounded-md px-2.5 py-1.5 bg-black/25 border border-white/15 text-white/80"><option>Campaña: Todas</option></select>
+          <select class="text-xs rounded-md px-2.5 py-1.5 bg-black/25 border border-white/15 text-white/80" title="Visible solo para admin/supervisor"><option>Responsable: Todos</option></select>
+        </div>
+
+        <div id="dash-skeleton">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div>
+            <div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div>
+            <div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div>
+          </div>
+        </div>
+
+        <div id="dash-loaded" class="hidden">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Total de leads ingresados</p>
+              <p class="text-2xl font-bold tabular text-white">248</p>
+              <p class="text-[11px] text-white/40 mt-1">Incluye reingresos</p>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Leads en gestión</p>
+              <p class="text-2xl font-bold tabular text-white">96</p>
+              <p class="text-[11px] text-white/40 mt-1">Etapa distinta de Venta/No Venta</p>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Leads cerrados</p>
+              <p class="text-2xl font-bold tabular text-white">152</p>
+              <p class="text-[11px] text-white/40 mt-1">Venta: 61 · No Venta: 91</p>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Tasa de conversión</p>
+              <p class="text-2xl font-bold tabular text-white">24.6%</p>
+              <p class="text-[11px] text-white/40 mt-1">61 de 152 cerrados</p>
+              <p class="text-[11px] font-medium mt-1" style="color:var(--verde)">↑ 3.1% vs. período anterior</p>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Tiempo prom. primera respuesta</p>
+              <p class="text-2xl font-bold tabular text-white">14 min</p>
+              <p class="text-[11px] font-medium mt-1" style="color:var(--rojo)">↓ 8% vs. período anterior</p>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Tiempo prom. de cierre (Venta)</p>
+              <p class="text-2xl font-bold tabular text-white">3.2 días</p>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-[11px] text-white/55 mb-1">Cumplimiento de SLA</p>
+              <p class="text-2xl font-bold tabular text-white">88%</p>
+              <p class="text-[11px] text-white/40 mt-1">% dentro de 24h</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-sm font-semibold mb-3 text-white">Leads por red social</p>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">Facebook</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:70%;background:var(--cat-1)"></div></div><span class="tabular w-8 text-right text-white">98</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">Instagram</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:55%;background:var(--cat-2)"></div></div><span class="tabular w-8 text-right text-white">77</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">WhatsApp</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:35%;background:var(--cat-3)"></div></div><span class="tabular w-8 text-right text-white">49</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">TikTok</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:17%;background:var(--cat-4)"></div></div><span class="tabular w-8 text-right text-white">24</span></div>
+              </div>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-sm font-semibold mb-1 text-white">Leads por asesor</p>
+              <p class="text-[11px] text-white/40 mb-2">Visible solo para admin/supervisor</p>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">M. Pérez</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:80%;background:var(--cat-1)"></div></div><span class="tabular w-8 text-right text-white">62</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">J. Rojas</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:60%;background:var(--cat-2)"></div></div><span class="tabular w-8 text-right text-white">47</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">L. Vera</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:42%;background:var(--cat-3)"></div></div><span class="tabular w-8 text-right text-white">33</span></div>
+              </div>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-sm font-semibold mb-3 text-white">Embudo por etapa</p>
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">Nuevo</span><div class="funnel-bar h-5 rounded" style="width:100%;background:var(--acero)"></div><span class="tabular text-white">248</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">Contactado</span><div class="funnel-bar h-5 rounded" style="width:78%;background:var(--acero);opacity:.75"></div><span class="tabular text-white">193</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">Cita</span><div class="funnel-bar h-5 rounded" style="width:48%;background:var(--acero);opacity:.55"></div><span class="tabular text-white">119</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-20">Venta</span><div class="funnel-bar h-5 rounded" style="width:25%;background:var(--acero);opacity:.35"></div><span class="tabular text-white">61</span></div>
+              </div>
+              <div class="mt-3 pt-3 border-t border-dashed border-white/15 flex items-center justify-between text-xs">
+                <span class="text-white/50">No Venta (fuera del embudo)</span>
+                <span class="tabular font-semibold text-white">91</span>
+              </div>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-sm font-semibold mb-3 text-white">Leads por campaña</p>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-24 truncate">Verano 2026</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:65%;background:var(--cat-1)"></div></div><span class="tabular w-8 text-right text-white">91</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-24 truncate">Lanzamiento X</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:40%;background:var(--cat-2)"></div></div><span class="tabular w-8 text-right text-white">56</span></div>
+                <div class="flex items-center gap-2 text-xs text-white/70"><span class="w-24 truncate">Sin campaña</span><div class="flex-1 h-3 bg-white/10 rounded"><div class="h-3 rounded" style="width:72%;background:var(--cat-3)"></div></div><span class="tabular w-8 text-right text-white">101</span></div>
+              </div>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-sm font-semibold mb-3 text-white">Red social × semáforo</p>
+              <table class="w-full text-xs text-white/70">
+                <thead><tr class="text-white/40"><th class="text-left font-medium pb-1">Red</th><th class="font-medium pb-1" style="color:var(--verde)">Verde</th><th class="font-medium pb-1" style="color:var(--amarillo)">Amarillo</th><th class="font-medium pb-1" style="color:var(--rojo)">Rojo</th></tr></thead>
+                <tbody>
+                  <tr class="border-t border-white/10"><td class="py-1">Facebook</td><td class="text-center tabular text-white">18</td><td class="text-center tabular text-white">22</td><td class="text-center tabular text-white">9</td></tr>
+                  <tr class="border-t border-white/10"><td class="py-1">Instagram</td><td class="text-center tabular text-white">12</td><td class="text-center tabular text-white">15</td><td class="text-center tabular text-white">6</td></tr>
+                  <tr class="border-t border-white/10"><td class="py-1">WhatsApp</td><td class="text-center tabular text-white">7</td><td class="text-center tabular text-white">10</td><td class="text-center tabular text-white">4</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="fade-in glass rounded-xl p-4">
+              <p class="text-sm font-semibold mb-3 text-white">Distribución por semáforo</p>
+              <p class="text-[11px] text-white/40 mb-3">Excluye Venta / No Venta</p>
+              <div class="flex items-center gap-4">
+                <div class="size-24 rounded-full flex-shrink-0" style="background: conic-gradient(var(--verde) 0% 38%, var(--amarillo) 38% 66%, var(--rojo) 66% 86%, var(--gris-semaforo) 86% 100%); box-shadow: 0 0 24px 2px rgba(22,163,74,0.25)"></div>
+                <div class="text-xs space-y-1.5 text-white/80">
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full semaforo-glow" style="background:var(--verde);color:var(--verde)"></span>Verde · Lead caliente</p>
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full semaforo-glow" style="background:var(--amarillo);color:var(--amarillo)"></span>Amarillo · Lead tibio</p>
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full semaforo-glow" style="background:var(--rojo);color:var(--rojo)"></span>Rojo · Lead frío</p>
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background:var(--gris-semaforo)"></span>Sin calificar</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Kanban -->
+      <main id="panel-kanban" class="hidden flex-1 overflow-x-auto p-4 md:p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-bold text-white">Cartera de leads</h2>
+          <button id="simulate-live-btn" class="text-xs rounded-full px-3 py-1.5 text-white border border-white/20 hover:bg-white/10 transition-colors">Simular cambio en vivo</button>
+        </div>
+        <div class="flex gap-4 min-w-max">
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold text-white/50 mb-2">Nuevo</p>
+            <div class="glass rounded-xl p-3">
+              <p class="text-sm font-medium text-white">Carla Núñez</p>
+              <p class="text-xs text-white/50 mb-2">Facebook · Verano 2026</p>
+              <span id="lead-chip-1" class="semaforo-ping inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style="color:var(--gris-semaforo); background:rgba(148,163,184,0.15)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Sin calificar
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold text-white/50 mb-2">Contactado</p>
+            <div class="glass rounded-xl p-3">
+              <p class="text-sm font-medium text-white">Diego Salas</p>
+              <p class="text-xs text-white/50 mb-2">Instagram · Lanzamiento X</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full semaforo-glow" style="color:var(--amarillo); background:rgba(217,119,6,0.15)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Amarillo · Lead tibio
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold text-white/50 mb-2">Cita</p>
+            <div class="glass rounded-xl p-3">
+              <p class="text-sm font-medium text-white">Ana Reyes</p>
+              <p class="text-xs text-white/50 mb-2">WhatsApp · Sin campaña</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full semaforo-glow" style="color:var(--verde); background:rgba(22,163,74,0.15)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Verde · Lead caliente
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold text-white/50 mb-2">Venta</p>
+            <div class="glass rounded-xl p-3">
+              <p class="text-sm font-medium text-white">Marco Toledo</p>
+              <p class="text-xs text-white/50 mb-2">Facebook · Verano 2026</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full semaforo-glow" style="color:var(--verde); background:rgba(22,163,74,0.15)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Verde · Lead caliente
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0 pl-4 border-l-2 border-dashed border-white/15">
+            <p class="text-xs font-semibold text-white/30 mb-2">No Venta (fuera del embudo)</p>
+            <div class="glass rounded-xl p-3 opacity-70">
+              <p class="text-sm font-medium text-white">Pedro Luna</p>
+              <p class="text-xs text-white/50 mb-2">TikTok · Lanzamiento X</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full semaforo-glow" style="color:var(--rojo); background:rgba(220,38,38,0.15)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Rojo · Lead frío
+              </span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+  const debugTarget = location.hash.replace('#', '');
+
+  function showView(name){
+    document.querySelectorAll('.view').forEach(v => { v.style.display = 'none'; v.classList.remove('active'); });
+    const target = document.getElementById('view-' + name);
+    target.style.display = target.dataset.display || 'block';
+    target.classList.add('active');
+  }
+
+  const bootScreen = document.getElementById('boot-screen');
+  const bootTitle = document.getElementById('boot-title');
+  if (!debugTarget) requestAnimationFrame(() => {
+    setTimeout(() => document.getElementById('light-rojo').classList.add('lit-red'), 150);
+    setTimeout(() => document.getElementById('light-amarillo').classList.add('lit-amarillo'), 500);
+    setTimeout(() => document.getElementById('light-verde').classList.add('lit-verde'), 850);
+    setTimeout(() => bootTitle.classList.add('show'), 950);
+    setTimeout(() => {
+      bootScreen.classList.add('hide');
+      setTimeout(() => { bootScreen.style.display = 'none'; showView('login'); }, 420);
+    }, 2000);
+  });
+
+  document.getElementById('login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    document.getElementById('login-btn-text').textContent = 'Ingresando…';
+    setTimeout(() => showView('empresa'), 700);
+  });
+
+  document.querySelectorAll('.empresa-btn').forEach(btn => {
+    btn.addEventListener('click', () => showView('app'));
+  });
+
+  const userBtn = document.getElementById('user-menu-btn');
+  const userMenu = document.getElementById('user-menu');
+  userBtn.addEventListener('click', () => userMenu.classList.toggle('open'));
+  document.addEventListener('click', (e) => {
+    if (!userBtn.contains(e.target) && !userMenu.contains(e.target)) userMenu.classList.remove('open');
+  });
+
+  document.querySelectorAll('.nav-item[data-target]').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.nav-item[data-target]').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const target = item.dataset.target;
+      document.getElementById('panel-dashboard').classList.toggle('hidden', target !== 'dashboard');
+      document.getElementById('panel-kanban').classList.toggle('hidden', target !== 'kanban');
+    });
+  });
+
+  setTimeout(() => {
+    document.getElementById('dash-skeleton').classList.add('hidden');
+    document.getElementById('dash-loaded').classList.remove('hidden');
+  }, 1300);
+
+  document.getElementById('simulate-live-btn').addEventListener('click', () => {
+    const chip = document.getElementById('lead-chip-1');
+    chip.style.color = 'var(--rojo)';
+    chip.style.background = 'rgba(220,38,38,0.15)';
+    chip.classList.add('semaforo-glow');
+    chip.innerHTML = '<span class="size-1.5 rounded-full" style="background:currentColor"></span>Rojo · Lead frío';
+    chip.classList.remove('pinging'); void chip.offsetWidth; chip.classList.add('pinging');
+  });
+
+  if (debugTarget) {
+    document.getElementById('boot-screen').style.display = 'none';
+    showView(debugTarget === 'kanban' ? 'app' : (debugTarget || 'login'));
+    if (debugTarget === 'kanban') document.querySelector('.nav-item[data-target="kanban"]').click();
+    if (debugTarget === 'app' || debugTarget === 'kanban') {
+      document.getElementById('dash-skeleton').classList.add('hidden');
+      document.getElementById('dash-loaded').classList.remove('hidden');
+    }
+  }
+</script>
