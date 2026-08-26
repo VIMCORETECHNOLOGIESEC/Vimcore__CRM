@@ -1,5 +1,19 @@
 # 03 — Modelo de datos
 
+> **Estado documental: NO CONFIABLE para implementación.**
+>
+> **Autoridad técnica actual:** `backend/prisma/schema.prisma` y
+> `backend/prisma/migrations/`.
+>
+> **Verificado contra:** rama `test/gpt`, commit `e70b3a4`, 2026-08-25.
+>
+> Este archivo conserva el diseño inicial, pero todavía documenta una relación
+> `campanias → leads` y un `leads.campania_id` inexistentes, además de ubicar
+> credenciales de proveedor en `bridges` cuando el esquema real las almacena
+> por `CuentaPublicitaria`. Hasta completar el lote 2 de
+> [`00-estado-documentacion.md`](00-estado-documentacion.md), no debe usarse
+> para diseñar migraciones, relaciones ni consultas.
+
 PostgreSQL con Prisma (code-first). Sin columna `tenant_id`: la instancia es de
 una sola empresa.
 
