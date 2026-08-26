@@ -464,69 +464,27 @@ publicitarias; no deben presentarse como disponibles a partir de leads solos.
 
 ## 13. Migración por fases
 
-### Fase 0 — Contrato y reconciliación documental
+Decisiones D1-D14 ya resueltas en `16-hallazgos-y-preguntas.md` §8. El plan
+por fases de esa sección (§7) agrupa la migración en 6 bloques de trabajo
+autocontenidos (`docs/blocks/`); esta tabla mapea cada Fase de este
+documento a su bloque, sin repetir el detalle de tareas que ya vive en el
+doc del bloque.
 
-- Decisiones D1 a D14 **ya resueltas** en `16-hallazgos-y-preguntas.md` §8.
-- Mantener este documento como referencia de arquitectura hasta que el
-  esquema y el código implementen lo resuelto.
-- Separar estado actual, backlog y decisiones objetivo en la documentación.
-- Preparar ADR o artefactos SDD para la frontera tenant ya elegida (D1).
+| Fase | Resultado esperado | Bloque |
+|---|---|---|
+| 0 — Contrato y reconciliación documental | D1-D14 registradas; ADR/SDD para la frontera tenant elegida | Entra como criterio de entrada de `docs/blocks/a-hardening-single-company.md` |
+| 1 — Fundación aditiva | Empresa, membresías y ownership nullable; backfill determinista | `docs/blocks/b-tenant-prisma-foundation.md` |
+| 2 — Membresías y autorización en sombra | Autorizador nuevo comparado contra legacy antes de cortar el switch | `docs/blocks/b-tenant-prisma-foundation.md` |
+| 3 — Procedencia y deduplicación | Empresa/fuente derivadas del bridge; dedupe con scope empresarial | `docs/blocks/b-tenant-prisma-foundation.md` |
+| 4 — Aislamiento efectivo | Scoping obligatorio en consultas, jobs, SSE y logs; pruebas adversariales | `docs/blocks/c-aislamiento.md` |
+| 5 — Routing y handoff | Elegibilidad por fuente, matriz asesor-vendedor, límite Lead→Oportunidad | `docs/blocks/d-routing-oportunidad.md` |
+| 6 — Dashboard jerárquico | Selectores por empresa/fuente, métricas separadas por rol | `docs/blocks/e-dashboards.md` |
+| 7 — Endurecimiento y retiro legacy | Ownership `NOT NULL`, retiro de `Usuario.rol`, verificación de backup/rollback | `docs/blocks/f-retiro-legacy.md` |
 
-### Fase 1 — Fundación aditiva
-
-- Crear Holding, Empresa, Activo de captación, Sitio, Fuente, membresías y
-  elegibilidades; la cardinalidad de roles o capacidades depende de D5.
-- Crear los scopes legacy que correspondan a la frontera elegida en D1.
-- Añadir como nullable las claves de ownership definidas por D1 y D11.
-- Hacer backfill determinista del dataset existente.
-- Añadir índices y constraints sin retirar columnas antiguas.
-
-### Fase 2 — Membresías y autorización en sombra
-
-- Crear membresías equivalentes a `Usuario.rol`, sin habilitar roles múltiples hasta resolver D5.
-- Comparar decisiones del autorizador nuevo contra el comportamiento legacy.
-- Incorporar empresa activa a perfil, navegación y query keys.
-- Mantener `Usuario.rol` solo como compatibilidad temporal.
-
-### Fase 3 — Procedencia y deduplicación
-
-- Derivar empresa y fuente desde el bridge autenticado y sus asociaciones aprobadas en D12.
-- Materializar cuenta externa, campaña y captación.
-- Aplicar dedupe con scope empresarial o el scope finalmente aprobado.
-- Dual-write de ownership y atribución.
-- Reprocesar datos ambiguos mediante una cola de revisión, nunca con supuestos.
-
-### Fase 4 — Aislamiento efectivo
-
-- Cambiar lecturas y escrituras a contexto empresarial obligatorio.
-- Scopear SQL crudo, jobs, notificaciones, SSE y logs.
-- Ejecutar pruebas adversariales entre dos holdings y dos empresas del mismo
-  holding.
-- Activar RLS si la topología utiliza esquema compartido.
-
-### Fase 5 — Routing y handoff
-
-- Activar elegibilidad por fuente.
-- Migrar `ultimaAsignacionEn` al scope de membresía o pool.
-- Implementar precedencia de routing y fallback.
-- Persistir primer contacto y estado de handoff.
-- Aplicar la matriz asesor-vendedor acordada y el límite semántico
-  Lead→Oportunidad definido en D13.
-
-### Fase 6 — Dashboard jerárquico
-
-- Incorporar selectores de holding, empresa, sitio y fuente según el rol.
-- Separar métricas de asesor y vendedor.
-- Reemplazar campaña JSON por relaciones materializadas.
-- Scopear invalidaciones en tiempo real por tenant y empresa.
-
-### Fase 7 — Endurecimiento y retiro legacy
-
-- Convertir ownership requerido a `NOT NULL`.
-- Retirar `Usuario.rol` y relaciones de responsabilidad no scopeadas.
-- Retirar endpoints v1 o mantener una fecha de deprecación explícita.
-- Validar backup, rollback, migración de producción y aislamiento.
-- Actualizar el criterio de terminado y los documentos AS-IS.
+La numeración de Fase de esta tabla no coincide 1:1 con la de `docs/16` §7
+(los planes se escribieron en momentos distintos con distinto nivel de
+detalle) — la columna Bloque es la referencia autoritativa para saber dónde
+vive el detalle de cada tramo.
 
 ## 14. Brechas M4/M5 y dependencias M6/M8 que condicionan el TO-BE
 
