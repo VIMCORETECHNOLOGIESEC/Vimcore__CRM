@@ -64,7 +64,9 @@ forma parte del comportamiento actual.
 | `docs/13-configuracion-bridges.md` | Vigente con reservas | Guía operativa de Meta y Google Forms | Es utilizable con verificación puntual de variables, modelo Facebook/Instagram y creación de cuentas. |
 | `docs/14-evolucion-multitenant.md` | Borrador TO-BE | Arquitectura candidata para discusión | No describe el producto actual ni autoriza migraciones. Holding como tenant es la decisión ya resuelta (D1, `docs/16` §8); el documento conserva valor como referencia de arquitectura y plan de migración. |
 | `docs/15-benchmark-crm-y-roadmap.md` | Borrador TO-BE | Referencias de mercado y priorización futura | Compara capacidades con fuentes oficiales; sus recomendaciones no son requisitos aprobados ni prueba de implementación. |
-| `docs/16-hallazgos-y-preguntas.md` | Vigente | Síntesis ejecutiva entre equipos de hallazgos y orden de decisiones | Es la entrada para revisión cruzada en el corte declarado. No reemplaza los contratos funcionales/técnicos ni autoriza implementación. |
+| `docs/16-hallazgos-y-preguntas.md` | Vigente | Síntesis ejecutiva entre equipos de hallazgos y orden de decisiones | Es la entrada para revisión cruzada en el corte declarado. No reemplaza los contratos funcionales/técnicos ni autoriza implementación. Los fragmentos de esquema/diseño de D1-D14 viven en `docs/blocks/`. |
+| `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
+| `docs/blocks/{a..f}-*.md` | Borrador TO-BE | Carve-out por bloque de la migración multi-tenant (D1-D14) | Cada uno autocontenido: scope, D-refs, esquema/diseño movido, entrada/salida. No autoriza implementación por sí solo. |
 
 ## Brechas abiertas confirmadas
 
