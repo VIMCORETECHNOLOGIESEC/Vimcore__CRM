@@ -10,7 +10,7 @@ forma parte del comportamiento actual.
 > **Autoridad:** mapa de confianza documental; no sustituye al código ni a las
 > reglas de negocio aprobadas.
 >
-> **Verificado contra:** rama `test/gpt`, commit `e70b3a4`, 2026-08-25.
+> **Verificado contra:** rama `test/gpt`, commit `e04ea2c`, 2026-08-26.
 
 ## Ruta rápida de revisión
 
@@ -64,7 +64,9 @@ forma parte del comportamiento actual.
 | `docs/14-evolucion-multitenant.md` | Borrador TO-BE | Arquitectura candidata para discusión | No describe el producto actual ni autoriza migraciones. Holding como tenant es la decisión ya resuelta (D1, `docs/16` §8); el documento conserva valor como referencia de arquitectura y plan de migración. |
 | `docs/15-benchmark-crm-y-roadmap.md` | Borrador TO-BE | Referencias de mercado y priorización futura | Compara capacidades con fuentes oficiales; sus recomendaciones no son requisitos aprobados ni prueba de implementación. |
 | `docs/16-hallazgos-y-preguntas.md` | Vigente | Síntesis ejecutiva entre equipos de hallazgos y orden de decisiones | Es la entrada para revisión cruzada en el corte declarado. No reemplaza los contratos funcionales/técnicos ni autoriza implementación. Los fragmentos de esquema/diseño de D1-D14 viven en `docs/blocks/`. |
+| `docs/17-seguridad-y-ciberseguridad.md` | Vigente | Política operativa para cambios sensibles | Separa controles AS-IS y gates TO-BE; consultar `docs/19` para evidencia auditada, riesgos y plan de pruebas. |
 | `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
+| `docs/19-auditoria-ciberseguridad.md` | Vigente con reservas | Informe consolidado de seguridad | Describe beneficios, hallazgos P0–P2, límites de la evidencia y pruebas pendientes; no autoriza cambios ni sustituye un pentest. |
 | `docs/blocks/{a..f}-*.md` | Borrador TO-BE | Carve-out por bloque de la migración multi-tenant (D1-D14) | Cada uno autocontenido: scope, D-refs, esquema/diseño movido, entrada/salida. No autoriza implementación por sí solo. |
 
 ## Brechas abiertas confirmadas

@@ -1,188 +1,141 @@
-# 17 — Seguridad y ciberseguridad
+# 17 — Política operativa de ciberseguridad
 
-> **Estado:** guía operativa de seguridad. No es un hallazgo de auditoría ni
-> reemplaza una revisión de seguridad profesional externa; es el colchón de
-> QA a correr antes de mergear cambios sensibles de front y back.
+> **Estado:** vigente. Define los controles que deben conservarse o aplicarse
+> al desarrollar. La evidencia y los hallazgos viven en
+> [19-auditoria-ciberseguridad.md](19-auditoria-ciberseguridad.md).
 >
-> **Corte:** 2026-08-25.
+> **Frontera:** el producto implementado es **single-company por despliegue**.
+> Multi-tenant/holding es **TO-BE**; los controles de §2 son gates de los
+> bloques B–F, no capacidades activas.
 
-## 1. Mecanismo disponible: `/security-review` (nativo de Claude Code)
+## Ruta rápida
 
-| Mecanismo | Cuándo corre | Alcance | Cómo se invoca |
-|---|---|---|---|
-| `/security-review` (slash command nativo de Claude Code) | A demanda, local, cuando el desarrollador lo pide | El diff pendiente en el working tree — sirve para revisar un módulo puntual de front o back antes de abrir PR | Ejecutar `/security-review` en este repo con Claude Code |
+1. Para el producto actual, aplicar §1 y el checklist de §3.
+2. Para multi-tenant, implementar §2 sólo mediante el SDD del bloque B–F.
+3. Registrar cada prueba en `openspec/changes/<change>/verify.md`; actualizar
+   `docs/19` únicamente con el resultado consolidado.
+4. Nunca documentar, loguear ni incluir en fixtures contraseñas, secretos,
+   tokens, payloads completos de webhook o PII innecesaria.
 
-Detecta las mismas familias de vulnerabilidad que un análisis semántico
-avanzado: inyección (SQL/NoSQL/comando), fallas de autenticación/
-autorización, IDOR, exposición de secretos y PII, criptografía débil, XSS,
-deserialización insegura, CORS permisivo y dependencias vulnerables. Corre
-sobre la sesión de Claude Code ya activa — no requiere ninguna credencial ni
-configuración adicional más allá del plan de suscripción existente.
+## 1. AS-IS — controles del CRM single-company
 
-**Uso previsto:** revisar un módulo específico *mientras se desarrolla*
-(por ejemplo, antes de subir un cambio en `meta-webhook.service.ts` o en el
-formulario de calificación del frontend) — no es automático, hay que
-pedirlo.
+### 1.1 Controles implementados que no deben degradarse
 
-## 2. GitHub Action evaluado, no instalado
+| Control | Regla operativa |
+|---|---|
+| Contraseñas | Usar exclusivamente Argon2id en backend. Nunca devolver hashes ni registrar contraseñas. |
+| Sesión | Access JWT con `issuer`, `audience`, tipo y expiración; refresh token rotado, hasheado y revocable por familia. |
+| Tokens de plataformas | Cifrar tokens con AES-256-GCM; sólo servicios autorizados los descifran. Nunca devolver ni loguear el valor. |
+| Webhooks | Validar firma del proveedor antes de procesar/persistir el payload; usar comparación temporalmente segura. |
+| Autorización | El backend valida autenticación, rol y recurso en cada endpoint. La UI nunca es control de acceso. |
+| Entrada | Validar `body`, `params`, `query`, `headers` y payload externo con Zod; preferir esquemas estrictos y allowlists. |
+| SQL | Usar Prisma o `Prisma.sql` parametrizado. Prohibidos `$queryRawUnsafe`, `$executeRawUnsafe` e interpolar entrada externa. |
+| Estado de negocio | Mantener mutación de lead y `lead_eventos` en la misma transacción; publicar SSE después del commit. |
+| Errores | Responder con `AppError` o mensaje genérico sin stack trace, SQL, secretos ni detalles de infraestructura. |
+| XSS | No usar `dangerouslySetInnerHTML` ni HTML sin sanitización aprobada. Mantener tokens fuera de URL. |
 
-Se evaluó `anthropics/claude-code-security-review` (revisión automática en
-cada `pull_request`, mismo motor de análisis que el punto 1) y **se decidió
-no instalarlo**, no por falta de utilidad técnica sino por una limitación
-de acceso real de este proyecto:
+### 1.2 Gaps obligatorios antes de producción pública
 
-- El Action requiere el input `claude-api-key`, una API key de **Anthropic
-  Console/API** (facturación por token), habilitada tanto para la API de
-  Claude como para uso de Claude Code.
-- Este proyecto opera con un plan **Claude Pro**, no con una cuenta de
-  API Console — son productos distintos. El plan Pro no emite ese tipo de
-  API key, así que el secret `CLAUDE_API_KEY` no puede cargarse.
-- Instalar el workflow sin esa credencial no es una instalación parcial
-  útil: cada ejecución fallaría por autenticación, produciendo un check de
-  CI en rojo de forma permanente — ruido y falsos negativos, peor que no
-  tenerlo.
+| Prioridad | Control faltante | Regla de implementación |
+|---|---|---|
+| P0 | Dependencia vulnerable | Resolver el advisory de `deepmerge-ts` transitivo por Prisma; repetir audit, pruebas, SBOM y escaneo de imagen. |
+| P1 | DDoS y bots | Límites en proxy/WAF y app por IP, usuario, bridge/API key y endpoint; body limit, máximo SSE, timeout y backpressure. |
+| P1 | Login | Throttling progresivo, respuesta uniforme contra enumeración, anti-bot proporcional y alertas de abuso. |
+| P1 | Refresh concurrente | Compare-and-swap transaccional: una carrera produce un único sucesor válido. |
+| P1 | Cookie, XSS y CSRF | Mientras refresh esté en `localStorage`, reducir XSS con CSP. Si migra a cookie `HttpOnly; Secure; SameSite`, añadir CSRF y pruebas de origen cruzado. |
+| P1 | Cabeceras/TLS/caché | CSP, `frame-ancestors 'none'`, `nosniff`, Referrer-Policy, Permissions-Policy, `no-store` para PII y HSTS sólo sobre HTTPS. |
+| P1 | Logs/alertas | Correlation ID, logs allowlist/redactados y alertas de 5xx, auth, rate limit, webhook y jobs. |
+| P2 | Carreras de negocio | Lock/CAS para transiciones/asignación de leads y cambios de cita; pruebas simultáneas. |
+| P2 | Operación | Imagen productiva no-root, secretos gestionados, red segmentada, backup/restore probado y rotación de claves. |
 
-**Revisar esta decisión si** el proyecto adquiere acceso a Anthropic
-Console/API en el futuro. En ese caso, la instalación es la del Quick
-Start oficial del repositorio (`.github/workflows/`, ver
-[README](https://github.com/anthropics/claude-code-security-review)) —
-sin cambios de fondo respecto a lo ya investigado el 2026-08-25.
+### 1.3 Privacidad y salida de red
 
-## 3. Lineamientos base de ciberseguridad de este proyecto
+- PII de `Cliente`/ `Lead`: exportaciones, soporte e integraciones respetan
+  autorización y minimizan campos.
+- CORS usa orígenes explícitos; nunca usar `*` para resolver un problema local.
+- Las llamadas externas necesitan allowlist de dominios, timeout y cancelación;
+  no construir URLs desde entrada no validada.
+- No se detectó `exec`, `spawn` ni `eval`; mantener su prohibición salvo SDD
+  con threat model y allowlist de argumentos.
 
-Puntos verificados contra el código real en `main` (no genéricos):
+## 2. TO-BE — gates de seguridad multi-tenant/holding
 
-### 3.1 Secretos y tokens de bridges
+Estas reglas son precondiciones de los bloques B–F; no basta con filtros del
+frontend o del repository.
 
-- `CuentaPublicitaria.tokenCifrado` (`backend/prisma/schema.prisma:477`) ya
-  se cifra/descifra vía `encrypt()`/`decrypt()`
-  (`backend/src/services/cuenta-publicitaria.service.ts`,
-  `meta-webhook.service.ts`) — nunca debe leerse ni loguearse en texto plano
-  fuera de esas funciones.
-- El webhook de Meta ya valida `X-Hub-Signature-256`
-  (`backend/src/controllers/meta-webhook.controller.ts:58`,
-  `verifyFirmaMeta`) y el handshake por `hub.verify_token`
-  (`meta-webhook.service.ts:32`). Cualquier bridge nuevo (ver `docs/05`)
-  debe replicar esta verificación de firma antes de aceptar el payload —
-  no asumir que la URL del webhook siendo "secreta" alcanza.
-- `refreshToken` se guarda hasheado (`hashRefreshToken`,
-  `refresh-token.repository.ts`) y está en la lista de redacción del logger
-  (`backend/src/lib/logger.ts:20-31`). Cualquier campo sensible nuevo
-  (contraseñas por membresía de §8.3 de `docs/16`, tokens de reportes) debe
-  sumarse a esa misma lista de redacción, no asumir que el logger lo cubre
-  automáticamente.
+### 2.1 Aislamiento y autorización
 
-### 3.2 Validación de entrada en ingesta pública
+1. Derivar empresa activa de una membresía válida del servidor. Un `empresaId`
+   enviado por cliente nunca autoriza.
+2. Autorizar por membresía/rol/capacidad, no sólo por `usuarioId`; revocar
+   membresía debe quitar el scope de sesión.
+3. Todas las entidades, eventos, notificaciones, métricas, caché y SSE deben
+   tener scoping empresarial verificable.
+4. Probar Empresa A → Empresa B en lectura, escritura, asignación, exportación,
+   raw SQL, jobs y SSE.
 
-- Los endpoints de ingesta ya usan Zod (`backend/src/schemas/*.schema.ts`,
-  ej. `ingesta.schema.ts`, `formularios.schema.ts`) — todo endpoint público
-  nuevo (canal manual, sitio web, un bridge adicional) debe definir su propio
-  schema Zod antes de tocar la base, nunca confiar en el shape que manda el
-  proveedor externo.
-- Prisma ya parametriza las queries (no hay SQL crudo detectado en
-  `backend/src`), lo que descarta inyección SQL clásica — el riesgo real acá
-  no es SQLi, es **autorización**: una query bien escrita pero sin el filtro
-  correcto de scope (ver 3.4).
+### 2.2 Row-Level Security en PostgreSQL
 
-### 3.3 CORS y superficie HTTP
+- Rol de migración separado del rol de aplicación; el rol app no puede ser dueño
+  de tablas ni tener `BYPASSRLS`.
+- `ENABLE` y `FORCE ROW LEVEL SECURITY` para toda tabla alcanzada; policies
+  con `USING` y `WITH CHECK`.
+- Contexto con `set_config('app.empresa_id', ..., true)` dentro de la misma
+  transacción. Nunca usar estado global ni una conexión pooled sin reset.
+- Probar RLS con ORM, `$queryRaw`, workers y conexiones reutilizadas.
 
-- `app.ts:16` fija `cors({ origin: env.CORS_ORIGIN })` — un solo origen
-  permitido, no `origin: "*"`. Mantener ese patrón: cualquier nuevo frontend
-  (portal de holding, subdominio por empresa) se agrega a `CORS_ORIGIN`
-  explícitamente, nunca abriendo el wildcard para "que ande más rápido".
-- **Gap detectado, no bloqueante hoy:** no se encontró middleware de rate
-  limiting (`helmet`, `express-rate-limit` no están en
-  `backend/package.json`). Los endpoints de ingesta pública (bridges,
-  webhooks) son el punto más expuesto a abuso por volumen — evaluar antes de
-  sumar el canal manual/sitio web de la evolución multiempresa.
+### 2.3 Invariantes y runtime distribuido
 
-### 3.4 Riesgo de aislamiento multi-tenant (D11, D14)
+- Materializar constraints para identidad por correo, membresías con NULL y
+  relaciones Empresa–Producto–Oportunidad; un `find` previo no las sustituye.
+- Antes de múltiples réplicas, reemplazar broker SSE y locks locales por
+  outbox/cola durable, pub/sub compartido y lock distribuido/advisory lock.
+- Incluir tenant/membresía en cache e invalidaciones; SSE sólo es UX, no fuente
+  autoritativa de estado.
 
-Este es el ítem de seguridad más importante de cara a la evolución
-multiempresa, y todavía no aplica al código porque el modelo
-`Empresa`/`Membresia`/`Producto` no existe implementado — solo como
-propuesta en `docs/16`. Se deja documentado ahora para que el código que lo
-introduzca nazca revisado:
+## 3. Checklist previo a merge
 
-- La decisión D11 (topología física) fijó **esquema compartido, una sola
-  base de datos** para todo el holding — no aislamiento físico por empresa.
-- Eso significa que la seguridad entre empresas depende 100% de que **cada
-  query filtre por `empresaId`** (o por la membresía activa del usuario).
-  Una sola consulta que omita ese filtro es una fuga de datos entre
-  empresas del holding, no un bug cosmético.
-- Lineamiento obligatorio para cualquier PR que toque el modelo
-  multiempresa: centralizar el filtro de scope en una capa de
-  servicio/middleware única (nunca repetido ad-hoc en cada repository), y
-  que el checklist de QA de seguridad (§4) incluya explícitamente "probé
-  que un usuario de la Empresa A no puede leer/escribir datos de la
-  Empresa B" antes de mergear.
-- Row-Level Security de Postgres queda anotado en `docs/16` como defensa
-  adicional a evaluar — no depender solo de la disciplina de código de
-  aplicación.
-- El mismo lineamiento aplica al catálogo `Producto` de D14 y a cualquier
-  query de `Oportunidad`: filtrar por empresa dueña del Lead, no solo por
-  `leadId`.
+### Todo cambio
 
-### 3.5 JWT y sesiones
+- [ ] Inputs externos validados con Zod y campos no permitidos rechazados.
+- [ ] Autorización evaluada en backend para acción y recurso.
+- [ ] No se exponen/loguean secretos, hashes, tokens o PII innecesaria.
+- [ ] SQL parametrizado; no hay APIs unsafe ni comandos de sistema.
+- [ ] Errores esperados tienen respuesta segura y 5xx conserva trazabilidad interna redaccionada.
+- [ ] Hay pruebas de éxito, 401, 403, 404/409 y payload inválido.
+- [ ] Dependencia nueva justificada en SDD, lockfile congelado y audit revisado.
 
-- Access token + refresh token con rotación (`auth.service.ts`) y
-  revocación por `jti` ya implementados. Mantener: nunca extender la
-  expiración del access token "para comodidad", y cualquier nuevo scope de
-  sesión (login por membresía de empresa, `docs/16` §8.3) debe pasar por el
-  mismo mecanismo de rotación/revocación, no uno paralelo.
+### Autenticación, sesión o endpoint público
 
-### 3.6 PII de leads y clientes
+- [ ] Se definieron cuota, body limit, timeout y respuesta 429/413.
+- [ ] Login/refresh no permite enumeración ni reutilización concurrente.
+- [ ] Si hay cookies: CSRF y atributos `HttpOnly`, `Secure`, `SameSite` probados.
+- [ ] CSP/CORS/caché revisados con el origen productivo.
 
-- `Cliente`/`Lead` contienen teléfono, correo y datos de contacto real.
-  Cualquier endpoint de exportación (reportes PDF/XLSX de `docs/16` §8.5) o
-  de integración externa nueva debe pasar por la misma autorización por
-  scope que ya aplica al resto de la API — nunca un endpoint "de solo
-  lectura para debugging" sin auth.
+### Multi-tenant
 
-## 4. Checklist de QA de seguridad por módulo (antes de mergear)
+- [ ] Empresa derivada de membresía, no del payload.
+- [ ] RLS y constraints DB cubren lectura y escritura; rol app sin bypass.
+- [ ] Pruebas A→B fallan para API, raw SQL, job, SSE y cache.
+- [ ] Eventos/auditoría/notificaciones conservan empresa y membresía origen.
 
-Correr `/security-review` sobre el diff del módulo y, además, verificar a mano:
+## 4. Pruebas y evidencia mínima
 
-- [ ] Todo input externo nuevo (body, query, header, payload de webhook) pasa
-      por un schema Zod antes de tocar el service/repository.
-- [ ] Ningún secreto, token o password se loguea en texto plano ni se
-      devuelve en una respuesta HTTP.
-- [ ] Si el cambio toca datos multiempresa: hay un test que prueba que un
-      usuario de una empresa no accede a datos de otra (D11, §3.4).
-- [ ] Todo endpoint nuevo valida el rol/membresía del usuario autenticado
-      antes de leer o escribir, no solo que exista un JWT válido.
-- [ ] Si se agrega una dependencia npm nueva, se revisó que no sea
-      typosquatting y que tenga mantenimiento activo (riesgo de supply
-      chain, §5).
-- [ ] CORS sigue restringido a orígenes explícitos; no se agregó `*` ni se
-      deshabilitó por comodidad de desarrollo.
+| Prueba | Cuándo | Evidencia |
+|---|---|---|
+| Unitarias/integración | Cada SDD | Autorización, validación, transacción y carrera relevante. |
+| Dependencias/imagen | CI y release | `pnpm audit --prod`, SBOM e imagen sin riesgos high/critical no aceptados. |
+| DAST autenticado | Antes de producción pública | Entorno aislado, hallazgos clasificados y remediación enlazada. |
+| Fuzzing/abuso | Endpoints públicos y webhooks | Rechazos 4xx/429 seguros, sin crash ni PII. |
+| Carga | Login, refresh, webhook y SSE | Latencia, recursos, conexiones y recuperación documentadas. |
+| RLS/multi-réplica | Bloques B–F | Matriz cross-tenant y dos réplicas API/worker. |
+| Backup/restore | Antes de producción | Restore desechable contra RPO/RTO declarados. |
 
-## 5. Fuentes consultadas (2026-08-25)
+## 5. Fuente de evidencia y excepciones
 
-- [anthropics/claude-code-security-review — README](https://github.com/anthropics/claude-code-security-review) —
-  capacidades de detección, inputs del GitHub Action y motivo por el que no
-  se instaló (§2: requiere API key de Anthropic Console, no de plan Pro).
-- [Automated security reviews in Claude Code — Claude Support](https://support.claude.com/en/articles/11932705-automated-security-reviews-in-claude-code) —
-  confirma que `/security-review` y el GitHub Action comparten el mismo
-  motor de análisis; solo se usa acá la parte nativa por la limitación de
-  acceso ya explicada.
-- [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) —
-  marco de riesgos para aplicaciones que incorporan LLMs (prompt injection,
-  exposición de información sensible, excessive agency); referencia para
-  cuando el CRM incorpore capacidades de IA (ver "Diferir" en `docs/16`).
-- [Vibe Coding Security Risks — Arnica](https://www.arnica.io/blog/vibe-coding-security-risks) y
-  [OX Security — Vibe Coding Security](https://www.ox.security/blog/vibe-coding-security/) —
-  evidencia de que 40-62% del código generado por IA introduce
-  vulnerabilidades (accesos rotos, secretos hardcodeados, dependencias
-  alucinadas); sustentan el criterio de tratar todo código generado por IA
-  en este proyecto como código de tercero sin revisar hasta que pase por
-  `/security-review`.
-
-## 6. Relación con la evolución multiempresa
-
-Este documento vive en `test/gpt`, la misma rama donde se está resolviendo
-`docs/14-evolucion-multitenant.md` y `docs/16-hallazgos-y-preguntas.md`. La
-referencia cruzada es directa, no conceptual: el riesgo D11/D14 de §3.4 se
-documenta acá porque es un lineamiento de seguridad que debe respetarse
-desde el primer commit que implemente `Empresa`/`Membresia`/`Producto` en
-Prisma, sin importar en qué módulo del código aparezca primero.
+- [19-auditoria-ciberseguridad.md](19-auditoria-ciberseguridad.md) es el informe
+  único de hallazgos, resultados y plan global.
+- Una excepción temporal requiere owner, alcance, vencimiento, mitigación y
+  aceptación explícita en el SDD; no se oculta en código ni en un handoff.
+- Un hallazgo conserva su prioridad hasta que su prueba de aceptación demuestre
+  la corrección.
