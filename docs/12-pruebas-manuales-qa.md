@@ -1,5 +1,21 @@
 # 12 — Pruebas manuales de QA
 
+> **Estado documental: No confiable — revalidación en Bloque A.**
+>
+> **Autoridad operativa actual:** `backend/prisma/seed.ts`,
+> `backend/prisma/seed-leads-qa.ts` y el estado real de la base recreada.
+>
+> **Verificado contra:** rama `test/gpt`, commit `e70b3a4`, 2026-08-25.
+>
+> Los datos de partida descritos abajo no coinciden con los seeds actuales:
+> el seed base crea 4 usuarios y 3 bridges; el seed auxiliar crea 10 leads y
+> no crea las 5 citas ni las 18 notificaciones que este documento presupone.
+> La contraseña proviene de `SEED_PASSWORD`, no de un valor fijo garantizado.
+> Este archivo puede consultarse como catálogo histórico de escenarios, pero
+> **no debe usarse para aprobar QA** hasta reconstruir fixtures y resultados
+> esperados de forma reproducible (ver
+> [`00-estado-documentacion.md`](00-estado-documentacion.md), lote 4).
+
 Checklist de pruebas manuales exhaustivas contra el ambiente Docker de
 desarrollo ya levantado (`docker compose up -d`) y con los datos de semillas
 ya cargados. Pensado para que una persona sin conocimiento técnico profundo
