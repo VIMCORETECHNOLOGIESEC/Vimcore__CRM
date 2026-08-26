@@ -54,7 +54,7 @@ forma parte del comportamiento actual.
 | `docs/04-formularios-semaforo.md` | Vigente con reservas | Formularios y rúbrica fija v1 | Los formularios calificables y la rúbrica están alineados. El cierre no: la API fija `cerradoEn`, no acepta una fecha enviada por el cliente y Venta no admite `observaciones`; solo No Venta acepta `observacionCierre`. |
 | `docs/05-bridges.md` | Vigente con reservas | Contrato funcional de captación | Cada sección está etiquetada Implementado/Diseño/Requisito contra el código real de `backend/src/adapters` y `backend/src/jobs`. |
 | `docs/06-modulos-backend.md` | Vigente con reservas | Checklist técnico backend | Solo el estado consolidado y las brechas P0-P3 vigentes; el diario histórico por módulo quedó en Git (`git log --follow`). |
-| `docs/07-modulos-frontend.md` | Mixto | Checklist técnico frontend | La tabla consolidada inicial es útil; el cuerpo mezcla el estado actual con etapas antiguas basadas en mocks y ramas de integración. |
+| `docs/07-modulos-frontend.md` | Vigente con reservas | Checklist técnico frontend | Solo el estado consolidado y las brechas P1-P3 vigentes; el diario de migración mock-a-real quedó en Git (`git log --follow`). |
 | `docs/08-dashboard-kpis.md` | Vigente con reservas | Definiciones funcionales de KPIs | Los KPIs están implementados, pero no todos se calculan solo con `lead_eventos`; campaña se resuelve actualmente desde JSON. |
 | `docs/09-linea-grafica-frontend.md` | Mixto | Línea visual aprobada | La paleta y principios siguen siendo referencia; estados de librerías y flujo de mockups contienen historia ya superada. |
 | `docs/09-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
@@ -101,8 +101,8 @@ archivo). Esta sección solo declara qué queda pendiente hoy.
 
 ### Lote 3 — Reducir historia y deuda de lectura
 
-- [ ] Convertir docs 06/07 en checklists concisos de estado actual.
-- [ ] Trasladar cronología, ramas y PRs a Git o a un archivo histórico
+- [x] Convertir docs 06/07 en checklists concisos de estado actual.
+- [x] Trasladar cronología, ramas y PRs a Git o a un archivo histórico
       explícito.
 - [ ] Reconciliar la guía visual y los inventarios de skills con el repositorio.
 
