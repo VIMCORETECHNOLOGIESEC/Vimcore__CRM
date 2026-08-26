@@ -7,7 +7,7 @@ producto.
 
 ---
 
-## 1. Arquitectura
+## 1. Arquitectura — Implementado
 
 ```
 Plataforma externa
@@ -38,7 +38,7 @@ TikTok o un sitio web propio consiste en escribir un adaptador nuevo.
 
 ---
 
-## 2. Contrato interno de ingesta
+## 2. Contrato interno de ingesta — Implementado
 
 Todo adaptador entrega esta estructura. Si no puede llenar un campo, lo deja nulo;
 no inventa valores por defecto.
@@ -83,7 +83,12 @@ tercer fallo conserva el sobre y el error en `FALLA_MANUAL`.
 
 ---
 
-## 3. Meta — Facebook e Instagram
+## 3. Meta — Facebook e Instagram — Implementado
+
+Adaptador, webhook (firma + handshake), servicio de token y job de
+verificación diaria existen en `backend/src/adapters/meta.adapter.ts`,
+`controllers/meta-webhook.controller.ts`, `services/meta-token.service.ts`
+y `jobs/verificacion-token.job.ts`.
 
 **API:** Meta Lead Ads (Graph API)
 **Mecanismo:** webhook con notificación + consulta del detalle
@@ -122,7 +127,11 @@ Instagram, porque no tiene suscripción ni token propios.
 
 ---
 
-## 4. LinkedIn
+## 4. LinkedIn — Requisito + Diseño (no implementado)
+
+Ningún adaptador ni consulta programada de LinkedIn existe hoy en
+`backend/src/`. Esta sección describe requisito funcional y diseño de
+integración pendientes.
 
 **API:** LinkedIn Lead Sync (Marketing Developer Platform)
 **Mecanismo:** consulta programada de formularios de generación de leads
@@ -143,7 +152,12 @@ consulta y no por webhook.
 
 ---
 
-## 5. X (Twitter)
+## 5. X (Twitter) — Diseño (endpoint reutilizado, adaptador no implementado)
+
+`POST /api/v1/ingesta/generico` existe y está montado (`routes/ingesta.routes.ts`),
+pero hoy solo despacha al adaptador de Google Forms
+(`controllers/ingesta.controller.ts`); no hay un adaptador de X conectado
+todavía.
 
 > **Advertencia (R1).** X no ofrece hoy una API de formularios de lead nativos.
 > Las Lead Generation Cards, el formato equivalente a Meta Lead Ads, fueron
@@ -169,7 +183,7 @@ la entrega.
 
 ---
 
-## 6. Google Forms (pruebas)
+## 6. Google Forms (pruebas) — Implementado
 
 Bridge de desarrollo y demostración. **Se implementa primero**, porque permite
 ejercitar el embudo completo sin depender de las aprobaciones de Meta y LinkedIn,
@@ -185,7 +199,7 @@ Debe quedar **desactivado por defecto** en el despliegue de producción.
 
 ---
 
-## 7. Panel de administración de bridges
+## 7. Panel de administración de bridges — Requisito + Diseño
 
 Accesible solo para el rol administrador.
 
@@ -205,7 +219,7 @@ rellena con el valor guardado es una filtración esperando ocurrir.
 
 ---
 
-## 8. Manejo de errores
+## 8. Manejo de errores — Implementado (Meta y Google Forms); Diseño (LinkedIn, X)
 
 | Situación | Comportamiento |
 |---|---|
