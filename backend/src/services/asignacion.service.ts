@@ -15,6 +15,7 @@ import type {
   TraspasarBody,
 } from "../schemas/leads.schema.js";
 import { canReassign, canTransfer, type MotivoDenegacion, type UsuarioAcceso } from "./leads.access.js";
+import * as shadowAuthorizationService from "./shadow-authorization.service.js";
 import type { LeadConSla } from "./leads.service.js";
 import { calculateEstadoSla } from "./sla.calculator.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
@@ -717,11 +718,16 @@ export async function reassignLead(
       if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
       assertLeadAbierto(lead);
 
-      const motivoDenegacion = canReassign(usuario, {
+      const leadReasignacion = {
         asesorId: lead.asesorId,
         vendedorId: lead.vendedorId,
         semaforo: lead.semaforo,
-      });
+      };
+      const motivoDenegacion = canReassign(usuario, leadReasignacion);
+      // Bloque B (Fase 2, "Shadow authorizer call sites"): fire-and-forget,
+      // corre para ambos desenlaces (permitido y denegado), nunca bloquea ni
+      // demora esta transacción.
+      void shadowAuthorizationService.compareCanReassign(usuario.id, leadReasignacion, motivoDenegacion);
       if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
@@ -770,11 +776,15 @@ export async function transferLead(
       if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
       assertLeadAbierto(lead);
 
-      const motivoDenegacion = canTransfer(usuario, {
+      const leadTraspaso = {
         asesorId: lead.asesorId,
         vendedorId: lead.vendedorId,
         etapa: lead.etapa,
-      });
+      };
+      const motivoDenegacion = canTransfer(usuario, leadTraspaso);
+      // Bloque B (Fase 2, "Shadow authorizer call sites"): fire-and-forget,
+      // corre para ambos desenlaces, nunca bloquea ni demora esta transacción.
+      void shadowAuthorizationService.compareCanTransfer(usuario.id, leadTraspaso, motivoDenegacion);
       if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
       const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
@@ -804,3 +814,4 @@ export async function transferLead(
   scheduleMetricasBroadcast();
   return result.lead;
 }
+

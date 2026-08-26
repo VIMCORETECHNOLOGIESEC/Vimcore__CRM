@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { generarClaveBridge, hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
+import { seedTenant, type UsuarioParaMembresia } from "./seed-tenant.js";
 
 /**
  * D11, D-G: la contraseña de semillas NUNCA está en el código ni en
@@ -50,14 +51,23 @@ async function main(): Promise<void> {
       { nombre: "Vendedor Demo", correo: "vendedor@crm.local", rol: "VENDEDOR" as const },
     ];
 
+    // Bloque B (Fase 5, diseño "seed.ts strategy"): captura los ids/roles
+    // reales de las filas upserteadas (incluida una fila ya existente de una
+    // corrida previa) — `seedTenant` los necesita para el mapeo por usuario.
+    const usuariosParaMembresia: UsuarioParaMembresia[] = [];
     for (const usuario of usuarios) {
       // upsert por correo (idempotente): re-ejecutar el script no duplica.
-      await prisma.usuario.upsert({
+      const fila = await prisma.usuario.upsert({
         where: { correo: usuario.correo },
         update: {},
         create: { ...usuario, passwordHash },
       });
+      usuariosParaMembresia.push({ id: fila.id, rol: fila.rol });
     }
+
+    // Bloque B (Fase 5): Empresa bootstrap + una Membresia por usuario de
+    // demo, mismo mapeo VENDEDOR->ASESOR que el backfill de producción.
+    await seedTenant(prisma, usuariosParaMembresia);
 
     // docs/05-bridges.md §6: bridge de pruebas Google Forms, INACTIVO por
     // defecto — un administrador lo activa explícitamente cuando lo conecte.
@@ -102,7 +112,9 @@ async function main(): Promise<void> {
       console.log(`Bridge ${bridge.nombre} — X-Bridge-Key: ${claveApi}`);
     }
 
-    console.log(`Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + 3 bridges.`);
+    console.log(
+      `Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + ${usuariosParaMembresia.length} membresias (Bloque B) + 3 bridges.`,
+    );
   } finally {
     await prisma.$disconnect();
   }
@@ -112,3 +124,4 @@ main().catch((error: unknown) => {
   console.error("Error al aplicar semillas:", error);
   process.exit(1);
 });
+

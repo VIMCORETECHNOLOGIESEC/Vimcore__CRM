@@ -7,6 +7,7 @@ import type { LeadConRelaciones } from "../repositories/lead.repository.js";
 import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js";
 import { applyFormulario } from "./formularios.service.js";
 import { canClose, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import * as shadowAuthorizationService from "./shadow-authorization.service.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
@@ -231,6 +232,9 @@ export async function transitionEtapa(
         // autoridad para cerrar — NUEVO deniega a todos los roles (409,
         // etapa_no_cerrable); fuera de NUEVO, rol/titularidad (403).
         const motivoCierre = canClose(usuario, lead);
+        // Bloque B (Fase 2, "Shadow authorizer call sites"): fire-and-forget,
+        // corre para ambos desenlaces, nunca bloquea ni demora esta transacción.
+        void shadowAuthorizationService.compareCanClose(usuario.id, lead, motivoCierre);
         if (motivoCierre === "etapa_no_cerrable") {
           throw new AppError(
             "etapa_no_cerrable",
@@ -317,3 +321,4 @@ export async function recalificarLead(
     new Date(),
   );
 }
+

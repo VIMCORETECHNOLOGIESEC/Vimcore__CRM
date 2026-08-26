@@ -54,6 +54,72 @@ async function firmarTokenExpirado(sub: string): Promise<string> {
     .sign(secretKey);
 }
 
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+
+describe("POST /api/v1/auth/login — dual-login-routing (Bloque B, Fase 2)", () => {
+  it("200 con credenciales de Membresia (Company credential succeeds)", async () => {
+    const correoMembresia = "membresia-integracion@empresa.local";
+    const passwordMembresia = "clave-membresia-123";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Titular Membresia",
+        correo: "titular-membresia@integracion.test",
+        passwordHash: await hashPassword("clave-no-usada-123"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await prisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        correo: correoMembresia,
+        passwordHash: await hashPassword(passwordMembresia),
+        activa: true,
+      },
+    });
+
+    const respuesta = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoMembresia, password: passwordMembresia });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.user.id).toBe(usuario.id);
+    expect(respuesta.body.accessToken).toEqual(expect.any(String));
+  });
+
+  it("401 con el mismo mensaje genérico cuando la Membresia está inactiva (activa=false)", async () => {
+    const correoMembresia = "membresia-inactiva@empresa.local";
+    const passwordMembresia = "clave-membresia-456";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Titular Membresia Inactiva",
+        correo: "titular-membresia-inactiva@integracion.test",
+        passwordHash: await hashPassword("clave-no-usada-456"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await prisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        correo: correoMembresia,
+        passwordHash: await hashPassword(passwordMembresia),
+        activa: false,
+      },
+    });
+
+    const respuesta = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoMembresia, password: passwordMembresia });
+
+    expect(respuesta.status).toBe(401);
+  });
+});
+
 describe("POST /api/v1/auth/login", () => {
   it("200 con accessToken y refreshToken cuando las credenciales son válidas", async () => {
     const respuesta = await request(app)
@@ -210,3 +276,4 @@ describe("GET /api/v1/auth/perfil — matriz docs/06 L45", () => {
     expect(respuesta.status).toBe(401);
   });
 });
+

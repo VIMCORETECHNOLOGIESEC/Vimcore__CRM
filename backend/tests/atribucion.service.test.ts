@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as cuentaPublicitariaRepository from "../src/repositories/cuenta-publicitaria.repository.js";
-import { resolverAtribucion } from "../src/services/atribucion.service.js";
+import { resolverAtribucion, resolverEmpresaIdDesdeBridge } from "../src/services/atribucion.service.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
+
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 
 let contador = 0;
 
-async function crearBridge(): Promise<{ id: string }> {
+async function crearBridge(overrides: { empresaId?: string | null } = {}): Promise<{ id: string }> {
   contador += 1;
   const bridge = await prisma.bridge.create({
     data: {
@@ -15,6 +17,7 @@ async function crearBridge(): Promise<{ id: string }> {
       nombre: `Bridge atribucion ${contador}`,
       claveApiHash: hashClaveBridge(`clave-atribucion-${contador}`),
       estado: "ACTIVO",
+      empresaId: overrides.empresaId ?? undefined,
     },
   });
   return { id: bridge.id };
@@ -143,4 +146,47 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
     expect(resultado.campaniaId).toBeNull();
     expect(resultado.idExternoCuenta).toBeNull();
   });
+
+  it("Bloque B (Fase 3, spec lead-empresa-derivation): incluye empresaId resuelto desde el Bridge (Bridge resolves a company)", async () => {
+    const bridge = await crearBridge({ empresaId: BOOTSTRAP_EMPRESA_ID });
+    const entrada = leadEntrante({ bridgeId: bridge.id, idExternoCuenta: null, idExternoCampania: null });
+
+    const resultado = await resolverAtribucion(entrada);
+
+    expect(resultado.empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
+  });
+
+  it("Bloque B (Fase 3): empresaId queda null cuando el Bridge no tiene empresa resuelta (Bridge without company)", async () => {
+    const bridge = await crearBridge();
+    const entrada = leadEntrante({ bridgeId: bridge.id, idExternoCuenta: null, idExternoCampania: null });
+
+    const resultado = await resolverAtribucion(entrada);
+
+    expect(resultado.empresaId).toBeNull();
+  });
 });
+
+describe("services/atribucion — resolverEmpresaIdDesdeBridge (Bloque B, Fase 3)", () => {
+  it("resuelve Bridge.empresaId cuando está presente", async () => {
+    const bridge = await crearBridge({ empresaId: BOOTSTRAP_EMPRESA_ID });
+
+    const empresaId = await resolverEmpresaIdDesdeBridge(bridge.id);
+
+    expect(empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
+  });
+
+  it("devuelve null cuando el Bridge no tiene empresa asignada", async () => {
+    const bridge = await crearBridge();
+
+    const empresaId = await resolverEmpresaIdDesdeBridge(bridge.id);
+
+    expect(empresaId).toBeNull();
+  });
+
+  it("devuelve null (nunca lanza) cuando el bridge no existe", async () => {
+    const empresaId = await resolverEmpresaIdDesdeBridge("00000000-0000-0000-0000-000000000000");
+
+    expect(empresaId).toBeNull();
+  });
+});
+

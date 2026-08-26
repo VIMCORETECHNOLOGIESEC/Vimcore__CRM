@@ -18,6 +18,18 @@ enum RolUsuario {
   @@map("rol_usuario")
 }
 
+// Bloque B (tenant-empresa-membresia-schema): rol dentro de una `Empresa`,
+// distinto de `RolUsuario` (holding-wide, sin cambios). Sin `VENDEDOR` propio
+// — el mapeo de backfill fija `VENDEDOR` legado a `ASESOR` con
+// `habilitadoParaVenta = true` (spec membership-backfill).
+enum RolMembresia {
+  ADMINISTRADOR
+  SUPERVISOR
+  ASESOR
+
+  @@map("rol_membresia")
+}
+
 enum TipoNotificacion {
   LEAD_ASIGNADO
   LEAD_TRASPASADO
@@ -63,8 +75,64 @@ model Usuario {
   // M7: citas donde este usuario es el responsable (`usuario_id`, "Responsable").
   citas                Cita[]
   notificaciones       Notificacion[]
+  // Bloque B (tenant-empresa-membresia-schema): backfillado 1:1 por la
+  // migración de este cambio (una `Membresia` bootstrap por `Usuario`
+  // existente); `Usuario.rol` sigue siendo la ÚNICA fuente de autorización
+  // en producción (shadow, no cutover).
+  membresias           Membresia[]
 
   @@map("usuarios")
+}
+
+// Bloque B (tenant-empresa-membresia-schema): unidad de tenant. Nace con una
+// fila bootstrap de id fijo (migración de este cambio, backfill Fase 1) —
+// ninguna `Empresa` real se crea todavía por código de aplicación en este
+// cambio.
+model Empresa {
+  id       String   @id @default(uuid()) @db.Uuid
+  nombre   String   @db.Text
+  creadoEn DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  membresias Membresia[]
+  bridges    Bridge[]
+  leads      Lead[]
+
+  @@map("empresas")
+}
+
+// Bloque B (tenant-empresa-membresia-schema): pertenencia de un `Usuario` a
+// una `Empresa` con un `RolMembresia` propio. `correo`/`passwordHash`
+// habilitan un segundo camino de login (dual-login-routing) — ambos quedan
+// NULL en todo backfill (spec membership-backfill); ningún código de este
+// cambio los escribe todavía. `@@unique([usuarioId, empresaId, rol])`
+// (spec, "Duplicate membership rejected"): rechaza la tripleta repetida.
+// `activa=false` es la baja lógica — la fila nunca se borra (spec, "Removal
+// is a soft toggle").
+model Membresia {
+  id                  String       @id @default(uuid()) @db.Uuid
+  usuarioId           String       @map("usuario_id") @db.Uuid
+  empresaId           String       @map("empresa_id") @db.Uuid
+  rol                 RolMembresia
+  // Backfill: `true` solo para `VENDEDOR` legado (mapeado a `ASESOR`);
+  // `false` para todo el resto, incluidos los `ASESOR` legados (spec
+  // membership-backfill).
+  habilitadoParaVenta Boolean      @default(false) @map("habilitado_para_venta")
+  correo              String?      @unique @db.Citext
+  passwordHash        String?      @map("password_hash") @db.Text
+  activa              Boolean      @default(true)
+  creadoEn            DateTime     @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn       DateTime     @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  usuario       Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@unique([usuarioId, empresaId, rol])
+  // Fase 2 (diseño, shadow authorizer hot path): "active memberships for
+  // this usuarioId", no empresa-scoped.
+  @@index([usuarioId, activa])
+  @@index([empresaId, rol])
+  @@map("membresias")
 }
 
 // D-A: `jti` (UUID v4 generado en la emisión) es la PK — el 100% de los
@@ -80,8 +148,15 @@ model RefreshToken {
   expiraEn   DateTime  @map("expira_en") @db.Timestamptz(6)
   revocadoEn DateTime? @map("revocado_en") @db.Timestamptz(6)
   creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  // Bloque B (dual-login-routing): nulo para toda sesión emitida antes de
+  // este cambio (spec, "Active session after migration") y para toda sesión
+  // emitida vía `Usuario.correo` (camino holding-wide, sin membresía).
+  // SetNull (no Cascade, mismo criterio que `Lead.asesor`/`vendedor`): dar de
+  // baja una `Membresia` nunca debe invalidar sesiones vigentes.
+  membresiaId String?  @map("membresia_id") @db.Uuid
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  membresia Membresia? @relation(fields: [membresiaId], references: [id], onDelete: SetNull)
 
   @@index([usuarioId, revocadoEn])
   @@map("refresh_tokens")
@@ -143,6 +218,10 @@ model Cliente {
 
   correos CorreoCliente[]
   leads   Lead[]
+  // Bloque B (Fase 3, dedup shadow): cola de revisión no invasiva — ver
+  // `LeadAbiertoRevisionPendiente` abajo. Vacía en producción hasta que el
+  // comparador en sombra detecte la primera colisión cross-empresa.
+  revisionesPendientes LeadAbiertoRevisionPendiente[]
 
   @@map("clientes")
 }
@@ -231,6 +310,13 @@ model Lead {
   idExternoCampania    String?  @map("id_externo_campania") @db.Text
   nombreCampania       String?  @map("nombre_campania") @db.Text
 
+  // Bloque B (Fase 3, lead-empresa-derivation): derivado desde
+  // `Bridge.empresaId` en ingesta (`resolverEmpresaIdDesdeBridge`), nullable
+  // passthrough — nunca falla la ingesta si el bridge no tiene empresa
+  // resuelta. Ownership/atribución legado (`asesorId`/`vendedorId`) se
+  // dual-escribe sin cambios; este campo no los reemplaza.
+  empresaId            String?  @map("empresa_id") @db.Uuid
+
   cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
   // borra, y un lead no debe quedar bloqueado por la baja de su asesor.
@@ -246,9 +332,16 @@ model Lead {
   respuestasFormulario RespuestaFormulario[]
   citas                Cita[]
   notificaciones       Notificacion[]
+  // Bloque B (Fase 3): SetNull — un lead nunca queda bloqueado por la baja
+  // de su `Empresa` (mismo criterio que `asesor`/`vendedor` arriba).
+  empresa              Empresa?              @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  // Bloque B (Fase 3, dedup shadow): filas de la cola de revisión donde este
+  // lead es el "lead abierto" en colisión — ver `LeadAbiertoRevisionPendiente`.
+  revisionesPendientes LeadAbiertoRevisionPendiente[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
+  @@index([empresaId], map: "idx_leads_empresa")
   // D11 (docs/03-modelo-datos.md §leads): el listado filtrado es el endpoint
   // más caliente del sistema — índices desde el primer día. El índice
   // parcial `idx_leads_sla` (`WHERE cerrado_en IS NULL`) no es expresable en
@@ -463,10 +556,17 @@ model Bridge {
   // cada tick de 15 min mientras el bridge sigue mudo.
   // `touchUltimoLeadEn` la resetea a `false` cuando llega un lead nuevo.
   advertenciaMudoEnviada Boolean @default(false) @map("advertencia_mudo_enviada")
+  // Bloque B (Fase 3, lead-empresa-derivation): resuelto por
+  // `atribucion.service.ts::resolverEmpresaIdDesdeBridge` en ingesta;
+  // nullable — un bridge sin empresa asignada nunca falla la ingesta,
+  // `Lead.empresaId` simplemente queda `null` (spec, "Bridge without
+  // company").
+  empresaId String? @map("empresa_id") @db.Uuid
 
   bridgeLogs          BridgeLog[]
   leadsRecibidos      LeadRecibido[]
   cuentasPublicitarias CuentaPublicitaria[]
+  empresa              Empresa?             @relation(fields: [empresaId], references: [id], onDelete: SetNull)
 
   @@map("bridges")
 }
@@ -583,3 +683,32 @@ model LeadRecibido {
   @@index([estado, disponibleEn], map: "idx_leads_recibidos_estado_disponible")
   @@map("leads_recibidos")
 }
+
+// Bloque B (Fase 3, diseño "Ambiguity persistence (NEW)"): cola de revisión
+// del comparador en sombra `(cliente, empresa)` de "lead abierto"
+// (`shadow-lead-scope.service.ts::compararLeadAbiertoScope`). Puramente
+// observacional — ningún código de este cambio lee `resuelto` para decidir
+// nada; queda para un futuro Bloque C. `empresaLeadId`/`empresaIngestaId`
+// son escalares planos (sin FK a `Empresa`): una foto denormalizada de la
+// colisión, deliberadamente desacoplada del ciclo de vida de `Empresa`.
+// `@@unique([clienteId, leadAbiertoId, empresaIngestaId])`: upsert
+// idempotente — una segunda repetición desde la MISMA empresa foránea sobre
+// el MISMO lead abierto no duplica la fila.
+model LeadAbiertoRevisionPendiente {
+  id               String    @id @default(uuid()) @db.Uuid
+  clienteId        String    @map("cliente_id") @db.Uuid
+  leadAbiertoId    String    @map("lead_abierto_id") @db.Uuid
+  empresaLeadId    String    @map("empresa_lead_id") @db.Uuid
+  empresaIngestaId String    @map("empresa_ingesta_id") @db.Uuid
+  detectadoEn      DateTime  @default(now()) @map("detectado_en") @db.Timestamptz(6)
+  resuelto         Boolean   @default(false)
+  resueltoEn       DateTime? @map("resuelto_en") @db.Timestamptz(6)
+
+  cliente     Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  leadAbierto Lead    @relation(fields: [leadAbiertoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, leadAbiertoId, empresaIngestaId])
+  @@index([resuelto])
+  @@map("leads_abiertos_revision_pendiente")
+}
+

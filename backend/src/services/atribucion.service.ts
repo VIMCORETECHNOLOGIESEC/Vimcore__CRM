@@ -1,3 +1,4 @@
+import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as campaniaRepository from "../repositories/campania.repository.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
 import type { PrismaClientOrTransaction } from "../lib/prisma.js";
@@ -18,6 +19,13 @@ export interface AtribucionResuelta {
   idExternoCuenta: string | null;
   idExternoCampania: string | null;
   nombreCampania: string | null;
+  /**
+   * Bloque B (Fase 3, spec lead-empresa-derivation): derivado de
+   * `Bridge.empresaId` vía `resolverEmpresaIdDesdeBridge`. Nullable
+   * passthrough — un bridge sin empresa resuelta NUNCA falla la ingesta
+   * (spec, "Bridge without company"); ninguna compañía se adivina.
+   */
+  empresaId: string | null;
 }
 
 /**
@@ -70,5 +78,31 @@ export async function resolverAtribucion(
     }
   }
 
-  return { cuentaPublicitariaId, campaniaId, idExternoCuenta, idExternoCampania, nombreCampania };
+  const empresaId = await resolverEmpresaIdDesdeBridge(entrada.bridgeId, client);
+
+  return {
+    cuentaPublicitariaId,
+    campaniaId,
+    idExternoCuenta,
+    idExternoCampania,
+    nombreCampania,
+    empresaId,
+  };
 }
+
+/**
+ * Bloque B (Fase 3, diseño "empresaId derivation layer"): envoltorio delgado
+ * sobre `bridgeRepository.findById` — devuelve `Bridge.empresaId ?? null`.
+ * Nunca lanza: un `bridgeId` inexistente degrada a `null`, igual que un
+ * bridge sin empresa asignada (mismo criterio de degradación silenciosa que
+ * el resto de este archivo). Reutilizado por `resolverAtribucion` arriba Y
+ * por el comparador en sombra de dedupe (`shadow-lead-scope.service.ts`).
+ */
+export async function resolverEmpresaIdDesdeBridge(
+  bridgeId: string,
+  client?: PrismaClientOrTransaction,
+): Promise<string | null> {
+  const bridge = await bridgeRepository.findById(bridgeId, client);
+  return bridge?.empresaId ?? null;
+}
+

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import {
@@ -300,3 +301,95 @@ describe("deduplicacion.service — deduplicateLead", () => {
     expect(lead.idExternoCampania).toBe("campania-sin-bridge");
   });
 });
+
+describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + dedupe shadow scope", () => {
+  const EMPRESA_BOOTSTRAP = "00000000-0000-0000-0000-000000000001";
+
+  async function crearBridgeConEmpresa(empresaId: string | null): Promise<{ id: string }> {
+    const bridge = await prisma.bridge.create({
+      data: {
+        redSocial: "FACEBOOK",
+        nombre: `Bridge dedupe-empresa ${randomUUID()}`,
+        claveApiHash: hashClaveBridge(`clave-dedupe-empresa-${randomUUID()}`),
+        estado: "ACTIVO",
+        empresaId: empresaId ?? undefined,
+      },
+    });
+    return { id: bridge.id };
+  }
+
+  it("deriva Lead.empresaId desde el Bridge al crear el lead (dual-write, legado intacto)", async () => {
+    const bridge = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP);
+    const entrada: DeduplicacionInput = { ...entradaBase(), bridgeId: bridge.id };
+
+    const resultado = await deduplicateLead(entrada);
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+    expect(lead.empresaId).toBe(EMPRESA_BOOTSTRAP);
+  });
+
+  it("cross-empresa: una repetición vía bridge de OTRA empresa sobre un lead abierto produce exactamente una fila de revisión pendiente, sin alterar el outcome legado (Scenario 'Client open in more than one company')", async () => {
+    const empresaB = (
+      await prisma.empresa.create({ data: { nombre: `Empresa B ${randomUUID()}` } })
+    ).id;
+    const bridgeA = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP);
+    const bridgeB = await crearBridgeConEmpresa(empresaB);
+    const telefono = telefonoUnico();
+
+    const primera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeA.id });
+    expect(primera.accion.kind).toBe("crear_lead");
+
+    const segunda = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeB.id });
+    // Scenario negativo (spec): el criterio global sigue siendo la ÚNICA
+    // autoridad — el outcome legado y el leadId NUNCA cambian por el shadow.
+    expect(segunda.accion.kind).toBe("interaccion_repetida");
+    expect(segunda.leadId).toBe(primera.leadId);
+
+    const filas = await prisma.leadAbiertoRevisionPendiente.findMany({
+      where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
+    });
+    expect(filas).toHaveLength(1);
+    expect(filas[0]?.empresaLeadId).toBe(EMPRESA_BOOTSTRAP);
+    expect(filas[0]?.empresaIngestaId).toBe(empresaB);
+
+    // Un segundo repeat desde la MISMA empresa foránea no duplica la fila
+    // (upsert idempotente sobre la tripleta única).
+    const tercera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeB.id });
+    expect(tercera.accion.kind).toBe("interaccion_repetida");
+    expect(tercera.leadId).toBe(primera.leadId);
+
+    const filasTrasSegundoRepeat = await prisma.leadAbiertoRevisionPendiente.findMany({
+      where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
+    });
+    expect(filasTrasSegundoRepeat).toHaveLength(1);
+  });
+
+  it("scope coincide (misma empresa en ambos lados): agreement, sin fila de revisión (Scenario 'agrees with legacy')", async () => {
+    const bridge = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP);
+    const telefono = telefonoUnico();
+
+    const primera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
+    const segunda = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
+
+    expect(segunda.accion.kind).toBe("interaccion_repetida");
+    const filas = await prisma.leadAbiertoRevisionPendiente.findMany({
+      where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
+    });
+    expect(filas).toHaveLength(0);
+  });
+
+  it("sin bridgeId en la repetición (compatibilidad M3): empresaIdCandidato null, ninguna fila de revisión, ingesta normal", async () => {
+    const bridge = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP);
+    const telefono = telefonoUnico();
+
+    const primera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
+    const segunda = await deduplicateLead(entradaBase({ telefono }));
+
+    expect(segunda.accion.kind).toBe("interaccion_repetida");
+    const filas = await prisma.leadAbiertoRevisionPendiente.findMany({
+      where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
+    });
+    expect(filas).toHaveLength(0);
+  });
+});
+

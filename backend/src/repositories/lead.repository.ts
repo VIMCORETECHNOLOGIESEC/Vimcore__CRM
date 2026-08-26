@@ -83,6 +83,14 @@ export interface CreateLeadData {
   idExternoCuenta?: Lead["idExternoCuenta"];
   idExternoCampania?: Lead["idExternoCampania"];
   nombreCampania?: Lead["nombreCampania"];
+  /**
+   * Bloque B (Fase 3, spec lead-empresa-derivation): derivado de
+   * `Bridge.empresaId` (`atribucion.service.ts::resolverEmpresaIdDesdeBridge`).
+   * Opcional/nullable passthrough, mismo criterio que los campos de
+   * atribución de arriba — un llamador que no lo provee (pruebas sin M4/M-A)
+   * deja la columna en `null`, sin romper.
+   */
+  empresaId?: Lead["empresaId"];
 }
 
 export async function createLead(

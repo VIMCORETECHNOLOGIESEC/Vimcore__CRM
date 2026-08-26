@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { RefreshToken, RolUsuario, Usuario } from "@prisma/client";
+import type { Membresia, RefreshToken, RolMembresia, RolUsuario, Usuario } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/repositories/usuario.repository.js", () => ({
@@ -12,6 +12,9 @@ vi.mock("../src/repositories/refresh-token.repository.js", () => ({
   revoke: vi.fn(),
   revokeAllForUser: vi.fn(),
   rotate: vi.fn(),
+}));
+vi.mock("../src/repositories/membresia.repository.js", () => ({
+  findByEmail: vi.fn(),
 }));
 vi.mock("../src/lib/password.js", () => ({
   verifyPassword: vi.fn(),
@@ -34,6 +37,7 @@ const usuarioRepository = await import("../src/repositories/usuario.repository.j
 const refreshTokenRepository = await import(
   "../src/repositories/refresh-token.repository.js"
 );
+const membresiaRepository = await import("../src/repositories/membresia.repository.js");
 const passwordLib = await import("../src/lib/password.js");
 const jwtLib = await import("../src/lib/jwt.js");
 const { logger } = await import("../src/lib/logger.js");
@@ -133,6 +137,95 @@ describe("auth.service.login", () => {
     await expect(login("ana@crm.local", "clave-correcta")).rejects.toMatchObject({
       code: "credenciales_invalidas",
       statusHttp: 401,
+    });
+  });
+});
+
+/** Bloque B (Fase 2, spec dual-login-routing). */
+function membresiaFalsa(overrides: Partial<Membresia> = {}): Membresia {
+  return {
+    id: "membresia-1",
+    usuarioId: "usuario-1",
+    empresaId: "empresa-1",
+    rol: "ASESOR" as RolMembresia,
+    habilitadoParaVenta: false,
+    correo: "ana@empresa.local",
+    passwordHash: "hash-membresia",
+    activa: true,
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+    ...overrides,
+  };
+}
+
+describe("auth.service.login — dual-login-routing (Bloque B, Fase 2)", () => {
+  it("resuelve por Membresia.correo cuando Usuario.correo no matchea, y emite membresiaId/empresaId en el access token", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(membresiaFalsa());
+    vi.mocked(passwordLib.verifyPassword).mockResolvedValue(true);
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ id: "usuario-1" }));
+
+    const resultado = await login("ana@empresa.local", "clave-correcta");
+
+    expect(resultado.accessToken).toBe("access.jwt.fake");
+    expect(resultado.user).toEqual({
+      id: "usuario-1",
+      nombre: "Ana",
+      correo: "ana@crm.local",
+      rol: "VENDEDOR",
+    });
+    expect(jwtLib.signAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "usuario-1", membresiaId: "membresia-1", empresaId: "empresa-1" }),
+    );
+    expect(refreshTokenRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usuario-1", membresiaId: "membresia-1" }),
+    );
+  });
+
+  it("rechaza con credenciales_invalidas (mismo mensaje) cuando ninguna tabla tiene ese correo", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(null);
+
+    await expect(login("nadie@empresa.local", "clave")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+      statusHttp: 401,
+    });
+    expect(passwordLib.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con credenciales_invalidas cuando la contraseña de la Membresia es incorrecta", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(membresiaFalsa());
+    vi.mocked(passwordLib.verifyPassword).mockResolvedValue(false);
+
+    await expect(login("ana@empresa.local", "clave-mala")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+      statusHttp: 401,
+    });
+  });
+
+  it("rechaza con credenciales_invalidas cuando la Membresia no tiene passwordHash (backfill Fase 1, nunca autentica)", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(
+      membresiaFalsa({ passwordHash: null }),
+    );
+
+    await expect(login("ana@empresa.local", "cualquier-clave")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+    });
+    expect(passwordLib.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con credenciales_invalidas cuando el Usuario dueño de la Membresia ya no está activo", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(membresiaFalsa());
+    vi.mocked(passwordLib.verifyPassword).mockResolvedValue(true);
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(
+      usuarioFalso({ id: "usuario-1", activo: false }),
+    );
+
+    await expect(login("ana@empresa.local", "clave-correcta")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
     });
   });
 });
@@ -294,3 +387,4 @@ describe("auth.service.logout", () => {
     expect(refreshTokenRepository.revoke).not.toHaveBeenCalled();
   });
 });
+

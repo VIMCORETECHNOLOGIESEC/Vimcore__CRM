@@ -9,7 +9,8 @@ import * as leadEventoRepository from "../repositories/lead-evento.repository.js
 import * as leadRepository from "../repositories/lead.repository.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
-import { resolverAtribucion, type AtribucionResuelta } from "./atribucion.service.js";
+import { resolverAtribucion, resolverEmpresaIdDesdeBridge, type AtribucionResuelta } from "./atribucion.service.js";
+import { compararLeadAbiertoScope } from "./shadow-lead-scope.service.js";
 import {
   decideAccionDeduplicacion,
   type DeduplicacionAction,
@@ -189,6 +190,18 @@ export async function deduplicateLead(
       // D. DECIDIR.
       const accion = decideAccionDeduplicacion(estado, ahora);
 
+      // Bloque B (Fase 3, spec "Company-scoped open-lead dedupe runs in
+      // shadow beside the global criterion"): SIEMPRE después de `accion` —
+      // puramente observacional, awaited dentro de esta MISMA `tx` (nunca
+      // fire-and-forget, a diferencia del comparador de Fase 2: esta `tx`
+      // interactiva se cierra en cuanto el callback retorna). NUNCA lee
+      // `accion` ni escribe ningún campo que la alimente — `leadAbierto` es
+      // la fila YA leída en el paso C (cero consulta extra).
+      const empresaIdCandidato = entrada.bridgeId
+        ? await resolverEmpresaIdDesdeBridge(entrada.bridgeId, tx)
+        : null;
+      await compararLeadAbiertoScope(leadAbierto, empresaIdCandidato, tx);
+
       // E. ESCRIBIR — siempre un lead_eventos, en la misma transacción.
       let leadId: string;
       let leadCreado: boolean;
@@ -218,6 +231,7 @@ export async function deduplicateLead(
               idExternoCuenta: entrada.idExternoCuenta ?? null,
               idExternoCampania: entrada.idExternoCampania ?? null,
               nombreCampania: entrada.nombreCampania ?? null,
+              empresaId: null,
             };
 
         const lead = await leadRepository.createLead(
@@ -240,6 +254,10 @@ export async function deduplicateLead(
             idExternoCuenta: atribucion.idExternoCuenta,
             idExternoCampania: atribucion.idExternoCampania,
             nombreCampania: atribucion.nombreCampania,
+            // Bloque B (Fase 3, spec lead-empresa-derivation): dual-write —
+            // los campos legado de arriba quedan intactos, `empresaId` es
+            // puramente aditivo.
+            empresaId: atribucion.empresaId,
           },
           tx,
         );
@@ -313,3 +331,4 @@ export async function deduplicateLead(
   }
   return outcome;
 }
+

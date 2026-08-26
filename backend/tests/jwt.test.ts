@@ -93,4 +93,28 @@ describe("lib/jwt", () => {
     const c = await signRefreshToken({ id: "user-1", jti: forced });
     expect(c.jti).toBe(forced);
   });
+
+  it("Bloque B (dual-login-routing): incluye membresiaId/empresaId en el access token cuando se proveen", async () => {
+    const token = await signAccessToken({
+      id: "user-1",
+      rol: "ASESOR",
+      membresiaId: "membresia-1",
+      empresaId: "empresa-1",
+    });
+
+    const payload = await verifyAccessToken(token);
+
+    expect(payload.membresiaId).toBe("membresia-1");
+    expect(payload.empresaId).toBe("empresa-1");
+  });
+
+  it("Bloque B: NO incluye membresiaId/empresaId cuando no se proveen (sesión holding-wide, sin cambio de comportamiento)", async () => {
+    const token = await signAccessToken({ id: "user-1", rol: "ADMINISTRADOR" });
+
+    const payload = await verifyAccessToken(token);
+
+    expect(payload.membresiaId).toBeUndefined();
+    expect(payload.empresaId).toBeUndefined();
+  });
 });
+

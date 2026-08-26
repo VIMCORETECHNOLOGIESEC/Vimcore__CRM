@@ -6,6 +6,10 @@ export interface CreateRefreshTokenParams {
   usuarioId: string;
   hash: string;
   expiraEn: Date;
+  // Bloque B (dual-login-routing): `undefined` para toda sesión holding-wide
+  // (`Usuario.correo`) — mismo comportamiento que antes de este cambio.
+  // Presente solo cuando la sesión se emitió por el camino de `Membresia`.
+  membresiaId?: string;
 }
 
 export async function create(

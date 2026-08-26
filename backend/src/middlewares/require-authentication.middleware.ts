@@ -37,11 +37,16 @@ export async function requireAuthentication(
   }
 
   // El claim `rol` del token es una pista; la BD es la verdad (D-F).
+  // Bloque B (dual-login-routing): `membresiaId`/`empresaId` viajan tal cual
+  // el claim del access token — additivos, nunca releídos de `Membresia`
+  // acá. Ninguna decisión de acceso los usa en este cambio.
   req.user = {
     id: user.id,
     nombre: user.nombre,
     correo: user.correo,
     rol: user.rol,
+    ...(typeof payload.membresiaId === "string" ? { membresiaId: payload.membresiaId } : {}),
+    ...(typeof payload.empresaId === "string" ? { empresaId: payload.empresaId } : {}),
   };
   next();
 }
