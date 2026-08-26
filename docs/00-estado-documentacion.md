@@ -77,21 +77,10 @@ forma parte del comportamiento actual.
 | QA no reproducible | Los usuarios, bridges, leads, citas y notificaciones de docs/12 no coinciden con `seed.ts` ni `seed-leads-qa.ts`. | No se puede usar el checklist actual como evidencia de aceptación. |
 | Guías de paquete incompatibles con el entorno soportado | `backend/README.md` y `frontend/README.md` todavía incluyen ejecución en host, aunque el README raíz ya la reemplaza por Docker. | Un lector que entre directamente por un paquete puede incumplir el aislamiento obligatorio. |
 
-## Correcciones ya aplicadas
-
-Estas correcciones dejaron de ser brechas; se registran aquí para que no vuelvan
-a presentarse como trabajo pendiente:
-
-| Corrección | Resultado vigente |
-|---|---|
-| Navegación y entorno | El README raíz define una única ruta feliz Docker y corrige el seed documentado. |
-| Baseline frente a evolución | AGENTS separa el AS-IS single-company de los borradores TO-BE no aprobados. |
-| Traspaso y SLA | Docs 02 refleja la compuerta real de `NUEVO` y calcula el SLA desde `slaInicioEn`. |
-| Estado de integración | Docs 11 reemplaza el plan histórico por un snapshot vigente y declara el filtro sintético de campaña. |
-| Fuentes no confiables | Docs 03 y 12 tienen banners que impiden usarlos para migraciones o aceptación QA. |
-| Sitio web propio | AGENTS y docs 01 ya no presentan el endpoint genérico actual como base preparada para `SITIO_WEB`. |
-
 ## Plan de corrección por lotes
+
+Git conserva la cronología de qué se corrigió y cuándo (`git log --follow` por
+archivo). Esta sección solo declara qué queda pendiente hoy.
 
 ### Lote 1 — Navegación y confianza documental
 
