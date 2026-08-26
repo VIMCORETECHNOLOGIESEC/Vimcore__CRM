@@ -67,7 +67,7 @@ forma parte del comportamiento actual.
 | `docs/17-seguridad-y-ciberseguridad.md` | Vigente | Política operativa para cambios sensibles | Separa controles AS-IS y gates TO-BE; consultar `docs/19` para evidencia auditada, riesgos y plan de pruebas. |
 | `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
 | `docs/19-auditoria-ciberseguridad.md` | Vigente con reservas | Informe consolidado de seguridad | Describe beneficios, hallazgos P0–P2, límites de la evidencia y pruebas pendientes; no autoriza cambios ni sustituye un pentest. |
-| `docs/blocks/{a..f}-*.md` | Borrador TO-BE | Carve-out por bloque de la migración multi-tenant (D1-D14) | Cada uno autocontenido: scope, D-refs, esquema/diseño movido, entrada/salida. No autoriza implementación por sí solo. |
+| `docs/blocks/{a..f}-*.md` | Mixto | Carve-out por bloque de la migración multi-tenant (D1-D14) | Bloques A y B: ✅ cerrados e implementados (ver su `Estado` individual en cada archivo). Bloques C-F: Borrador TO-BE — cada uno autocontenido (scope, D-refs, esquema/diseño movido, entrada/salida), no autorizan implementación por sí solos. |
 
 ## Brechas abiertas confirmadas
 
@@ -75,7 +75,7 @@ forma parte del comportamiento actual.
 |---|---|---|
 | ✅ Atribución normalizada resuelta (Bloque A, WU4) | `Lead` ahora tiene `campaniaId` y `cuentaPublicitariaId` como FK resueltos; `atribucion.service.ts` resuelve en ingesta con degradación silenciosa a `null` si no hay match. Commit 07b1d40. | Resuelto — el listado y detalle pueden mostrar relación confiable de campaña/cuenta, y el filtrado puede usar las FKs en lugar de JSON. |
 | Contrato de cierre divergente | Docs 02/04 exigen fecha de cierre en Venta/No Venta y docs/04 permite observaciones de Venta; el schema no recibe esos campos y el servicio fija `cerradoEn` con la hora del servidor. | Una interfaz o prueba basada en esos documentos enviaría datos descartados o no representables por el contrato actual. |
-| Autoridad de cierre AS-IS implementada (Bloque A, WU1–WU2); D7 multi-tenant pendiente | Bloque A implementó `canClose` como regla AS-IS (sin multi-tenant): ADMINISTRADOR siempre cierra sin reassign, SUPERVISOR nunca cierra, responsable operativo cierra solo si es el asignado. Decisión D7 (multi-tenant + `habilitadoParaVenta`) está resuelta en `docs/16` §8 pero sigue pendiente de implementación en Bloque B. | Autoridad de cierre AS-IS funciona; la migración D7 a multi-tenant requiere Bloque B. Rol dual (D5), reasignación (D9) y handoff (D8) también resueltos en D14, pendientes. |
+| Autoridad de cierre AS-IS implementada (Bloque A, WU1–WU2); corte D7 a autoridad real pendiente | Bloque A implementó `canClose` como regla AS-IS (sin multi-tenant): ADMINISTRADOR siempre cierra sin reassign, SUPERVISOR nunca cierra, responsable operativo cierra solo si es el asignado. Decisión D7 (multi-tenant + `habilitadoParaVenta`) está resuelta en `docs/16` §8; Bloque B ya implementó el andamiaje (`Membresia`, `habilitadoParaVenta`, comparador en sombra vía Fase 2), pero el CORTE de autoridad real (que `Membresia` mande la decisión de cierre en vez de `Usuario.rol`) sigue pendiente de una fase posterior (Bloque C/D). | Autoridad de cierre AS-IS funciona con `Usuario.rol`; el andamiaje de D7 ya existe pero no manda todavía. Rol dual (D5), reasignación (D9) y handoff (D8) también resueltos en D14, con corte de autoridad pendiente igual que D7. |
 | Historial técnico dentro de documentos vivos | Docs 06/07 conservan diarios extensos y notas superadas debajo de sus resúmenes actuales. | La fuente vigente se vuelve más difícil de distinguir de la cronología. |
 | QA no reproducible | Los usuarios, bridges, leads, citas y notificaciones de docs/12 no coinciden con `seed.ts` ni `seed-leads-qa.ts`. | No se puede usar el checklist actual como evidencia de aceptación. |
 
@@ -122,8 +122,11 @@ archivo). Esta sección solo declara qué queda pendiente hoy.
 - [x] Resolver organización, empresa, membresías, roles, permisos por canal,
       ownership de bridges y alcance de métricas — ver D1, D4, D5, D6, D12 en
       `docs/16` §8.
-- [ ] Aprobar migración, compatibilidad y estrategia de despliegue antes de
-      modificar esquema o autorización.
+- [ ] Aprobar migración, compatibilidad y estrategia de despliegue antes del
+      corte final de autorización real y del retiro de columnas legacy
+      (Bloque F). No aplica a la migración aditiva de Bloque B (`Empresa`,
+      `Membresia`, sombra), ya aprobada y ejecutada vía SDD (commit
+      `2526af7`).
 
 ## Regla de mantenimiento
 
