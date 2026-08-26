@@ -119,34 +119,12 @@ docker compose down
 El volumen de PostgreSQL se conserva. Para reiniciar desde una base vacía,
 use `docker compose down -v` sabiendo que elimina los datos locales.
 
-## Mapa vivo de documentación
+## Documentación
 
-Los estados de esta tabla son orientativos; la autoridad detallada y la fecha
-de verificación están en
+El mapa canónico de autoridad, estado de confianza y brechas de cada
+documento vive en un único lugar:
 [`docs/00-estado-documentacion.md`](docs/00-estado-documentacion.md).
 
-| Documento | Uso | Estado de confianza |
-|---|---|---|
-| [`docs/00-estado-documentacion.md`](docs/00-estado-documentacion.md) | Mapa canónico de autoridad, brechas y lotes de corrección | Vigente |
-| [`docs/01-alcance-mvp.md`](docs/01-alcance-mvp.md) | Baseline funcional y exclusiones del MVP v1 | Vigente con reservas |
-| [`docs/02-reglas-negocio.md`](docs/02-reglas-negocio.md) | Reglas del embudo, asignación, SLA y traspaso | Vigente con reservas |
-| [`docs/03-modelo-datos.md`](docs/03-modelo-datos.md) | Diseño inicial de entidades | **No confiable; usar Prisma** |
-| [`docs/04-formularios-semaforo.md`](docs/04-formularios-semaforo.md) | Formularios fijos, rúbrica y cierre | Vigente con reservas |
-| [`docs/05-bridges.md`](docs/05-bridges.md) | Contrato funcional de captación | Mixto |
-| [`docs/06-modulos-backend.md`](docs/06-modulos-backend.md) | Estado y checklist de M1–M9 | Mixto |
-| [`docs/07-modulos-frontend.md`](docs/07-modulos-frontend.md) | Estado y checklist de F1–F8 | Mixto |
-| [`docs/08-dashboard-kpis.md`](docs/08-dashboard-kpis.md) | Definición funcional de KPIs | Vigente con reservas |
-| [`docs/09-linea-grafica-frontend.md`](docs/09-linea-grafica-frontend.md) | Referencia visual del frontend | Mixto |
-| [`docs/09-skills-agentes-backend.md`](docs/09-skills-agentes-backend.md) | Inventario pretendido de skills backend | No confiable |
-| [`docs/10-skills-agente-frontend.md`](docs/10-skills-agente-frontend.md) | Inventario de skills frontend | Vigente con reservas |
-| [`docs/11-plan-integracion.md`](docs/11-plan-integracion.md) | Snapshot de integración front-back y brechas | Vigente |
-| [`docs/12-pruebas-manuales-qa.md`](docs/12-pruebas-manuales-qa.md) | Catálogo histórico de escenarios manuales | **No ejecutable** |
-| [`docs/13-configuracion-bridges.md`](docs/13-configuracion-bridges.md) | Operación de bridges Meta y Google Forms | Vigente con reservas |
-| [`docs/14-evolucion-multitenant.md`](docs/14-evolucion-multitenant.md) | Arquitectura candidata para holdings y múltiples empresas | Borrador TO-BE |
-| [`docs/15-benchmark-crm-y-roadmap.md`](docs/15-benchmark-crm-y-roadmap.md) | Benchmark de CRM y priorización de evolución | Borrador TO-BE |
-| [`docs/16-hallazgos-y-preguntas.md`](docs/16-hallazgos-y-preguntas.md) | Entrada ejecutiva entre equipos para revisar hallazgos y decisiones | Vigente para revisión; no contractual |
-| [`docs/17-seguridad-y-ciberseguridad.md`](docs/17-seguridad-y-ciberseguridad.md) | Lineamientos de seguridad, uso de `/security-review` y checklist de QA por módulo | Vigente |
-
-Las guías de cada paquete aportan contexto técnico, pero cualquier instrucción
-de ejecución en host que todavía contengan queda reemplazada por el flujo Docker
-de este README.
+Para variables de entorno, comandos de build/test y estructura de carpetas
+de cada paquete, ver [`docs/18-desarrollo-local.md`](docs/18-desarrollo-local.md)
+— complementa, sin repetir, el flujo Docker de este README.
