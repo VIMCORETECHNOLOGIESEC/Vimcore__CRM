@@ -1,0 +1,17 @@
+-- M-hardening Bloque A (WU7, spec bridge-log-notifications): nuevo valor de
+-- TipoNotificacion para notificar a los SUPERVISOR activos cuando un lead
+-- ingresa con datos incompletos (bridge log nivel ADVERTENCIA).
+--
+-- Va en su PROPIA migración, sin ninguna sentencia que consuma el valor:
+-- Postgres prohíbe usar un valor de enum recién agregado dentro de la misma
+-- transacción que lo agrega, y Prisma envuelve cada migration.sql en una
+-- transacción. Debe aplicarse antes de que corra el código de WU7
+-- (`ingesta.service.ts`) que sí usa el valor en tiempo de ejecución — nunca
+-- dentro de una migración.
+--
+-- Orden de aplicación deliberado (Rollout del diseño, decisión confirmada
+-- con el usuario): WU7 (esta migración) → WU4 (atribución) → WU5 (marcador
+-- de alerta). No es un requisito funcional estricto de Postgres — las tres
+-- migraciones son independientes entre sí y todas se aplican antes de que
+-- arranque el runtime — pero se respeta el orden documentado explícitamente.
+ALTER TYPE "tipo_notificacion" ADD VALUE 'LEAD_DATO_INCOMPLETO';

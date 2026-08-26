@@ -27,6 +27,10 @@ enum TipoNotificacion {
   ERROR_BRIDGE
   TOKEN_POR_EXPIRAR
   INTERACCION_REPETIDA
+  // M-hardening Bloque A (WU7, spec bridge-log-notifications): un log de
+  // bridge ADVERTENCIA por datos incompletos notifica a los SUPERVISOR
+  // activos, uno por lead, sin agregación.
+  LEAD_DATO_INCOMPLETO
 
   @@map("tipo_notificacion")
 }
@@ -215,11 +219,28 @@ model Lead {
   productoServicio  String?    @map("producto_servicio") @db.Text
   formaPago         FormaPago? @map("forma_pago")
 
+  // M-hardening Bloque A (WU4, spec lead-attribution, D6/D9): atribución
+  // canónica resuelta por `atribucion.service.ts::resolverAtribucion` en
+  // ingesta (lookup de dos pasos: cuenta primero, campaña después — D6).
+  // Ambas FKs son nullable y degradan a `null` en silencio cuando no hay
+  // match (nunca fallan la ingesta); los 3 escalares crudos se persisten
+  // siempre, con o sin match canónico.
+  cuentaPublicitariaId String?  @map("cuenta_publicitaria_id") @db.Uuid
+  campaniaId           String?  @map("campania_id") @db.Uuid
+  idExternoCuenta      String?  @map("id_externo_cuenta") @db.Text
+  idExternoCampania    String?  @map("id_externo_campania") @db.Text
+  nombreCampania       String?  @map("nombre_campania") @db.Text
+
   cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
   // borra, y un lead no debe quedar bloqueado por la baja de su asesor.
   asesor               Usuario?              @relation("LeadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
   vendedor             Usuario?              @relation("LeadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
+  // M-hardening Bloque A (WU4): SetNull, mismo criterio que asesor/vendedor
+  // arriba — borrar una cuenta/campaña nunca debe bloquear al lead que la
+  // referencia.
+  cuentaPublicitaria   CuentaPublicitaria?   @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: SetNull)
+  campania             Campania?             @relation(fields: [campaniaId], references: [id], onDelete: SetNull)
   eventos              LeadEvento[]
   leadsRecibidos       LeadRecibido[]
   respuestasFormulario RespuestaFormulario[]
@@ -237,6 +258,8 @@ model Lead {
   @@index([vendedorId, etapa], map: "idx_leads_vendedor_etapa")
   @@index([etapa, ingresadoEn(sort: Desc)], map: "idx_leads_etapa_ingreso")
   @@index([redSocial], map: "idx_leads_red_social")
+  @@index([campaniaId], map: "idx_leads_campania")
+  @@index([cuentaPublicitariaId], map: "idx_leads_cuenta_publicitaria")
   @@map("leads")
 }
 
@@ -477,9 +500,16 @@ model CuentaPublicitaria {
   tokenCifrado  String?           @map("token_cifrado") @db.Text
   tokenExpiraEn DateTime?         @map("token_expira_en") @db.Timestamptz(6)
   secretoWebhook String?          @map("secreto_webhook") @db.Text
+  // M-hardening Bloque A (WU5, spec token-expiry-alerting): marcador de
+  // idempotencia — guarda el ÚLTIMO `tokenExpiraEn` ya alertado. Nullable,
+  // NO booleano: un token renovado mueve `tokenExpiraEn`, así que la alerta
+  // se autorearma sin necesitar una escritura de reseteo separada (a
+  // diferencia de `Bridge.advertenciaMudoEnviada`).
+  alertaExpiracionParaEn DateTime? @map("alerta_expiracion_para_en") @db.Timestamptz(6)
 
   bridge    Bridge     @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
   campanias Campania[]
+  leads     Lead[]
 
   @@unique([bridgeId, idExterno])
   @@map("cuentas_publicitarias")
@@ -498,6 +528,7 @@ model Campania {
   activa               Boolean   @default(true)
 
   cuentaPublicitaria CuentaPublicitaria @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+  leads              Lead[]
 
   @@unique([cuentaPublicitariaId, idExterno])
   @@map("campanias")
