@@ -57,7 +57,7 @@ forma parte del comportamiento actual.
 | `docs/07-modulos-frontend.md` | Mixto | Checklist técnico frontend | La tabla consolidada inicial es útil; el cuerpo mezcla el estado actual con etapas antiguas basadas en mocks y ramas de integración. |
 | `docs/08-dashboard-kpis.md` | Vigente con reservas | Definiciones funcionales de KPIs | Los KPIs están implementados, pero no todos se calculan solo con `lead_eventos`; campaña se resuelve actualmente desde JSON. |
 | `docs/09-linea-grafica-frontend.md` | Mixto | Línea visual aprobada | La paleta y principios siguen siendo referencia; estados de librerías y flujo de mockups contienen historia ya superada. |
-| `docs/09-skills-agentes-backend.md` | No confiable | Inventario pretendido de skills | Declara skills no presentes y muestra comandos incompatibles con la política obligatoria de pnpm. |
+| `docs/09-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
 | `docs/10-skills-agente-frontend.md` | Vigente con reservas | Inventario de skills frontend | El inventario requiere reconciliar conteos, rutas de registro y comandos de instalación antes de reutilizarlo. |
 | `docs/11-plan-integracion.md` | Vigente | Snapshot de integración AS-IS | Resumen conciso verificado contra rutas, servicios y clientes HTTP actuales. El plan cronológico anterior queda en Git. |
 | `docs/12-pruebas-manuales-qa.md` | No confiable | Catálogo histórico de escenarios QA | Sus fixtures no coinciden con los seeds actuales; no permite certificar QA hasta reconstruirse. |
