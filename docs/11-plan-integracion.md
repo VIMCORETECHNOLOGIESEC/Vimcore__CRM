@@ -1,182 +1,78 @@
-# 11 — Plan de integración front-back
+# 11 — Estado actual de integración front-back
 
-Estado real de qué funcionalidades del frontend ya consumen el backend real
-y cuáles siguen contra datos mock, más el orden recomendado para ir
-reemplazando cada mock. Fuente de verdad: el checklist de módulos backend
-(`06-modulos-backend.md`), el checklist de módulos frontend
-(`07-modulos-frontend.md`) y el token `INTEGRACION-BACKEND`, grepeable en
-todo `frontend/src` — cada aparición es un punto de integración concreto,
-con un comentario explicando exactamente qué reemplazar.
+> **Estado:** snapshot vigente del AS-IS single-company.
+>
+> **Autoridad:** rutas, servicios y repositorios del backend; clientes
+> `*.api.ts`, hooks y pantallas del frontend.
+>
+> **Verificación:** revisión estática de la rama `test/gpt`, commit `e70b3a4`,
+> 2026-08-25. No sustituye una ejecución de QA.
 
-Marca cada casilla al reemplazar el mock correspondiente por la llamada real
-(`httpClient`) y confirmar que los tests de ese módulo siguen en verde.
+## Conclusión rápida
 
----
+Las funcionalidades F2–F8 tienen integraciones reales y sus consultas o
+mutaciones centrales llegan al backend. Eso no significa que todos sus controles
+estén conectados: en F3 el selector de campaña usa un catálogo sintético local y
+su valor no se envía a `GET /leads`. **Integrado no significa funcionalmente
+cerrado:** M4–M6 y F3–F4 conservan brechas de autorización, atribución de origen,
+datos de contacto y actualización en tiempo real.
 
-## Resumen de estado
+La cronología anterior de fases, ramas y PRs no se mantiene en este documento.
+Git conserva ese historial:
 
-| Feature (frontend) | Módulo backend | Backend | Frontend | Bloqueador |
-| --- | --- | --- | --- | --- |
-| F2 Autenticación | M2 | ✅ Completo | ✅ Real | — |
-| F7 Administración de usuarios | M2 | ✅ Completo (gap: baja lógica no reasigna cartera) | ✅ Real | — |
-| **F3 Listado de leads** | M5 | ✅ Completo | ✅ Real | — (Fase 1 mergeada en `test/integration`) |
-| **F4 Detalle de lead** | M5 + M6 + M7 | ✅ Completo | ✅ Real | — (Fase 1 mergeada en `test/integration`) |
-| F8 Administración de bridges | M4 | ◐ Parcial (solo adaptador Google Forms) | ❌ Mock | Completar M4 en backend |
-| F6 Notificaciones | M8 | ✗ No iniciado | ❌ Mock | Implementar M8 en backend |
-| F5 Dashboard | M9 | ✗ No iniciado | ❌ Mock | Implementar M9 en backend |
+```bash
+git log --follow -- docs/11-plan-integracion.md
+```
 
----
+## Matriz vigente
 
-## Fase 1 — Leads (F3 + F4 → M5/M6/M7) — [issue #6](https://github.com/DinnZart/crm_comercial/issues/6) — ✅ MERGEADA en `test/integration`
+| Funcionalidad | Backend | Integración actual | Brecha que impide declararla cerrada |
+|---|---|---|---|
+| F2 — Autenticación | M2 | Login, refresh, logout y perfil usan API real. | No existe cambio de contraseña autoservicio para roles no administradores. |
+| F3 — Listado de leads | M4–M6 | Consulta, búsqueda, filtros de etapa/semáforo/red/responsable/fecha/SLA y asignación masiva usan API real. El filtro de campaña no está integrado. | La UI muestra campañas sintéticas y no envía `campaniaId`; campaña/cuenta tampoco tienen relación canónica. Faltan vistas activos/cerrados y evento `lead.nuevo`. |
+| F4 — Detalle de lead | M5–M7 | Detalle, etapas, traspaso, reasignación, formularios y citas usan API real. | Correo principal, campaña y cuenta se pierden en el DTO; la UI expone acciones sin capacidad y no resuelve bien un 403. |
+| F5 — Dashboard | M9 | Todos los KPIs consultan endpoints reales y se invalidan mediante SSE. | La métrica por campaña todavía depende del nombre guardado en JSON, no de una atribución normalizada. |
+| F6 — Notificaciones | M8 | Listado, lectura individual/masiva y canal SSE usan backend real. | Falta el productor preventivo `TOKEN_POR_EXPIRAR`; no todo evento de negocio tiene el alcance de entrega requerido. |
+| F7 — Usuarios | M2/M6 | CRUD, baja/reactivación y reasignación de cartera usan API real. | Sin gap de integración principal; sus permisos siguen siendo globales al despliegue single-company. |
+| F8 — Bridges | M4 | CRUD de bridges/cuentas, rotación de clave, prueba de conexión, logs y catálogos usan API real. | El endpoint genérico atribuye como Google Forms; LinkedIn/X siguen pendientes y la ingesta no materializa cuenta/campaña en el lead. |
 
-> **Corrección (exploración SDD, `sdd/integracion-leads-f3-f4/explore`):** la
-> premisa original de "cero trabajo de backend" era incorrecta.
-> `GET /leads`/`GET /leads/:id` devolvían el `Lead` plano (sin `include` de
-> Prisma) — sin nombre/teléfono/correo del cliente ni nombre de
-> asesor/vendedor, solo IDs. Tampoco existía `busqueda` en
-> `listLeadsQuerySchema`, y `GET /usuarios` era exclusivo de
-> `ADMINISTRADOR` (bloqueaba a Supervisor como catálogo de responsables,
-> pese a que M6/DD10 lo autoriza a elegir destino explícito). Se resolvió
-> con una rebanada de backend antes de integrar el frontend, para no
-> degradar la UX de F3/F4. Detalle completo de decisiones y diseño en
-> Engram `sdd/integracion-leads-f3-f4/{proposal,spec,design,tasks,verify-report}`.
+## Brechas compartidas, por orden de decisión
 
-Entregado en 5 PRs encadenados contra `test/integration` (mergeados
-[#9](https://github.com/DinnZart/crm_comercial/pull/9)→[#10](https://github.com/DinnZart/crm_comercial/pull/10)→[#11](https://github.com/DinnZart/crm_comercial/pull/11)→[#12](https://github.com/DinnZart/crm_comercial/pull/12)→[#13](https://github.com/DinnZart/crm_comercial/pull/13)),
-verificados contra el estado real fusionado (backend 348/348, frontend
-424/424, `tsc` limpio — ver Engram `sdd/integracion-leads-f3-f4/verify-report`).
+1. **P0 — Autoridad comercial.** Aprobar quién puede cerrar, qué acredita el
+   primer contacto y quién puede cambiar un vendedor. El comportamiento actual
+   no garantiza la separación asesor→vendedor planteada para la evolución.
+2. **P1 — Origen canónico del lead.** Definir y persistir bridge, cuenta,
+   campaña y futura empresa/sitio sin depender de `payload_original`.
+3. **P1 — Fuente del endpoint genérico.** Evitar que un bridge autenticado de
+   otra red quede registrado como Google Forms antes de sumar canales.
+4. **P1 — Contratos F3/F4.** Exponer correo y atribución reales, y entregar
+   capacidades de edición coherentes con la autorización del backend.
+5. **P1 — Operación preventiva.** Producir de forma idempotente la alerta de
+   token próximo a expirar.
+6. **P2 — Flujo y tiempo real.** Completar vistas activos/cerrados, evento de
+   lead nuevo, manejo de 403 y alcance correcto de eventos SSE.
+7. **P2 — Cobertura de canales.** Implementar LinkedIn/X solo después de cerrar
+   el contrato de origen y atribución.
 
-- [x] Backend: `include: { cliente, asesor, vendedor }` en
-      `lead.repository.ts::findById/findMany`, mapeado al shape anidado que
-      espera el frontend (PR #9)
-- [x] Backend: `busqueda` opcional (ILIKE sobre nombre/teléfono/correo de
-      cliente) en `listLeadsQuerySchema` (PR #9)
-- [x] Backend: `GET /usuarios/responsables?rol=` accesible a
-      Admin/Supervisor, solo usuarios activos, sin filtro de equipo,
-      devuelve `{id, nombre, rol}[]` (PR #10)
-- [x] Backend: `POST /leads/asignar-lote` — una sola request
-      (`{leadIds, asesorId}`), N llamadas secuenciales a `assignLead`
-      internamente, reporta `exitosos[]`/`fallidos[]` por lead (decisión de
-      producto: se descartó la alternativa de N llamadas desde el
-      frontend) (PR #10)
-- [x] Backend: asignación automática (M6) ahora se dispara DESPUÉS del
-      commit real de ingesta (no dentro de la misma transacción), con 3
-      reintentos acotados, guarda de idempotencia, y degradación a evento
-      `ASIGNACION_FALLIDA` + `bridge_logs` si se agotan los reintentos —
-      ruptura consciente de la invariante original de M6 D1, documentada en
-      `docs/06-modulos-backend.md` (PR #11). **Portado también a `dev-back`**
-      (commits `ae2c923`+`7681685`) para que no quede huérfano ese cambio de
-      comportamiento.
-- [x] `frontend/src/funcionalidades/leads/leads.api.ts::fetchLeadsApi` →
-      `httpClient.get<LeadsResponse>("/leads", { params })` (PR #12)
-- [x] `leads.api.ts::assignLeadsMasivoApi` → `POST /leads/asignar-lote` real
-      (PR #12)
-- [x] `leads.api.ts::getCatalogoResponsables`/`getCatalogoResponsablesConRol` →
-      `GET /usuarios/responsables?rol=` real, reemplaza fixtures
-      `ASESORES`/`VENDEDORES` (PR #12)
-- [x] `frontend/src/funcionalidades/leads/detalle/leadDetalle.api.ts` →
-      `httpClient` real contra `GET /leads/:id`, `PATCH /leads/:id/etapa`
-      (formulario de etapa/cierre venta/cierre no-venta colapsados en un
-      único endpoint), endpoints de `M7 Citas` (PR #12)
-- [x] Fix: botón "Cancelar" de cita separado de `markCitaResultApi` hacia
-      `POST /citas/:citaId/cancelar` dedicado — el mock lo mapeaba mal
-      contra `/resultado`, que solo acepta `CUMPLIDA`/`NO_ASISTIO` y
-      hubiera roto con 400 contra el backend real (PR #13)
-- [x] `usuarios.api.ts::getCargaActivaDeUsuario`/`reassignCarteraActiva` —
-      ya no dependen del mock de leads (PR #12)
+El detalle técnico y la evidencia de cada brecha viven en
+[`06-modulos-backend.md`](06-modulos-backend.md) y
+[`07-modulos-frontend.md`](07-modulos-frontend.md).
 
-### Pendiente / diferido explícitamente (no bloquea el cierre de Fase 1)
+## Qué significa “integración real” aquí
 
-- [ ] `LeadsPage.tsx` — selector "Leads por página" (10/25/50/100) sigue
-      pendiente de aprobación de producto
-- [ ] `LeadsPage.tsx` — canal SSE de "lead nuevo" (depende de M8, Fase 3)
-- [ ] `LeadTimeline.tsx` — historial de `lead_eventos` no se conecta
-      todavía (fuera de alcance de esta rebanada)
-- [ ] Gaps de contrato conocidos y documentados en código
-      (`INTEGRACION-BACKEND-GAP`): `cliente.correoPrincipal` siempre null
-      (include superficial), `campania`/`cuentaPublicitaria` siempre null
-      (sin entidad de backend, es M4/F8), `EstadoSla.CERRADO` sin
-      equivalente en backend
-- [ ] `LEADS_MOCK` sigue teniendo 2 consumidores fuera de alcance:
-      `dashboard/metricas.api.ts` (F5) y `notificaciones/notificaciones.api.ts`
-      (F6) — se resuelven en Fase 3
+Una funcionalidad se marca integrada cuando su pantalla usa `httpClient` o el
+cliente SSE contra una ruta autenticada del backend y conserva el contrato de
+respuesta esperado para su flujo central. Un control aislado puede seguir sin
+integración, como el filtro visual de campaña de F3. Esa marca **no demuestra**
+por sí sola:
 
-### Nota de arquitectura de ramas
+- aceptación de la regla de negocio;
+- aislamiento multi-tenant;
+- cobertura de todos los canales;
+- calidad de datos histórica;
+- pruebas manuales reproducibles.
 
-Esta fase se implementó y mergeó directamente en `test/integration`
-(no en `dev-back`/`dev-front`), rompiendo momentáneamente el uso previsto
-de esa rama como "carril de pruebas antes de mergear a main". Decisión
-tomada: `test/integration` sigue siendo el carril de validación
-descartable; los cambios de comportamiento real (como el rework de M6) se
-portean de vuelta a `dev-back`/`dev-front` a medida que se confirman,
-en vez de dejar que `test/integration` se convierta en el nuevo tronco.
-
-**Backend (`dev-back`) tiene Unit A1 + A2 + A3 completas**, porteadas en
-commits separados (`982e481`+`c3f1b1b` A1, `f7e08f8`+`7a0b4f4` A2,
-`ae2c923`+`7681685` A3). **Frontend (`dev-front`) tiene Unit B1 + B2
-completas** (`c4378b7` mock replacement, `04fae7a` fix cancelar cita,
-`45918d7` docs), incluyendo el soporte de `params`/`buildQueryString` en
-`httpClient.ts` que ese port necesitó (portado desde `test/integration`,
-sin acoplarse al feature de paginación de usuarios que lo introdujo
-originalmente).
-
-**Nomenclatura de `usuarios.*` — corregida hacia el patrón real del
-proyecto.** Durante el port de A2 se descubrió que `test/integration`
-había regresado a nombres en español (`postUsuario`/`getUsuarios`) por un
-commit F7 no relacionado, mientras `dev-back` ya tenía un fix a inglés
-puro (`postUser`/`getUsers`, commit `ce33902`, de un hook de revisión
-anterior). Se asumió inicialmente que inglés puro era la convención
-correcta y se corrigió en ese sentido — **decisión revertida tras releer
-`AGENTS.md` directamente**: la regla real exige un híbrido (verbo en
-inglés + sustantivo de dominio en español cuando ya está establecido en
-`docs/`, ej. `usuarioId`), confirmado por el patrón sin excepciones en el
-resto del backend (`assignLead`, `scheduleCita`, `cancelCita`,
-`rescheduleCita`). Nomenclatura final: `postUsuario`/`getUsuarios`/
-`getUsuarioById`/`patchUsuario`/`deleteUsuario` (controller),
-`createUsuario`/`findUsuarios`/`findUsuarioById`/`updateUsuario`/
-`deactivateUsuario` (service), `createUsuarioBodySchema`/
-`updateUsuarioBodySchema` (schema) — aplicada en `test/integration`
-(`8d9d105`) y `dev-back` (`6da487f`). El frontend no se ve afectado
-(rutas HTTP y shape de JSON sin cambios).
-
-**Hallazgo abierto, no urgente:** las respuestas JSON de
-`usuarios.controller.ts` usan `{user}`/`{users}` en inglés mientras
-`citas.controller.ts` usa `{cita}` en español — inconsistencia real de
-contrato de API, requiere coordinación cross-stack (rompe el contrato con
-el frontend si se corrige sin avisar), queda pendiente de decisión.
-
-**Estado al 2026-08-17: `test/integration`, `dev-back` y `dev-front`
-están alineados** (Fase 1 completa en las tres ramas, mismos nombres,
-sin deuda de sincronización pendiente). Listas para continuar con
-Fase 2 (bridges) en paralelo, en `dev-back`/`dev-front` directamente.
-
-## Fase 2 — Bridges (M4 backend + F8) — [issue #7](https://github.com/DinnZart/crm_comercial/issues/7)
-
-- [ ] Completar M4 en backend: adaptadores Meta/LinkedIn/X, cifrado
-      AES-256-GCM de tokens, CRUD de bridges y cuentas publicitarias, jobs
-      programados de expiración/inactividad (`06-modulos-backend.md` §M4)
-- [ ] `frontend/src/funcionalidades/bridges/bridges.api.ts` (14 puntos
-      `INTEGRACION-BACKEND`) → reemplazar mock por `httpClient` una vez que
-      M4 esté completo
-
-## Fase 3 — Notificaciones (M8) y Dashboard (M9), en paralelo — [issue #8](https://github.com/DinnZart/crm_comercial/issues/8)
-
-- [ ] Implementar M8 en backend: servicio de notificaciones,
-      `GET /notificaciones`, `PATCH /notificaciones/:id/leer`, canal SSE
-      `GET /eventos` con reconexión (`06-modulos-backend.md` §M8)
-- [ ] `frontend/src/funcionalidades/notificaciones/notificaciones.api.ts` (3
-      puntos `INTEGRACION-BACKEND`) → reemplazar por `httpClient` + cliente SSE
-- [ ] Implementar M9 en backend: agregación de KPIs, los 7 endpoints
-      `GET /metricas/*`, alcance por rol, emisión por SSE
-      (`06-modulos-backend.md` §M9)
-- [ ] `frontend/src/funcionalidades/dashboard/metricas.api.ts`,
-      `metricas.utils.ts`, `DashboardPage.tsx` (9 puntos
-      `INTEGRACION-BACKEND`) → reemplazar por `httpClient`
-
----
-
-## Seguimiento
-
-El detalle día a día de cada fase se trackea en GitHub Issues (uno por fase,
-con esta misma checklist como cuerpo). Este documento es la fuente de verdad
-versionada; los issues son el estado operativo (quién, cuándo, en qué PR).
+Para saber qué fuente puede guiar una corrección, empezar por
+[`00-estado-documentacion.md`](00-estado-documentacion.md). La evolución hacia
+holdings/múltiples empresas debe documentarse aparte como TO-BE y no altera este
+snapshot hasta que exista una decisión aprobada e implementación verificada.
