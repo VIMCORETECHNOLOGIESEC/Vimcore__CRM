@@ -909,17 +909,167 @@ explícitamente) esto queda anotado como pendiente de una pasada de
 verificación antes de migrar, no como una reinterpretación silenciosa de
 D2/D3/D7/D8/D9.
 
-Todas las decisiones D1–D13 quedaron registradas explícitamente en esta
+**Nota de estado (2026-08-25):** el efecto cascada señalado arriba quedó
+resuelto en **D14**, inmediatamente debajo.
+
+**D14 — Efecto cascada de D13 sobre D2/D3/D7/D8/D9 (Oportunidad y
+Producto) — Resuelto (2026-08-25):**
+
+- **Catálogo `Producto` por empresa, no texto libre.** Se reemplaza
+  `Oportunidad.productoServicio: String?` de la propuesta de esquema de D13
+  por un catálogo real, mismo patrón que `CanalManual` (§8.4):
+
+```prisma
+model Producto {
+  id        String   @id @default(uuid()) @db.Uuid
+  empresaId String   @map("empresa_id") @db.Uuid
+  nombre    String   @db.Text
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa       Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  oportunidades Oportunidad[]
+
+  @@unique([empresaId, nombre])
+  @@map("productos")
+}
+```
+
+  `Oportunidad.productoId` (FK a `Producto`, reemplaza `productoServicio`
+  de D13) — un selector de catálogo es más simple de usar que texto libre
+  para alguien sin experiencia en CRM, y habilita dedup exacto y reporting
+  agregado sin normalizar strings. Gestión del catálogo: mismo criterio que
+  `CanalManual` — alta/edición/baja en manos de Administrador (de empresa u
+  holding); Supervisor y Asesor solo eligen.
+
+- **D2 — timing de apertura y regla de dedup, ajustada:** la Oportunidad se
+  puede abrir en cualquier etapa del Lead, no solo al calificar — cualquier
+  mención de interés del lead/cliente en cualquier momento del contacto
+  habilita crear una Oportunidad nueva. Se bloquea la creación solo si ya
+  existe una Oportunidad **abierta** (etapa fuera de `VENTA`/`NO_VENTA`)
+  para el mismo `(leadId, productoId)`. Una vez cerrada — sea `VENTA` o
+  `NO_VENTA` — se puede abrir una Oportunidad nueva del mismo producto sin
+  ventana de espera: a diferencia del reingreso de Cliente/Lead de D2 (90
+  días), acá no aplica ninguna ventana mínima porque es la misma
+  negociación del mismo cliente ya en gestión, no un reingreso externo.
+
+  Verificado contra investigación de mercado (2026-08-25): ni HubSpot
+  (Deals), ni Pipedrive, ni Salesforce (Opportunities) ni Zoho bloquean
+  duplicados de negociación por defecto — es configuración opcional o una
+  limitación conocida de la plataforma. El bloqueo nativo obligatorio que
+  fija esta decisión es más simple que el estándar de mercado, no más
+  complejo: el usuario sin experiencia en CRM nunca llega a ver el
+  problema.
+
+- **D3 — pool de asignación, con bypass de autoasignación:** si el asesor
+  que abre la Oportunidad ya tiene `habilitadoParaVenta = true` en esa
+  empresa, se autoasigna como responsable al instante, sin pasar por el
+  pool. El pool de D3 (candidatos = asesores activos con membresía en la
+  empresa, habilitados para venta, menor carga/FIFO) solo se dispara cuando
+  quien abre la Oportunidad no está habilitado — ese caso es el que ya
+  cubre D8. La autoasignación es un bypass del pool cuando el abridor ya
+  cumple el criterio de destino, no una excepción que lo contradiga.
+
+- **SLA de Oportunidad — mismo mecanismo que el SLA de Lead, no uno
+  nuevo.** Confirmado (2026-08-25): se reutiliza exactamente el mecanismo
+  ya implementado para `Lead` (`backend/src/services/sla.calculator.ts`,
+  `SLA_HORAS` de `config/negocio.ts`) — reloj continuo desde la asignación
+  del responsable hasta el cierre, cuatro estados (`sin_iniciar`,
+  `a_tiempo`, `en_riesgo`, `atrasado`), detenido en `cerradoEn` para que un
+  registro cerrado no siga empeorando con el paso del tiempo. Se replica
+  sobre `Oportunidad`, no se inventa una métrica de "primer avance de
+  etapa": `Oportunidad.slaInicioEn` (nuevo, nullable, mismo criterio que
+  `Lead.slaInicioEn` — nulo hasta que haya responsable asignado, vía
+  autoasignación o vía pool) y `Empresa.slaOportunidadHoras` (nuevo, `Int`
+  `@default(24)`, mismo patrón de configuración por empresa que
+  `Empresa.slaHoras`) alimentan el mismo `calculateEstadoSla(slaInicioEn,
+  cerradaEn, ahora)` ya existente, sin duplicar la función.
+
+- **D7 — sin cambios.** La regla ya estaba anclada al "responsable vigente
+  de ese registro", no a cómo llegó a serlo — que el responsable se haya
+  fijado por autoasignación (D3) o por el pool no altera quién tiene
+  autoridad de cierre una vez asignado.
+
+- **D8 — ejemplo de flujo manual, confirmado:**
+  1. El asesor está en el detalle de un Lead ya en gestión (ej. etapa
+     `CONTACTADO`).
+  2. Ve un botón **"+ Nueva oportunidad"**, visible en cualquier etapa del
+     Lead, no solo al calificar.
+  3. Al hacer clic, elige un **Producto** del catálogo de la empresa dueña
+     del Lead (ej. "Seguro de auto", "Seguro de vida").
+  4. Si ya existe una Oportunidad **abierta** en ese Lead para el mismo
+     producto, no se crea una nueva: mensaje explícito ("Ya existe una
+     oportunidad abierta de Seguro de Auto para este lead") con acción
+     directa **"Ir a la oportunidad existente"** — nunca un bloqueo mudo.
+  5. Si no hay conflicto, se crea. Si el asesor que la crea está habilitado
+     para venta, se autoasigna (D3) y ve "Oportunidad asignada a vos". Si
+     no, entra al pool de D3 y se asigna automáticamente al asesor
+     habilitado con menor carga de esa empresa; notificación SSE al
+     ganador.
+  6. La nueva Oportunidad aparece en el listado de Oportunidades del Lead
+     (badge de conteo en el detalle del Lead), sin tocar etapa ni semáforo
+     de otras Oportunidades abiertas del mismo Lead.
+
+- **D9 — conviven dos listados, con pools de asignación masiva distintos:**
+  el listado de **Lead** (vista de contactos, con badge de cuántas
+  Oportunidades abiertas tiene cada uno) y el listado de **Oportunidad**
+  (una fila por negociación, con su propia etapa/semáforo/asesor) coexisten
+  como pestañas separadas — ninguno reemplaza al otro, para no imponerle al
+  asesor un cambio de pantalla principal. Reglas de asignación masiva,
+  confirmado (2026-08-25): desde el listado de Lead, el destino puede ser
+  cualquier asesor activo con membresía en la empresa (el primer contacto
+  lo puede llevar cualquiera); desde el listado de Oportunidad, el destino
+  solo puede ser un asesor con `habilitadoParaVenta = true` en esa empresa
+  — el sistema no deja elegir como destino masivo a alguien no habilitado,
+  porque D7/D8 exigen que el responsable de una Oportunidad lo esté. La
+  excepción auditada de Admin/Supervisor (D9 ya resuelto) no cambia de
+  titularidad, solo se le suma este filtro de pool según qué listado se
+  esté usando.
+
+**8.6 — Plan de implementación: dashboards de rendimiento (propuesta, no
+aplicada).**
+
+Verificado contra `backend/src/controllers/metricas.controller.ts`: hoy
+expone `getMetricasResumen`, `getMetricasPorRedSocial`,
+`getMetricasPorAsesor`, `getMetricasPorEtapa`, `getMetricasPorCampania`,
+`getMetricasEmbudo` y `getMetricasRedSocialXSemaforo`, todos anclados a
+`Lead.etapa/semaforo/cerradoEn/asesorId`, con actualización en vivo por SSE
+(`metricas.actualizadas`). Con `Oportunidad`/`Producto` ya decididos
+arriba, faltan:
+
+1. **Embudo por Oportunidad**, separado del embudo de Lead existente — un
+   Lead puede seguir en `CONTACTADO` mientras ya tiene una Oportunidad en
+   `CITA`. Se muestran ambos, etiquetados "embudo de contacto" vs. "embudo
+   de negociación".
+2. **Rendimiento por producto** — mismo patrón que "por campaña" hoy, pero
+   agrupado por `Producto`.
+3. **Cascada Lead → Oportunidad → Venta** — cuántos Leads llegan a tener al
+   menos una Oportunidad abierta, y de esos cuántos cierran en venta.
+4. **Habilitados vs. no habilitados para venta** — conversión comparada
+   según `habilitadoParaVenta`, mide la eficiencia del handoff de D8.
+5. Ranking de productos por empresa, una vez exista multiempresa en código.
+
+Toda agregación nueva vive en `metricas.service.ts` — el mismo service que
+ya alimenta el dashboard y que §8.5 exige reutilizar para el export
+PDF/XLSX, para no duplicar la lógica en dos lugares. Prioridad de
+implementación (orden técnico, menor esfuerzo primero, confirmado
+2026-08-25): primero los ítems 1 y 2 (extensión directa de gráficos ya
+existentes); después 3 y 4 (agregación cruzada nueva); el filtro por
+empresa del ítem 5 queda para la Fase 3 del plan por fases (§7, fundación
+tenant) porque `empresaId` todavía no existe en el esquema. Nada de esto se
+construye antes de que `Oportunidad`/`Producto` existan en Prisma.
+
+Todas las decisiones D1–D14 quedaron registradas explícitamente en esta
 sección. Ningún tema queda aprobado por aparecer en una cola — cada
 resultado debe registrarse antes de cambiar esquema, autorización o
-contratos, y el efecto cascada de D13 sobre D2/D3/D7/D8/D9 queda pendiente
-de una pasada de verificación explícita antes de migrar.
+contratos. El efecto cascada de D13 sobre D2/D3/D7/D8/D9, señalado como
+pendiente en su momento, quedó resuelto en D14.
 
 ## 9. Criterio de entrega a otro equipo
 
 - El equipo receptor distingue hechos AS-IS de propuestas TO-BE.
 - D1 tiene una respuesta explícita antes de diseñar aislamiento.
-- Los temas D2–D13 se resuelven en orden y se registran de forma explícita.
+- Los temas D2–D14 se resuelven en orden y se registran de forma explícita.
 - Toda afirmación técnica se contrasta con código y migraciones.
 - Los tests runtime futuros se ejecutan únicamente en el entorno Docker aprobado.
 - Este documento se actualiza si cambia el código base o se aprueba una decisión.
