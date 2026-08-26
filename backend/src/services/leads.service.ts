@@ -6,7 +6,7 @@ import * as leadRepository from "../repositories/lead.repository.js";
 import type { LeadConRelaciones } from "../repositories/lead.repository.js";
 import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js";
 import { applyFormulario } from "./formularios.service.js";
-import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import { canClose, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
@@ -215,6 +215,21 @@ export async function transitionEtapa(
       const datosEtapa: Parameters<typeof leadRepository.updateEtapa>[1] = { etapa: body.etapa };
 
       if (body.etapa === "VENTA" || body.etapa === "NO_VENTA") {
+        // M-hardening Bloque A (D1-D3, memoria #82): canClose es la única
+        // autoridad para cerrar — NUEVO deniega a todos los roles (409,
+        // etapa_no_cerrable); fuera de NUEVO, rol/titularidad (403).
+        const motivoCierre = canClose(usuario, lead);
+        if (motivoCierre === "etapa_no_cerrable") {
+          throw new AppError(
+            "etapa_no_cerrable",
+            409,
+            "Un lead en NUEVO debe registrar su primer contacto antes de cerrarse",
+          );
+        }
+        if (motivoCierre) {
+          throw new AppError("permiso_denegado", 403, "No tienes permiso para cerrar este lead");
+        }
+
         const semaforoNuevo = body.etapa === "VENTA" ? "VERDE" : "ROJO";
         await leadRepository.updateSemaforo(id, { semaforo: semaforoNuevo }, tx);
         if (lead.semaforo !== semaforoNuevo) {

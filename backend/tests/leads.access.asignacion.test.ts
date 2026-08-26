@@ -1,8 +1,10 @@
 import type { EtapaLead, RolUsuario, Semaforo } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import {
+  canClose,
   canReassign,
   canTransfer,
+  type LeadCierre,
   type LeadReasignacion,
   type LeadTraspaso,
   type UsuarioAcceso,
@@ -65,6 +67,12 @@ describe("services/leads.access — canTransfer (M6, DD9/D8)", () => {
     },
   );
 
+  it("D4: Administrador/Supervisor re-traspasan un lead ya traspasado (vendedorId != null) sin restricción", () => {
+    const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: "vendedor-v", etapa: "CITA" };
+    expect(canTransfer(usuario(OTRO, "ADMINISTRADOR"), lead)).toBeNull();
+    expect(canTransfer(usuario(OTRO, "SUPERVISOR"), lead)).toBeNull();
+  });
+
   it("Supervisor puede traspasar cualquier lead abierto en etapa distinta de NUEVO", () => {
     const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: null, etapa: "CONTACTADO" };
     expect(canTransfer(usuario(OTRO, "SUPERVISOR"), lead)).toBeNull();
@@ -75,7 +83,7 @@ describe("services/leads.access — canTransfer (M6, DD9/D8)", () => {
     expect(canTransfer(usuario(OTRO, "VENDEDOR"), lead)).toBe("rol");
   });
 
-  it("Asesor titular puede traspasar su propio lead desde CONTACTADO", () => {
+  it("Asesor titular puede traspasar su propio lead desde CONTACTADO (vendedorId: null es load-bearing — un solo traspaso disponible)", () => {
     const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: null, etapa: "CONTACTADO" };
     expect(canTransfer(usuario(ASESOR_A, "ASESOR"), lead)).toBeNull();
   });
@@ -85,8 +93,28 @@ describe("services/leads.access — canTransfer (M6, DD9/D8)", () => {
     expect(canTransfer(usuario(OTRO, "ASESOR"), lead)).toBe("no_es_titular");
   });
 
-  it("prueba obligatoria 13: tras un traspaso, el asesor origen sigue siendo titular para volver a traspasar", () => {
+  it("prueba obligatoria 13 (corregida — supersede el bug P0 docs/06): un lead ya traspasado (vendedorId != null) NO puede volver a ser traspasado por el asesor origen", () => {
     const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: "vendedor-v", etapa: "CITA" };
-    expect(canTransfer(usuario(ASESOR_A, "ASESOR"), lead)).toBeNull();
+    expect(canTransfer(usuario(ASESOR_A, "ASESOR"), lead)).toBe("ya_traspasado");
+  });
+
+  it("prueba de triangulación: un ASESOR ajeno (no titular) sobre un lead ya traspasado sigue denegado por no_es_titular, no por ya_traspasado", () => {
+    const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: "vendedor-v", etapa: "CITA" };
+    expect(canTransfer(usuario(OTRO, "ASESOR"), lead)).toBe("no_es_titular");
+  });
+});
+
+describe("services/leads.access — canClose responsable operativo (companion, D1-D3, memoria #82)", () => {
+  const VENDEDOR_V = "vendedor-v";
+
+  it("vendedorId ausente: el responsable operativo de cierre es el propio asesor titular", () => {
+    const lead: LeadCierre = { asesorId: ASESOR_A, vendedorId: null, etapa: "CONTACTADO" };
+    expect(canClose(usuario(ASESOR_A, "ASESOR"), lead)).toBeNull();
+  });
+
+  it("vendedorId presente: el responsable operativo de cierre pasa a ser el vendedor, no el asesor origen", () => {
+    const lead: LeadCierre = { asesorId: ASESOR_A, vendedorId: VENDEDOR_V, etapa: "CONTACTADO" };
+    expect(canClose(usuario(ASESOR_A, "ASESOR"), lead)).toBe("no_es_titular");
+    expect(canClose(usuario(VENDEDOR_V, "VENDEDOR"), lead)).toBeNull();
   });
 });

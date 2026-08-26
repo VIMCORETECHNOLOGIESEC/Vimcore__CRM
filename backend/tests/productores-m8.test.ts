@@ -55,7 +55,10 @@ describe("M8 transactional lead producers", () => {
     const publish = vi.spyOn(eventBroker, "publish");
     await transferLead(supervisor, target.id, { vendedorId: vendedor.id });
     const beforeStage = await prisma.notificacion.count({ where: { leadId: target.id } });
-    await transitionEtapa(supervisor, target.id, { etapa: "VENTA", montoVenta: 100, productoServicio: "CRM", formaPago: "CONTADO" });
+    // M-hardening Bloque A (D1-D3, memoria #82): SUPERVISOR ya no puede
+    // cerrar (canClose deniega con "rol"); el vendedor, ya responsable
+    // operativo tras el traspaso de arriba, es quien cierra el lead.
+    await transitionEtapa(vendedor, target.id, { etapa: "VENTA", montoVenta: 100, productoServicio: "CRM", formaPago: "CONTADO" });
     expect(await prisma.notificacion.count({ where: { usuarioId: vendedor.id, leadId: target.id, tipo: "LEAD_TRASPASADO" } })).toBe(1);
     expect(await prisma.notificacion.count({ where: { leadId: target.id } })).toBe(beforeStage);
     expect(publish).toHaveBeenCalledWith(vendedor.id, "lead.etapa-cambiada", expect.objectContaining({ etapaNueva: "VENTA" }));
