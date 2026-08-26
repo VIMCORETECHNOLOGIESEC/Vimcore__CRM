@@ -32,32 +32,37 @@ frontend/src/
 
 ---
 
-## Estado consolidado (verificado contra código real en `test/integration`, 2026-08-19)
+## Estado consolidado (revisión estática contra código real, 2026-08-25)
 
 | Módulo | Estado | Pendientes |
 |---|---|---|
 | F1 — Base | ✅ Completo | — |
 | F2 — Autenticación | ✅ Completo (frontend) | Backend no expone autoservicio de cambio de contraseña para roles no-administrador (brecha de backend M2, no de este módulo) |
-| F3 — Listado de leads | ⚠️ Completo con gaps | Tabs "Pendientes/Cerrados" sin implementar (requiere el parámetro `vista` de M5, tampoco implementado); SSE de lead nuevo real requiere un evento `lead.nuevo` que el backend no emite todavía (M9 solo emite `lead.asignado`/`lead.etapa-cambiada`, dirigidos por usuario) |
-| F4 — Detalle del lead | ⚠️ Completo con gaps | Guard local `canEdit` en timeline/formulario de etapa; redirección automática ante pérdida de acceso (403 `permiso_denegado`); la actualización SSE ya ocurre parcialmente vía el listener global de F6, sin suscripción propia de F4 |
+| F3 — Listado de leads | ⚠️ Implementado con brechas | Campaña usa un catálogo local y no se envía como relación canónica; el DTO real deja correo/campaña/cuenta sin dato; tabs "Pendientes/Cerrados" pendientes; el backend no emite `lead.nuevo` para actualizar todos los listados autorizados |
+| F4 — Detalle del lead | ⚠️ Implementado con brechas | Correo principal, campaña y cuenta se mapean a `null`; `LeadTimeline` muestra formulario y cierre a usuarios con lectura pero sin edición; falta redirección ante 403 y la cobertura SSE es parcial |
 | F5 — Dashboard | ✅ Completo | — (actualización en tiempo real vía SSE resuelta el 2026-08-19: `decodeKnownEvent` ya reconoce `metricas.actualizadas` y `useNotificacionesRealtime` invalida `["metricas"]`) |
 | F6 — Notificaciones | ✅ Completo | — |
 | F7 — Administración de usuarios | ✅ Completo | — |
 | F8 — Administración de bridges | ✅ Completo | — |
 
-**Ningún módulo frontend propuesto está sin empezar.** 6 de 8 están terminados al 100%. Los gaps restantes en F3/F4 son de "tiempo real"/SSE o dependen de un ítem de M5 aún no implementado en el backend (`vista`) -- ninguno es un módulo sin construir, son refinamientos incrementales sobre una base ya funcional y probada.
+**Lectura rápida:** todos los módulos tienen una interfaz implementada, pero F3 y
+F4 no están cerrados de punta a punta. Sus brechas no son solo refinamientos de
+tiempo real: también hay datos de origen/contacto que la adaptación actual
+descarta y acciones de edición que se muestran a usuarios con acceso de solo
+lectura.
 
 ---
 
-## Backlog no bloqueante — mejoras post-lanzamiento
+## Brechas verificadas y prioridad
 
-Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometido en el scope MVP original, o ya tiene workaround funcional. No bloquean el lanzamiento.
-
-- **Autoservicio de cambio de contraseña para roles no-administrador** (F2, requiere endpoint nuevo de backend, ej. `PATCH /auth/perfil/password`): no prometido en el scope MVP; workaround 100% funcional ya existe (reset por administrador, F7, `PATCH /usuarios/:id`). Esfuerzo: medio (endpoint nuevo + verificación de contraseña actual).
-- **Tabs "Pendientes/Cerrados"** (F3): depende del parámetro `vista` del backend (M5, ver backlog de `docs/06-modulos-backend.md`), sin implementar todavía.
-- **SSE de listado/detalle de leads con alcance completo** (F3/F4): hoy la cobertura vía `lead.asignado`/`lead.etapa-cambiada` es incidental y dirigida solo al usuario destinatario del evento (`EventBroker.publish` por `userId`, no `broadcastAll`) — un supervisor mirando el listado en otra sesión no se entera de un lead nuevo o reasignado a otra persona. Esfuerzo: medio (nuevo evento `lead.nuevo` en el backend + decidir si usa `broadcastAll` como `metricas.actualizadas`).
-- **Guard `canEdit` local en `LeadTimeline`/`FormularioEtapaLead`** (F4): el backend ya rechaza correctamente con 403 — es solo un mensaje de error confuso en vez de ocultar el control proactivamente. Esfuerzo: bajo.
-- **Redirección automática ante pérdida de acceso (403 `permiso_denegado`)** (F4): mismo criterio, el backend ya protege el recurso — hoy el usuario queda atascado en un botón "Reintentar" que nunca funciona. Esfuerzo: bajo.
+| Prioridad | Módulo | Brecha | Resultado esperado |
+|---|---|---|---|
+| P1 | F3/F4 | `mapLeadFromApi` fija `correoPrincipal`, `campania` y `cuentaPublicitaria` en `null`; el catálogo de campañas es local y el filtro no representa una relación real del backend. | Consumir un DTO que exponga correo principal y atribución canónica; retirar datos sintéticos y estados visuales inventados. |
+| P1 | F4 | `LeadTimeline` y `FormularioEtapaLead` no reciben al usuario ni aplican un guard de edición. El asesor que conserva lectura después del traspaso sigue viendo formulario y botones de cierre; el backend recién rechaza al enviar. | Derivar capacidades entregadas por backend o aplicar un guard local equivalente como mejora de UX, sin tratarlo como control de seguridad. |
+| P2 | F3/F4 | No existe un evento `lead.nuevo`; `lead.asignado` y `lead.etapa-cambiada` solo llegan al destinatario. | Invalidar listados/detalles de cada usuario autorizado cuando ingresa un lead. El futuro multi-tenant deberá emitir por tenant/empresa, no con un broadcast global sin alcance. |
+| P2 | F3 | Faltan tabs "Pendientes/Cerrados". | Consumir `vista=activos|cerrados` cuando M5 lo implemente y mantener el filtrado server-side. |
+| P2 | F4 | Ante `permiso_denegado`, la pantalla ofrece "Reintentar" aunque el acceso ya no puede recuperarse desde esa vista. | Redirigir a `/leads` con explicación accionable. |
+| P3 | F2 | No existe autoservicio de cambio de contraseña para roles no-administrador. | Incorporar un endpoint de perfil que verifique la contraseña actual; el reset administrativo sigue siendo el workaround AS-IS. |
 
 ---
 
@@ -299,11 +304,15 @@ del producto.
 
 - [x] Tabla con columnas: cliente, teléfono, red social, campaña, etapa,
       semáforo, responsable, estado de SLA, fecha de ingreso
+- [ ] Campaña real en tabla y filtros: el catálogo actual es local y
+      `campaniaId` no se traduce al filtro textual del backend; requiere primero
+      el contrato canónico de atribución M4/M5
 - [x] Indicador de semáforo con color **y** etiqueta de texto
 - [x] Contador de SLA en vivo con formato `HH:MM:SS`, actualizado en cliente
 - [x] Distintivo visual para leads de reingreso
-- [x] Filtros combinables: etapa, semáforo, red social, campaña, responsable,
-      rango de fechas, estado de SLA
+- [x] Controles de filtros combinables: etapa, semáforo, red social, campaña,
+      responsable, rango de fechas y estado de SLA; la integración real de
+      campaña sigue pendiente según el ítem anterior
 - [x] Búsqueda por nombre, teléfono o correo
 - [x] Paginación del lado del servidor (simulada en el mock; real cuando
       exista `GET /api/v1/leads`)
@@ -324,9 +333,11 @@ del producto.
       evento `lead.nuevo`/`lead.creado` en el backend (`EventType` no lo
       define), así que un ingreso sin autoasignación exitosa
       (`SIN_ASIGNAR`) no refresca ninguna sesión. Pendiente real: agregar
-      `lead.nuevo` al backend con `broadcastAll` (mismo patrón que
-      `metricas.actualizadas`, M9) para que cualquier listado abierto lo
-      vea, no solo la sesión del responsable asignado.)
+      `lead.nuevo` al backend y entregarlo a cada usuario autorizado para que
+      cualquier listado con alcance sobre ese lead se invalide, no solo la
+      sesión del responsable asignado. En el AS-IS single-tenant puede
+      reutilizar el patrón de `metricas.actualizadas`; el TO-BE deberá acotarlo
+      por tenant/empresa.)
 - [ ] Tabs "Pendientes/En proceso" (vista por defecto) vs "Cerrados"
       (2026-08-19, diseño): la vista principal de la tabla — la que hoy
       existe sin distinción — pasa a filtrar por defecto `etapa NOT IN
@@ -523,8 +534,13 @@ Muestra el **estado actual** con su formulario, no un timeline de interacciones.
 > `tests/leads/LeadsFiltros.test.tsx`.
 
 - [x] Encabezado: nombre, semáforo, etapa, responsable, contador de SLA
-- [x] Datos de contacto: teléfono, correos asociados, marca de dato inválido
-- [x] Origen: red social, campaña, cuenta publicitaria, fecha de ingreso
+- [x] Estructura visual de contacto: teléfono, espacio para correos asociados y
+      marca de dato inválido
+- [x] Estructura visual de origen: red social, campaña, cuenta publicitaria y
+      fecha de ingreso
+- [ ] Integración real de correo principal, campaña y cuenta publicitaria: la
+      adaptación actual de `GET /leads` y `GET /leads/:id` fija los tres valores
+      en `null`; la UI preparada no equivale a datos integrados
 - [x] Campos dinámicos del formulario de la campaña
 - [x] Formulario de la etapa vigente con cálculo de puntuación
 - [x] Guía de acción según el color del semáforo
