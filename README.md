@@ -6,8 +6,11 @@ campañas digitales mediante un embudo de cinco etapas:
 
 El producto implementado es **single-company**: cada cliente usa una instancia
 aislada y una base de datos propia. La evolución hacia holdings y múltiples
-empresas está en análisis; todavía no existe aislamiento multi-tenant ni debe
-asumirse en cambios técnicos.
+empresas ya tiene sus decisiones resueltas en
+[`docs/16-hallazgos-y-preguntas.md`](docs/16-hallazgos-y-preguntas.md) §8, pero
+la migración e implementación siguen pendientes; todavía no existe aislamiento
+multi-tenant ni debe asumirse en cambios técnicos fuera de la SDD change del
+bloque correspondiente ([`docs/blocks/`](docs/blocks/)).
 
 > Antes de diseñar o implementar, consulte
 > [`docs/00-estado-documentacion.md`](docs/00-estado-documentacion.md). Ese mapa

@@ -23,7 +23,7 @@ visual/motion de frontend. Gobernanza general en `AGENTS.md` §9.
 | `issue-creation` | `.claude/skills/issue-creation/` | Crear/triage de issues de GitHub desde evidencia del repo |
 | `judgment-day` | `.claude/skills/judgment-day/` | Revisión dual ciega adversarial |
 | `rdd-defect-workflow` | `.claude/skills/rdd-defect-workflow/` | Autoridad de revisión, receipt/lineage, corrección/recuperación |
-| `sdd-apply` a `sdd-verify` (9 skills) | `.claude/skills/sdd-*/` | Ciclo completo SDD (explore/propose/spec/design/tasks/apply/verify/archive/onboard) |
+| `sdd-apply` a `sdd-verify` (10 skills) | `.claude/skills/sdd-*/` | Ciclo completo SDD (init/explore/propose/spec/design/tasks/apply/verify/archive/onboard) |
 | `skill-creator` | `.claude/skills/skill-creator/` | Crear una skill nueva con frontmatter válido |
 | `skill-improver` | `.claude/skills/skill-improver/` | Auditar/mejorar una skill existente |
 | `skill-registry` | `.claude/skills/skill-registry/` | Reindexar el registro tras cambios de skills |
