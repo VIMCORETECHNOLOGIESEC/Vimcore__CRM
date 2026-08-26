@@ -50,7 +50,7 @@ la fecha de entrega del núcleo.
 | Correo / SMS / WhatsApp | Solo notificación in-app confirmada | Sí. La tabla `notificaciones` incluye columna `canal` con un único valor válido en el MVP |
 | App móvil nativa | Se confirmó web responsive únicamente | No aplica |
 | Bridge de TikTok | No incluido en la lista final del MVP | Sí. El contrato de ingesta es común; sumar TikTok es implementar un adaptador |
-| Bridge de sitio web propio | Proyección a futuro | Sí. El bridge de X ya es de ingesta genérica y sirve de base |
+| Bridge de sitio web propio | Proyección a futuro | No. `RedSocial` no incluye `SITIO_WEB` y el endpoint genérico registra toda ingesta como `GOOGLE_FORMS`; primero debe extenderse el contrato de origen |
 | SSO / OAuth corporativo | Lo desarrolla otro equipo | Sí. La autenticación se expone como API independiente y desacoplada |
 | Timeline de interacciones en el detalle | Se confirmó que el detalle muestra el estado actual y su formulario | Sí. `lead_eventos` guarda todo; solo faltaría la vista |
 | Catálogo de motivos de No Venta | Se confirmó observación en texto libre | Sí. La columna admite migrar a catálogo después |
@@ -59,16 +59,22 @@ la fecha de entrega del núcleo.
 
 ---
 
-## 3. Riesgos abiertos que conviene resolver antes de `apply`
+## 3. Riesgos abiertos y decisiones vencidas
+
+R4 y R6 tenían como fecha límite original las fases `apply` y M6, pero esas
+fases ya se ejecutaron sin una confirmación documentada del cliente en su
+momento. El código AS-IS conserva los supuestos adoptados entonces; las
+decisiones ya fueron resueltas en `docs/16` §8 (D5, D7, D8, D9) y siguen
+pendientes solo de migrarse a esquema y código antes de producción.
 
 | # | Riesgo | Impacto | Acción sugerida |
 |---|---|---|---|
 | R1 | **X no ofrece API de formularios de lead nativos.** Sus Lead Generation Cards fueron descontinuadas; la captación en X se hace hoy hacia un formulario propio | El bridge de X no puede ser una integración de API oficial equivalente a la de Meta | Implementarlo como ingesta genérica con endpoint propio + atribución vía X Pixel/CAPI. Confirmar la expectativa con el cliente antes de comprometer la funcionalidad |
 | R2 | LinkedIn Lead Gen Forms exige app aprobada en el LinkedIn Marketing Developer Platform, con proceso de revisión que puede tardar semanas | Bloquea la certificación del bridge de LinkedIn, no su desarrollo | Iniciar la solicitud de acceso **el primer día del proyecto**, en paralelo al desarrollo |
 | R3 | Meta exige App Review con permisos `leads_retrieval` y `pages_manage_ads` | Igual que R2 | Iniciar App Review en paralelo; desarrollar contra cuentas de prueba mientras tanto |
-| R4 | La regla de traspaso asesor→vendedor no fue definida con precisión por el cliente | Puede requerir rehacer el flujo de asignación | Se adopta la regla del documento `02-reglas-negocio.md` §5 como supuesto explícito. **Validar con el cliente antes de la fase `apply`** |
+| R4 | La regla de traspaso asesor→vendedor no fue definida con precisión por el cliente | M6 implementa un supuesto no confirmado; cambiarlo exige coordinar reglas, código y tests | **Resuelto en `docs/16` §8:** autoridad de cierre (D7), handoff automático (D8) y excepciones de reasignación (D9). El AS-IS vigente sigue descrito en `02-reglas-negocio.md` §5; falta migrar el código a lo ya decidido antes de producción |
 | R5 | La rúbrica de puntuación del semáforo se construyó sobre práctica estándar de embudos comerciales, no sobre reglas dictadas por el cliente | Los umbrales pueden no reflejar su realidad comercial | Los umbrales viven en constantes aisladas. Revisar con el cliente tras las primeras dos semanas de uso real |
-| R6 | Con bajo volumen de leads, es probable que la misma persona sea asesor y vendedor a la vez; el modelo de roles actual (`RolUsuario` único) no lo soporta y el traspaso asesor→vendedor podría convertirse en una autoasignación | Bloquea el diseño final de M6 hasta resolver el conflicto de interés (relacionado con R4) | Diseño evaluado, no implementado: `rolSecundario` acotado al par asesor/vendedor + advertencia no bloqueante y auditoría de autoasignación (ver nota en `02-reglas-negocio.md` §5). **Validar con el cliente junto con R4 antes de iniciar M6** |
+| R6 | Una persona puede necesitar actuar como asesor y vendedor, incluso con responsabilidades distintas por empresa; `RolUsuario` único no lo representa | El modelo AS-IS no expresa roles múltiples ni alcance por empresa y puede producir autoasignaciones ambiguas | **Resuelto en `docs/16` §8 (D5):** `rolSecundario` queda descartado; el modelo aprobado es la jerarquía de membresías usuario↔empresa↔rol (`docs/16` §8.2), pendiente de implementar en Prisma |
 
 ---
 

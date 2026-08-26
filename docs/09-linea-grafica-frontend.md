@@ -131,49 +131,22 @@ implementar cada módulo en código.
 
 ---
 
-## 6. Flujo de mockups con Stitch AI + Lazyweb
+## 6. Flujo de mockups con Stitch AI
 
-### 6.1 Rol de cada herramienta
+Vigente solo mientras queden pantallas de la tabla §5 sin mockup (ver TODO en
+§7). Stitch AI (Google Labs, MCP conectado desde Claude Code) genera mockups
+visuales a partir de prompts de texto/imagen.
 
-- **Stitch AI** (Google Labs): genera mockups visuales de UI a partir de
-  prompts de texto/imagen. Se usa para explorar la línea gráfica de cada
-  pantalla de la tabla §5 antes de construirla en código.
-- **Lazyweb** (MCP): se registró como servidor MCP en este equipo (alcance de
-  usuario, no de este repo) para research/consulta durante el diseño.
+Proyecto reutilizable para las pantallas pendientes: `CRM Comercial -
+Propuesta Visual`, `projectId 8669152245244265576`, sistema de diseño
+`assets/15350993658645954285`. Las pantallas complejas (listado de leads,
+detalle de lead, dashboard) dieron timeout sistemático — no depende del
+prompt ni de la paleta, es un límite de capacidad del backend de Stitch. Al
+reintentar F1/F6/F7/F8, esperar el mismo comportamiento y usar como plan B el
+patrón de wireframe HTML de alta fidelidad de
+`docs/mockups/propuesta-visual.html`.
 
-### 6.2 Estado de la conexión
-
-- MCP de Lazyweb: **registrado** (`claude mcp add ... lazyweb`). Requiere
-  reiniciar Claude Code para cargarlo.
-- Paquete de skills de Lazyweb (`curl | bash` del instalador): **no
-  ejecutado**. Un script remoto sin fijar versión ni checksum, corrido
-  directo por pipe a `bash`, es ejecución de código arbitrario sin
-  posibilidad de revisión previa — no se ejecuta a ciegas aunque el origen lo
-  pida. Si se necesita, se debe descargar el script, revisar su contenido, y
-  ejecutarlo manualmente de forma consciente.
-- Clave de API de Stitch AI: **no se documenta ni se commitea en este
-  repositorio**. Cualquier credencial pegada en texto plano en un chat debe
-  tratarse como potencialmente expuesta — se recomienda rotarla en el panel
-  de Stitch/Google si es una clave real de producción. Guardarla solo en una
-  variable de entorno local o en un archivo fuera del control de versiones
-  (p. ej. `~/.config/`), nunca en `docs/`, `.env` versionado, ni en este
-  archivo.
-- MCP de Stitch: **conectado y probado** (sesión Claude Code, autenticado con
-  la cuenta del usuario, sin clave manual). Proyecto reutilizable:
-  `CRM Comercial - Propuesta Visual`, `projectId 8669152245244265576`,
-  sistema de diseño `assets/15350993658645954285`. Generó con éxito la
-  pantalla de Login (F2) como render real; las pantallas más complejas
-  (listado de leads, detalle de lead, dashboard) dieron timeout de forma
-  sistemática en varios intentos — no depende del prompt ni de la paleta, es
-  un límite de capacidad del backend en este momento. Esas 3 se resolvieron
-  como wireframe HTML de alta fidelidad en
-  `docs/mockups/propuesta-visual.html`, con los mismos tokens. Al reintentar
-  F6-F8, esperar el mismo comportamiento y tener el wireframe como plan B.
-
-### 6.3 Plantilla de prompt por pantalla
-
-Para cada fila de la tabla §5, generar el mockup en Stitch AI con esta
-estructura de prompt:
+Plantilla de prompt por pantalla pendiente:
 
 ```
 Pantalla: <nombre de la pantalla>
@@ -187,12 +160,6 @@ Restricciones: sin bloqueo de interfaz (mostrar estado de carga), estados de
   error accionables en español, formato de fecha DD/MM/AAAA HH:mm.
 ```
 
-### 6.4 Pendiente de decisión
-
-Resuelto: el MCP de Stitch sí está integrado y se puede invocar en automático
-desde Claude Code (ver §6.2 para el proyecto/IDs reutilizables y la
-limitación de fiabilidad conocida en pantallas complejas).
-
 ---
 
 ## 7. Estado y próximos pasos
@@ -204,7 +171,7 @@ limitación de fiabilidad conocida en pantallas complejas).
 - [ ] Generar los 4 mockups restantes en Stitch (F1 Layout base, F6
       Notificaciones, F7 Usuarios, F8 Bridges) reutilizando
       `projectId 8669152245244265576` / `assets/15350993658645954285`. Esperar
-      timeouts en pantallas complejas (ver §6.2) y tener listo el patrón de
+      timeouts en pantallas complejas (ver §6) y tener listo el patrón de
       wireframe HTML como plan B.
 - [x] Instalar shadcn/ui (CLI legacy `3.8.5`, la última pre-v4: `@latest`
       resuelve a la generación v4, preset-based con Tailwind v4/oklch,
