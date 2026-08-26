@@ -14,7 +14,7 @@ asignación por menor carga con desempate FIFO.
 
 | Dato | Valor |
 |---|---|
-| Estado | **Benchmark / TO-BE** — no implementado |
+| Estado | **Benchmark / TO-BE** — decisiones D1-D14 resueltas en `docs/16` §8, migración e implementación pendientes |
 | Corte de investigación | **2026-08-25** |
 | Fuentes | Documentación oficial de cada proveedor |
 | Autoridad actual del MVP | `docs/00-estado-documentacion.md`, `docs/01-alcance-mvp.md` y `docs/02-reglas-negocio.md`; para el AS-IS técnico, `backend/prisma/schema.prisma` y sus migraciones |

@@ -52,7 +52,7 @@ forma parte del comportamiento actual.
 | `docs/02-reglas-negocio.md` | Vigente con reservas | Reglas del embudo v1 | El AS-IS de traspaso en `NUEVO` y SLA fue reconciliado; autoridad de cierre, rol dual y reglas TO-BE siguen pendientes. |
 | `docs/03-modelo-datos.md` | Vigente con reservas | Lectura resumida del modelo AS-IS | Regenerado desde `schema.prisma`; `schema.prisma` y las migraciones siguen mandando ante cualquier discrepancia futura. |
 | `docs/04-formularios-semaforo.md` | Vigente con reservas | Formularios y rúbrica fija v1 | Los formularios calificables y la rúbrica están alineados. El cierre no: la API fija `cerradoEn`, no acepta una fecha enviada por el cliente y Venta no admite `observaciones`; solo No Venta acepta `observacionCierre`. |
-| `docs/05-bridges.md` | Mixto | Contrato funcional de captación | Combina requisitos, diseño futuro y comportamiento ya implementado. Verificar transacciones, tokens y notificaciones contra M4. |
+| `docs/05-bridges.md` | Vigente con reservas | Contrato funcional de captación | Cada sección está etiquetada Implementado/Diseño/Requisito contra el código real de `backend/src/adapters` y `backend/src/jobs`. |
 | `docs/06-modulos-backend.md` | Mixto | Checklist técnico backend | La tabla consolidada inicial es útil; el cuerpo conserva un diario histórico extenso y algunas notas superadas. |
 | `docs/07-modulos-frontend.md` | Mixto | Checklist técnico frontend | La tabla consolidada inicial es útil; el cuerpo mezcla el estado actual con etapas antiguas basadas en mocks y ramas de integración. |
 | `docs/08-dashboard-kpis.md` | Vigente con reservas | Definiciones funcionales de KPIs | Los KPIs están implementados, pero no todos se calculan solo con `lead_eventos`; campaña se resuelve actualmente desde JSON. |
@@ -95,7 +95,7 @@ archivo). Esta sección solo declara qué queda pendiente hoy.
 - [x] Sincronizar `03-modelo-datos.md` con Prisma y migraciones.
 - [x] Corregir `02-reglas-negocio.md` en traspaso y SLA.
 - [ ] Reconciliar el contrato de cierre de docs 02/04 con el schema y servicio.
-- [ ] Separar requisitos y comportamiento implementado en `05-bridges.md`.
+- [x] Separar requisitos y comportamiento implementado en `05-bridges.md`.
 - [ ] Aclarar fuentes de datos reales en `08-dashboard-kpis.md` y
       `13-configuracion-bridges.md`.
 

@@ -1,6 +1,6 @@
 # 12 — Pruebas manuales de QA
 
-> **Estado documental: NO EJECUTABLE / QA BLOQUEADO.**
+> **Estado documental: No confiable — revalidación en Bloque A.**
 >
 > **Autoridad operativa actual:** `backend/prisma/seed.ts`,
 > `backend/prisma/seed-leads-qa.ts` y el estado real de la base recreada.
