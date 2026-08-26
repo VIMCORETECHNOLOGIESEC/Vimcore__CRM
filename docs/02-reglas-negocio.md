@@ -103,7 +103,7 @@ notificación y registrar el evento.
 |---|---|---|
 | Administrador | Cualquier lead | Ninguna |
 | Supervisor | Cualquier lead | Ninguna |
-| Asesor | Solo los leads que tiene asignados | Solo si el semáforo es **rojo o amarillo** |
+| Asesor | Solo los leads que tiene asignados | Si el semáforo **no es verde**, incluido `null` (sin calificar) |
 | Vendedor | Ninguno | — |
 
 La restricción del asesor evita que se desprenda de un lead caliente en curso de
@@ -115,9 +115,12 @@ La reasignación **reinicia el reloj SLA** del lead y notifica al nuevo responsa
 
 ## 5. Traspaso asesor → vendedor
 
-> **Supuesto explícito (riesgo R4).** El cliente confirmó los cuatro roles con
-> traspaso, pero no definió el momento exacto. Esta es la regla adoptada;
-> validar antes de la fase `apply`.
+> **Riesgo R4 — resuelto en `docs/16` §8.** El cliente confirmó los cuatro
+> roles con traspaso, pero no definió el momento exacto en su momento. M6 ya
+> implementó la regla AS-IS de esta sección sobre ese supuesto no confirmado;
+> la autoridad de cierre (D7), el handoff automático (D8) y las excepciones de
+> reasignación (D9) ya están decididos. Pendiente: migrar código y esquema a
+> lo ya resuelto antes de producción.
 
 - El traspaso es una **acción explícita** del asesor, no un efecto automático
   del cambio de etapa
@@ -125,8 +128,8 @@ La reasignación **reinicia el reloj SLA** del lead y notifica al nuevo responsa
   Nuevo no se puede traspasar: el asesor debe hacer primero su acercamiento
 - Al traspasar, el sistema elige vendedor por el mismo algoritmo de menor carga
   activa entre usuarios con rol `vendedor`
-- Supervisor y administrador pueden traspasar en cualquier momento y elegir
-  vendedor manualmente
+- Supervisor y administrador pueden elegir vendedor manualmente, pero respetan
+  la misma compuerta de etapa: ningún rol puede traspasar un lead en **Nuevo**
 - Tras el traspaso: `lead.vendedor_id` queda fijado, el vendedor pasa a ser el
   responsable operativo, y el asesor **conserva visibilidad** del lead
   (es su gestión la que lo originó) pero pierde permiso de edición
@@ -136,18 +139,16 @@ La reasignación **reinicia el reloj SLA** del lead y notifica al nuevo responsa
 lógica de SLA, notificaciones y permisos usa esta definición, no las columnas
 por separado.
 
-> **Pendiente de aclarar con el cliente (extiende riesgo R4, ver
-> `01-alcance-mvp.md`).** Con bajo volumen de leads es probable que la misma
-> persona sea asesor y vendedor a la vez — el modelo de roles actual
-> (`RolUsuario` único por usuario en `schema.prisma`) no lo soporta. Diseño
-> evaluado y no implementado: campo `rolSecundario` acotado únicamente al par
-> asesor/vendedor (no un sistema de roles múltiples genérico), más una
-> advertencia no bloqueante — y registro de auditoría en
-> `DetalleEventoLead` — cuando alguien se traspasa un lead a sí mismo, y
-> exclusión del propio actor en el algoritmo de menor carga activa. **No
-> implementar hasta que el cliente confirme si esta combinación de roles es
-> real en su operación y si el conflicto de interés amerita algo más
-> estricto que una advertencia.** Validar junto con R4 antes de iniciar M6.
+> **R4/R6 — resuelto en `docs/16` §8 (D5/D6/§8.2).** El modelo AS-IS mantiene
+> un único `RolUsuario` por usuario y no representa a una persona que actúa
+> como asesor y vendedor, menos aún con alcance distinto por empresa.
+> `rolSecundario` fue una alternativa histórica evaluada antes de M6, nunca
+> implementada, y queda descartada para el TO-BE porque conserva roles
+> globales y no resuelve el alcance multiempresa. El modelo aprobado es la
+> jerarquía de membresías usuario↔empresa↔rol de
+> [`16-hallazgos-y-preguntas.md`](16-hallazgos-y-preguntas.md) §8.2 — incluye
+> autoasignación (D8), conflicto de interés y auditoría (D9). Pendiente:
+> implementarlo en Prisma y en la capa de autorización.
 
 ---
 
@@ -187,15 +188,19 @@ transcurrido en cada consulta, para que nunca queden desactualizados):
 
 | Estado | Condición | Presentación |
 |---|---|---|
+| Sin iniciar | `sla_inicio_en` es nulo; todavía no existe una ventana SLA activa | `Sin iniciar` |
 | A tiempo | Queda más del 25 % del plazo | `A tiempo (HH:MM:SS)` |
 | En riesgo | Queda 25 % o menos del plazo | `En riesgo (HH:MM:SS)` |
 | Atrasado | Plazo vencido | `Atrasado (-HH:MM:SS)` |
 
 Con el plazo por defecto, "En riesgo" comienza a las 18 horas transcurridas.
 
-**Criterio de disparo de alerta:** un lead sin actualización de etapa durante más
-de 24 horas desde su ingreso genera alerta de atraso al responsable y a los
-supervisores.
+**Criterio de disparo de alerta vigente:** un lead abierto cuyo
+`sla_inicio_en` ocurrió hace 24 horas o más genera una alerta de atraso al
+responsable operativo y a los supervisores. El cálculo no usa la fecha de
+ingreso ni la última actualización de etapa. Una asignación, reasignación o
+traspaso inicia una nueva ventana al actualizar `sla_inicio_en`; un cambio de
+etapa por sí solo no reinicia el reloj.
 
 **No hay reasignación automática por atraso.** Se confirmó que el atraso notifica
 para que el supervisor decida y aplique el protocolo, no para que el sistema
@@ -232,7 +237,7 @@ que sigan visibles al iniciar sesión.
 | Editar formulario de etapa | ✅ | ✅ | Solo suyos | Solo suyos |
 | Cambiar etapa | ✅ | ✅ | Solo suyos | Solo suyos |
 | Asignar / reasignar cualquiera | ✅ | ✅ | ❌ | ❌ |
-| Reasignar los suyos | ✅ | ✅ | Solo 🔴/🟡 | ❌ |
+| Reasignar los suyos | ✅ | ✅ | Si no está 🟢, incluido sin calificar | ❌ |
 | Traspasar a vendedor | ✅ | ✅ | Solo suyos | ❌ |
 | Dashboard general | ✅ | ✅ | ❌ | ❌ |
 | Dashboard personal | ✅ | ✅ | ✅ | ✅ |
@@ -248,6 +253,28 @@ atómica, persisten la notificación junto con el evento o marca que la origina 
 publican SSE solo después del commit. `ERROR_BRIDGE` se emite solo junto con una
 fila `bridge_logs.ERROR` confirmada.
 
-`TOKEN_POR_EXPIRAR` permanece en el contrato, pero su productor queda diferido
-al alcance restante de M4. M8 no infiere fechas de expiración mientras no
-existan almacenamiento cifrado y `token_expira_en`.
+`TOKEN_POR_EXPIRAR` permanece en el contrato y ya dispone de los datos de origen:
+`CuentaPublicitaria` persiste el token cifrado y `token_expira_en`. El pendiente
+real es implementar un productor y scheduler idempotentes que creen la alerta
+preventiva sin duplicarla dentro de una misma ventana de expiración.
+
+---
+
+## 10. Evolución multiempresa y multitenant — TO-BE no aprobado
+
+Las secciones 1 a 9 describen el comportamiento **AS-IS** del despliegue
+single-tenant actual. No deben interpretarse como el contrato definitivo para
+la evolución hacia holdings con varias empresas.
+
+Las decisiones D1–D14 (límite de seguridad entre tenant, holding y empresa;
+membresías y capacidades por empresa; elegibilidad de asesores por Fuente;
+responsabilidad de primer contacto, traspaso y cierre entre asesor y
+Oportunidad) ya están **resueltas** en
+[`16-hallazgos-y-preguntas.md`](16-hallazgos-y-preguntas.md) §8. La
+arquitectura candidata completa, con las propuestas de esquema, sigue en
+[`14-evolucion-multitenant.md`](14-evolucion-multitenant.md).
+
+Esta referencia **no aprueba ni incorpora** esas reglas al comportamiento
+actual: las decisiones están tomadas, pero la migración de esquema, código y
+autorización sigue pendiente de implementarse antes de modificar este
+contrato AS-IS.
