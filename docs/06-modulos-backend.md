@@ -8,31 +8,46 @@ Estructura por módulo: `routes/ → controllers/ → services/ → repositories
 
 ---
 
-## Estado consolidado (verificado contra código real en `test/integration`, 2026-08-19)
+## Estado consolidado (revisión estática contra código real, 2026-08-25)
 
 | Módulo | Estado | Pendientes |
 |---|---|---|
 | M1 — Base e infraestructura | ✅ Completo | — |
 | M2 — Autenticación y usuarios | ✅ Completo | — |
 | M3 — Normalización y deduplicación | ✅ Completo | — |
-| M4 — Ingesta y bridges | ⚠️ Parcial | Adaptador LinkedIn (bloqueado por aprobación externa del Marketing Developer Platform); adaptador X dedicado (trivial sobre el endpoint genérico, no implementado) |
-| M5 — Gestión de leads | ⚠️ Completo con deuda técnica | Parámetro `vista=activos\|cerrados` sin implementar (`listLeadsQuerySchema`); `limite` valida rango abierto 1-100 en vez de whitelist 10/25/50/100 (ver "Backlog no bloqueante" más abajo) |
-| M6 — Asignación, traspaso y SLA | ✅ Completo | — |
+| M4 — Ingesta y bridges | ⚠️ Parcial | P1: el endpoint genérico fija `GOOGLE_FORMS` aunque el bridge autenticado sea de otra red; P1: `LeadRecibido` conserva trazabilidad histórica al bridge, pero falta una atribución singular/canónica de fuente, cuenta y campaña en `Lead` y sus DTO; P1: falta el productor `TOKEN_POR_EXPIRAR`; P2: adaptadores LinkedIn y X pendientes |
+| M5 — Gestión de leads | ⚠️ Implementado con brechas | P0: autoridad de cierre y límites asesor→vendedor pendientes de definición/corrección; P1: rango `hasta` termina a medianoche y no valida `desde <= hasta`; P2: `vista=activos\|cerrados` pendiente; P3: whitelist de `limite` pendiente |
+| M6 — Asignación, traspaso y SLA | ⚠️ Implementado con contrato pendiente | El código permite un segundo traspaso por el asesor original y no exige `asesor_id` antes de entregar a vendedor; depende de cerrar las preguntas de producto del flujo TO-BE |
 | M7 — Citas | ✅ Completo | — |
-| M8 — Notificaciones y tiempo real | ✅ Completo | — |
+| M8 — Notificaciones y tiempo real | ⚠️ Implementado con productor pendiente | `TOKEN_POR_EXPIRAR` existe en el contrato, pero no tiene productor ni scheduler; la brecha se comparte con M4 |
 | M9 — Dashboard y métricas | ✅ Completo | — |
 
-**Ningún módulo backend propuesto está sin empezar.** 7 de 9 están terminados al 100%. M4 tiene dos adaptadores externos pendientes por diseño (dependencia externa documentada desde el inicio, no un olvido — ver "Orden de ejecución sugerido" al final de este documento). M5 tiene dos deudas técnicas puntuales y acotadas, ninguna bloqueante para el resto del sistema.
+**Lectura rápida:** todos los módulos tienen implementación, pero eso no equivale
+a que M4–M6 estén cerrados funcionalmente. Las brechas P0/P1 de la tabla
+siguiente afectan autorización, atribución o exactitud de datos y deben
+resolverse antes de usar esta base para una evolución multiempresa. LinkedIn y X
+dependen primero de corregir el contrato genérico y la atribución; implementarlos
+antes duplicaría trabajo y perpetuaría datos sin atribución singular/canónica.
 
 ---
 
-## Backlog no bloqueante — mejoras post-lanzamiento
+## Brechas verificadas y orden de corrección
 
-Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometido en el scope MVP original, o ya tiene workaround funcional. No bloquean el lanzamiento.
+Prioridades: **P0** bloquea el contrato de autorización; **P1** bloquea una
+evolución multiempresa fiable; **P2** completa una capacidad funcional; **P3**
+es endurecimiento del contrato existente.
 
-- **`limite` sin whitelist** (M5, `leads.schema.ts::listLeadsQuerySchema`): valida rango abierto 1-100 en vez de la whitelist fija 10/25/50/100 que usa el frontend. Endurecimiento defensivo, sin exploit conocido (ya capado en 100). Esfuerzo: trivial (1 línea de schema).
-- **Parámetro `vista=activos|cerrados`** (M5, `GET /leads`): mejora de UX decidida durante el desarrollo de F3 (tabs "Pendientes/Cerrados"), no prometida en `01-alcance-mvp.md`. Esfuerzo: bajo (schema + `buildWhere` en `leads.service.ts`).
-- **Validación de traspaso asesor→vendedor y conflicto de rol dual, pendiente de confirmar con el cliente** (no es deuda de código): `docs/01-alcance-mvp.md` riesgos R4 y R6 pedían validar con el cliente la regla de traspaso y el conflicto "misma persona = asesor y vendedor" **antes de M6**. M6 ya está completo, implementado sobre el supuesto de `docs/02-reglas-negocio.md` §5 (marcado ahí mismo como "a confirmar"), sin evidencia documentada de que esa validación con el cliente haya ocurrido. Conviene cerrar esta decisión de producto antes de operar con usuarios reales que puedan combinar ambos roles.
+| Prioridad | Módulo | Brecha verificada | Consecuencia actual | Dependencia / siguiente paso |
+|---|---|---|---|---|
+| P0 | M5/M6 | `canEdit` permite al responsable operativo cerrar desde cualquier etapa no terminal; antes del traspaso ese responsable puede ser un asesor. Además, `canTransfer` no impide que el asesor original vuelva a cambiar al vendedor. | El sistema no garantiza la separación de competencias asesor→vendedor que se evalúa para el TO-BE; los tests actuales preservan el comportamiento AS-IS. | Resolver autoridad de Venta/No Venta, evidencia de primer contacto y reasignación de vendedor en `docs/14-evolucion-multitenant.md`; después cambiar reglas y tests juntos. |
+| P1 | M4 | `postIngestaGenerica` siempre usa `adaptGoogleForms`, que fija `redSocial = GOOGLE_FORMS`, aunque `requireBridgeKey` ya resolvió la red real del bridge. | Un bridge X o de sitio web quedaría atribuido como Google Forms. | Hacer que el adaptador genérico reciba la fuente autenticada antes de agregar X o sitio web. |
+| P1 | M4/M5 | `LeadRecibido.bridgeId -> leadId` conserva trazabilidad histórica indirecta hacia el bridge. Sin embargo, `LeadEntrante` transporta cuenta y campaña mientras `Lead` y sus DTO no exponen una atribución singular/canónica de fuente, cuenta y campaña; el filtro usa `payload_original`. | La auditoría puede reconstruir el bridge desde la recepción, pero reportes, permisos por fuente y detalle operativo dependen de joins indirectos, JSON crudo o quedan sin dato. | Definir la atribución canónica y sus claves antes de la migración multiempresa; luego exponerla en los DTO de M5 sin eliminar la trazabilidad histórica de `LeadRecibido`. |
+| P1 | M4/M8 | `CuentaPublicitaria.tokenExpiraEn` ya se persiste, pero no existe productor ni scheduler de `TOKEN_POR_EXPIRAR`. | El administrador conoce una revocación al fallar la verificación, pero no recibe la alerta preventiva prometida siete días antes. | Implementar productor idempotente por ventana de expiración y cubrir concurrencia. |
+| P1 | M5 | `hasta` se coerciona desde `YYYY-MM-DD` a medianoche y se aplica con `lte`; tampoco existe validación `desde <= hasta`. | El último día seleccionado queda casi totalmente excluido y se aceptan rangos invertidos. | Reutilizar la normalización a fin de día y el `superRefine` ya aplicados por `metricasQuerySchema`. |
+| P2 | M4/M8 | Un lead sin teléfono ni correo escribe `bridge_logs.ADVERTENCIA`, pero `registrarBridgeLog` solo crea notificaciones para nivel `ERROR`. | No se notifica a supervisores como exige `docs/05-bridges.md`; un log no equivale a una notificación. | Agregar un productor explícito para el destinatario correcto; no ampliar todos los logs `ADVERTENCIA` indiscriminadamente. |
+| P2 | M5 | Falta `vista=activos|cerrados` en `GET /leads`. | F3 no puede implementar sus tabs con filtrado server-side. | Agregar schema + `buildWhere`; decidir el campo de fecha de la vista de cerrados. |
+| P2 | M4 | LinkedIn y X siguen pendientes. | Cobertura de captación incompleta. | Ejecutar después de corregir origen y atribución; LinkedIn mantiene dependencia de aprobación externa. |
+| P3 | M5 | `limite` acepta cualquier entero entre 1 y 100 en vez de 10/25/50/100. | Backend y frontend no comparten el mismo conjunto permitido, aunque el máximo ya está acotado. | Endurecimiento puntual del schema. |
 
 ---
 
@@ -48,7 +63,7 @@ Verificado contra `docs/01-alcance-mvp.md`: ninguno de estos ítems fue prometid
 - [x] Express + TypeScript con configuración estricta del compilador
 - [x] Prisma conectado a PostgreSQL en Docker
 - [x] Esquema inicial completo y primera migración (2026-08-19). Ítem
-      obsoleto del arranque de M1: el schema ya pasó por 14 migraciones
+      obsoleto del arranque de M1: el schema ya pasó por 13 migraciones
       acumuladas a través de M3-M4 (`backend/prisma/migrations/`), muy por
       encima de "la primera" — se marca completo en vez de dejarlo como deuda
       fantasma del checklist.
@@ -521,9 +536,10 @@ Las ejecuciones concurrentes de SLA y citas persisten un solo conjunto de evento
 y notificación por ventana elegible, y la publicación SSE ocurre solo después
 del commit.
 
-`TOKEN_POR_EXPIRAR` queda solo como contrato hasta que M4 implemente
-almacenamiento cifrado y metadatos persistidos de expiración. M8 no incluye un
-productor ni un scheduler de expiración de tokens.
+`TOKEN_POR_EXPIRAR` sigue sin productor ni scheduler. La justificación histórica
+de esperar almacenamiento cifrado y metadatos de expiración ya no aplica:
+`CuentaPublicitaria` persiste `token_cifrado` y `token_expira_en`. El pendiente
+real es producir la alerta preventiva de forma idempotente a partir de esa fecha.
 
 ---
 
