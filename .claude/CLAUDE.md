@@ -267,3 +267,24 @@ The user controls receipt-driven development with a switch: `gentle-ai review mo
 - Delivery under a disabled switch follows ordinary repository policy and reports `disabled/unmanaged`, never a fabricated approval.
 - Never enable receipt-driven development on the user's behalf unless the user explicitly asks for it.
 <!-- /gentle-ai:agent-routing -->
+
+## UI/UX Skill Stack — mocks e interfaces del CRM Multi-Tenant
+
+Instalado 2026-08-26. Fuente: repo público verificado `anthropics/skills` (GitHub, org `anthropics`, 171k+ stars), mirror local en el marketplace oficial `anthropics/claude-plugins-official` ya registrado en esta máquina. Sin dependencias extra (son guías en Markdown, no código a ejecutar). Instalado solo en este worktree (`dev-front`), copiado en `.claude/skills/frontend-design/` desde `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/frontend-design/skills/frontend-design/`.
+
+**Antes de proponer, generar o revisar cualquier pantalla/mock/variante visual del CRM** (incluyendo trabajo tipo `docs/mockups/*`), cargar explícitamente estos skills en este orden — la regla "Contextual Skill Loading" del CLAUDE.md base ya obliga a chequear esto antes de cada respuesta, esta sección solo fija el orden y el rol de cada uno para este tipo de tarea:
+
+1. **`frontend-design`** (nuevo) — dirección estética: paleta, tipografía, evitar el "look genérico de IA" (fondo crema + serif, negro + acento ácido, broadsheet), tomar un riesgo estético justificado por el brief. Usar primero, antes de tocar código, para fijar la dirección de cada propuesta (A/B/C).
+2. **`interface-design`** — craft de producto: dashboards, paneles, jerarquía visual, tokens, estados. Es el skill correcto para pantallas de datos como Dashboard/Kanban del CRM (no para landing pages).
+3. **`transitions-dev`** + **`transitions-polish`** — animaciones/microinteracciones (hover, stagger, modales, badges) con escala de tokens de motion; usar cuando la propuesta pida "animaciones, elementos modernos" (ej. Propuesta C).
+4. **`baseline-ui`** — pasada de limpieza anti-slop (espaciado, jerarquía, tipografía) antes de dar por terminada una pantalla.
+5. **`better-layout`** — estructura, agrupación, breakpoints responsive.
+6. **`shadcn`** — componentes reales del proyecto (`frontend/` ya usa shadcn/ui v3, ver `docs/09-linea-grafica-frontend.md`); usar al convertir cualquier propuesta ganadora a código real.
+7. **`accessibility`** / **`better-accessibility`** / **`fixing-accessibility`** — contraste, foco, ARIA; crítico en la Propuesta C (glassmorphism oscuro) por su riesgo de contraste ya documentado en `docs/mockups/2026-08-26-propuestas-visuales-multitenant.md`.
+8. **`dataviz`** — gráficos del Dashboard (embudo de leads, KPIs).
+9. **`vercel-react-best-practices`** — patrones de performance React/Next al implementar en código real.
+10. **`harden`** — estados vacíos/error/carga cuando la pantalla pase de mock a producción.
+
+**No instalados / evaluados y descartados para esta tarea** (mismo repo oficial `anthropics/skills`): `theme-factory` (pensado para slide decks/presentaciones, no para UI de producto — no aplica) y `web-artifacts-builder` (toolchain React+Vite+shadcn completo para artifacts de claude.ai; útil si en el futuro se quiere prototipar variantes interactivas en vez de estáticos de Stitch, pero no requerido para el alcance actual — instalar solo si se pide explícitamente).
+
+`ui-skills.com/skills` no pudo verificarse (bloqueó el acceso, HTTP 403) — no se documenta nada de ese catálogo por no poder confirmarlo de forma independiente.
