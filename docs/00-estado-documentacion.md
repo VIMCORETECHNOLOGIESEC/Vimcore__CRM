@@ -46,7 +46,6 @@ forma parte del comportamiento actual.
 | Documento | Estado | Autoridad | Verificación y uso actual |
 |---|---|---|---|
 | `README.md` | Vigente | Entrada al repositorio y flujo Docker | Ruta operativa soportada y mapa de documentación. |
-| `backend/README.md` / `frontend/README.md` | Mixto | Contexto de cada paquete | Sus descripciones funcionales son útiles, pero los flujos de ejecución en host contradicen la política container-only y deben corregirse en otro lote. |
 | `AGENTS.md` | Vigente | Políticas obligatorias para agentes | Define el baseline single-company actual y separa la evolución multi-tenant aún no aprobada. |
 | `docs/01-alcance-mvp.md` | Vigente con reservas | Baseline funcional del MVP v1 | Mezcla alcance comprometido con elementos todavía parciales: LinkedIn, X y atribución normalizada de campaña/cuenta. No representa el target multi-tenant. |
 | `docs/02-reglas-negocio.md` | Vigente con reservas | Reglas del embudo v1 | El AS-IS de traspaso en `NUEVO` y SLA fue reconciliado; autoridad de cierre, rol dual y reglas TO-BE siguen pendientes. |
@@ -77,7 +76,6 @@ forma parte del comportamiento actual.
 | Decisiones de responsabilidad resueltas, no implementadas | M6 sigue implementado según el AS-IS anterior; autoridad de cierre (D7), evidencia de primer contacto y handoff (D8), rol dual (D5) y reasignación (D9) ya están resueltos en `docs/16` §8. | La regla ya está aprobada; falta migrar esquema y código para que el comportamiento real la refleje. |
 | Historial técnico dentro de documentos vivos | Docs 06/07 conservan diarios extensos y notas superadas debajo de sus resúmenes actuales. | La fuente vigente se vuelve más difícil de distinguir de la cronología. |
 | QA no reproducible | Los usuarios, bridges, leads, citas y notificaciones de docs/12 no coinciden con `seed.ts` ni `seed-leads-qa.ts`. | No se puede usar el checklist actual como evidencia de aceptación. |
-| Guías de paquete incompatibles con el entorno soportado | `backend/README.md` y `frontend/README.md` todavía incluyen ejecución en host, aunque el README raíz ya la reemplaza por Docker. | Un lector que entre directamente por un paquete puede incumplir el aislamiento obligatorio. |
 
 ## Plan de corrección por lotes
 
