@@ -56,8 +56,7 @@ forma parte del comportamiento actual.
 | `docs/07-modulos-frontend.md` | Vigente con reservas | Checklist técnico frontend | Solo el estado consolidado y las brechas P1-P3 vigentes; el diario de migración mock-a-real quedó en Git (`git log --follow`). |
 | `docs/08-dashboard-kpis.md` | Vigente con reservas | Definiciones funcionales de KPIs | Los KPIs están implementados, pero no todos se calculan solo con `lead_eventos`; campaña se resuelve actualmente desde JSON. |
 | `docs/09-linea-grafica-frontend.md` | Mixto | Línea visual aprobada | La paleta y principios siguen siendo referencia; estados de librerías y flujo de mockups contienen historia ya superada. |
-| `docs/09-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
-| `docs/10-skills-agente-frontend.md` | Vigente con reservas | Inventario de skills frontend | El inventario requiere reconciliar conteos, rutas de registro y comandos de instalación antes de reutilizarlo. |
+| `docs/10-skills-agente-frontend.md` | Vigente | Inventario de skills frontend | Verificado 2026-08-27: las 12 skills listadas están instaladas en `.claude/skills/` — el conteo y la tabla son correctos, sin brecha pendiente. |
 | `docs/11-plan-integracion.md` | Vigente | Snapshot de integración AS-IS | Resumen conciso verificado contra rutas, servicios y clientes HTTP actuales. El plan cronológico anterior queda en Git. |
 | `docs/12-pruebas-manuales-qa.md` | No confiable | Catálogo histórico de escenarios QA | Sus fixtures no coinciden con los seeds actuales; no permite certificar QA hasta reconstruirse. |
 | `docs/13-configuracion-bridges.md` | Vigente con reservas | Guía operativa de Meta y Google Forms | Es utilizable con verificación puntual de variables, modelo Facebook/Instagram y creación de cuentas. |
@@ -67,7 +66,8 @@ forma parte del comportamiento actual.
 | `docs/17-seguridad-y-ciberseguridad.md` | Vigente | Política operativa para cambios sensibles | Separa controles AS-IS y gates TO-BE; consultar `docs/19` para evidencia auditada, riesgos y plan de pruebas. |
 | `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
 | `docs/19-auditoria-ciberseguridad.md` | Vigente con reservas | Informe consolidado de seguridad | Describe beneficios, hallazgos P0–P2, límites de la evidencia y pruebas pendientes; no autoriza cambios ni sustituye un pentest. |
-| `docs/blocks/{a..f}-*.md` | Borrador TO-BE | Carve-out por bloque de la migración multi-tenant (D1-D14) | Cada uno autocontenido: scope, D-refs, esquema/diseño movido, entrada/salida. No autoriza implementación por sí solo. |
+| `docs/21-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
+| `docs/blocks/{a..f}-*.md` | Mixto | Carve-out por bloque de la migración multi-tenant (D1-D14) | Bloques A y B: ✅ cerrados e implementados (ver su `Estado` individual en cada archivo). Bloque C: ⏳ en progreso — Etapa 1 (`c1807fe`) y Etapa 2 (`f45923e`) cerradas; Etapa 3 (RLS + rol `crm_app` no-superusuario + CAS en asignación) a medio camino: grupos 0/1/2/3/5 completos (RLS real, condición de carrera del riesgo #2 ya resuelta), grupos 4 (notificación) y 6 (suite adversarial) pendientes; ver `Estado` en `docs/blocks/c-aislamiento.md` para el detalle de handoff. Bloques D-F: Borrador TO-BE — cada uno autocontenido (scope, D-refs, esquema/diseño movido, entrada/salida), no autorizan implementación por sí solos. |
 
 ## Brechas abiertas confirmadas
 
@@ -75,9 +75,13 @@ forma parte del comportamiento actual.
 |---|---|---|
 | ✅ Atribución normalizada resuelta (Bloque A, WU4) | `Lead` ahora tiene `campaniaId` y `cuentaPublicitariaId` como FK resueltos; `atribucion.service.ts` resuelve en ingesta con degradación silenciosa a `null` si no hay match. Commit 07b1d40. | Resuelto — el listado y detalle pueden mostrar relación confiable de campaña/cuenta, y el filtrado puede usar las FKs en lugar de JSON. |
 | Contrato de cierre divergente | Docs 02/04 exigen fecha de cierre en Venta/No Venta y docs/04 permite observaciones de Venta; el schema no recibe esos campos y el servicio fija `cerradoEn` con la hora del servidor. | Una interfaz o prueba basada en esos documentos enviaría datos descartados o no representables por el contrato actual. |
-| Autoridad de cierre AS-IS implementada (Bloque A, WU1–WU2); D7 multi-tenant pendiente | Bloque A implementó `canClose` como regla AS-IS (sin multi-tenant): ADMINISTRADOR siempre cierra sin reassign, SUPERVISOR nunca cierra, responsable operativo cierra solo si es el asignado. Decisión D7 (multi-tenant + `habilitadoParaVenta`) está resuelta en `docs/16` §8 pero sigue pendiente de implementación en Bloque B. | Autoridad de cierre AS-IS funciona; la migración D7 a multi-tenant requiere Bloque B. Rol dual (D5), reasignación (D9) y handoff (D8) también resueltos en D14, pendientes. |
-| Historial técnico dentro de documentos vivos | Docs 06/07 conservan diarios extensos y notas superadas debajo de sus resúmenes actuales. | La fuente vigente se vuelve más difícil de distinguir de la cronología. |
-| QA no reproducible | Los usuarios, bridges, leads, citas y notificaciones de docs/12 no coinciden con `seed.ts` ni `seed-leads-qa.ts`. | No se puede usar el checklist actual como evidencia de aceptación. |
+| Autoridad de cierre AS-IS implementada (Bloque A, WU1–WU2); corte D7 a autoridad real pendiente | Bloque A implementó `canClose` como regla AS-IS (sin multi-tenant): ADMINISTRADOR siempre cierra sin reassign, SUPERVISOR nunca cierra, responsable operativo cierra solo si es el asignado. Decisión D7 (multi-tenant + `habilitadoParaVenta`) está resuelta en `docs/16` §8; Bloque B ya implementó el andamiaje (`Membresia`, `habilitadoParaVenta`, comparador en sombra vía Fase 2), pero el CORTE de autoridad real (que `Membresia` mande la decisión de cierre en vez de `Usuario.rol`) sigue pendiente de una fase posterior (Bloque C/D). | Autoridad de cierre AS-IS funciona con `Usuario.rol`; el andamiaje de D7 ya existe pero no manda todavía. Rol dual (D5), reasignación (D9) y handoff (D8) también resueltos en D14, con corte de autoridad pendiente igual que D7. |
+| ✅ Historial técnico retirado de documentos vivos | Docs 06/07 ya redujeron el diario extenso a checklists lean del estado consolidado (Lote 3, ver también `docs/16` §4.1). | Resuelto — la fuente vigente queda separada de la cronología, que sigue en Git. |
+| QA no reproducible | Los usuarios, bridges, leads, citas y notificaciones de docs/12 no coinciden con `seed.ts` ni `seed-leads-qa.ts`; docs/12 se redujo a un índice con TODO explícito (2026-08-27) mientras el Lote 4 sigue abierto. | No se puede usar el checklist actual como evidencia de aceptación. |
+| D15 (importación de leads históricos por empresa) sin bloque asignado | Documentado y diferido explícitamente en `docs/16` líneas 651-664 ("Pendiente, diferido... no bloquea Bloque C"); no tiene `docs/blocks/*.md` propio ni entrada previa en esta matriz. | Riesgo bajo hoy (no bloquea nada vigente), pero queda huérfano de seguimiento si no se recuerda al planificar bloques posteriores a F. |
+| `mapLeadFromApi` no resuelve datos de contacto/campaña reales | `frontend/src/funcionalidades/leads/leads.api.ts::mapLeadFromApi` fija `correoPrincipal` y `campania` en `null`, aunque el backend ya resuelve `campaniaId`/`cuentaPublicitariaId` reales (Bloque A, WU4). | El listado y detalle de leads no muestran contacto ni campaña real en frontend pese a que el dato ya existe en backend. |
+| M6 no exige `asesor_id` antes del handoff a vendedor | `backend/src/services/asignacion.service.ts` no valida que exista `asesor_id` antes de entregar el lead a vendedor (ver `docs/06`, módulo M6). | Un lead puede pasar a vendedor sin asesor asignado, dejando el historial de responsables incompleto. |
+| Sin guard de edición local ni redirección 403 en detalle de lead | Falta guard de edición local en `LeadTimeline`/`FormularioEtapaLead` y redirección ante 403 en `LeadDetallePage`. | La UI puede intentar acciones que el backend rechaza sin feedback claro al usuario ni redirección automática. |
 
 ## Plan de corrección por lotes
 
@@ -122,8 +126,11 @@ archivo). Esta sección solo declara qué queda pendiente hoy.
 - [x] Resolver organización, empresa, membresías, roles, permisos por canal,
       ownership de bridges y alcance de métricas — ver D1, D4, D5, D6, D12 en
       `docs/16` §8.
-- [ ] Aprobar migración, compatibilidad y estrategia de despliegue antes de
-      modificar esquema o autorización.
+- [ ] Aprobar migración, compatibilidad y estrategia de despliegue antes del
+      corte final de autorización real y del retiro de columnas legacy
+      (Bloque F). No aplica a la migración aditiva de Bloque B (`Empresa`,
+      `Membresia`, sombra), ya aprobada y ejecutada vía SDD (commit
+      `2526af7`).
 
 ## Regla de mantenimiento
 

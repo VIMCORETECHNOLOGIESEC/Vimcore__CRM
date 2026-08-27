@@ -52,20 +52,16 @@ estado AS-IS y los pendientes verificables del MVP continúan en
 
 ## 3. Baseline AS-IS que condiciona la evolución
 
-| Área | Comportamiento actual | Consecuencia para el TO-BE |
-|---|---|---|
-| Despliegue | Una instancia y base por empresa | No existe una frontera tenant modelada |
-| Usuario | Correo único, un `RolUsuario` global y un único estado activo | No soporta roles o bajas por empresa |
-| Visibilidad | Administrador y supervisor ven todo; asesor y vendedor ven su cartera | El acceso total no tiene scope empresarial |
-| Asignación | Pool global por rol, menor carga y desempate FIFO | Un asesor podría recibir leads de otra empresa o fuente |
-| Deduplicación | Teléfono único global; respaldo por correo; lead abierto global por cliente | Una persona podría mezclar oportunidades de empresas distintas |
-| Lead y recepción | `Lead` no tiene ownership empresarial ni atribución directa a fuente, cuenta o campaña; `LeadRecibido` registra `bridgeId` y, al resolverse, `leadId` | Existe trazabilidad indirecta `LeadRecibido.bridgeId -> LeadRecibido.leadId`, pero no una atribución singular y canónica de Fuente, Cuenta externa o Campaña en el lead |
-| Bridge | Un `RedSocial` y varias `CuentaPublicitaria` | La instancia técnica no equivale siempre a la unidad de routing |
-| Campaña | Existe el modelo `Campania`, pero producción no lo materializa ni lo enlaza a `Lead` | Los reportes consultan nombre de campaña dentro de JSON |
-| Handoff | No se traspasa un lead en `NUEVO`; el asesor queda read-only tras el traspaso | La separación es parcial, sin primer contacto explícito |
-| Cierre | `NUEVO` y `CONTACTADO` permiten salto directo a `VENTA` o `NO_VENTA` | Un asesor puede cerrar una venta mientras todavía es responsable |
-| Métricas | Scope por responsable, red, campaña JSON y fechas | No hay drill-down por holding, empresa, sitio o fuente |
-| Tiempo real | Notificaciones por usuario y broadcast global de invalidación de métricas | Los destinatarios y señales deben quedar acotados por tenant |
+El detalle completo del comportamiento AS-IS single-company vive en
+[`02-reglas-negocio.md`](02-reglas-negocio.md) y en el resumen ejecutivo de
+[`16-hallazgos-y-preguntas.md`](16-hallazgos-y-preguntas.md) §2 — no se
+repite acá. Lo que el TO-BE de este documento necesita tener presente: nada
+de lo implementado modela una frontera tenant (una instancia/base por
+empresa, rol global de usuario, pool y deduplicación sin scope, atribución
+de lead sin FK canónica a fuente/cuenta/campaña, cierre sin separación dura
+asesor→vendedor, métricas y tiempo real sin acotar por holding/empresa). Por
+eso la migración tiene que ser aditiva: primero se crea el scope tenant,
+después se migra dato existente, y recién ahí se endurece la restricción.
 
 ## 4. Glosario objetivo
 

@@ -1,5 +1,12 @@
 # Bloque B — Fundación tenant y esquema Prisma
 
+> **Estado:** ✅ CERRADO — 2026-08-26
+> **Commit:** 2526af7
+> **Criterios de salida:** Todos cumplidos — Empresa/Membresia con backfill
+> idempotente verificado, login dual, autorizador en sombra (Fase 2) y
+> comparador de dedupe en sombra (Fase 3) implementados y verificados con
+> 115/115 tests propios + suite completa 777/777.
+
 > Fase 3 de `docs/16-hallazgos-y-preguntas.md` §7 ("Fundación tenant
 > aditiva"). Cubre Fase 1-3 de `docs/14-evolucion-multitenant.md` §13
 > ("Fundación aditiva", "Membresías y autorización en sombra",
@@ -29,18 +36,20 @@ columnas legacy todavía (eso es Bloque F).
 - **D11 — Topología física**: esquema compartido, una sola base de datos
   para todo el holding, sin `Holding` como tabla propia todavía.
 
-## Esquema Prisma (movido desde `docs/16` §8.2)
+## Esquema Prisma (implementado — reconciliado contra `backend/prisma/schema.prisma`, commit `2526af7`)
+
+> Lo que sigue es el esquema TAL COMO quedó implementado, no el diseño TO-BE
+> original de `docs/16` §8.2. Difiere del diseño original en varios puntos
+> señalados abajo con "(desvío vs. diseño original)".
 
 ```prisma
 model Empresa {
   id       String   @id @default(uuid()) @db.Uuid
   nombre   String   @db.Text
-  activa   Boolean  @default(true)
-  slaHoras Int      @default(24) @map("sla_horas")
-  creadaEn DateTime @default(now()) @map("creada_en") @db.Timestamptz(6)
+  creadoEn DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 
-  bridges    Bridge[]
   membresias Membresia[]
+  bridges    Bridge[]
   leads      Lead[]
 
   @@map("empresas")
@@ -57,27 +66,49 @@ enum RolMembresia {
 model Membresia {
   id                  String       @id @default(uuid()) @db.Uuid
   usuarioId           String       @map("usuario_id") @db.Uuid
-  empresaId           String?      @map("empresa_id") @db.Uuid // null = alcance holding-wide
+  empresaId           String       @map("empresa_id") @db.Uuid
   rol                 RolMembresia
-  habilitadoParaVenta Boolean      @default(false) @map("habilitado_para_venta") // solo si rol = ASESOR
-  activa              Boolean      @default(true) // soft toggle, nunca DELETE
-  creadaEn            DateTime     @default(now()) @map("creada_en") @db.Timestamptz(6)
+  habilitadoParaVenta Boolean      @default(false) @map("habilitado_para_venta")
+  correo              String?      @unique @db.Citext
+  passwordHash        String?      @map("password_hash") @db.Text
+  activa              Boolean      @default(true)
+  creadoEn            DateTime     @default(now()) @map("creado_en") @db.Timestamptz(6)
 
-  usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario       Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
 
   @@unique([usuarioId, empresaId, rol])
+  @@index([usuarioId, activa])
   @@index([empresaId, rol])
   @@map("membresias")
 }
 ```
 
-Cambios sobre modelos existentes: `Bridge.empresaId` (nuevo, NOT NULL);
-`Lead.empresaId` (nuevo, habilita unicidad compuesta de "lead abierto" por
-cliente+empresa); `Usuario.rol` y `enum RolUsuario` se retiran — toda
-autorización pasa por `Membresia`. `empresaId: null` en vez de una fila por
-empresa para admins de holding porque el pool de empresas crece de forma
-incremental y no requiere backfill al crear una empresa nueva.
+**(desvío vs. diseño original) `Empresa` no tiene `activa` ni `slaHoras`.**
+Ninguno de los dos campos se necesitó para lo que Bloque B implementó
+(fundación aditiva + sombra); no se incluyeron en esta implementación. Quedan
+disponibles para un bloque posterior si el diseño los sigue requiriendo.
+
+**(desvío vs. diseño original) `Membresia.empresaId` es `String` (NOT NULL),
+no `String?`.** El concepto de membresía holding-wide (`empresaId: null`)
+descrito en el diseño original NO se implementó en este cambio — el acceso
+holding-wide sigue siendo puramente `Usuario.rol`, sin cambios. Toda
+`Membresia` real está scopeada a una `Empresa` concreta.
+
+Cambios sobre modelos existentes: `Bridge.empresaId` (nuevo, **nullable** —
+**(desvío vs. diseño original)** el diseño original decía "NOT NULL"; en la
+implementación real un bridge sin empresa asignada no falla la ingesta y
+`Lead.empresaId` simplemente queda `null`. Se vuelve NOT NULL recién en
+Bloque F); `Lead.empresaId` (nuevo, nullable, con índice simple — **(desvío
+vs. diseño original)** NO existe un unique compuesto de "lead abierto" por
+cliente+empresa en el esquema; la comparación (cliente, empresa) es
+puramente en sombra vía la tabla nueva `LeadAbiertoRevisionPendiente`, que
+registra colisiones detectadas sin bloquear ni modificar el lead existente).
+`Usuario.rol` y `enum RolUsuario` NO se tocan en este change — siguen siendo
+la única autoridad real de autorización en producción; `Membresia` opera en
+modo sombra (compara y loguea divergencias, nunca bloquea) hasta que Bloque
+C/D corten el switch.
 
 Ciclo de vida: quitar a alguien de una empresa es `Membresia.activa = false`,
 nunca `DELETE`. `Usuario.activo` se recalcula automáticamente cuando pierde
@@ -130,8 +161,9 @@ holding-wide).
 - `Empresa` y `Membresia` existen en el esquema con backfill verificado.
 - Login resuelve correctamente ambos tipos de credencial (holding-wide y
   por empresa).
-- `Usuario.rol` sigue existiendo solo como compatibilidad temporal, no como
-  fuente de autorización activa.
+- `Usuario.rol` sigue existiendo y sigue siendo la única fuente de
+  autorización activa en producción; `Membresia` opera en modo sombra
+  (comparación no bloqueante) hasta que un bloque posterior corte el switch.
 
 ## Siguiente bloque
 

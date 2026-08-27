@@ -4,6 +4,39 @@
 > Cubre Fase 4 de `docs/14-evolucion-multitenant.md` §13 ("Aislamiento
 > efectivo").
 
+## Estado (2026-08-27, actualizado) — EN PROGRESO, Etapa 3 a medio camino
+
+Ciclo SDD completo (explore/propose/spec/design/tasks) corrido y persistido en
+Engram (artifact store = `engram`, no `openspec/` — ver
+`sdd-init/crm_comercial`).
+
+| Etapa | Alcance | Estado | Commit | Evidencia |
+|---|---|---|---|---|
+| 1 | Autorizador sombra company-aware + chokepoint de notificaciones + alta de Usuario con Membresia (bootstrap) + TenantContext fail-closed | ✅ Completa (12/12 tareas) | `c1807fe` | 812/812 tests, tsc limpio |
+| 2 | Cutover bloqueante (`leads.access`/`leads.service`/`metricas.access`) + `empresaId` NOT NULL + decisión por job | ✅ Completa (13/13 tareas) | `f45923e` | 832/832 tests, tsc limpio |
+| 3 | RLS de Postgres + rol de bypass + suite adversarial + CAS en asignación | ⏳ **A medio camino** — ver detalle abajo | (este commit) | 836/837 y 47/48, ver detalle |
+
+Etapa 3 se retomó como cambio SDD independiente `bloque-c-etapa3-rls-adversarial`
+(no el `bloque-c-aislamiento/tasks` original de 35 tareas — esos artefactos
+nunca quedaron persistidos en Engram pese a lo que decía esta misma sección
+antes; ver `sdd/bloque-c-etapa3-rls-adversarial/{proposal,spec,design,tasks,
+apply-progress}` en Engram, ese es el rastro real). El "riesgo de diseño #2"
+(condición de carrera pool automático vs. reasignación manual) que esta
+sección marcaba como vacío sin tarea **ya está resuelto e implementado** —
+ver Grupo 3 abajo.
+
+### Etapa 3 — desglose real por grupo de tareas
+
+| Grupo | Alcance | Estado |
+|---|---|---|
+| 0 | Rol Postgres `crm_app` sin superuser (D8) — hace que RLS proteja de verdad | ✅ Completo |
+| 1 | Migración: columna `version`, `empresaId` denormalizado, políticas RLS, rol `crm_bypass_jobs` | ✅ Completo |
+| 2 | Tenant context (`AsyncLocalStorage` + Prisma `$extends` + middleware) | ✅ Completo |
+| 3 | CAS optimista en asignación de `Lead` (el riesgo de diseño #2, ya resuelto) | ✅ Completo |
+| 4 | Notificación a usuario + supervisor al agotar el CAS | ⏳ **NO iniciada** |
+| 5 | `sla-atrasado.service` y jobs bajo rol de bypass | ✅ Completo |
+| 6 | Suite adversarial completa (cross-holding read/write/HTTP/side-channels) | ⏳ **NO iniciada** — solo existe `rls-policy-coverage.test.ts` |
+
 ## Alcance
 
 Convertir el scope por empresa (introducido en Bloque B como columnas
