@@ -11,6 +11,21 @@ competencia asesor/venta, el canal de ingreso manual de leads, y separar
 `Lead` (contacto) de `Oportunidad` (negociación) para permitir varias
 negociaciones paralelas del mismo cliente en la misma empresa.
 
+### Esencial vs. diferido (ver `docs/23` §1 y §4)
+
+Para llegar al multi-tenant esencial no hace falta todo lo de arriba de una
+sola vez:
+
+- **Esencial** (lo lleva el orquestador, cierra este bloque): modelos
+  `Oportunidad`/`Producto`, pool de asignación scopeado por empresa (D3/D4),
+  autoridad de cierre (D7), split `Lead`/`Oportunidad` (D13), y la decisión
+  registrada del riesgo de invariante `asesorId` (abajo).
+- **Diferido** (módulo de catálogo, con mock — `docs/23` §3 y §4): el canal
+  de ingreso manual (`CanalManual`, más abajo) y las excepciones auditadas
+  de Administrador/Supervisor (D9). Ninguno de los dos bloquea que el
+  aislamiento y el routing esencial funcionen; se integran cuando el
+  orquestador cierre este bloque, contra el shape ya especificado acá.
+
 ## Requiere cerrado
 
 - **Bloque C** — el pool de asignación y la autoridad de cierre deben operar
@@ -28,9 +43,9 @@ negociaciones paralelas del mismo cliente en la misma empresa.
   actualmente responsable puede marcar `VENTA`/`NO_VENTA`.
 - **D8 — Modalidad del handoff**: asignación automática inmediata al pool de
   habilitados para venta, sin aceptación manual.
-- **D9 — Política de excepciones**: Administrador y Supervisor conservan
-  reasignación manual auditada, sobre el flujo automático de D8, no como
-  reemplazo.
+- **D9 — Política de excepciones** *(diferido, ver `docs/23` §4)*:
+  Administrador y Supervisor conservan reasignación manual auditada, sobre
+  el flujo automático de D8, no como reemplazo.
 - **D13 — Límite Lead→Oportunidad**: un mismo cliente puede tener varias
   negociaciones paralelas en la misma empresa; `Lead` (contacto) y
   `Oportunidad` (negociación) dejan de ser la misma fila.
@@ -110,6 +125,10 @@ como configuración por empresa. D7 no cambia: la autoridad de cierre está
 anclada al responsable vigente, sin importar cómo llegó a serlo.
 
 ## Canal de ingreso manual y catálogo dinámico (movido desde `docs/16` §8.4)
+
+> **Diferido** — ver `docs/23` §4. No bloquea el cierre esencial de este
+> bloque; se construye como módulo de catálogo con mock contra el shape de
+> abajo y se integra cuando el orquestador agregue el endpoint real.
 
 ```prisma
 model CanalManual {
