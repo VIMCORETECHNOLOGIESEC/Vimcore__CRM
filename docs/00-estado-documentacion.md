@@ -56,7 +56,6 @@ forma parte del comportamiento actual.
 | `docs/07-modulos-frontend.md` | Vigente con reservas | Checklist técnico frontend | Solo el estado consolidado y las brechas P1-P3 vigentes; el diario de migración mock-a-real quedó en Git (`git log --follow`). |
 | `docs/08-dashboard-kpis.md` | Vigente con reservas | Definiciones funcionales de KPIs | Los KPIs están implementados, pero no todos se calculan solo con `lead_eventos`; campaña se resuelve actualmente desde JSON. |
 | `docs/09-linea-grafica-frontend.md` | Mixto | Línea visual aprobada | La paleta y principios siguen siendo referencia; estados de librerías y flujo de mockups contienen historia ya superada. |
-| `docs/24-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
 | `docs/10-skills-agente-frontend.md` | Vigente | Inventario de skills frontend | Verificado 2026-08-27: las 12 skills listadas están instaladas en `.claude/skills/` — el conteo y la tabla son correctos, sin brecha pendiente. |
 | `docs/11-plan-integracion.md` | Vigente | Snapshot de integración AS-IS | Resumen conciso verificado contra rutas, servicios y clientes HTTP actuales. El plan cronológico anterior queda en Git. |
 | `docs/12-pruebas-manuales-qa.md` | No confiable | Catálogo histórico de escenarios QA | Sus fixtures no coinciden con los seeds actuales; no permite certificar QA hasta reconstruirse. |
@@ -67,6 +66,7 @@ forma parte del comportamiento actual.
 | `docs/17-seguridad-y-ciberseguridad.md` | Vigente | Política operativa para cambios sensibles | Separa controles AS-IS y gates TO-BE; consultar `docs/19` para evidencia auditada, riesgos y plan de pruebas. |
 | `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
 | `docs/19-auditoria-ciberseguridad.md` | Vigente con reservas | Informe consolidado de seguridad | Describe beneficios, hallazgos P0–P2, límites de la evidencia y pruebas pendientes; no autoriza cambios ni sustituye un pentest. |
+| `docs/21-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
 | `docs/blocks/{a..f}-*.md` | Mixto | Carve-out por bloque de la migración multi-tenant (D1-D14) | Bloques A y B: ✅ cerrados e implementados (ver su `Estado` individual en cada archivo). Bloque C: ⏳ en progreso — Etapa 1 (`c1807fe`) y Etapa 2 (`f45923e`) cerradas; Etapa 3 (RLS + rol `crm_app` no-superusuario + CAS en asignación) a medio camino: grupos 0/1/2/3/5 completos (RLS real, condición de carrera del riesgo #2 ya resuelta), grupos 4 (notificación) y 6 (suite adversarial) pendientes; ver `Estado` en `docs/blocks/c-aislamiento.md` para el detalle de handoff. Bloques D-F: Borrador TO-BE — cada uno autocontenido (scope, D-refs, esquema/diseño movido, entrada/salida), no autorizan implementación por sí solos. |
 
 ## Brechas abiertas confirmadas
@@ -79,6 +79,9 @@ forma parte del comportamiento actual.
 | ✅ Historial técnico retirado de documentos vivos | Docs 06/07 ya redujeron el diario extenso a checklists lean del estado consolidado (Lote 3, ver también `docs/16` §4.1). | Resuelto — la fuente vigente queda separada de la cronología, que sigue en Git. |
 | QA no reproducible | Los usuarios, bridges, leads, citas y notificaciones de docs/12 no coinciden con `seed.ts` ni `seed-leads-qa.ts`; docs/12 se redujo a un índice con TODO explícito (2026-08-27) mientras el Lote 4 sigue abierto. | No se puede usar el checklist actual como evidencia de aceptación. |
 | D15 (importación de leads históricos por empresa) sin bloque asignado | Documentado y diferido explícitamente en `docs/16` líneas 651-664 ("Pendiente, diferido... no bloquea Bloque C"); no tiene `docs/blocks/*.md` propio ni entrada previa en esta matriz. | Riesgo bajo hoy (no bloquea nada vigente), pero queda huérfano de seguimiento si no se recuerda al planificar bloques posteriores a F. |
+| `mapLeadFromApi` no resuelve datos de contacto/campaña reales | `frontend/src/funcionalidades/leads/leads.api.ts::mapLeadFromApi` fija `correoPrincipal` y `campania` en `null`, aunque el backend ya resuelve `campaniaId`/`cuentaPublicitariaId` reales (Bloque A, WU4). | El listado y detalle de leads no muestran contacto ni campaña real en frontend pese a que el dato ya existe en backend. |
+| M6 no exige `asesor_id` antes del handoff a vendedor | `backend/src/services/asignacion.service.ts` no valida que exista `asesor_id` antes de entregar el lead a vendedor (ver `docs/06`, módulo M6). | Un lead puede pasar a vendedor sin asesor asignado, dejando el historial de responsables incompleto. |
+| Sin guard de edición local ni redirección 403 en detalle de lead | Falta guard de edición local en `LeadTimeline`/`FormularioEtapaLead` y redirección ante 403 en `LeadDetallePage`. | La UI puede intentar acciones que el backend rechaza sin feedback claro al usuario ni redirección automática. |
 
 ## Plan de corrección por lotes
 

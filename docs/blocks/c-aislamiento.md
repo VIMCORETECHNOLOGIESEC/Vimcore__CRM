@@ -37,35 +37,6 @@ ver Grupo 3 abajo.
 | 5 | `sla-atrasado.service` y jobs bajo rol de bypass | ✅ Completo |
 | 6 | Suite adversarial completa (cross-holding read/write/HTTP/side-channels) | ⏳ **NO iniciada** — solo existe `rls-policy-coverage.test.ts` |
 
-**Hallazgo crítico corregido en el camino**: `crm_dev` (rol Postgres original de
-la app) es superusuario, y Postgres ignora RLS/`FORCE ROW LEVEL SECURITY` de
-forma incondicional para superusuarios — sin el rol `crm_app` del Grupo 0,
-todas las políticas RLS de este bloque no protegían nada. Se encontraron y
-arreglaron además 9 bugs de producción reales que RLS-ya-real expuso (gaps de
-auth-bootstrap, 3 jobs programados sin `runAsBypassJob`, SQL crudo que se
-saltaba el GUC de tenant en el dashboard de métricas) — detalle completo en
-`sdd/bloque-c-etapa3-rls-adversarial/apply-progress` (Engram, revisión 18).
-
-**Para retomar Etapa 3 (Grupos 4 y 6) desde otra sesión/equipo:**
-- Leer, en este orden: `mem_search` → `mem_get_observation` para
-  `sdd/bloque-c-etapa3-rls-adversarial/{apply-progress,tasks,design,spec}`
-  en Engram (project `crm_comercial`) — `apply-progress` tiene el detalle
-  técnico completo (archivos, deviations de diseño, comandos exactos).
-- Base: este mismo commit en `origin/test/gpt`, suite completa confirmada
-  verde (836/837 y 47/48, únicos fallos son timeouts transitorios por
-  contención de Docker/DB bajo suite completa, confirmados no-regresión
-  corriendo el archivo solo).
-- Grupo 4 depende de Grupo 3 (ya cerrado) — chico, un helper de notificación.
-- Grupo 6 es el más grande: 4 archivos de test nuevos + fixtures, y es el
-  gate de aceptación final de toda la etapa (suite completa + reseed). Usar
-  desde el arranque `backend/tests/fixtures/admin-prisma.ts` y el patrón
-  `conContexto`/`runWithTenantContext` ya establecido este batch — no
-  redescubrir el mismo problema de fixtures.
-- Strict TDD sigue activo: `docker compose exec -e NODE_ENV=test backend
-  pnpm test`, reseed obligatorio después con
-  `docker compose exec backend pnpm exec prisma db seed`. Nunca correr
-  pnpm/prisma/vitest directo en el host.
-
 ## Alcance
 
 Convertir el scope por empresa (introducido en Bloque B como columnas

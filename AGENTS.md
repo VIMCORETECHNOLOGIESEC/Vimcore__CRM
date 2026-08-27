@@ -263,7 +263,7 @@ de npm (§2.1 — cadena de suministro): procedencia verificable (vendor oficial
 o repo de GitHub inspeccionable con autor y licencia identificables), nunca un
 agregador que liste variaciones duplicadas del mismo tema sin mantenedor
 claro. El detalle por skill — fuente, comando de instalación y en qué caso
-concreto debe usarla el agente — vive en `docs/24-skills-agentes-backend.md`
+concreto debe usarla el agente — vive en `docs/21-skills-agentes-backend.md`
 (backend) y `docs/10-skills-agente-frontend.md` (frontend); esos documentos
 también registran las skills evaluadas y descartadas, para no repetir la
 evaluación.

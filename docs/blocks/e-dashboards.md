@@ -16,6 +16,18 @@ exportación PDF/XLSX de los mismos reportes — todo reutilizando
 - **Bloque D** — `Oportunidad`/`Producto` deben existir en Prisma antes de
   construir el embudo de negociación y el rendimiento por producto.
 
+## Nota de priorización
+
+Este bloque no es necesario para que el multi-tenant esencial funcione de
+punta a punta — el aislamiento por empresa (Bloque C) y el routing sobre
+`Oportunidad` (Bloque D esencial) ya alcanzan para operar. El esfuerzo alto
+está en la sincronización real con la Marketing API de Meta,
+`CampaniaMetricaDiaria` y la generación asincrónica de `ReporteJob`. Puede
+construirse como maquetas de UI desconectadas de `router.tsx` (botón
+"Generar", progreso SSE) mientras el núcleo esencial no está cerrado, e
+integrarse directo contra el esquema ya especificado en este documento sin
+rediseño.
+
 ## Decisión que implementa (ver rationale completo en `docs/16` §8 — no se repite acá)
 
 - **D10 — Rendimiento de canal**: métricas publicitarias reales (Meta Ads
