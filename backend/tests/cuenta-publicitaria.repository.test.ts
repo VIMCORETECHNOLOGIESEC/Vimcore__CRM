@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as cuentaPublicitariaRepository from "../src/repositories/cuenta-publicitaria.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -13,6 +14,7 @@ async function crearBridge(): Promise<{ id: string }> {
       nombre: `Bridge cuenta-publicitaria ${contador}`,
       claveApiHash: hashClaveBridge(`clave-cuenta-publicitaria-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };

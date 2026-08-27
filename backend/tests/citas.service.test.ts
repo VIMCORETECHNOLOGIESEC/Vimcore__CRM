@@ -9,6 +9,7 @@ import {
   scheduleCita,
 } from "../src/services/citas.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -29,8 +30,13 @@ async function crearUsuario(rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VE
   return { id: usuario.id, rol };
 }
 
+// Bloque C (D2): Admin/Supervisor holding-wide (empresaId null), Asesor/
+// Vendedor acotados a la empresa bootstrap (misma empresa que `crearLead`
+// de abajo) — este archivo no ejercita aislamiento cross-empresa.
 function comoActor(usuario: { id: string; rol: UsuarioAcceso["rol"] }): UsuarioAcceso {
-  return { id: usuario.id, rol: usuario.rol };
+  const empresaId =
+    usuario.rol === "ADMINISTRADOR" || usuario.rol === "SUPERVISOR" ? null : EMPRESA_BOOTSTRAP_ID;
+  return { id: usuario.id, rol: usuario.rol, empresaId };
 }
 
 async function crearLead(
@@ -52,6 +58,7 @@ async function crearLead(
       asesorId: overrides.asesorId ?? null,
       vendedorId: overrides.vendedorId ?? null,
       ingresadoEn: new Date(),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: lead.id };

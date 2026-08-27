@@ -5,6 +5,7 @@ import {
   enviarRecordatoriosCita,
   type ResultadoRecordatorioCitas,
 } from "../src/services/citas-recordatorio.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -27,7 +28,7 @@ async function crearLead(): Promise<{ id: string }> {
     data: { nombre: `Cliente recordatorio ${contador}`, telefonoValido: false },
   });
   return prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "CITA", ingresadoEn: new Date() },
+    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "CITA", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
 }
 

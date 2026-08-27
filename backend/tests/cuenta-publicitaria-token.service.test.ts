@@ -3,6 +3,7 @@ import { decrypt, encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import { cargarToken, probarConexion } from "../src/services/cuenta-publicitaria.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * `cargarToken`/`probarConexion` (docs/05-bridges.md §7): mismo estilo de
@@ -24,6 +25,7 @@ async function crearBridge(): Promise<{ id: string }> {
       nombre: `Bridge token-service ${contador}`,
       claveApiHash: hashClaveBridge(`clave-token-service-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };

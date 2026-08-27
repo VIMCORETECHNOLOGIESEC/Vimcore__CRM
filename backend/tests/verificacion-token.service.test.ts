@@ -6,6 +6,7 @@ import {
   produceAlertaTokenPorExpirar,
   verifyTokensVigentes,
 } from "../src/services/verificacion-token.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * `verifyTokensVigentes` (docs/05-bridges.md §3, "Trabajo programado:
@@ -20,7 +21,7 @@ function mockFetchJson(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
 }
 
-async function crearBridge(): Promise<{ id: string }> {
+async function crearBridge(empresaId: string = EMPRESA_BOOTSTRAP_ID): Promise<{ id: string }> {
   contador += 1;
   const bridge = await prisma.bridge.create({
     data: {
@@ -28,6 +29,7 @@ async function crearBridge(): Promise<{ id: string }> {
       nombre: `Bridge verificacion-token ${contador}`,
       claveApiHash: hashClaveBridge(`clave-verificacion-token-${contador}`),
       estado: "ACTIVO",
+      empresaId,
     },
   });
   return { id: bridge.id };
@@ -311,5 +313,39 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
 
     expect(trasSegundoTick).toBe(trasPrimerTick);
     expect(trasTercerTick).toBe(trasPrimerTick);
+  });
+
+  it("Bloque C (D5/D8, task 2.11): la alerta TOKEN_POR_EXPIRAR nunca mezcla empresas — un administrador de otra empresa NO la recibe", async () => {
+    const empresaB = (
+      await prisma.empresa.create({ data: { nombre: `Empresa B verificacion-token ${contador}` } })
+    ).id;
+
+    const adminBootstrap = await crearAdministrador();
+    contador += 1;
+    const adminEmpresaB = await prisma.usuario.create({
+      data: {
+        nombre: `Admin B WU5 ${contador}`,
+        correo: `admin-b-wu5-${contador}@test.local`,
+        passwordHash: "unused",
+        rol: "ADMINISTRADOR",
+        activo: true,
+      },
+    });
+    await prisma.membresia.create({
+      data: { usuarioId: adminEmpresaB.id, empresaId: empresaB, rol: "ADMINISTRADOR", activa: true },
+    });
+
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEn = new Date("2026-09-06T00:00:00.000Z");
+    await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
+
+    await produceAlertaTokenPorExpirar(ahora);
+
+    const destinatarios = (
+      await prisma.notificacion.findMany({ where: { tipo: "TOKEN_POR_EXPIRAR" }, select: { usuarioId: true } })
+    ).map((n) => n.usuarioId);
+    expect(destinatarios).toContain(adminBootstrap.id);
+    expect(destinatarios).not.toContain(adminEmpresaB.id);
   });
 });

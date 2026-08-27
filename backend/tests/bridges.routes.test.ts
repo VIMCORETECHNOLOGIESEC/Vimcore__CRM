@@ -5,6 +5,7 @@ import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 function mockFetchJson(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
@@ -33,6 +34,7 @@ async function crearBridgeDirecto(
       nombre: overrides.nombre ?? `Bridge ruta ${contador}`,
       claveApiHash: hashClaveBridge(claveApiUnica()),
       estado: overrides.estado ?? "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -75,10 +77,16 @@ afterAll(async () => {
 
 describe("POST /api/v1/bridges (Requirement: Bridge creation starts inactive with one-time plaintext key)", () => {
   it("201 crea el bridge INACTIVO y devuelve la clave en claro", async () => {
+    // `z.uuid()` (Bloque C, `bridges.schema.ts`) exige el nibble de versión
+    // RFC 4122 — `EMPRESA_BOOTSTRAP_ID` (id fijo de la migración, hallazgo ya
+    // documentado en Batch 2 de Stage 1: "BOOTSTRAP_EMPRESA_ID fails Zod's
+    // strict z.uuid()") no lo cumple, así que este endpoint HTTP necesita
+    // una `Empresa` con un id real generado por `@default(uuid())`.
+    const empresa = await prisma.empresa.create({ data: { nombre: "Empresa Bridges Rutas" } });
     const respuesta = await request(app)
       .post("/api/v1/bridges")
       .set("Authorization", `Bearer ${adminAccessToken}`)
-      .send({ redSocial: "FACEBOOK", nombre: "Bridge Facebook Rutas" });
+      .send({ redSocial: "FACEBOOK", nombre: "Bridge Facebook Rutas", empresaId: empresa.id });
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body.bridge.estado).toBe("INACTIVO");

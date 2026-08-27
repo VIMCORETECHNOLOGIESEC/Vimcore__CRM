@@ -8,6 +8,7 @@ import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 const app = createApp();
 let contador = 0;
@@ -58,6 +59,7 @@ async function crearBridgeConCuenta(
       nombre: `Bridge Meta ${contador}`,
       claveApiHash: hashClaveBridge(`clave-meta-webhook-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   const pageId = `page-meta-${contador}`;

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * D-M4-fundacion (diseño m4-bridges-crud-fundacion, tarea PR1.3/1.4):
@@ -21,6 +22,7 @@ async function crearBridge(): Promise<{ id: string }> {
       nombre: `Bridge fundacion ${contador}`,
       claveApiHash: hashClaveBridge(`clave-fundacion-${contador}-${randomUUID()}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };

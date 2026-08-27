@@ -65,6 +65,7 @@ async function crearLead(
       asesorId: overrides.asesorId ?? null,
       vendedorId: overrides.vendedorId ?? null,
       ingresadoEn: new Date(),
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
   return { id: lead.id };

@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
 import { applyFormulario, type ApplyFormularioLead } from "../src/services/formularios.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -31,6 +32,7 @@ async function crearLead(overrides: Partial<{ etapa: "NUEVO" | "CONTACTADO" | "C
       etapa: overrides.etapa ?? "NUEVO",
       semaforo: overrides.semaforo ?? null,
       ingresadoEn: new Date(),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: lead.id, etapa: lead.etapa, semaforo: lead.semaforo };

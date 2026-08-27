@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
@@ -7,6 +7,7 @@ import {
   deduplicateLead,
   type DeduplicacionInput,
 } from "../src/services/deduplicacion.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 // Solo `createEvento` se reemplaza por un mock que delega a la
 // implementación real por defecto (D-M3): permite forzar un único fallo
@@ -30,12 +31,38 @@ function normalizadoDe(telefonoLocal: string): string {
   return `+593${telefonoLocal.slice(1)}`;
 }
 
+// Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `Lead.empresaId` es
+// NOT NULL — `deduplicateLead` ahora RECHAZA crear un lead sin `bridgeId`
+// resoluble (ver `deduplicacion.service.ts`, guard "empresa_no_resuelta").
+// `entradaBase()` incluye un `bridgeId` por defecto (bridge fijo de la
+// empresa bootstrap) para que los ~25 casos de este archivo que NO
+// ejercitan el camino de aislamiento por empresa sigan probando
+// exactamente lo mismo que antes (dedupe por teléfono/correo, reingreso,
+// rollback, etc.) sin que la mecánica de tenant-scoping se interponga.
+// Los pocos casos que SÍ necesitan "sin bridgeId" (repetición, D5/D6
+// aislamiento) lo pasan explícito como `bridgeId: undefined`.
+let DEFAULT_BRIDGE_ID: string;
+
+beforeAll(async () => {
+  const bridge = await prisma.bridge.create({
+    data: {
+      redSocial: "GOOGLE_FORMS",
+      nombre: `Bridge dedupe default ${randomUUID()}`,
+      claveApiHash: hashClaveBridge(`clave-dedupe-default-${randomUUID()}`),
+      estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
+    },
+  });
+  DEFAULT_BRIDGE_ID = bridge.id;
+});
+
 function entradaBase(overrides: Partial<DeduplicacionInput> = {}): DeduplicacionInput {
   return {
     nombre: "Cliente de Prueba",
     telefono: telefonoUnico(),
     correo: null,
     ingresadoEn: new Date(),
+    bridgeId: DEFAULT_BRIDGE_ID,
     ...overrides,
   };
 }
@@ -285,34 +312,34 @@ describe("deduplicacion.service — deduplicateLead", () => {
     expect(lead.camposDinamicos).toBeNull();
   });
 
-  it("M-hardening Bloque A (WU4, D6): sin bridgeId (compatibilidad M3) la atribución degrada a null sin lanzar", async () => {
+  it("Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): sin bridgeId, deduplicateLead RECHAZA crear el lead (ya NO degrada a empresaId null — retira 'compatibilidad M3' de WU4/D6)", async () => {
     const entrada: DeduplicacionInput = {
       ...entradaBase(),
+      bridgeId: undefined,
       idExternoCuenta: "cuenta-sin-bridge",
       idExternoCampania: "campania-sin-bridge",
     };
 
-    const resultado = await deduplicateLead(entrada);
-
-    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
-    expect(lead.cuentaPublicitariaId).toBeNull();
-    expect(lead.campaniaId).toBeNull();
-    expect(lead.idExternoCuenta).toBe("cuenta-sin-bridge");
-    expect(lead.idExternoCampania).toBe("campania-sin-bridge");
+    await expect(deduplicateLead(entrada)).rejects.toMatchObject({
+      code: "empresa_no_resuelta",
+      statusHttp: 422,
+    });
   });
 });
 
 describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + dedupe shadow scope", () => {
   const EMPRESA_BOOTSTRAP = "00000000-0000-0000-0000-000000000001";
 
-  async function crearBridgeConEmpresa(empresaId: string | null): Promise<{ id: string }> {
+  // Bloque C (D4): `empresaId` ya no acepta `null` — `Bridge.empresaId` es
+  // NOT NULL (antes permitía `undefined` para simular "sin empresa").
+  async function crearBridgeConEmpresa(empresaId: string): Promise<{ id: string }> {
     const bridge = await prisma.bridge.create({
       data: {
         redSocial: "FACEBOOK",
         nombre: `Bridge dedupe-empresa ${randomUUID()}`,
         claveApiHash: hashClaveBridge(`clave-dedupe-empresa-${randomUUID()}`),
         estado: "ACTIVO",
-        empresaId: empresaId ?? undefined,
+        empresaId,
       },
     });
     return { id: bridge.id };
@@ -383,7 +410,12 @@ describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + de
     const telefono = telefonoUnico();
 
     const primera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
-    const segunda = await deduplicateLead(entradaBase({ telefono }));
+    // `bridgeId: undefined` explícito — el lead YA existe (repetición), así
+    // que esta llamada nunca toca el guard "empresa_no_resuelta" de
+    // `crear_lead` (Bloque C, D4): ese guard solo corre en la rama de
+    // creación. El punto de esta prueba sigue siendo "sin bridgeId en la
+    // repetición" (compatibilidad M3, D5/D6 shadow scope).
+    const segunda = await deduplicateLead(entradaBase({ telefono, bridgeId: undefined }));
 
     expect(segunda.accion.kind).toBe("interaccion_repetida");
     const filas = await prisma.leadAbiertoRevisionPendiente.findMany({

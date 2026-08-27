@@ -4,6 +4,7 @@ import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 vi.mock("../src/repositories/lead-recibido.repository.js", async (importOriginal) => {
   const actual =
@@ -24,6 +25,7 @@ beforeAll(async () => {
       nombre: "Bridge de prueba HTTP",
       claveApiHash: hashClaveBridge(CLAVE_API),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   bridgeId = bridge.id;

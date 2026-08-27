@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as bridgeRepository from "../src/repositories/bridge.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -19,6 +20,7 @@ async function crearBridge(): Promise<{ id: string; claveApi: string }> {
       nombre: `Bridge de prueba ${contador}`,
       claveApiHash: hashClaveBridge(claveApi),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
 
@@ -82,6 +84,7 @@ describe("repositories/bridge — findBridgesMudos (docs/05-bridges.md §8, trab
         estado: overrides.estado ?? "ACTIVO",
         ultimoLeadEn: new Date(Date.now() - horasAtras * HORA_MS),
         advertenciaMudoEnviada: overrides.advertenciaMudoEnviada ?? false,
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
     return { id: bridge.id };
@@ -119,6 +122,7 @@ describe("repositories/bridge — findBridgesMudos (docs/05-bridges.md §8, trab
         nombre: `Bridge mudo sin leads ${contador}`,
         claveApiHash: hashClaveBridge(claveApiUnica()),
         estado: "ACTIVO",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -222,6 +226,7 @@ describe("repositories/bridge — create (m4-bridges-crud-fundacion, PR1.7)", ()
       redSocial: "FACEBOOK",
       nombre: "Bridge nuevo PR1.7",
       claveApiHash,
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
 
     expect(bridge.estado).toBe("INACTIVO");
@@ -236,11 +241,13 @@ describe("repositories/bridge — list (m4-bridges-crud-fundacion, PR1.7)", () =
       redSocial: "X",
       nombre: "ZZZ bridge de lista",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
     const b = await bridgeRepository.create({
       redSocial: "X",
       nombre: "AAA bridge de lista",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
 
     const { bridges: lista } = await bridgeRepository.findMany({}, { skip: 0, take: 500 });
@@ -346,11 +353,13 @@ describe("repositories/bridge — listRedesActivas (m4-bridges-crud-fundacion, P
       redSocial: "LINKEDIN",
       nombre: "LinkedIn bridge 1",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
     await bridgeRepository.create({
       redSocial: "LINKEDIN",
       nombre: "LinkedIn bridge 2",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
 
     const redes = await bridgeRepository.listRedesActivas();
@@ -368,6 +377,7 @@ describe("repositories/bridge — create (m4-bridges-crud-fundacion, PR1.7)", ()
       redSocial: "FACEBOOK",
       nombre: "Bridge nuevo PR1.7",
       claveApiHash,
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
 
     expect(bridge.estado).toBe("INACTIVO");
@@ -382,11 +392,13 @@ describe("repositories/bridge — list (m4-bridges-crud-fundacion, PR1.7)", () =
       redSocial: "X",
       nombre: "ZZZ bridge de lista",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
     const b = await bridgeRepository.create({
       redSocial: "X",
       nombre: "AAA bridge de lista",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
 
     const { bridges: lista } = await bridgeRepository.findMany({}, { skip: 0, take: 500 });
@@ -492,11 +504,13 @@ describe("repositories/bridge — listRedesActivas (m4-bridges-crud-fundacion, P
       redSocial: "LINKEDIN",
       nombre: "LinkedIn bridge 1",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
     await bridgeRepository.create({
       redSocial: "LINKEDIN",
       nombre: "LinkedIn bridge 2",
       claveApiHash: hashClaveBridge(claveApiUnica()),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     });
 
     const redes = await bridgeRepository.listRedesActivas();

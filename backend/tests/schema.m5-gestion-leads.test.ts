@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * D-M5 (diseño, tarea PR1.8): verificación de la migración M5 contra la base
@@ -19,6 +20,7 @@ async function crearBridge(): Promise<{ id: string }> {
       nombre: `Bridge M5 schema ${contador}`,
       claveApiHash: hashClaveBridge(`clave-m5-schema-${contador}-${randomUUID()}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -83,7 +85,7 @@ describe("schema M5 — columnas nuevas de Lead son nullable (D14/D1/D13)", () =
     const cliente = await crearCliente();
 
     const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     expect(lead.semaforo).toBeNull();
@@ -117,6 +119,7 @@ describe("schema M5 — columnas nuevas de Lead son nullable (D14/D1/D13)", () =
         montoVenta: 1500.5,
         productoServicio: "Plan Premium",
         formaPago: "CREDITO",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -133,7 +136,7 @@ describe("schema M5 — LeadEvento.semaforoAnterior/semaforoNuevo (D17)", () => 
   it("persiste un evento CAMBIO_SEMAFORO con ambos colores", async () => {
     const cliente = await crearCliente();
     const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     const evento = await prisma.leadEvento.create({
@@ -155,7 +158,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
     const cliente = await crearCliente();
     const usuario = await crearUsuario();
     const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     const respuesta = await prisma.respuestaFormulario.create({
@@ -179,7 +182,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
     const cliente = await crearCliente();
     const usuario = await crearUsuario();
     const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     await prisma.respuestaFormulario.create({
@@ -236,7 +239,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
     const cliente = await crearCliente();
     const bridge = await crearBridge();
     const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
     const payloadCrudo = { idExternoLead: `backfill-${randomUUID()}`, nombre: "Lead pre-fix" };
     await prisma.leadRecibido.create({
@@ -269,6 +272,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
         ingresadoEn: new Date(),
         redSocial: "FACEBOOK",
         payloadOriginal: { yaPoblado: true },
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
     await prisma.leadRecibido.create({

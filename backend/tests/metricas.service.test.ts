@@ -13,6 +13,7 @@ import {
   getRedSocialXSemaforo,
   getResumen,
 } from "../src/services/metricas.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -32,7 +33,12 @@ async function crearUsuario(rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VE
       activo: true,
     },
   });
-  return { id: usuario.id, rol: usuario.rol };
+  // Bloque C (D2): Admin/Supervisor holding-wide (empresaId null), Asesor/
+  // Vendedor acotados a la empresa bootstrap (misma empresa que `crearLead`
+  // de abajo) — este archivo no ejercita aislamiento cross-empresa (eso vive
+  // en `metricas.access.test.ts`).
+  const empresaId = rol === "ADMINISTRADOR" || rol === "SUPERVISOR" ? null : EMPRESA_BOOTSTRAP_ID;
+  return { id: usuario.id, rol: usuario.rol, empresaId };
 }
 
 interface LeadOverrides {
@@ -63,6 +69,7 @@ async function crearLead(overrides: LeadOverrides = {}): Promise<{ id: string }>
       ingresadoEn: overrides.ingresadoEn ?? new Date(),
       cerradoEn: overrides.cerradoEn ?? null,
       payloadOriginal: overrides.campania ? { nombreCampania: overrides.campania } : undefined,
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: lead.id };

@@ -84,6 +84,7 @@ async function createLead(asesorId?: string) {
       slaInicioEn: asesorId
         ? new Date(Date.now() - (SLA_HORAS * 60 * 60 * 1000 + 60_000))
         : null,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
 }
@@ -115,6 +116,7 @@ describe("M8 scheduled and bridge producers", () => {
           etapa: "CONTACTADO",
           ingresadoEn: new Date("1999-12-01T00:00:00.000Z"),
           slaInicioEn: new Date("1999-12-02T00:00:00.000Z"),
+          empresaId: BOOTSTRAP_EMPRESA_ID,
         },
       });
 
@@ -260,6 +262,7 @@ describe("M8 scheduled and bridge producers", () => {
         nombre: `Bridge productor M8 ${sequence}`,
         claveApiHash: `bridge-m8-${sequence}`,
         estado: "ACTIVO",
+        empresaId: BOOTSTRAP_EMPRESA_ID,
       },
     });
 
@@ -304,6 +307,7 @@ describe("M8 scheduled and bridge producers", () => {
         nombre: `Bridge sin ciclo de expiración ${sequence}`,
         claveApiHash: `bridge-sin-expiracion-${sequence}`,
         estado: "ACTIVO",
+        empresaId: BOOTSTRAP_EMPRESA_ID,
       },
     });
     const tokenNotificationsBefore = await prisma.notificacion.count({

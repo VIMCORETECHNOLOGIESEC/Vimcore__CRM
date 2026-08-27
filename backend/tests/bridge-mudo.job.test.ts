@@ -9,6 +9,7 @@ import {
   detectarBridgesMudos,
   type ResultadoDeteccionMudos,
 } from "../src/services/bridge-mudo.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 vi.mock("../src/services/bridge-log.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/bridge-log.service.js")>();
@@ -37,6 +38,7 @@ async function crearBridgeMudo(overrides: {
       claveApiHash: hashClaveBridge(claveApiUnica()),
       estado: overrides.estado ?? "ACTIVO",
       ultimoLeadEn: new Date(Date.now() - horasSinLead * 60 * 60 * 1000),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadAbiertoRevisionRepository from "../src/repositories/lead-abierto-revision.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * Bloque B (Fase 3, diseño "Ambiguity persistence (NEW)"): upsert idempotente
@@ -14,7 +15,7 @@ async function crearClienteYLead(): Promise<{ clienteId: string; leadId: string 
     data: { nombre: `Cliente revision ${contador}`, telefonoValido: false },
   });
   const lead = await prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { clienteId: cliente.id, leadId: lead.id };
 }

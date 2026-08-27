@@ -109,6 +109,12 @@ export async function countPorSemaforo(
 function buildWhereFragment(filtro: FiltroLeadsSql, alias: string): Prisma.Sql {
   const partes: Prisma.Sql[] = [];
 
+  // Bloque C (Fase 2/Stage 2, D6): mismo criterio que `resolveAlcanceBase` —
+  // `null` = holding-wide, sin restricción adicional.
+  if (filtro.empresaId !== null) {
+    partes.push(Prisma.sql`${Prisma.raw(alias)}.empresa_id = ${filtro.empresaId}::uuid`);
+  }
+
   if (filtro.responsableIds && filtro.responsableIds.length > 0) {
     partes.push(
       Prisma.sql`(${Prisma.raw(alias)}.asesor_id = ANY(${filtro.responsableIds}::uuid[]) OR ${Prisma.raw(alias)}.vendedor_id = ANY(${filtro.responsableIds}::uuid[]))`,

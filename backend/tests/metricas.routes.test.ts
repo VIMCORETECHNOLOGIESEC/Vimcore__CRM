@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
@@ -103,6 +104,7 @@ describe("routes/metricas — wiring y autenticación", () => {
         etapa: "NUEVO",
         ingresadoEn: new Date(`${dia}T22:00:00.000Z`),
         payloadOriginal: { nombreCampania: cam },
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 

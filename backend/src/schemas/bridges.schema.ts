@@ -4,9 +4,13 @@ import { z } from "zod";
 // D-M4-fundacion (diseño m4-bridges-crud-fundacion): Zod 4.4.3, mismo patrón
 // que `usuarios.schema.ts` (formatos top-level, enum nativo de Prisma como
 // valor en runtime).
+// Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `empresaId` obligatorio
+// desde que `Bridge.empresaId` es NOT NULL (`schema.prisma`) — un bridge ya
+// no puede crearse sin empresa asignada.
 export const createBridgeBodySchema = z.object({
   redSocial: z.enum(RedSocial),
   nombre: z.string().trim().min(1).max(120),
+  empresaId: z.uuid(),
 });
 
 /**

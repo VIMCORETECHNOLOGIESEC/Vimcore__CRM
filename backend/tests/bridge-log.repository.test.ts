@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as bridgeLogRepository from "../src/repositories/bridge-log.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 describe("repositories/bridge-log — registrarLog (M4, PR2)", () => {
   it("escribe una fila de bitacora contra el cliente global, sin bridge asociado (fallo de autenticacion)", async () => {
@@ -55,6 +56,7 @@ describe("repositories/bridge-log — listByBridge (m4-bridges-crud-fundacion, P
         nombre: `Bridge log listByBridge ${Date.now()}-${Math.random()}`,
         claveApiHash: hashClaveBridge(`clave-listbybridge-${Date.now()}-${Math.random()}`),
         estado: "ACTIVO",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
     return { id: bridge.id };

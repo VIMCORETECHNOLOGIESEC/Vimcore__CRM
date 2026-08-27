@@ -24,6 +24,7 @@ const shadowAuthorizationService = await import(
 const { createApp } = await import("../src/app.js");
 const { hashPassword } = await import("../src/lib/password.js");
 const { prisma } = await import("../src/lib/prisma.js");
+const { EMPRESA_BOOTSTRAP_ID } = await import("./fixtures/empresa.js");
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
@@ -67,6 +68,7 @@ async function crearLead(overrides: {
       asesorId: overrides.asesorId ?? null,
       vendedorId: overrides.vendedorId ?? null,
       ingresadoEn: new Date(),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: lead.id };

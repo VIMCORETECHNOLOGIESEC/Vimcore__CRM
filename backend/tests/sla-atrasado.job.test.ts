@@ -3,6 +3,7 @@ import { SLA_HORAS } from "../src/config/negocio.js";
 import { startSlaAtrasadoJob } from "../src/jobs/sla-atrasado.job.js";
 import { prisma } from "../src/lib/prisma.js";
 import { detectLeadsAtrasados, type ResultadoDeteccion } from "../src/services/sla-atrasado.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 const PLAZO_MS = SLA_HORAS * 60 * 60 * 1000;
 
@@ -28,7 +29,11 @@ async function crearAsesorActivo(): Promise<{ id: string }> {
   });
 }
 
-async function crearLeadAtrasado(slaInicioEn: Date, asesorId: string): Promise<{ id: string }> {
+async function crearLeadAtrasado(
+  slaInicioEn: Date,
+  asesorId: string,
+  empresaId: string = EMPRESA_BOOTSTRAP_ID,
+): Promise<{ id: string }> {
   const cliente = await crearCliente();
   return prisma.lead.create({
     data: {
@@ -38,6 +43,7 @@ async function crearLeadAtrasado(slaInicioEn: Date, asesorId: string): Promise<{
       ingresadoEn: new Date(slaInicioEn.getTime() - 60_000),
       slaInicioEn,
       asesorId,
+      empresaId,
     },
   });
 }
@@ -104,7 +110,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
   it("prueba obligatoria 4 (reafirmada, D3): lead sin asignar (slaInicioEn=null) nunca se marca atrasado", async () => {
     const cliente = await crearCliente();
     const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     await detectLeadsAtrasados(new Date());
@@ -128,6 +134,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
         slaInicioEn,
         cerradoEn: new Date(),
         asesorId: asesor.id,
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -137,6 +144,35 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
       where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" },
     });
     expect(evento).toBeNull();
+  });
+
+  it("Bloque C (D5/D8, task 2.11): la notificación SLA_INCUMPLIDO nunca mezcla empresas — el supervisor de otra empresa NO recibe la alerta", async () => {
+    const empresaB = (await prisma.empresa.create({ data: { nombre: `Empresa B sla-atrasado ${contador}` } })).id;
+
+    const supervisorBootstrap = await crearAsesorActivo();
+    await prisma.usuario.update({ where: { id: supervisorBootstrap.id }, data: { rol: "SUPERVISOR" } });
+    await prisma.membresia.create({
+      data: { usuarioId: supervisorBootstrap.id, empresaId: EMPRESA_BOOTSTRAP_ID, rol: "SUPERVISOR", activa: true },
+    });
+
+    const supervisorEmpresaB = await crearAsesorActivo();
+    await prisma.usuario.update({ where: { id: supervisorEmpresaB.id }, data: { rol: "SUPERVISOR" } });
+    await prisma.membresia.create({
+      data: { usuarioId: supervisorEmpresaB.id, empresaId: empresaB, rol: "SUPERVISOR", activa: true },
+    });
+
+    const asesor = await crearAsesorActivo();
+    const lead = await crearLeadAtrasado(fronteraAtrasadaHace(60_000), asesor.id, EMPRESA_BOOTSTRAP_ID);
+
+    await detectLeadsAtrasados(new Date());
+
+    const notificaciones = await prisma.notificacion.findMany({
+      where: { leadId: lead.id, tipo: "LEAD_SIN_ATENDER" },
+      select: { usuarioId: true },
+    });
+    const destinatarios = notificaciones.map((n) => n.usuarioId);
+    expect(destinatarios).toContain(supervisorBootstrap.id);
+    expect(destinatarios).not.toContain(supervisorEmpresaB.id);
   });
 });
 

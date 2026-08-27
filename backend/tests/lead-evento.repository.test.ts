@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -10,7 +11,7 @@ async function crearClienteYLead(): Promise<{ leadId: string }> {
     data: { nombre: `Cliente LE ${contador}`, telefonoValido: false },
   });
   const lead = await prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { leadId: lead.id };
 }

@@ -70,6 +70,7 @@ async function crearLead(
       vendedorId: overrides.vendedorId ?? null,
       redSocial: overrides.redSocial ?? null,
       ingresadoEn: new Date(),
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
   return { id: lead.id, clienteNombre };
@@ -209,10 +210,10 @@ describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de clie
       },
     });
     await prisma.lead.create({
-      data: { clienteId: clienteMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: clienteMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID },
     });
     await prisma.lead.create({
-      data: { clienteId: clienteNoMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+      data: { clienteId: clienteNoMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID },
     });
 
     const respuesta = await request(app)
@@ -238,6 +239,7 @@ describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de clie
         etapa: "NUEVO",
         ingresadoEn: new Date(),
         payloadOriginal: { nombreCampania: "Campania Verano Unica" },
+        empresaId: BOOTSTRAP_EMPRESA_ID,
       },
     });
 

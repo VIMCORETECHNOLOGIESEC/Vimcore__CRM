@@ -48,6 +48,7 @@ async function crearLead(data: {
       ingresadoEn: new Date(),
       asesorId: data.asesorId,
       vendedorId: data.vendedorId,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
 }

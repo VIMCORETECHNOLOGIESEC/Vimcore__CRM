@@ -148,7 +148,7 @@ export async function compareCanReassign(
     const legacyDecision = legacyMotivo === null;
     const equivalentes = await rolesEquivalentesActivos(usuarioId, empresaId);
     const membresiaDecision = equivalentes.some(
-      (rol) => canReassign({ id: usuarioId, rol }, lead) === null,
+      (rol) => canReassign({ id: usuarioId, rol, empresaId }, lead) === null,
     );
     if (membresiaDecision !== legacyDecision) {
       logDivergencia("canReassign", usuarioId, legacyDecision, membresiaDecision);
@@ -168,7 +168,7 @@ export async function compareCanTransfer(
     const legacyDecision = legacyMotivo === null;
     const equivalentes = await rolesEquivalentesActivos(usuarioId, empresaId);
     const membresiaDecision = equivalentes.some(
-      (rol) => canTransfer({ id: usuarioId, rol }, lead) === null,
+      (rol) => canTransfer({ id: usuarioId, rol, empresaId }, lead) === null,
     );
     if (membresiaDecision !== legacyDecision) {
       logDivergencia("canTransfer", usuarioId, legacyDecision, membresiaDecision);
@@ -188,7 +188,7 @@ export async function compareCanClose(
     const legacyDecision = legacyMotivo === null;
     const equivalentes = await rolesEquivalentesActivos(usuarioId, empresaId);
     const membresiaDecision = equivalentes.some(
-      (rol) => canClose({ id: usuarioId, rol }, lead) === null,
+      (rol) => canClose({ id: usuarioId, rol, empresaId }, lead) === null,
     );
     if (membresiaDecision !== legacyDecision) {
       logDivergencia("canClose", usuarioId, legacyDecision, membresiaDecision);

@@ -86,11 +86,13 @@ export interface CreateLeadData {
   /**
    * Bloque B (Fase 3, spec lead-empresa-derivation): derivado de
    * `Bridge.empresaId` (`atribucion.service.ts::resolverEmpresaIdDesdeBridge`).
-   * Opcional/nullable passthrough, mismo criterio que los campos de
-   * atribución de arriba — un llamador que no lo provee (pruebas sin M4/M-A)
-   * deja la columna en `null`, sin romper.
+   * Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): OBLIGATORIO desde
+   * que `Lead.empresaId` es NOT NULL — ya no hay un valor "sin romper" que
+   * dejar en `null`. `deduplicacion.service.ts::deduplicateLead` resuelve el
+   * valor antes de llamar a `createLead` y rechaza la ingesta si no puede
+   * resolverlo.
    */
-  empresaId?: Lead["empresaId"];
+  empresaId: Lead["empresaId"];
 }
 
 export async function createLead(

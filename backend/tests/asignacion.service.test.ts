@@ -11,6 +11,7 @@ import {
   assignLeadsBatch,
 } from "../src/services/asignacion.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * Mismo truco de inyección de fallos que `ingesta.service.test.ts` (M4):
@@ -43,7 +44,7 @@ async function crearCliente(): Promise<{ id: string }> {
 async function crearLeadSinAsignar(): Promise<{ id: string }> {
   const cliente = await crearCliente();
   return prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
 }
 
@@ -80,7 +81,13 @@ async function crearSupervisorActivo(): Promise<{ id: string }> {
   });
 }
 
-const SUPERVISOR: UsuarioAcceso = { id: "00000000-0000-4000-8000-000000000001", rol: "SUPERVISOR" };
+const SUPERVISOR: UsuarioAcceso = {
+  id: "00000000-0000-4000-8000-000000000001",
+  rol: "SUPERVISOR",
+  // Bloque C (D2): SUPERVISOR resuelve empresaId=null (holding-wide) sin
+  // Membresia propia — mismo criterio incondicional de producción.
+  empresaId: null,
+};
 
 afterAll(async () => {
   await prisma.$disconnect();

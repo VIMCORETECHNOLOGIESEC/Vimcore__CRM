@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
 import * as leadRepository from "../src/repositories/lead.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -10,7 +11,7 @@ async function crearClienteYLead(): Promise<{ leadId: string }> {
     data: { nombre: `Cliente LR ${contador}`, telefonoValido: false },
   });
   const lead = await prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { leadId: lead.id };
 }
@@ -81,9 +82,9 @@ describe("repositories/lead — findMany (PR3, listado filtrado)", () => {
     });
     await prisma.lead.createMany({
       data: [
-        { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
-        { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
-        { clienteId: cliente.id, origen: "NUEVO", etapa: "CONTACTADO", ingresadoEn: new Date() },
+        { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
+        { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
+        { clienteId: cliente.id, origen: "NUEVO", etapa: "CONTACTADO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
       ],
     });
 
@@ -129,6 +130,7 @@ describe("repositories/lead — findById/findMany incluyen relaciones anidadas (
         origen: "NUEVO",
         etapa: "NUEVO",
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -160,6 +162,7 @@ describe("repositories/lead — findById/findMany incluyen relaciones anidadas (
         origen: "NUEVO",
         etapa: "NUEVO",
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 

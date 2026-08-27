@@ -59,6 +59,8 @@ function toBridgeDetalleDto(bridge: BridgeConCuentas): BridgeDetalleDto {
 export interface CreateBridgeInput {
   redSocial: RedSocial;
   nombre: string;
+  // Bloque C (D4, Fase 2/Stage 2): obligatorio, ver `bridges.schema.ts`.
+  empresaId: string;
 }
 
 export interface ClaveApiResult {
@@ -78,6 +80,7 @@ export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiRe
     redSocial: input.redSocial,
     nombre: input.nombre,
     claveApiHash: hashClaveBridge(claveApi),
+    empresaId: input.empresaId,
   });
   return { bridge: toBridgeDto(bridge), claveApi };
 }

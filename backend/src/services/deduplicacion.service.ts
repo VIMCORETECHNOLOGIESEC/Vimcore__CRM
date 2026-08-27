@@ -1,4 +1,5 @@
 import type { Prisma, RedSocial } from "@prisma/client";
+import { AppError } from "../lib/app-error.js";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
 import { DEDUPLICACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
@@ -233,6 +234,23 @@ export async function deduplicateLead(
               nombreCampania: entrada.nombreCampania ?? null,
               empresaId: null,
             };
+
+        // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `Lead.empresaId`
+        // es NOT NULL — un `Lead` que no pueda resolver su empresa ya no
+        // degrada en silencio a `null` (comportamiento retirado, era el
+        // camino "compatibilidad M3" documentado arriba). `resolverAtribucion`
+        // solo devuelve `empresaId: null` cuando falta `entrada.bridgeId` o el
+        // bridge referenciado no existe — ambos casos son un dato de entrada
+        // inválido para crear un lead real, nunca un estado normal de
+        // producción (la ingesta real siempre trae `bridgeId`, y
+        // `Bridge.empresaId` es NOT NULL desde esta misma migración).
+        if (atribucion.empresaId === null) {
+          throw new AppError(
+            "empresa_no_resuelta",
+            422,
+            "No se pudo resolver la empresa del lead — falta bridgeId o el bridge no existe",
+          );
+        }
 
         const lead = await leadRepository.createLead(
           {

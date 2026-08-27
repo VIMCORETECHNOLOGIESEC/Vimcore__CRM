@@ -724,6 +724,7 @@ export async function reassignLead(
       const leadReasignacion = {
         asesorId: lead.asesorId,
         vendedorId: lead.vendedorId,
+        empresaId: lead.empresaId,
         semaforo: lead.semaforo,
       };
       const motivoDenegacion = canReassign(usuario, leadReasignacion);
@@ -782,6 +783,7 @@ export async function transferLead(
       const leadTraspaso = {
         asesorId: lead.asesorId,
         vendedorId: lead.vendedorId,
+        empresaId: lead.empresaId,
         etapa: lead.etapa,
       };
       const motivoDenegacion = canTransfer(usuario, leadTraspaso);

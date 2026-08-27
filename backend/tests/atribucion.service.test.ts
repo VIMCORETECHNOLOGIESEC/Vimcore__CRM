@@ -9,7 +9,13 @@ const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 
 let contador = 0;
 
-async function crearBridge(overrides: { empresaId?: string | null } = {}): Promise<{ id: string }> {
+/**
+ * Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `Bridge.empresaId` es
+ * NOT NULL desde esta etapa — "Bridge without company" (Bloque B, Fase 3)
+ * ya no es un estado alcanzable, así que este helper ya no acepta `null`
+ * como override; por defecto usa la empresa bootstrap.
+ */
+async function crearBridge(overrides: { empresaId?: string } = {}): Promise<{ id: string }> {
   contador += 1;
   const bridge = await prisma.bridge.create({
     data: {
@@ -17,7 +23,7 @@ async function crearBridge(overrides: { empresaId?: string | null } = {}): Promi
       nombre: `Bridge atribucion ${contador}`,
       claveApiHash: hashClaveBridge(`clave-atribucion-${contador}`),
       estado: "ACTIVO",
-      empresaId: overrides.empresaId ?? undefined,
+      empresaId: overrides.empresaId ?? BOOTSTRAP_EMPRESA_ID,
     },
   });
   return { id: bridge.id };
@@ -156,14 +162,14 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
     expect(resultado.empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
   });
 
-  it("Bloque B (Fase 3): empresaId queda null cuando el Bridge no tiene empresa resuelta (Bridge without company)", async () => {
-    const bridge = await crearBridge();
-    const entrada = leadEntrante({ bridgeId: bridge.id, idExternoCuenta: null, idExternoCampania: null });
-
-    const resultado = await resolverAtribucion(entrada);
-
-    expect(resultado.empresaId).toBeNull();
-  });
+  // "Bloque B (Fase 3): empresaId queda null cuando el Bridge no tiene
+  // empresa resuelta (Bridge without company)" — RETIRADO por Bloque C (D4,
+  // Fase 2/Stage 2): `Bridge.empresaId` es NOT NULL desde esta etapa, así
+  // que un Bridge sin empresa ya no es un estado alcanzable. La rama
+  // `empresaId: null` de `resolverAtribucion`/`resolverEmpresaIdDesdeBridge`
+  // solo sobrevive para el caso "el bridge referenciado no existe" —
+  // cubierto por "devuelve null (nunca lanza) cuando el bridge no existe"
+  // abajo.
 });
 
 describe("services/atribucion — resolverEmpresaIdDesdeBridge (Bloque B, Fase 3)", () => {
@@ -175,13 +181,8 @@ describe("services/atribucion — resolverEmpresaIdDesdeBridge (Bloque B, Fase 3
     expect(empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
   });
 
-  it("devuelve null cuando el Bridge no tiene empresa asignada", async () => {
-    const bridge = await crearBridge();
-
-    const empresaId = await resolverEmpresaIdDesdeBridge(bridge.id);
-
-    expect(empresaId).toBeNull();
-  });
+  // "devuelve null cuando el Bridge no tiene empresa asignada" — RETIRADO
+  // por Bloque C (D4): `Bridge.empresaId` es NOT NULL, ver nota arriba.
 
   it("devuelve null (nunca lanza) cuando el bridge no existe", async () => {
     const empresaId = await resolverEmpresaIdDesdeBridge("00000000-0000-0000-0000-000000000000");

@@ -311,11 +311,14 @@ model Lead {
   nombreCampania       String?  @map("nombre_campania") @db.Text
 
   // Bloque B (Fase 3, lead-empresa-derivation): derivado desde
-  // `Bridge.empresaId` en ingesta (`resolverEmpresaIdDesdeBridge`), nullable
-  // passthrough — nunca falla la ingesta si el bridge no tiene empresa
-  // resuelta. Ownership/atribución legado (`asesorId`/`vendedorId`) se
-  // dual-escribe sin cambios; este campo no los reemplaza.
-  empresaId            String?  @map("empresa_id") @db.Uuid
+  // `Bridge.empresaId` en ingesta (`resolverEmpresaIdDesdeBridge`).
+  // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): NOT NULL desde esta
+  // migración — confirmado sin datos de producción (memoria #102), así que
+  // el cutover no requiere backfill/quarantine/deny. `Bridge.empresaId`
+  // (abajo en este mismo archivo) migra NOT NULL en la misma migración por
+  // la misma razón: un `Bridge` sin empresa es la única vía por la que un
+  // `Lead.empresaId` podría volver a quedar huérfano.
+  empresaId            String   @map("empresa_id") @db.Uuid
 
   cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
@@ -332,9 +335,10 @@ model Lead {
   respuestasFormulario RespuestaFormulario[]
   citas                Cita[]
   notificaciones       Notificacion[]
-  // Bloque B (Fase 3): SetNull — un lead nunca queda bloqueado por la baja
-  // de su `Empresa` (mismo criterio que `asesor`/`vendedor` arriba).
-  empresa              Empresa?              @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  // Bloque C (D4, Fase 2/Stage 2): Restrict, no SetNull — `empresaId` es
+  // NOT NULL ahora (arriba); `SetNull` violaría esa restricción al borrar
+  // una `Empresa`. Mismo criterio de mandatory-FK que `cliente` arriba.
+  empresa              Empresa               @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   // Bloque B (Fase 3, dedup shadow): filas de la cola de revisión donde este
   // lead es el "lead abierto" en colisión — ver `LeadAbiertoRevisionPendiente`.
   revisionesPendientes LeadAbiertoRevisionPendiente[]
@@ -557,16 +561,19 @@ model Bridge {
   // `touchUltimoLeadEn` la resetea a `false` cuando llega un lead nuevo.
   advertenciaMudoEnviada Boolean @default(false) @map("advertencia_mudo_enviada")
   // Bloque B (Fase 3, lead-empresa-derivation): resuelto por
-  // `atribucion.service.ts::resolverEmpresaIdDesdeBridge` en ingesta;
-  // nullable — un bridge sin empresa asignada nunca falla la ingesta,
-  // `Lead.empresaId` simplemente queda `null` (spec, "Bridge without
-  // company").
-  empresaId String? @map("empresa_id") @db.Uuid
+  // `atribucion.service.ts::resolverEmpresaIdDesdeBridge` en ingesta.
+  // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): NOT NULL desde esta
+  // migración — un `Bridge` sin empresa era la única vía por la que
+  // `Lead.empresaId` podía quedar huérfano; cerrar este hueco en el origen
+  // hace innecesaria cualquier guarda downstream. `POST /bridges` ahora
+  // exige `empresaId` en el body (`bridges.schema.ts`).
+  empresaId String @map("empresa_id") @db.Uuid
 
   bridgeLogs          BridgeLog[]
   leadsRecibidos      LeadRecibido[]
   cuentasPublicitarias CuentaPublicitaria[]
-  empresa              Empresa?             @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  // Bloque C (D4): Restrict, no SetNull — `empresaId` es NOT NULL ahora.
+  empresa              Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@map("bridges")
 }

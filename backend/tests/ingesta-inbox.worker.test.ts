@@ -8,6 +8,7 @@ import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import { startIngestionWorker } from "../src/jobs/ingesta-inbox.job.js";
 import { shutdownBackend } from "../src/server-lifecycle.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 vi.mock("../src/repositories/lead-recibido.repository.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/repositories/lead-recibido.repository.js")>();
@@ -32,7 +33,7 @@ vi.mock("../src/lib/metricas-broadcast.js", async (importOriginal) => {
 let sequence = 0;
 async function entrada(): Promise<LeadEntrante> {
   const n = ++sequence;
-  const bridge = await prisma.bridge.create({ data: { redSocial: "GOOGLE_FORMS", nombre: `Inbox ${n}`, claveApiHash: `inbox-${n}`, estado: "ACTIVO" } });
+  const bridge = await prisma.bridge.create({ data: { redSocial: "GOOGLE_FORMS", nombre: `Inbox ${n}`, claveApiHash: `inbox-${n}`, estado: "ACTIVO", empresaId: EMPRESA_BOOTSTRAP_ID } });
   return { redSocial: "GOOGLE_FORMS", bridgeId: bridge.id, nombre: `Inbox ${n}`, telefono: `095${String(n).padStart(7, "0")}`, correo: null, idExternoLead: `inbox-${n}`, idExternoCampania: null, nombreCampania: null, idExternoCuenta: null, camposDinamicos: {}, ingresadoEn: new Date("2026-08-18T02:00:00Z"), payloadOriginal: { n } };
 }
 beforeEach(() => vi.clearAllMocks());

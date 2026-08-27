@@ -6,7 +6,7 @@ import * as leadRepository from "../repositories/lead.repository.js";
 import type { LeadConRelaciones } from "../repositories/lead.repository.js";
 import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js";
 import { applyFormulario } from "./formularios.service.js";
-import { canClose, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import { aplicarFiltroEmpresa, canClose, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 import * as shadowAuthorizationService from "./shadow-authorization.service.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
@@ -55,9 +55,16 @@ function withEstadoSla<T extends Lead>(lead: T, ahora: Date): T & { estadoSla: E
  * DD5 (diseño M5): el `where` de rol se construye aquí a partir de
  * `req.user`, nunca desde el query string — spec "Query param no sobrescribe
  * el filtro de rol".
+ *
+ * Bloque C (Fase 2/Stage 2, D4/spec "Blocking empresa scoping on lead
+ * paths"): `usuario.empresaId === null` (holding-wide, D2) no agrega
+ * restricción; cualquier otro valor filtra por esa empresa exacta,
+ * independiente del rol — vía `leads.access.ts::aplicarFiltroEmpresa`
+ * (task 2.12 REFACTOR: mismo helper que `metricas.access.ts::resolveAlcanceBase`,
+ * antes duplicado).
  */
 function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date): Prisma.LeadWhereInput {
-  const where: Prisma.LeadWhereInput = {};
+  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario);
 
   if (!ROLES_ACCESO_TOTAL.includes(usuario.rol)) {
     where.OR = [{ asesorId: usuario.id }, { vendedorId: usuario.id }];

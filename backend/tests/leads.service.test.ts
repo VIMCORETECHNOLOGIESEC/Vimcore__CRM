@@ -10,6 +10,7 @@ import {
   transitionEtapa,
 } from "../src/services/leads.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 // D-M3 (mismo patrón que deduplicacion.service.test.ts): delega a la
 // implementación real por defecto, solo se reemplaza puntualmente para forzar
@@ -40,7 +41,14 @@ async function crearUsuario(rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VE
       activo: true,
     },
   });
-  return { id: usuario.id, rol: usuario.rol };
+  // Bloque C (D2): Admin/Supervisor holding-wide (empresaId null), Asesor/
+  // Vendedor acotados a la empresa bootstrap (misma empresa que `crearLead`
+  // de abajo) — este archivo no ejercita aislamiento cross-empresa (eso vive
+  // en `leads.access.test.ts`/`leads.access.asignacion.test.ts`), así que
+  // todos los actores comparten la misma empresa para preservar el
+  // comportamiento intra-empresa ya cubierto acá.
+  const empresaId = rol === "ADMINISTRADOR" || rol === "SUPERVISOR" ? null : EMPRESA_BOOTSTRAP_ID;
+  return { id: usuario.id, rol: usuario.rol, empresaId };
 }
 
 async function crearLead(
@@ -71,6 +79,7 @@ async function crearLead(
       cerradoEn: overrides.cerradoEn ?? null,
       ingresadoEn: overrides.ingresadoEn ?? new Date(),
       redSocial: overrides.redSocial ?? null,
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: lead.id };
@@ -178,10 +187,10 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     const marcador = `marcador-${Date.now()}`;
     const cliente = await prisma.cliente.create({ data: { nombre: marcador, telefonoValido: false } });
     await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: null, ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: null, ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
     await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: "ROJO", ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: "ROJO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     const resultado = await findLeads(supervisor, {
@@ -200,7 +209,7 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     const supervisor = await crearUsuario("SUPERVISOR");
     const cliente = await prisma.cliente.create({ data: { nombre: `SLA-null-${Date.now()}`, telefonoValido: false } });
     const sinIniciar = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", slaInicioEn: null, ingresadoEn: new Date() },
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", slaInicioEn: null, ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
     await prisma.lead.create({
       data: {
@@ -209,6 +218,7 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
         etapa: "NUEVO",
         slaInicioEn: new Date(),
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -259,6 +269,30 @@ describe("services/leads.service — findLeadById (spec: Detalle con verificaci�
 
     const resultado = await findLeadById(asesorOriginal, lead.id);
     expect(resultado.id).toBe(lead.id);
+  });
+
+  it("Bloque C (task 2.7/2.8, spec 'Write and SSE-triggered refetch endpoints revalidate at request time'): un refetch tras perder la titularidad (reasignado a otro asesor) se deniega sobre el estado ACTUAL, nunca uno cacheado — sin código nuevo, la arquitectura ya relee el lead en cada llamada", async () => {
+    const asesorOriginal = await crearUsuario("ASESOR");
+    const asesorNuevo = await crearUsuario("ASESOR");
+    const lead = await crearLead({ asesorId: asesorOriginal.id });
+
+    // Primer refetch (p. ej. disparado por un evento SSE "lead.actualizado"):
+    // el titular original todavía puede leerlo.
+    const antes = await findLeadById(asesorOriginal, lead.id);
+    expect(antes.id).toBe(lead.id);
+
+    // Reasignación ocurre POR FUERA de este actor (otro operador, otro
+    // request) — simula la ventana entre el evento SSE emitido y el
+    // refetch/write que lo procesa.
+    await prisma.lead.update({ where: { id: lead.id }, data: { asesorId: asesorNuevo.id } });
+
+    // El refetch del titular ORIGINAL, ahora stale, se deniega contra el
+    // estado actual de la BD — nunca contra el valor leído en la llamada
+    // anterior (no hay caché en ninguna capa de `leads.service.ts`).
+    await expect(findLeadById(asesorOriginal, lead.id)).rejects.toMatchObject({ statusHttp: 403 });
+    // El nuevo titular sí puede leerlo — confirma que el estado consultado es el actual.
+    const despues = await findLeadById(asesorNuevo, lead.id);
+    expect(despues.asesorId).toBe(asesorNuevo.id);
   });
 
   it("404 (AppError) cuando el lead no existe", async () => {
@@ -465,6 +499,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
         etapa: "VENTA",
         redSocial: "FACEBOOK",
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
     await prisma.lead.create({
@@ -474,6 +509,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
         etapa: "NUEVO",
         redSocial: "GOOGLE_FORMS",
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -517,6 +553,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
         etapa: "NUEVO",
         redSocial: "FACEBOOK",
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
     await prisma.lead.create({
@@ -526,6 +563,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
         etapa: "NUEVO",
         redSocial: "GOOGLE_FORMS",
         ingresadoEn: new Date(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 

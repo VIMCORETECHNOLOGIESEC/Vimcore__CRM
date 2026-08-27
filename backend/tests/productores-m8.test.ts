@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { eventBroker } from "../src/lib/event-broker.js";
 import { prisma } from "../src/lib/prisma.js";
 import { assignAutomatically, assignLead, transferLead } from "../src/services/asignacion.service.js";
@@ -7,16 +8,23 @@ import { transitionEtapa } from "../src/services/leads.service.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
 let sequence = 0;
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+// Bloque C (D2): ADMINISTRADOR/SUPERVISOR resuelven `empresaId: null`
+// (holding-wide) incondicionalmente en producción (`require-authentication.middleware.ts`)
+// — este helper construye el `UsuarioAcceso` a mano (sin pasar por el
+// middleware) para llamar los servicios directamente, así que replica ese
+// mismo criterio: ASESOR/VENDEDOR quedan acotados a la empresa bootstrap
+// (misma empresa que `lead()` de abajo), Admin/Supervisor quedan `null`.
 const actor = async (rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR", activo = true) => {
   sequence += 1;
   const user = await prisma.usuario.create({ data: { nombre: `M8 ${sequence}`, correo: `m8-${sequence}@test.local`, passwordHash: "unused", rol, activo } });
-  return { id: user.id, rol: user.rol } satisfies UsuarioAcceso;
+  const empresaId = rol === "ADMINISTRADOR" || rol === "SUPERVISOR" ? null : BOOTSTRAP_EMPRESA_ID;
+  return { id: user.id, rol: user.rol, empresaId } satisfies UsuarioAcceso;
 };
 const lead = async (responsables: { asesorId?: string; vendedorId?: string } = {}) => {
   const cliente = await prisma.cliente.create({ data: { nombre: "M8 producer", telefonoValido: false } });
-  return prisma.lead.create({ data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), ...responsables } });
+  return prisma.lead.create({ data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID, ...responsables } });
 };
-const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 /**
  * Bloque C (D5): `createForActiveSupervisorsAndAdmins` (usado por
  * `assignAutomatically`) resuelve destinatarios vía `Membresia`
@@ -96,7 +104,20 @@ describe("M8 transactional lead producers", () => {
   it("notifies the operational owner for a repeated interaction", async () => {
     const asesor = await actor("ASESOR");
     const telefono = `+59399${String(sequence).padStart(7, "0")}`;
-    const first = await deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date() });
+    // Bloque C (D4): `deduplicateLead` en la rama `crear_lead` rechaza sin un
+    // `bridgeId` resoluble — la primera llamada crea el lead, así que
+    // necesita empresa; la segunda (repetición) no toca ese guard.
+    sequence += 1;
+    const bridge = await prisma.bridge.create({
+      data: {
+        redSocial: "GOOGLE_FORMS",
+        nombre: `Bridge M8 repeated ${sequence}`,
+        claveApiHash: hashClaveBridge(`clave-m8-repeated-${sequence}`),
+        estado: "ACTIVO",
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+      },
+    });
+    const first = await deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date(), bridgeId: bridge.id });
     await prisma.lead.update({ where: { id: first.leadId }, data: { asesorId: asesor.id } });
     const publish = vi.spyOn(eventBroker, "publish");
     await deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date() });

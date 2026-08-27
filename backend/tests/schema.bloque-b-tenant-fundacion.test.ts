@@ -66,7 +66,12 @@ afterAll(async () => {
 });
 
 describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-membresia-schema)", () => {
-  it("Empresa/Membresia existen con las 3 FKs nuevas nullable (bridges/leads/refresh_tokens)", async () => {
+  it("Empresa/Membresia existen; bridges/leads.empresa_id son NOT NULL (Bloque C, D4 cutover), refresh_tokens.membresia_id sigue nullable", async () => {
+    // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `bridges.empresa_id`
+    // y `leads.empresa_id` nacieron nullable en Bloque B (Fase 3,
+    // lead-empresa-derivation) y migraron a NOT NULL sin backfill — no había
+    // datos de producción (memoria #102). `refresh_tokens.membresia_id` es
+    // ajeno a Bloque C (dual-login-routing) y permanece nullable sin cambios.
     const columnas = await prisma.$queryRaw<
       Array<{ table_name: string; column_name: string; is_nullable: string }>
     >`
@@ -77,8 +82,13 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
          OR (table_name = 'refresh_tokens' AND column_name = 'membresia_id')
     `;
     expect(columnas).toHaveLength(3);
+    const nullabilidadEsperada: Record<string, string> = {
+      bridges: "NO",
+      leads: "NO",
+      refresh_tokens: "YES",
+    };
     for (const columna of columnas) {
-      expect(columna.is_nullable).toBe("YES");
+      expect(columna.is_nullable).toBe(nullabilidadEsperada[columna.table_name]);
     }
   });
 

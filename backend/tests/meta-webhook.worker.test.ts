@@ -5,6 +5,7 @@ import { prisma } from "../src/lib/prisma.js";
 import * as inbox from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import { META_DETALLE_MAX_INTENTOS } from "../src/services/meta-webhook.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * Cubre el tramo que se movió del controller síncrono al worker durable
@@ -35,6 +36,7 @@ async function crearBridgeConCuenta(
       nombre: `Bridge Meta Worker ${contador}`,
       claveApiHash: hashClaveBridge(`clave-meta-worker-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   const pageId = `page-meta-worker-${contador}`;

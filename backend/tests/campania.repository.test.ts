@@ -3,6 +3,7 @@ import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
 import * as campaniaRepository from "../src/repositories/campania.repository.js";
 import * as cuentaPublicitariaRepository from "../src/repositories/cuenta-publicitaria.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -14,6 +15,7 @@ async function crearCuenta(): Promise<{ id: string }> {
       nombre: `Bridge campania ${contador}`,
       claveApiHash: hashClaveBridge(`clave-campania-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   const cuenta = await cuentaPublicitariaRepository.create({
