@@ -106,6 +106,54 @@ describe("repositories/membresia — findActivasByUsuarioId (Fase 2, hot path sh
   });
 });
 
+describe("repositories/membresia — createMembresia (Bloque C follow-up, D2 gap closure: Membresia bootstrap at user creation)", () => {
+  it("crea una Membresia activa con los datos provistos", async () => {
+    const usuario = await crearUsuario("ASESOR");
+
+    const membresia = await membresiaRepository.createMembresia({
+      usuarioId: usuario.id,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: false,
+    });
+
+    expect(membresia).toMatchObject({
+      usuarioId: usuario.id,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: false,
+      activa: true,
+    });
+  });
+
+  it("mapea VENDEDOR legado a Membresia(rol=ASESOR, habilitadoParaVenta=true) cuando se pide explícitamente", async () => {
+    const usuario = await crearUsuario("VENDEDOR");
+
+    const membresia = await membresiaRepository.createMembresia({
+      usuarioId: usuario.id,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: true,
+    });
+
+    expect(membresia.habilitadoParaVenta).toBe(true);
+  });
+
+  it("acepta un cliente de transacción (tx-aware, mismo patrón que assertCorreoDisponible)", async () => {
+    const usuario = await crearUsuario("ASESOR");
+
+    const membresia = await prisma.$transaction((tx) =>
+      membresiaRepository.createMembresia(
+        { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", habilitadoParaVenta: false },
+        tx,
+      ),
+    );
+
+    const encontrada = await prisma.membresia.findUnique({ where: { id: membresia.id } });
+    expect(encontrada).not.toBeNull();
+  });
+});
+
 describe("repositories/membresia — assertCorreoDisponible (cross-table uniqueness guard)", () => {
   it("no lanza cuando el correo no está en uso en ninguna tabla", async () => {
     await expect(

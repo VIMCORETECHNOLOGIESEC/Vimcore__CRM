@@ -158,14 +158,25 @@ export async function findByBridgeEIdExterno(
  * suficientemente acotado por la ventana de 7 días para no justificar SQL
  * crudo.
  */
+/**
+ * Bloque C (D5/D8, spec "Per-job isolation decisions" — `verificacion-token`):
+ * `include: { bridge: { select: { empresaId } } }` — `produceAlertaTokenPorExpirar`
+ * necesita el `empresaId` del bridge para cerrar el chokepoint de la alerta
+ * `TOKEN_POR_EXPIRAR` sin una consulta extra por cuenta dentro del loop.
+ */
+export type CuentaPublicitariaConEmpresa = CuentaPublicitaria & {
+  bridge: { empresaId: string | null };
+};
+
 export async function listPorExpirar(
   ahora: Date,
   fronteraDias: number,
   client: PrismaClientOrTransaction = prisma,
-): Promise<CuentaPublicitaria[]> {
+): Promise<CuentaPublicitariaConEmpresa[]> {
   const limite = new Date(ahora.getTime() + fronteraDias * 24 * 60 * 60 * 1000);
   return client.cuentaPublicitaria.findMany({
     where: { tokenExpiraEn: { not: null, gt: ahora, lte: limite } },
+    include: { bridge: { select: { empresaId: true } } },
   });
 }
 

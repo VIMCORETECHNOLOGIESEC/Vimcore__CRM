@@ -16,8 +16,20 @@ const PASSWORD = "clave-matriz-123456";
 const roles: RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR", "ASESOR", "VENDEDOR"];
 const accessTokenByRole = new Map<RolUsuario, string>();
 let objetivoId: string;
+// Bloque C follow-up (D2 gap closure): ASESOR/VENDEDOR sin Membresia activa
+// ya no pueden autenticarse (TenantContext irresoluble se rechaza, D2).
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+const ROLES_CON_MEMBRESIA = new Set<RolUsuario>(["ASESOR", "VENDEDOR"]);
+// `POST /usuarios` (caso "empresaId" abajo) pasa por `z.uuid()` en el borde
+// HTTP — el `BOOTSTRAP_EMPRESA_ID` de arriba NO cumple el formato RFC 4122
+// estricto que exige `z.uuid()` (versión inválida), así que esta suite crea
+// una `Empresa` real para ese caso específico.
+let empresaIdValida: string;
 
 beforeAll(async () => {
+  const empresa = await prisma.empresa.create({ data: { nombre: "Empresa Matriz de Roles" } });
+  empresaIdValida = empresa.id;
+
   for (const rol of roles) {
     const usuario = await prisma.usuario.create({
       data: {
@@ -28,6 +40,17 @@ beforeAll(async () => {
         activo: true,
       },
     });
+    if (ROLES_CON_MEMBRESIA.has(rol)) {
+      await prisma.membresia.create({
+        data: {
+          usuarioId: usuario.id,
+          empresaId: BOOTSTRAP_EMPRESA_ID,
+          rol: "ASESOR",
+          habilitadoParaVenta: rol === "VENDEDOR",
+          activa: true,
+        },
+      });
+    }
 
     const login = await request(app)
       .post("/api/v1/auth/login")
@@ -71,6 +94,7 @@ function casos(): CasoEndpoint[] {
             correo: `creado-${Date.now()}-${Math.random()}@integracion.test`,
             password: "clave-generada-123456",
             rol: "ASESOR",
+            empresaId: empresaIdValida,
           }),
       statusExitoso: 201,
     },

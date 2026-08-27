@@ -11,8 +11,17 @@ const VENDEDOR_PASSWORD = "clave-vendedor-1234";
 let adminAccessToken: string;
 let vendedorAccessToken: string;
 let vendedorId: string;
+let empresaId: string;
 
 beforeAll(async () => {
+  // Bloque C follow-up (D2 gap closure): `Empresa` real (UUID v4 válido para
+  // `z.uuid()`) — el `BOOTSTRAP_EMPRESA_ID` de otras suites
+  // (`00...001`) no pasa el formato estricto de `z.uuid()` (versión RFC 4122
+  // inválida), así que esta suite crea la suya para ejercitar la validación
+  // HTTP real de `empresaId`.
+  const empresa = await prisma.empresa.create({ data: { nombre: "Empresa Integración CRUD" } });
+  empresaId = empresa.id;
+
   await prisma.usuario.create({
     data: {
       nombre: "Admin Integración",
@@ -23,6 +32,11 @@ beforeAll(async () => {
     },
   });
 
+  // Bloque C follow-up (D2 gap closure): este VENDEDOR se loguea y ejecuta
+  // peticiones autenticadas en las pruebas de abajo (matriz de roles) — sin
+  // una Membresia activa, `requireAuthentication` rechazaría el
+  // TenantContext ANTES de que `requireRole` llegue a evaluar el 403 que
+  // esas pruebas esperan.
   const vendedor = await prisma.usuario.create({
     data: {
       nombre: "Vendedor Integración",
@@ -33,6 +47,9 @@ beforeAll(async () => {
     },
   });
   vendedorId = vendedor.id;
+  await prisma.membresia.create({
+    data: { usuarioId: vendedor.id, empresaId, rol: "ASESOR", habilitadoParaVenta: true, activa: true },
+  });
 
   const adminLogin = await request(app)
     .post("/api/v1/auth/login")
@@ -59,12 +76,74 @@ describe("POST /api/v1/usuarios", () => {
         correo: "nuevo@integracion.test",
         password: "clave-nueva-123456",
         rol: "ASESOR",
+        empresaId,
       });
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body.user.correo).toBe("nuevo@integracion.test");
     expect(respuesta.body.user.rol).toBe("ASESOR");
     expect(respuesta.body.user.passwordHash).toBeUndefined();
+  });
+
+  it("201 ASESOR/VENDEDOR nuevo puede loguearse de inmediato (TenantContext resuelve por la Membresia recién creada, Bloque C follow-up)", async () => {
+    const correo = "recien-creado-login@integracion.test";
+    const password = "clave-recien-creada-1234";
+    const creacion = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Recién Creado", correo, password, rol: "ASESOR", empresaId });
+    expect(creacion.status).toBe(201);
+
+    const login = await request(app).post("/api/v1/auth/login").send({ correo, password });
+    expect(login.status).toBe(200);
+
+    const perfil = await request(app)
+      .get("/api/v1/usuarios/responsables")
+      .query({ rol: "ASESOR" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+    expect(perfil.status).toBe(200);
+  });
+
+  it("400 al crear un ASESOR sin empresaId (Bloque C follow-up, D2 gap closure)", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Asesor Sin Empresa",
+        correo: "asesor-sin-empresa@integracion.test",
+        password: "clave-nueva-123456",
+        rol: "ASESOR",
+      });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("400 al crear un VENDEDOR sin empresaId (Bloque C follow-up, D2 gap closure)", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Vendedor Sin Empresa",
+        correo: "vendedor-sin-empresa@integracion.test",
+        password: "clave-nueva-123456",
+        rol: "VENDEDOR",
+      });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("201 crea un ADMINISTRADOR sin empresaId (holding-wide incondicional, D2 — no requiere Membresia)", async () => {
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Otro Admin",
+        correo: "otro-admin@integracion.test",
+        password: "clave-nueva-123456",
+        rol: "ADMINISTRADOR",
+      });
+
+    expect(respuesta.status).toBe(201);
   });
 
   it("400 con una contraseña más corta que la política de alta (min 12)", async () => {

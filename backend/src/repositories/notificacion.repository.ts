@@ -1,5 +1,6 @@
-import type { CanalNotificacion, Notificacion, Prisma, RolUsuario, TipoNotificacion } from "@prisma/client";
+import type { CanalNotificacion, Notificacion, RolUsuario, TipoNotificacion } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
+import { condicionesMembresiaPorRol } from "../lib/rol-membresia.js";
 export interface CreateNotificacionData {
   usuarioId: string;
   tipo: TipoNotificacion;
@@ -67,15 +68,35 @@ export async function markAllRead(
     data: { leidaEn },
   });
 }
+/**
+ * Bloque C (D5, corrige el chokepoint de notificaciones nombrado en el
+ * brief): reemplaza el scan global de `Usuario.rol` — que mezclaba
+ * destinatarios de TODAS las empresas — por `Membresia` filtrada por
+ * `empresaId` + rol equivalente. `empresaId === null` es el paso
+ * holding-wide (mismo criterio D2 que
+ * `shadow-authorization.service.ts::rolesEquivalentesActivos`), usado solo
+ * por callers que legítimamente no resuelven una empresa en esta etapa
+ * (Fase 1 / Stage 1). `Usuario.activo` se verifica vía el join de relación
+ * existente — el schema de `Notificacion`/`Usuario` no cambia (D5).
+ */
 export async function findActiveRecipientIds(
   roles: readonly RolUsuario[],
+  empresaId: string | null,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<string[]> {
-  const users = await client.usuario.findMany({
-    where: { activo: true, rol: { in: [...roles] } },
-    select: { id: true },
+  const condicionesRol = condicionesMembresiaPorRol(roles);
+  if (condicionesRol.length === 0) return [];
+
+  const membresias = await client.membresia.findMany({
+    where: {
+      activa: true,
+      usuario: { activo: true },
+      ...(empresaId !== null ? { empresaId } : {}),
+      OR: condicionesRol,
+    },
+    select: { usuarioId: true },
   });
-  return users.map(({ id }) => id);
+  return [...new Set(membresias.map(({ usuarioId }) => usuarioId))];
 }
 
 export async function findActiveRecipientById(

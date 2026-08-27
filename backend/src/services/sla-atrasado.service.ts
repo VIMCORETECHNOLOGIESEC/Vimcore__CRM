@@ -51,7 +51,14 @@ export async function detectLeadsAtrasados(
       const responsableId = lead.vendedorId ?? lead.asesorId;
       const detalle: DetalleEventoAsignacion = { version: 1, requiereNotificacion: true, motivo: "sla_vencido", responsableId, responsableAnteriorId: null, ejecutadoPorId: null };
       await leadEventoRepository.createEvento({ leadId: lead.id, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
-      const supervisorIds = await notificationRepository.findActiveRecipientIds(["SUPERVISOR"], tx);
+      // Bloque C (D5/D8): `lead.empresaId` ya es una columna escalar del lead
+      // releído en esta transacción — cierra el chokepoint de notificaciones
+      // SLA sin una consulta extra (spec, "Job output never mixes empresas").
+      const supervisorIds = await notificationRepository.findActiveRecipientIds(
+        ["SUPERVISOR"],
+        lead.empresaId,
+        tx,
+      );
       const owner = responsableId
         ? await notificationRepository.findActiveRecipientById(responsableId, tx)
         : null;

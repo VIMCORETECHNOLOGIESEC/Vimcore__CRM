@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { eventBroker } from "../src/lib/event-broker.js";
 import { prisma } from "../src/lib/prisma.js";
@@ -5,8 +6,10 @@ import * as leadEventoRepository from "../src/repositories/lead-evento.repositor
 import * as leadRepository from "../src/repositories/lead.repository.js";
 import * as notificacionRepository from "../src/repositories/notificacion.repository.js";
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
-import { deactivateUsuario } from "../src/services/usuarios.service.js";
+import { createUsuario, deactivateUsuario } from "../src/services/usuarios.service.js";
 import type { EtapaLead, RolUsuario } from "@prisma/client";
+
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 
 let contador = 0;
 
@@ -57,6 +60,84 @@ async function desactivarTodos(rol: RolUsuario): Promise<void> {
 
 afterAll(async () => {
   await prisma.$disconnect();
+});
+
+describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure: Membresia bootstrap at user creation)", () => {
+  it("ASESOR: crea el Usuario y una Membresia activa (rol=ASESOR, habilitadoParaVenta=false) en la misma transacción", async () => {
+    const creado = await createUsuario({
+      nombre: "Asesor Nuevo",
+      correo: `asesor-nuevo-${randomUUID()}@integracion.test`,
+      password: "clave-asesor-123456",
+      rol: "ASESOR",
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+    });
+
+    const membresia = await prisma.membresia.findFirst({ where: { usuarioId: creado.id } });
+    expect(membresia).toMatchObject({
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: false,
+      activa: true,
+    });
+  });
+
+  it("VENDEDOR legado: crea el Usuario y una Membresia(rol=ASESOR, habilitadoParaVenta=true)", async () => {
+    const creado = await createUsuario({
+      nombre: "Vendedor Nuevo",
+      correo: `vendedor-nuevo-${randomUUID()}@integracion.test`,
+      password: "clave-vendedor-123456",
+      rol: "VENDEDOR",
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+    });
+
+    const membresia = await prisma.membresia.findFirst({ where: { usuarioId: creado.id } });
+    expect(membresia).toMatchObject({
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: true,
+      activa: true,
+    });
+  });
+
+  it("ADMINISTRADOR: crea el Usuario SIN ninguna Membresia (holding-wide incondicional, D2)", async () => {
+    const creado = await createUsuario({
+      nombre: "Admin Nuevo",
+      correo: `admin-nuevo-${randomUUID()}@integracion.test`,
+      password: "clave-admin-123456",
+      rol: "ADMINISTRADOR",
+    });
+
+    const membresias = await prisma.membresia.findMany({ where: { usuarioId: creado.id } });
+    expect(membresias).toEqual([]);
+  });
+
+  it("SUPERVISOR: crea el Usuario SIN ninguna Membresia (holding-wide incondicional, D2)", async () => {
+    const creado = await createUsuario({
+      nombre: "Supervisor Nuevo",
+      correo: `supervisor-nuevo-${randomUUID()}@integracion.test`,
+      password: "clave-supervisor-123456",
+      rol: "SUPERVISOR",
+    });
+
+    const membresias = await prisma.membresia.findMany({ where: { usuarioId: creado.id } });
+    expect(membresias).toEqual([]);
+  });
+
+  it("ASESOR sin empresaId: rechaza con 400 y NO persiste el Usuario (atomicidad)", async () => {
+    const correo = `asesor-sin-empresa-${randomUUID()}@integracion.test`;
+
+    await expect(
+      createUsuario({
+        nombre: "Asesor Sin Empresa",
+        correo,
+        password: "clave-asesor-123456",
+        rol: "ASESOR",
+      }),
+    ).rejects.toMatchObject({ statusHttp: 400 });
+
+    const usuarioPersistido = await prisma.usuario.findUnique({ where: { correo } });
+    expect(usuarioPersistido).toBeNull();
+  });
 });
 
 describe("usuarios.service — deactivateUsuario (M2: baja lógica con reasignación obligatoria de cartera activa)", () => {

@@ -20,6 +20,20 @@ async function createUser(role: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR", activ
     },
   });
 }
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Bloque C (D5): `createForActiveSupervisorsAndAdmins` ahora resuelve
+ * destinatarios vía `Membresia` (empresaId+rol), no vía un scan global de
+ * `Usuario.rol` — este helper crea la Membresia activa equivalente para que
+ * estas pruebas sigan ejerciendo la resolución real de destinatarios.
+ */
+async function createUserConMembresia(role: "ADMINISTRADOR" | "SUPERVISOR", active = true) {
+  const usuario = await createUser(role, active);
+  await prisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: role, activa: true },
+  });
+  return usuario;
+}
 async function login(correo: string): Promise<string> {
   const response = await request(app).post("/api/v1/auth/login").send({ correo, password });
   expect(response.status).toBe(200);
@@ -30,6 +44,13 @@ beforeAll(async () => {
   const foreign = await createUser("ASESOR");
   ownerId = owner.id;
   foreignId = foreign.id;
+  // Bloque C follow-up (D2 gap closure): `owner` se loguea y hace peticiones
+  // autenticadas en las pruebas de abajo — sin Membresia activa,
+  // `requireAuthentication` rechazaría el TenantContext (D2). `foreign` solo
+  // se usa como id de referencia, nunca se autentica — no la necesita.
+  await prisma.membresia.create({
+    data: { usuarioId: owner.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", activa: true },
+  });
   ownerToken = await login(owner.correo);
 });
 beforeEach(async () => {
@@ -143,9 +164,9 @@ describe("M8 notification REST API", () => {
 });
 describe("M8 active supervisor/admin fan-out", () => {
   it("creates alerts for every active supervisor/admin and excludes inactive users", async () => {
-    const activeSupervisor = await createUser("SUPERVISOR");
-    const activeAdmin = await createUser("ADMINISTRADOR");
-    const inactiveSupervisor = await createUser("SUPERVISOR", false);
+    const activeSupervisor = await createUserConMembresia("SUPERVISOR");
+    const activeAdmin = await createUserConMembresia("ADMINISTRADOR");
+    const inactiveSupervisor = await createUserConMembresia("SUPERVISOR", false);
     await createForActiveSupervisorsAndAdmins({
       tipo: "LEAD_SIN_ASIGNAR",
       titulo: "Lead sin asignar",
@@ -161,7 +182,7 @@ describe("M8 active supervisor/admin fan-out", () => {
     expect(ids).not.toContain(inactiveSupervisor.id);
   });
   it("rolls back every fan-out notification when its transaction fails", async () => {
-    await createUser("SUPERVISOR");
+    await createUserConMembresia("SUPERVISOR");
     await expect(
       prisma.$transaction(async (tx) => {
         await createForActiveSupervisorsAndAdmins(
@@ -170,6 +191,7 @@ describe("M8 active supervisor/admin fan-out", () => {
             titulo: "Lead sin asignar",
             mensaje: "Rollback expected",
           },
+          null,
           tx,
         );
         throw new Error("forced rollback");

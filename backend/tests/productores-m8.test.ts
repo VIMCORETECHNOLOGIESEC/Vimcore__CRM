@@ -16,6 +16,21 @@ const lead = async (responsables: { asesorId?: string; vendedorId?: string } = {
   const cliente = await prisma.cliente.create({ data: { nombre: "M8 producer", telefonoValido: false } });
   return prisma.lead.create({ data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), ...responsables } });
 };
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Bloque C (D5): `createForActiveSupervisorsAndAdmins` (usado por
+ * `assignAutomatically`) resuelve destinatarios vía `Membresia`
+ * (empresaId+rol), no vía `Usuario.rol` — este helper crea la Membresia
+ * activa equivalente para el único test de este archivo que ejercita ese
+ * fan-out por rol ("fans an unassigned lead out...").
+ */
+const actorConMembresia = async (rol: "ADMINISTRADOR" | "SUPERVISOR", activo = true) => {
+  const usuario = await actor(rol, activo);
+  await prisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol, activa: true },
+  });
+  return usuario;
+};
 
 beforeEach(async () => {
   vi.restoreAllMocks();
@@ -66,9 +81,9 @@ describe("M8 transactional lead producers", () => {
 
   it("fans an unassigned lead out only to active supervisors and administrators", async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
-    const supervisor = await actor("SUPERVISOR");
-    const admin = await actor("ADMINISTRADOR");
-    const inactive = await actor("SUPERVISOR", false);
+    const supervisor = await actorConMembresia("SUPERVISOR");
+    const admin = await actorConMembresia("ADMINISTRADOR");
+    const inactive = await actorConMembresia("SUPERVISOR", false);
     const target = await lead();
     await prisma.$transaction((tx) => assignAutomatically(target.id, new Date(), tx));
     const recipients = await prisma.notificacion.findMany({ where: { leadId: target.id, tipo: "LEAD_SIN_ASIGNAR" }, select: { usuarioId: true } });

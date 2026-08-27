@@ -154,3 +154,141 @@ describe("services/shadow-authorization — compareCanClose", () => {
   });
 });
 
+/**
+ * Bloque C (Fase 1 / Stage 1, D1): corrige el bug nombrado en el brief —
+ * `rolesEquivalentesActivos` pooleaba membresías de TODAS las empresas del
+ * usuario, descartando `empresaId` antes de comparar. Estas pruebas fijan el
+ * comportamiento correcto (empresa cruzada = no equivalente) y preservan el
+ * paso holding-wide (`empresaId === null`, D2) para no romper los call sites
+ * existentes (que siguen sin pasar un `empresaId`, ver
+ * `shadow-authorization.wiring.test.ts` / `require-role.middleware.test.ts`).
+ */
+describe("services/shadow-authorization — rolesEquivalentesActivos empresa-aware (Bloque C, D1)", () => {
+  it("una Membresia de OTRA empresa ya no reporta equivalencia: divergencia si el legado permitía", async () => {
+    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
+      membresiaFalsa({ empresaId: "empresa-A", rol: "ADMINISTRADOR" }),
+    ]);
+
+    await shadowAuthorizationService.compareRequireRole(
+      "usuario-1",
+      ["ADMINISTRADOR"],
+      true,
+      "empresa-B",
+    );
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "shadow_authz_divergence",
+        capability: "requireRole",
+        legacyDecision: true,
+        membresiaDecision: false,
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("una Membresia de la MISMA empresa sigue contando como equivalente (sin falso positivo)", async () => {
+    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
+      membresiaFalsa({ empresaId: "empresa-A", rol: "ADMINISTRADOR" }),
+    ]);
+
+    await shadowAuthorizationService.compareRequireRole(
+      "usuario-1",
+      ["ADMINISTRADOR"],
+      true,
+      "empresa-A",
+    );
+
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("empresaId=null (holding-wide, D2) preserva el paso pooled sin filtrar por empresa", async () => {
+    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
+      membresiaFalsa({ empresaId: "empresa-A", rol: "ADMINISTRADOR" }),
+    ]);
+
+    await shadowAuthorizationService.compareRequireRole(
+      "usuario-1",
+      ["ADMINISTRADOR"],
+      true,
+      null,
+    );
+
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("emite shadow_authz_empresa_compared cuando compara con una empresa específica (señal de volumen, D3)", async () => {
+    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([]);
+
+    await shadowAuthorizationService.compareRequireRole(
+      "usuario-1",
+      ["ADMINISTRADOR"],
+      false,
+      "empresa-A",
+    );
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "shadow_authz_empresa_compared", empresaId: "empresa-A" }),
+      expect.any(String),
+    );
+  });
+
+  it("NO emite shadow_authz_empresa_compared en el paso holding-wide (empresaId=null)", async () => {
+    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([]);
+
+    await shadowAuthorizationService.compareRequireRole("usuario-1", ["ADMINISTRADOR"], false, null);
+
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Bloque C (Fase 1 / Stage 1, D3, spec "Bake-period exit"): función pura,
+ * sin mocks — el exit criterion exige AMBAS condiciones.
+ */
+describe("services/shadow-authorization — evaluateBakeExit (Bloque C, D3, bake-period exit)", () => {
+  it("Scenario 'Low-traffic bake cannot be declared clean': tiempo cumplido, volumen bajo -> not-met nombrando 'volume'", () => {
+    const resultado = shadowAuthorizationService.evaluateBakeExit({
+      elapsedDays: 30,
+      observedCount: 5,
+      minDays: 30,
+      minCount: 1000,
+    });
+
+    expect(resultado).toEqual({ status: "not-met", missing: ["volume"] });
+  });
+
+  it("volumen cumplido, tiempo insuficiente -> not-met nombrando 'elapsed'", () => {
+    const resultado = shadowAuthorizationService.evaluateBakeExit({
+      elapsedDays: 5,
+      observedCount: 5000,
+      minDays: 30,
+      minCount: 1000,
+    });
+
+    expect(resultado).toEqual({ status: "not-met", missing: ["elapsed"] });
+  });
+
+  it("ambos criterios cumplidos -> met", () => {
+    const resultado = shadowAuthorizationService.evaluateBakeExit({
+      elapsedDays: 30,
+      observedCount: 1000,
+      minDays: 30,
+      minCount: 1000,
+    });
+
+    expect(resultado).toEqual({ status: "met" });
+  });
+
+  it("ambos criterios insuficientes -> not-met nombrando ambos", () => {
+    const resultado = shadowAuthorizationService.evaluateBakeExit({
+      elapsedDays: 1,
+      observedCount: 1,
+      minDays: 30,
+      minCount: 1000,
+    });
+
+    expect(resultado).toEqual({ status: "not-met", missing: ["elapsed", "volume"] });
+  });
+});
+

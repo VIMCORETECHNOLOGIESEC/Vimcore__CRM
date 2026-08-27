@@ -107,6 +107,13 @@ describe("buzón durable de ingesta", () => {
 });
 
 describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening Bloque A, WU7, spec bridge-log-notifications)", () => {
+  const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+  /**
+   * Bloque C (D5): el chokepoint de notificaciones (`findActiveRecipientIds`)
+   * ahora resuelve destinatarios vía `Membresia` (empresaId+rol) — se crea la
+   * Membresia activa equivalente para que este fixture siga recibiendo el
+   * fan-out de `LEAD_DATO_INCOMPLETO`.
+   */
   async function crearSupervisor(): Promise<{ id: string }> {
     contador += 1;
     const usuario = await prisma.usuario.create({
@@ -116,6 +123,14 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
         passwordHash: "unused",
         rol: "SUPERVISOR",
         activo: true,
+      },
+    });
+    await prisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "SUPERVISOR",
+        activa: true,
       },
     });
     return { id: usuario.id };

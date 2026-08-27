@@ -9,6 +9,11 @@ import { prisma } from "../src/lib/prisma.js";
 
 const app = createApp();
 const password = "clave-eventos-123456";
+// Bloque C follow-up (D2 gap closure): un ASESOR sin Membresia activa ya no
+// puede autenticarse (`TenantContext` irresoluble se rechaza, D2) — este
+// helper crea la Membresia equivalente, mismo criterio que
+// `notificaciones.test.ts::createUserConMembresia`.
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 
 async function createToken(): Promise<{ id: string; token: string }> {
   const user = await prisma.usuario.create({
@@ -19,6 +24,9 @@ async function createToken(): Promise<{ id: string; token: string }> {
       rol: "ASESOR",
       activo: true,
     },
+  });
+  await prisma.membresia.create({
+    data: { usuarioId: user.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", activa: true },
   });
   const response = await request(app)
     .post("/api/v1/auth/login")

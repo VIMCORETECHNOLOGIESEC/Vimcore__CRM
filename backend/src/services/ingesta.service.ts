@@ -95,6 +95,9 @@ export async function procesarRecepcion(
       // "datos incompletos" para ese caso también. Solo `procesarRecepcion`
       // tiene `dedup.leadId` para poblar `NotificationInput.leadId`. Una
       // notificación individual por lead, sin agregación (spec).
+      // Bloque C (D5): `empresaId` explícito null (holding-wide) — este call
+      // site queda fuera del alcance de Fase 1 / Stage 1 (sdd/bloque-c-aislamiento);
+      // conectar el `empresaId` real del lead queda como seguimiento.
       const notificacionesDatoIncompleto = datosIncompletos
         ? await createForActiveRoles(
             ["SUPERVISOR"],
@@ -104,6 +107,7 @@ export async function procesarRecepcion(
               mensaje: "Un lead ingresó sin teléfono ni correo — requiere seguimiento manual",
               leadId: dedup.leadId,
             },
+            null,
             tx,
           )
         : [];

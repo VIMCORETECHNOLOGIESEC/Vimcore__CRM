@@ -9,6 +9,13 @@ const PASSWORD = "clave-de-prueba-123456";
 
 let contador = 0;
 
+// Bloque C follow-up (D2 gap closure): ASESOR/VENDEDOR sin Membresia activa
+// ya no pueden autenticarse (TenantContext irresoluble se rechaza, D2) — solo
+// esos dos roles la necesitan (ADMINISTRADOR/SUPERVISOR resuelven
+// holding-wide incondicionalmente, sin leer Membresia).
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+const ROLES_CON_MEMBRESIA = new Set(["ASESOR", "VENDEDOR"]);
+
 async function crearUsuarioConToken(
   rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR",
 ): Promise<{ id: string; token: string }> {
@@ -22,6 +29,17 @@ async function crearUsuarioConToken(
       activo: true,
     },
   });
+  if (ROLES_CON_MEMBRESIA.has(rol)) {
+    await prisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: true,
+      },
+    });
+  }
   const login = await request(app)
     .post("/api/v1/auth/login")
     .send({ correo: usuario.correo, password: PASSWORD });

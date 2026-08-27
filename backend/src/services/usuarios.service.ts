@@ -4,6 +4,7 @@ import { hashPassword } from "../lib/password.js";
 import { runInTransaction, USUARIOS_TRANSACTION_BOUNDS } from "../lib/prisma.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
+import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import type {
   AdminUsuarioView,
@@ -26,6 +27,45 @@ function userNotFound(): AppError {
 
 function emailAlreadyInUse(): AppError {
   return new AppError("correo_en_uso", 409, "El correo ya está en uso");
+}
+
+/**
+ * Bloque C follow-up (D2 gap closure, spec "Request-scoped tenant context"):
+ * `empresaId` es obligatorio al crear un `ASESOR`/`VENDEDOR` — son los únicos
+ * roles legado cuyo `TenantContext` se resuelve vía `Membresia`
+ * (`require-authentication.middleware.ts::resolverEmpresaId`,
+ * `ROLES_ACCESO_TOTAL` excluye a estos dos). Sin esto, el usuario nuevo
+ * nacería sin `Membresia` y su `TenantContext` sería irresoluble en el
+ * primer login — el mismo hueco que esta batch cierra.
+ */
+function empresaIdRequerido(): AppError {
+  return new AppError(
+    "empresa_id_requerido",
+    400,
+    "empresaId es obligatorio para crear un usuario ASESOR o VENDEDOR",
+  );
+}
+
+/**
+ * D2: mismos dos roles holding-wide incondicionales que
+ * `require-authentication.middleware.ts::ROLES_ACCESO_TOTAL` — nunca
+ * resuelven `TenantContext` vía `Membresia`, así que crear una acá sería
+ * muerta (nunca leída) y además violaría `@@unique([usuarioId, empresaId,
+ * rol])` si el mismo admin se re-creara alguna vez en otra empresa.
+ */
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+
+/**
+ * D2/backfill (mismo mapeo que `shadow-authorization.service.ts::
+ * rolEquivalente`): `VENDEDOR` legado no tiene su propio `RolMembresia` —
+ * mapea a `ASESOR` con `habilitadoParaVenta = true`; `ASESOR` legado mapea a
+ * `ASESOR` con `habilitadoParaVenta = false`.
+ */
+function membresiaParaRolLegado(rol: "ASESOR" | "VENDEDOR"): {
+  rol: "ASESOR";
+  habilitadoParaVenta: boolean;
+} {
+  return { rol: "ASESOR", habilitadoParaVenta: rol === "VENDEDOR" };
 }
 
 /**
@@ -67,6 +107,10 @@ export interface CreateUsuarioInput {
   correo: string;
   password: string;
   rol: RolUsuario;
+  // Bloque C follow-up (D2 gap closure): obligatorio solo para ASESOR/VENDEDOR
+  // (validado en `empresaIdRequerido` abajo, no en el tipo — el schema Zod de
+  // la capa HTTP hace la misma validación condicional antes de llegar acá).
+  empresaId?: string;
 }
 
 export interface UpdateUsuarioInput {
@@ -77,17 +121,59 @@ export interface UpdateUsuarioInput {
   activo?: boolean;
 }
 
-/** Alta de usuario (D9: solo `ADMINISTRADOR` llega hasta acá vía `requireRole`). */
+/**
+ * Alta de usuario (D9: solo `ADMINISTRADOR` llega hasta acá vía
+ * `requireRole`).
+ *
+ * Bloque C follow-up (D2 gap closure): `ASESOR`/`VENDEDOR` ahora nacen con su
+ * `Membresia` (empresaId+rol) en la MISMA transacción que el `Usuario`
+ * (mismo criterio atómico que `deactivateUsuario`) — cierra el hueco que
+ * dejaba `TenantContext` irresoluble para todo usuario nuevo (Fase 1/Stage 1,
+ * desviación documentada en `sdd/bloque-c-aislamiento/tasks`).
+ * `ADMINISTRADOR`/`SUPERVISOR` siguen sin `Membresia`: resuelven
+ * `empresaId: null` (holding-wide) incondicionalmente en el middleware (D2),
+ * así que una `Membresia` para ellos nunca se leería.
+ */
 export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsuarioView> {
+  if (!ROLES_ACCESO_TOTAL.includes(input.rol) && !input.empresaId) {
+    throw empresaIdRequerido();
+  }
+
   const passwordHash = await hashPassword(input.password);
 
   try {
-    return await usuarioRepository.createUsuario({
-      nombre: input.nombre,
-      correo: input.correo,
-      passwordHash,
-      rol: input.rol,
-    });
+    return await runInTransaction(
+      undefined,
+      async (tx) => {
+        const usuario = await usuarioRepository.createUsuario(
+          {
+            nombre: input.nombre,
+            correo: input.correo,
+            passwordHash,
+            rol: input.rol,
+          },
+          tx,
+        );
+
+        if (!ROLES_ACCESO_TOTAL.includes(input.rol) && input.empresaId) {
+          const { rol, habilitadoParaVenta } = membresiaParaRolLegado(
+            input.rol as "ASESOR" | "VENDEDOR",
+          );
+          await membresiaRepository.createMembresia(
+            {
+              usuarioId: usuario.id,
+              empresaId: input.empresaId,
+              rol,
+              habilitadoParaVenta,
+            },
+            tx,
+          );
+        }
+
+        return usuario;
+      },
+      USUARIOS_TRANSACTION_BOUNDS,
+    );
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       throw emailAlreadyInUse();

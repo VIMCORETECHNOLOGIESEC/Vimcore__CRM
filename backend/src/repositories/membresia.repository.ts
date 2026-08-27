@@ -1,4 +1,4 @@
-import type { Membresia } from "@prisma/client";
+import type { Membresia, RolMembresia } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
@@ -42,6 +42,37 @@ export async function findActivasByUsuarioId(
  * futuro cambio que sí escriba `Membresia.correo` la reutilice en vez de
  * re-derivar el chequeo (y arriesgar omitirlo).
  */
+export interface CrearMembresiaData {
+  usuarioId: string;
+  empresaId: string;
+  rol: RolMembresia;
+  habilitadoParaVenta: boolean;
+}
+
+/**
+ * Bloque C follow-up (D2 gap closure, spec "Request-scoped tenant context"):
+ * cierra el hueco que dejó Fase 1/Stage 1 — hasta este cambio, ningún camino
+ * de código creaba una `Membresia` junto con un `Usuario` nuevo, así que
+ * `TenantContext` nunca podía rechazar de verdad sin romper el alta de
+ * usuarios `ASESOR`/`VENDEDOR`. `usuarios.service.ts::createUsuario` invoca
+ * esto en la MISMA transacción que el `usuario.create` (mismo criterio
+ * atómico que `deactivateUsuario` con `revokeAllForUser`).
+ */
+export async function createMembresia(
+  data: CrearMembresiaData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Membresia> {
+  return client.membresia.create({
+    data: {
+      usuarioId: data.usuarioId,
+      empresaId: data.empresaId,
+      rol: data.rol,
+      habilitadoParaVenta: data.habilitadoParaVenta,
+      activa: true,
+    },
+  });
+}
+
 export async function assertCorreoDisponible(
   correo: string,
   client: PrismaClientOrTransaction,

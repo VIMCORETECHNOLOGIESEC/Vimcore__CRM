@@ -380,7 +380,10 @@ export async function assignAutomatically(
       },
       tx,
     );
-    const notifications = await createForActiveSupervisorsAndAdmins({ tipo: "LEAD_SIN_ASIGNAR", titulo: "Lead sin asignar", mensaje: "No hay asesores activos disponibles", leadId }, tx);
+    // Bloque C (D5): `empresaId` explícito null (holding-wide) — este call
+    // site queda fuera del alcance de Fase 1 / Stage 1 (sdd/bloque-c-aislamiento);
+    // conectar el `empresaId` real del lead queda como seguimiento.
+    const notifications = await createForActiveSupervisorsAndAdmins({ tipo: "LEAD_SIN_ASIGNAR", titulo: "Lead sin asignar", mensaje: "No hay asesores activos disponibles", leadId }, null, tx);
     return notifications.flatMap(notificationEvents);
   }
 

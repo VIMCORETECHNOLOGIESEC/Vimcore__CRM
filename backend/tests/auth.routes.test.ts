@@ -17,13 +17,25 @@ beforeAll(async () => {
   correoActivo = "activo@integracion.test";
   correoInactivo = "inactivo@integracion.test";
 
-  await prisma.usuario.create({
+  const usuarioActivo = await prisma.usuario.create({
     data: {
       nombre: "Usuario Activo",
       correo: correoActivo,
       passwordHash: await hashPassword(PASSWORD_ACTIVO),
       rol: "VENDEDOR",
       activo: true,
+    },
+  });
+  // Bloque C follow-up (D2 gap closure): este VENDEDOR hace peticiones
+  // autenticadas más abajo (logout, perfil) — sin Membresia activa,
+  // `requireAuthentication` rechazaría el TenantContext (D2).
+  await prisma.membresia.create({
+    data: {
+      usuarioId: usuarioActivo.id,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: true,
+      activa: true,
     },
   });
 

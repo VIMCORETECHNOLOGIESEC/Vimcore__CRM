@@ -50,6 +50,25 @@ async function createUsuario(rol: "ASESOR" | "VENDEDOR" | "SUPERVISOR" | "ADMINI
   });
 }
 
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Bloque C (D5): el chokepoint de notificaciones (`findActiveRecipientIds`)
+ * ahora resuelve destinatarios vía `Membresia` (empresaId+rol), no vía un
+ * scan global de `Usuario.rol` — este helper crea la Membresia activa
+ * equivalente para los fixtures de ADMINISTRADOR/SUPERVISOR que dependen del
+ * fan-out real (SLA, `ERROR_BRIDGE`).
+ */
+async function createUsuarioConMembresia(
+  rol: "SUPERVISOR" | "ADMINISTRADOR",
+  activo = true,
+) {
+  const usuario = await createUsuario(rol, activo);
+  await prisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol, activa: true },
+  });
+  return usuario;
+}
+
 async function createLead(asesorId?: string) {
   sequence += 1;
   const cliente = await prisma.cliente.create({
@@ -116,9 +135,9 @@ describe("M8 scheduled and bridge producers", () => {
 
   it("crea un solo SLA bajo concurrencia y publica a destinatarios normales después del commit", async () => {
     const asesor = await createUsuario("ASESOR");
-    const supervisor = await createUsuario("SUPERVISOR");
-    const administrador = await createUsuario("ADMINISTRADOR");
-    const inactiveSupervisor = await createUsuario("SUPERVISOR", false);
+    const supervisor = await createUsuarioConMembresia("SUPERVISOR");
+    const administrador = await createUsuarioConMembresia("ADMINISTRADOR");
+    const inactiveSupervisor = await createUsuarioConMembresia("SUPERVISOR", false);
     const lead = await createLead(asesor.id);
 
     const received: Array<{ userId: string; leadId: string }> = [];
@@ -232,8 +251,8 @@ describe("M8 scheduled and bridge producers", () => {
   });
 
   it("commits an ERROR bridge log atomically with notifications for active administrators only", async () => {
-    const activeAdmin = await createUsuario("ADMINISTRADOR");
-    const inactiveAdmin = await createUsuario("ADMINISTRADOR", false);
+    const activeAdmin = await createUsuarioConMembresia("ADMINISTRADOR");
+    const inactiveAdmin = await createUsuarioConMembresia("ADMINISTRADOR", false);
     sequence += 1;
     const bridge = await prisma.bridge.create({
       data: {
@@ -264,7 +283,7 @@ describe("M8 scheduled and bridge producers", () => {
   });
 
   it("runs every registered notification producer without fabricating TOKEN_POR_EXPIRAR when bridges have no expiry lifecycle", async () => {
-    const admin = await createUsuario("ADMINISTRADOR");
+    const admin = await createUsuarioConMembresia("ADMINISTRADOR");
     const asesor = await createUsuario("ASESOR");
     const vendedor = await createUsuario("VENDEDOR");
     const slaLead = await createLead(asesor.id);

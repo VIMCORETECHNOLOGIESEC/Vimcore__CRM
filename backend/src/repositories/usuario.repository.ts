@@ -64,8 +64,19 @@ function isRecordNotFoundError(error: unknown): boolean {
   );
 }
 
-export async function createUsuario(data: CreateUsuarioData): Promise<AdminUsuarioView> {
-  return prisma.usuario.create({ data, select: adminUsuarioSelect });
+/**
+ * Bloque C follow-up (D2 gap closure): tx-aware — `usuarios.service.ts::
+ * createUsuario` necesita crear el `Usuario` y su `Membresia` (roles
+ * `ASESOR`/`VENDEDOR`) en la MISMA transacción (mismo criterio atómico que
+ * `deactivateUsuario`/`revokeAllForUser`). `client` por defecto sigue siendo
+ * el `prisma` de módulo — comportamiento previo preservado para cualquier
+ * otro llamador.
+ */
+export async function createUsuario(
+  data: CreateUsuarioData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<AdminUsuarioView> {
+  return client.usuario.create({ data, select: adminUsuarioSelect });
 }
 
 export interface FindUsuariosOptions {

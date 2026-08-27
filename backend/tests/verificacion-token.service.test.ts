@@ -194,9 +194,16 @@ describe("verificacion-token.service — verifyTokensVigentes", () => {
 });
 
 describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardening Bloque A, WU5, spec token-expiry-alerting)", () => {
+  const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+  /**
+   * Bloque C (D5/D8): el chokepoint de notificaciones (`findActiveRecipientIds`)
+   * ahora resuelve destinatarios vía `Membresia` (empresaId+rol) — se crea la
+   * Membresia activa equivalente para que este fixture siga recibiendo la
+   * alerta `TOKEN_POR_EXPIRAR`.
+   */
   async function crearAdministrador(): Promise<{ id: string }> {
     contador += 1;
-    return prisma.usuario.create({
+    const usuario = await prisma.usuario.create({
       data: {
         nombre: `Admin WU5 ${contador}`,
         correo: `admin-wu5-${contador}@test.local`,
@@ -205,6 +212,15 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
         activo: true,
       },
     });
+    await prisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ADMINISTRADOR",
+        activa: true,
+      },
+    });
+    return usuario;
   }
 
   it("Scenario 'Token expiring within 7 days, not yet alerted': crea TOKEN_POR_EXPIRAR y setea alertaExpiracionParaEn", async () => {

@@ -126,11 +126,18 @@ export async function produceAlertaTokenPorExpirar(
     const yaAlertada = cuenta.alertaExpiracionParaEn?.getTime() === tokenExpiraEn.getTime();
     if (yaAlertada) continue;
 
-    await createForActiveRoles(ADMIN_ROLES, {
-      tipo: "TOKEN_POR_EXPIRAR",
-      titulo: "Token de red social por expirar",
-      mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
-    });
+    // Bloque C (D5/D8): `cuenta.bridge.empresaId` cierra el chokepoint de la
+    // alerta de expiración de token — cada alerta llega solo a la empresa del
+    // bridge dueño de la cuenta (spec, "Job output never mixes empresas").
+    await createForActiveRoles(
+      ADMIN_ROLES,
+      {
+        tipo: "TOKEN_POR_EXPIRAR",
+        titulo: "Token de red social por expirar",
+        mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
+      },
+      cuenta.bridge.empresaId,
+    );
     await cuentaPublicitariaRepository.updateAlertaExpiracionParaEn(cuenta.id, tokenExpiraEn);
     alertadas += 1;
   }
