@@ -634,6 +634,35 @@ resultado debe registrarse antes de cambiar esquema, autorización o
 contratos. El efecto cascada de D13 sobre D2/D3/D7/D8/D9, señalado como
 pendiente en su momento, quedó resuelto en D14.
 
+**D15 — Importación de datos históricos por empresa — Pendiente, diferido
+(2026-08-27): no bloquea Bloque C.**
+
+Contexto verificado: el desarrollo escaló a multitenant (D1-D14) antes de la
+primera puesta en producción — no existe hoy ningún `Lead`/`Bridge` con datos
+reales de cliente en el ambiente objetivo. La pregunta de qué hacer con filas
+`empresaId = null` al cortar a bloqueante en Bloque C queda sin objeto: no hay
+filas legacy que backfillear, poner en cuarentena o denegar. Bloque C corta
+`empresaId` a obligatorio directamente, sin mecanismo de migración de datos
+existentes.
+
+Sí queda una necesidad de producto real, distinta de la anterior: cuando una
+empresa se suma al sistema, puede traer datos históricos propios (leads de
+un CRM anterior, planillas, etc.) que hay que cargar ya asignados a esa
+empresa. Propuesta de diseño evaluada, no aprobada ni asignada a un bloque
+todavía:
+
+- Handler de importación que recibe un lote de leads y una empresa destino
+  explícita (selector, no inferencia) — los datos importados quedan scoping
+  por esa empresa desde el alta.
+- Paso de análisis de duplicados sobre el lote importado antes de persistir
+  (mismo criterio de deduplicación por `telefonoNormalizado` de D2, evaluado
+  contra los `Cliente`/`Lead` ya existentes de esa empresa) con una forma de
+  resolver el conflicto (fusionar, omitir, o marcar para revisión manual —
+  sin decidir todavía cuál).
+- No es parte del alcance de Bloque C (aislamiento) ni del resto de bloques
+  ya definidos (D, E, F). Queda como candidato a bloque propio o extensión
+  de Bloque D/F cuando se priorice — a decidir en su momento, no ahora.
+
 ## 9. Criterio de entrega a otro equipo
 
 - El equipo receptor distingue hechos AS-IS de propuestas TO-BE.
