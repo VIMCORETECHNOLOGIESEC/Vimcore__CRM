@@ -267,3 +267,47 @@ The user controls receipt-driven development with a switch: `gentle-ai review mo
 - Delivery under a disabled switch follows ordinary repository policy and reports `disabled/unmanaged`, never a fabricated approval.
 - Never enable receipt-driven development on the user's behalf unless the user explicitly asks for it.
 <!-- /gentle-ai:agent-routing -->
+
+## Graphify — Architecture-level graph for this project (MANDATORY, project-specific)
+
+Graphify is installed locally (`uv tool install graphifyy`) and indexed for this repo
+(`graphify-out/graph.json`, gitignored, local per-worktree — never committed or merged).
+This is a project-specific tool, separate from the globally mandatory CodeGraph policy —
+they do not compete, they answer different altitudes of question.
+
+**When to use CodeGraph (unchanged, still the hard first stop)**: single-symbol lookups,
+call paths, blast radius on a known function/component — anything CodeGraph's global
+policy already covers.
+
+**When to use Graphify instead/in addition**:
+- Orientation before starting work on a module or bloque you haven't touched yet
+  ("what are the architectural hubs here", "what modules/communities exist",
+  "what connects to X across services") — `graphify query "..."`, `graphify god-nodes`,
+  `graphify explain "X"`.
+- Anything spanning **Prisma SQL migrations/schema** (tables, foreign keys) — SQL support
+  is installed (`tree-sitter-sql`); CodeGraph does not index `.sql` files.
+- The user wants a **visual** exploration — open `graphify-out/graph.html` in a browser
+  (`xdg-open graphify-out/graph.html`) or read `graphify-out/GRAPH_REPORT.md`. This is
+  for humans; CodeGraph has no equivalent.
+
+**Update discipline (token cost)**:
+- Code re-extraction is 100% local/free and safe to run anytime after real code changes:
+  `graphify extract . --code-only` (or `--force` if a previous run left files unparsed,
+  e.g. after adding a new tree-sitter grammar).
+- Never run `graphify extract ./docs` or `cluster-only` **without** `--no-label` unless
+  explicitly asked — those steps call an LLM backend and cost real tokens. Doc/SDD-artifact
+  extraction is reserved for SDD archive checkpoints (per bloque, once specs/design are
+  final), not continuous re-runs on drafts.
+- "Communities" = Leiden-clustered groups of densely-interconnected symbols, computed for
+  free by graph topology alone. Naming them with a human label is a separate, optional,
+  LLM-costing step (`cluster-only` / `label` without `--no-label`) — never do this
+  automatically.
+
+**No auth required for local use**: `graphify-mcp` (stdio transport, what an agent uses
+locally) has no login/API-key requirement. `--api-key` only applies if this project's
+graph is later exposed over `--transport http` for team-wide MCP access — that is an
+opt-in choice, not a default.
+
+**Never run** `graphify install` / `graphify claude install` — those auto-write into
+CLAUDE.md and PreToolUse hooks and would conflict with the gentle-ai-managed blocks above.
+This section is the only sanctioned integration point.
