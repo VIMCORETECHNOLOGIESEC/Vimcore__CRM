@@ -63,6 +63,21 @@ código. No se instalaron dependencias ni se ejecutaron contenedores, tests o QA
 Hay correcciones propuestas en el worktree, pero **no forman parte de este commit
 aislado**. Las divergencias siguen abiertas hasta publicarse por separado.
 
+**Seguimiento de resolución (auditoría de documentación, 2026-08-27 — no
+altera los hallazgos originales de arriba, que quedan como registro
+histórico de la revisión estática):**
+
+- ✅ Resuelto: `docs/03-modelo-datos.md` fue regenerado desde Prisma y
+  migraciones; ya no tiene banner de no confiable y está marcado Vigente
+  con reservas en `docs/00`.
+- ✅ Resuelto: `docs/06-modulos-backend.md` y `docs/07-modulos-frontend.md`
+  ya redujeron el diario histórico y quedaron como checklists lean del
+  estado consolidado (Lote 3 de `docs/00`).
+- ⏳ Sigue abierto: `docs/04`, `docs/05`, `docs/08`, `docs/12`, los README
+  de backend/frontend y la mención de sitio web preparado en `AGENTS.md`/
+  `docs/01` — ver `docs/00-estado-documentacion.md` para el estado
+  vigente de cada uno.
+
 ### 4.2 Roles y autorización actual
 
 | Área | AS-IS verificado | Brecha |
