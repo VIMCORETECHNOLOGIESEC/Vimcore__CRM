@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { RolUsuario } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { BOOTSTRAP_EMPRESA_ID, seedTenant } from "../prisma/seed-tenant.js";
 
 /**
@@ -15,7 +15,7 @@ let contador = 0;
 
 async function crearUsuario(rol: RolUsuario): Promise<{ id: string; rol: RolUsuario }> {
   contador += 1;
-  const usuario = await prisma.usuario.create({
+  const usuario = await testAdminPrisma.usuario.create({
     data: {
       nombre: `Usuario Seed ${contador}`,
       correo: `usuario-seed-${contador}-${randomUUID()}@t.local`,
@@ -34,12 +34,12 @@ describe("prisma/seed-tenant — seedTenant (Bloque B, Fase 5)", () => {
     const vendedor = await crearUsuario("VENDEDOR");
     const usuarios = [admin, supervisor, asesor, vendedor];
 
-    await seedTenant(prisma, usuarios);
+    await seedTenant(testAdminPrisma, usuarios);
 
-    const empresa = await prisma.empresa.findUnique({ where: { id: BOOTSTRAP_EMPRESA_ID } });
+    const empresa = await testAdminPrisma.empresa.findUnique({ where: { id: BOOTSTRAP_EMPRESA_ID } });
     expect(empresa).not.toBeNull();
 
-    const membresias = await prisma.membresia.findMany({
+    const membresias = await testAdminPrisma.membresia.findMany({
       where: { usuarioId: { in: usuarios.map((u) => u.id) } },
     });
     expect(membresias).toHaveLength(4);
@@ -70,14 +70,14 @@ describe("prisma/seed-tenant — seedTenant (Bloque B, Fase 5)", () => {
   it("es idempotente: correr seedTenant dos veces no duplica la Empresa bootstrap ni las Membresia", async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
 
-    await seedTenant(prisma, [admin]);
-    await seedTenant(prisma, [admin]);
-    await seedTenant(prisma, [admin]);
+    await seedTenant(testAdminPrisma, [admin]);
+    await seedTenant(testAdminPrisma, [admin]);
+    await seedTenant(testAdminPrisma, [admin]);
 
-    const empresas = await prisma.empresa.findMany({ where: { id: BOOTSTRAP_EMPRESA_ID } });
+    const empresas = await testAdminPrisma.empresa.findMany({ where: { id: BOOTSTRAP_EMPRESA_ID } });
     expect(empresas).toHaveLength(1);
 
-    const membresias = await prisma.membresia.findMany({ where: { usuarioId: admin.id } });
+    const membresias = await testAdminPrisma.membresia.findMany({ where: { usuarioId: admin.id } });
     expect(membresias).toHaveLength(1);
   });
 });

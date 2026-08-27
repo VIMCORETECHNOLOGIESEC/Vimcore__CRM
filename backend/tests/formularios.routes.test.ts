@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
@@ -24,7 +25,7 @@ async function crearUsuarioConToken(): Promise<{ token: string }> {
       activo: true,
     },
   });
-  await prisma.membresia.create({
+  await testAdminPrisma.membresia.create({
     data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", activa: true },
   });
   const login = await request(app)

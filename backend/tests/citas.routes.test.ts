@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
@@ -30,7 +31,7 @@ async function crearUsuarioConToken(
     },
   });
   if (ROLES_CON_MEMBRESIA.has(rol)) {
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: {
         usuarioId: usuario.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
@@ -57,7 +58,7 @@ async function crearLead(
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente citas AR ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",

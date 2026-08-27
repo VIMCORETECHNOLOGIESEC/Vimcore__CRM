@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
@@ -19,7 +20,7 @@ let bridgeId: string;
 let contador = 0;
 
 beforeAll(async () => {
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: "Bridge de prueba HTTP",

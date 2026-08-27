@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const ADMIN_PASSWORD = "clave-admin-123456";
@@ -47,7 +48,7 @@ beforeAll(async () => {
     },
   });
   vendedorId = vendedor.id;
-  await prisma.membresia.create({
+  await testAdminPrisma.membresia.create({
     data: { usuarioId: vendedor.id, empresaId, rol: "ASESOR", habilitadoParaVenta: true, activa: true },
   });
 

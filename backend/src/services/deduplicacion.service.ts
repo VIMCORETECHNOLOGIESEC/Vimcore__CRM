@@ -1,4 +1,4 @@
-import type { Prisma, RedSocial } from "@prisma/client";
+import type { Lead, Prisma, RedSocial } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
@@ -208,6 +208,10 @@ export async function deduplicateLead(
       let leadCreado: boolean;
       let detalle: DetalleEventoLead;
       let tipoEvento: "INGRESO" | "INTERACCION_REPETIDA";
+      // Bloque C (Etapa 3, D4): empresaId del `lead_eventos` a escribir —
+      // fijado en cada rama de abajo (creación usa el `Lead` recién creado;
+      // interacción repetida reutiliza `leadAbierto`, paso C, misma `tx`).
+      let empresaIdEvento: string;
 
       if (accion.kind === "crear_lead") {
         // M-hardening Bloque A (WU4, spec lead-attribution, D6): solo se
@@ -281,6 +285,7 @@ export async function deduplicateLead(
         );
         leadId = lead.id;
         leadCreado = true;
+        empresaIdEvento = lead.empresaId;
         tipoEvento = "INGRESO";
         detalle = {
           version: 1,
@@ -296,6 +301,12 @@ export async function deduplicateLead(
         // D9: ambas ramas de `interaccion_repetida` marcan requiereNotificacion.
         leadId = accion.leadId;
         leadCreado = false;
+        // Bloque C (Etapa 3, D4): `accion.leadId` puede ser `leadAbierto.id`
+        // (lead abierto repetido) O `ultimoLeadCerrado.id` (motivo
+        // `lead_cerrado_en_ventana`, reingreso dentro de la ventana) — solo
+        // el primero coincide con `leadAbierto`, así que se relee el lead
+        // real por id en vez de asumir cuál de los dos es.
+        empresaIdEvento = (await leadRepository.findById(accion.leadId, tx) as Lead).empresaId;
         tipoEvento = "INTERACCION_REPETIDA";
         detalle = {
           version: 1,
@@ -313,6 +324,7 @@ export async function deduplicateLead(
       const evento = await leadEventoRepository.createEvento(
         {
           leadId,
+          empresaId: empresaIdEvento,
           tipo: tipoEvento,
           detalle: detalle as unknown as Prisma.InputJsonValue,
         },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as bridgeLogRepository from "../src/repositories/bridge-log.repository.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
@@ -50,7 +51,7 @@ describe("repositories/bridge-log — registrarLog (M4, PR2)", () => {
 describe("repositories/bridge-log — listByBridge (m4-bridges-crud-fundacion, PR1.9)", () => {
   async function crearBridge(): Promise<{ id: string }> {
     const { hashClaveBridge } = await import("../src/lib/clave-bridge.js");
-    const bridge = await prisma.bridge.create({
+    const bridge = await testAdminPrisma.bridge.create({
       data: {
         redSocial: "GOOGLE_FORMS",
         nombre: `Bridge log listByBridge ${Date.now()}-${Math.random()}`,

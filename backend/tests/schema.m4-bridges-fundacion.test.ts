@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
@@ -16,7 +17,7 @@ let contador = 0;
 
 async function crearBridge(): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge fundacion ${contador}`,
@@ -102,7 +103,7 @@ describe("schema M4-fundacion — CuentaPublicitaria (migración, round-trip rea
     const bridge = await crearBridge();
     const cuenta = await crearCuentaPublicitaria(bridge.id);
 
-    await prisma.bridge.delete({ where: { id: bridge.id } });
+    await testAdminPrisma.bridge.delete({ where: { id: bridge.id } });
 
     const encontrada = await prisma.cuentaPublicitaria.findUnique({ where: { id: cuenta.id } });
     expect(encontrada).toBeNull();

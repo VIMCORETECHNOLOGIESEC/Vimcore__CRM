@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { SLA_HORAS } from "../src/config/negocio.js";
 import { startSlaAtrasadoJob } from "../src/jobs/sla-atrasado.job.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { detectLeadsAtrasados, type ResultadoDeteccion } from "../src/services/sla-atrasado.service.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
@@ -35,7 +36,7 @@ async function crearLeadAtrasado(
   empresaId: string = EMPRESA_BOOTSTRAP_ID,
 ): Promise<{ id: string }> {
   const cliente = await crearCliente();
-  return prisma.lead.create({
+  return testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -67,7 +68,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
     const segundaCorrida = await detectLeadsAtrasados(new Date());
     expect(segundaCorrida.eventosCreados).toBe(0);
 
-    const eventos = await prisma.leadEvento.findMany({
+    const eventos = await testAdminPrisma.leadEvento.findMany({
       where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" },
     });
     expect(eventos).toHaveLength(1);
@@ -91,7 +92,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
     // idempotencia queda fuera de ventana (`ocurridoEn < slaInicioEn`
     // vigente) y el candidato vuelve a cruzar `fronteraAtrasado`.
     const slaInicioEnNuevo = new Date();
-    await prisma.lead.update({
+    await testAdminPrisma.lead.update({
       where: { id: lead.id },
       data: { slaInicioEn: slaInicioEnNuevo },
     });
@@ -99,7 +100,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
     const ahoraSimulado = new Date(slaInicioEnNuevo.getTime() + PLAZO_MS + 60_000);
     await detectLeadsAtrasados(ahoraSimulado);
 
-    const eventos = await prisma.leadEvento.findMany({
+    const eventos = await testAdminPrisma.leadEvento.findMany({
       where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" },
       orderBy: { ocurridoEn: "asc" },
     });
@@ -109,13 +110,13 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
 
   it("prueba obligatoria 4 (reafirmada, D3): lead sin asignar (slaInicioEn=null) nunca se marca atrasado", async () => {
     const cliente = await crearCliente();
-    const lead = await prisma.lead.create({
+    const lead = await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     await detectLeadsAtrasados(new Date());
 
-    const evento = await prisma.leadEvento.findFirst({
+    const evento = await testAdminPrisma.leadEvento.findFirst({
       where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" },
     });
     expect(evento).toBeNull();
@@ -125,7 +126,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
     const asesor = await crearAsesorActivo();
     const cliente = await crearCliente();
     const slaInicioEn = fronteraAtrasadaHace(60_000);
-    const lead = await prisma.lead.create({
+    const lead = await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
@@ -140,7 +141,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
 
     await detectLeadsAtrasados(new Date());
 
-    const evento = await prisma.leadEvento.findFirst({
+    const evento = await testAdminPrisma.leadEvento.findFirst({
       where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" },
     });
     expect(evento).toBeNull();
@@ -151,13 +152,13 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
 
     const supervisorBootstrap = await crearAsesorActivo();
     await prisma.usuario.update({ where: { id: supervisorBootstrap.id }, data: { rol: "SUPERVISOR" } });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: { usuarioId: supervisorBootstrap.id, empresaId: EMPRESA_BOOTSTRAP_ID, rol: "SUPERVISOR", activa: true },
     });
 
     const supervisorEmpresaB = await crearAsesorActivo();
     await prisma.usuario.update({ where: { id: supervisorEmpresaB.id }, data: { rol: "SUPERVISOR" } });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: { usuarioId: supervisorEmpresaB.id, empresaId: empresaB, rol: "SUPERVISOR", activa: true },
     });
 
@@ -166,7 +167,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
 
     await detectLeadsAtrasados(new Date());
 
-    const notificaciones = await prisma.notificacion.findMany({
+    const notificaciones = await testAdminPrisma.notificacion.findMany({
       where: { leadId: lead.id, tipo: "LEAD_SIN_ATENDER" },
       select: { usuarioId: true },
     });

@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { DetalleEventoAsignacion } from "./asignacion.service.js";
-import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { ASIGNACION_TRANSACTION_BOUNDS, runAsBypassJob } from "../lib/prisma.js";
 import * as notificationRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 import { slaFilterBoundaries } from "./sla.calculator.js";
@@ -32,12 +32,23 @@ export async function detectLeadsAtrasados(
 ): Promise<ResultadoDeteccion> {
   const { fronteraAtrasado } = slaFilterBoundaries(ahora);
 
-  const candidatos = await leadRepository.findAtrasadosAbiertos(fronteraAtrasado);
+  // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies"): este
+  // cron corre sin `AsyncLocalStorage` de tenant (nunca es una request HTTP,
+  // `jobs/sla-atrasado.job.ts` solo hace el wiring del intervalo) — el
+  // ÚNICO seam que puede ver leads atrasados de TODAS las empresas es
+  // `runAsBypassJob`. Se envuelve también la consulta inicial de candidatos,
+  // no solo el procesamiento por-candidato: sin esto, el scan inicial vería
+  // 0 filas bajo RLS fail-closed y el job jamás encontraría candidatos de
+  // ninguna empresa.
+  const candidatos = await runAsBypassJob(
+    (tx) => leadRepository.findAtrasadosAbiertos(fronteraAtrasado, tx),
+    ASIGNACION_TRANSACTION_BOUNDS,
+  );
   if (candidatos.length === 0) return { candidatos: 0, eventosCreados: 0 };
 
   let eventosCreados = 0;
   for (const candidato of candidatos) {
-    const result = await runInTransaction(undefined, async (tx) => {
+    const result = await runAsBypassJob(async (tx) => {
       const lead = await leadRepository.findByIdForUpdate(candidato.id, tx);
       if (!lead.slaInicioEn || lead.slaInicioEn > fronteraAtrasado || lead.cerradoEn) {
         return { eventoCreado: false, committed: [] };
@@ -50,7 +61,7 @@ export async function detectLeadsAtrasados(
       if (previous) return { eventoCreado: false, committed: [] };
       const responsableId = lead.vendedorId ?? lead.asesorId;
       const detalle: DetalleEventoAsignacion = { version: 1, requiereNotificacion: true, motivo: "sla_vencido", responsableId, responsableAnteriorId: null, ejecutadoPorId: null };
-      await leadEventoRepository.createEvento({ leadId: lead.id, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
+      await leadEventoRepository.createEvento({ leadId: lead.id, empresaId: lead.empresaId, tipo: "SLA_INCUMPLIDO", usuarioId: null, detalle: detalle as unknown as Prisma.InputJsonValue }, tx);
       // Bloque C (D5/D8): `lead.empresaId` ya es una columna escalar del lead
       // releído en esta transacción — cierra el chokepoint de notificaciones
       // SLA sin una consulta extra (spec, "Job output never mixes empresas").
@@ -64,7 +75,7 @@ export async function detectLeadsAtrasados(
         : null;
       const recipientIds = [...new Set([...supervisorIds, ...(owner ? [owner.id] : [])])];
       const notifications = [];
-      for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atención del lead ha vencido", leadId: lead.id }, tx));
+      for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atención del lead ha vencido", leadId: lead.id, empresaId: lead.empresaId }, tx));
       return { eventoCreado: true, committed: notifications.flatMap(notificationEvents) };
     }, ASIGNACION_TRANSACTION_BOUNDS);
     if (result.eventoCreado) eventosCreados += 1;

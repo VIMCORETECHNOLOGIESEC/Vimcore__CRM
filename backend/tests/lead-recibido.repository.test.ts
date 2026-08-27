@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
@@ -9,7 +10,7 @@ let contador = 0;
 /** Bridge de prueba con clave de API unica — evita colision del UNIQUE. */
 async function crearBridge(): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: `Bridge de prueba ${contador}`,
@@ -31,7 +32,7 @@ async function crearLead(): Promise<{ id: string }> {
       telefonoValido: true,
     },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, origen: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { id: lead.id };

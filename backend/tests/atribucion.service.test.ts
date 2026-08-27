@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as cuentaPublicitariaRepository from "../src/repositories/cuenta-publicitaria.repository.js";
 import { resolverAtribucion, resolverEmpresaIdDesdeBridge } from "../src/services/atribucion.service.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
@@ -17,7 +18,7 @@ let contador = 0;
  */
 async function crearBridge(overrides: { empresaId?: string } = {}): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge atribucion ${contador}`,
@@ -72,7 +73,7 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
       nombreCampania: "Campaña de invierno",
     });
 
-    const resultado = await resolverAtribucion(entrada);
+    const resultado = await resolverAtribucion(entrada, testAdminPrisma);
 
     expect(resultado.cuentaPublicitariaId).toBe(cuenta.id);
     expect(resultado.campaniaId).toBe(campania.id);
@@ -97,7 +98,7 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
       nombreCampania: "Campaña fantasma",
     });
 
-    const resultado = await resolverAtribucion(entrada);
+    const resultado = await resolverAtribucion(entrada, testAdminPrisma);
 
     expect(resultado.cuentaPublicitariaId).toBe(cuenta.id);
     expect(resultado.campaniaId).toBeNull();
@@ -121,7 +122,7 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
       nombreCampania: null,
     });
 
-    const resultado = await resolverAtribucion(entrada);
+    const resultado = await resolverAtribucion(entrada, testAdminPrisma);
 
     expect(resultado.cuentaPublicitariaId).toBe(cuenta.id);
     expect(resultado.campaniaId).toBeNull();
@@ -135,7 +136,7 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
       idExternoCampania: "cualquier-campania",
     });
 
-    const resultado = await resolverAtribucion(entrada);
+    const resultado = await resolverAtribucion(entrada, testAdminPrisma);
 
     expect(resultado.cuentaPublicitariaId).toBeNull();
     expect(resultado.campaniaId).toBeNull();
@@ -146,7 +147,7 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
     const bridge = await crearBridge();
     const entrada = leadEntrante({ bridgeId: bridge.id, idExternoCuenta: null, idExternoCampania: null });
 
-    const resultado = await resolverAtribucion(entrada);
+    const resultado = await resolverAtribucion(entrada, testAdminPrisma);
 
     expect(resultado.cuentaPublicitariaId).toBeNull();
     expect(resultado.campaniaId).toBeNull();
@@ -157,7 +158,7 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
     const bridge = await crearBridge({ empresaId: BOOTSTRAP_EMPRESA_ID });
     const entrada = leadEntrante({ bridgeId: bridge.id, idExternoCuenta: null, idExternoCampania: null });
 
-    const resultado = await resolverAtribucion(entrada);
+    const resultado = await resolverAtribucion(entrada, testAdminPrisma);
 
     expect(resultado.empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
   });
@@ -176,7 +177,7 @@ describe("services/atribucion — resolverEmpresaIdDesdeBridge (Bloque B, Fase 3
   it("resuelve Bridge.empresaId cuando está presente", async () => {
     const bridge = await crearBridge({ empresaId: BOOTSTRAP_EMPRESA_ID });
 
-    const empresaId = await resolverEmpresaIdDesdeBridge(bridge.id);
+    const empresaId = await resolverEmpresaIdDesdeBridge(bridge.id, testAdminPrisma);
 
     expect(empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
   });
@@ -185,7 +186,10 @@ describe("services/atribucion — resolverEmpresaIdDesdeBridge (Bloque B, Fase 3
   // por Bloque C (D4): `Bridge.empresaId` es NOT NULL, ver nota arriba.
 
   it("devuelve null (nunca lanza) cuando el bridge no existe", async () => {
-    const empresaId = await resolverEmpresaIdDesdeBridge("00000000-0000-0000-0000-000000000000");
+    const empresaId = await resolverEmpresaIdDesdeBridge(
+      "00000000-0000-0000-0000-000000000000",
+      testAdminPrisma,
+    );
 
     expect(empresaId).toBeNull();
   });

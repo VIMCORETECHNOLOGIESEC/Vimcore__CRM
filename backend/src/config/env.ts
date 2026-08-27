@@ -2,6 +2,12 @@ import { z } from "zod";
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL es obligatoria"),
+  // D8 (Bloque C, Etapa 3): conexión de runtime de la aplicación, distinta
+  // de `DATABASE_URL` (que sigue siendo la credencial superusuario usada
+  // solo por `prisma migrate deploy`/`seed.ts`). Apunta al rol no-superusuario
+  // `crm_app` — imprescindible para que RLS/FORCE ROW LEVEL SECURITY tenga
+  // efecto real (Postgres ignora RLS para superusuarios sin excepción).
+  DATABASE_URL_APP: z.string().min(1, "DATABASE_URL_APP es obligatoria"),
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // D-C: secreto único HS256 compartido entre access y refresh (jose). El

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 /**
  * Matriz de roles (D9, tasks 5.5): solo `ADMINISTRADOR` opera el CRUD de
@@ -41,7 +42,7 @@ beforeAll(async () => {
       },
     });
     if (ROLES_CON_MEMBRESIA.has(rol)) {
-      await prisma.membresia.create({
+      await testAdminPrisma.membresia.create({
         data: {
           usuarioId: usuario.id,
           empresaId: BOOTSTRAP_EMPRESA_ID,

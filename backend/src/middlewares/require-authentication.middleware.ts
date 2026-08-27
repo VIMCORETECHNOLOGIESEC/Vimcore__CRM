@@ -2,6 +2,7 @@ import type { RolUsuario, Usuario } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
+import { runWithTenantContext, withBootstrapUsuarioGuc } from "../lib/prisma.js";
 import { verifyAccessToken } from "../lib/jwt.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
@@ -27,7 +28,15 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"
  */
 async function resolverEmpresaId(usuario: Usuario): Promise<string | null | undefined> {
   if (ROLES_ACCESO_TOTAL.includes(usuario.rol)) return null;
-  const membresias = await membresiaRepository.findActivasByUsuarioId(usuario.id);
+  // Bloque C (Etapa 3, D2 gap closure, batch 3 discovery): esta lectura de
+  // `Membresia` ocurre ANTES de que exista un TenantContext (es justamente lo
+  // que se está resolviendo), así que no puede pasar por
+  // `runWithTenantContext`. Ver `lib/prisma.ts::withBootstrapUsuarioGuc` para
+  // el detalle completo del gap y por qué `runAsBypassJob` está descartado
+  // acá (spec §2, "Bypass role unreachable from HTTP").
+  const membresias = await withBootstrapUsuarioGuc(usuario.id, (tx) =>
+    membresiaRepository.findActivasByUsuarioId(usuario.id, tx),
+  );
   const propia = membresias.find((membresia) => rolEquivalente(membresia) === usuario.rol);
   return propia ? propia.empresaId : undefined;
 }
@@ -105,5 +114,12 @@ export async function requireAuthentication(
     ...(typeof payload.membresiaId === "string" ? { membresiaId: payload.membresiaId } : {}),
     empresaId,
   };
-  next();
+  // Bloque C (Etapa 3, D2/D3): puebla el carrier de `AsyncLocalStorage` de
+  // `lib/prisma.ts` alrededor de `next()` — todo el resto del ciclo de vida
+  // de esta request (controllers, services, repositorios, hasta que la
+  // response termine) corre dentro de este contexto. `empresaId` ya viene
+  // resuelto arriba con el mismo criterio D2/D3 (`null` = holding-wide vía
+  // el ROL DE APLICACIÓN, nunca `crm_bypass_jobs` — spec §2 "HTTP request
+  // always uses application role").
+  runWithTenantContext({ empresaId }, next);
 }

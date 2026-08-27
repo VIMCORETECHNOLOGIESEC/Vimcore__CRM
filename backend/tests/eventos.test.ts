@@ -6,6 +6,7 @@ import { EventBroker, eventBroker } from "../src/lib/event-broker.js";
 import { openEventStream } from "../src/services/eventos.service.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const password = "clave-eventos-123456";
@@ -25,7 +26,7 @@ async function createToken(): Promise<{ id: string; token: string }> {
       activo: true,
     },
   });
-  await prisma.membresia.create({
+  await testAdminPrisma.membresia.create({
     data: { usuarioId: user.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", activa: true },
   });
   const response = await request(app)

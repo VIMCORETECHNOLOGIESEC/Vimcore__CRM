@@ -353,7 +353,12 @@ export async function deactivateUsuario(id: string): Promise<void> {
             }
 
             const responsableAnteriorId = pool === "ASESOR" ? lead.asesorId : lead.vendedorId;
-            entradas.push({ leadId: lead.id, receptorId: candidato.id, responsableAnteriorId });
+            entradas.push({
+              leadId: lead.id,
+              empresaId: lead.empresaId,
+              receptorId: candidato.id,
+              responsableAnteriorId,
+            });
 
             // Mantener el estado en memoria en sincronía con lo que la
             // escritura en lote va a persistir (`cargaActiva` +1,

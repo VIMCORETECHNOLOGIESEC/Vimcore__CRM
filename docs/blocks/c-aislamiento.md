@@ -4,53 +4,67 @@
 > Cubre Fase 4 de `docs/14-evolucion-multitenant.md` §13 ("Aislamiento
 > efectivo").
 
-## Estado (2026-08-27) — EN PROGRESO, pausado para handoff
+## Estado (2026-08-27, actualizado) — EN PROGRESO, Etapa 3 a medio camino
 
 Ciclo SDD completo (explore/propose/spec/design/tasks) corrido y persistido en
 Engram (artifact store = `engram`, no `openspec/` — ver
-`sdd-init/crm_comercial`). 35 tareas totales en `sdd/bloque-c-aislamiento/tasks`,
-repartidas en 3 etapas internas de este mismo bloque (no son bloques
-separados):
+`sdd-init/crm_comercial`).
 
 | Etapa | Alcance | Estado | Commit | Evidencia |
 |---|---|---|---|---|
 | 1 | Autorizador sombra company-aware + chokepoint de notificaciones + alta de Usuario con Membresia (bootstrap) + TenantContext fail-closed | ✅ Completa (12/12 tareas) | `c1807fe` | 812/812 tests, tsc limpio |
 | 2 | Cutover bloqueante (`leads.access`/`leads.service`/`metricas.access`) + `empresaId` NOT NULL + decisión por job | ✅ Completa (13/13 tareas) | `f45923e` | 832/832 tests, tsc limpio |
-| 3 | RLS de Postgres + rol de bypass + suite adversarial entre empresas | ⏳ **NO iniciada** (0/10 tareas) | — | — |
+| 3 | RLS de Postgres + rol de bypass + suite adversarial + CAS en asignación | ⏳ **A medio camino** — ver detalle abajo | (este commit) | 836/837 y 47/48, ver detalle |
 
-Ambos commits están pusheados a `origin/test/gpt`. `sdd-verify` corrió como
-checkpoint intermedio después de cada etapa (0 CRITICAL, 0 WARNING nuevo) —
-detalle completo en `sdd/bloque-c-aislamiento/verify-report`.
+Etapa 3 se retomó como cambio SDD independiente `bloque-c-etapa3-rls-adversarial`
+(no el `bloque-c-aislamiento/tasks` original de 35 tareas — esos artefactos
+nunca quedaron persistidos en Engram pese a lo que decía esta misma sección
+antes; ver `sdd/bloque-c-etapa3-rls-adversarial/{proposal,spec,design,tasks,
+apply-progress}` en Engram, ese es el rastro real). El "riesgo de diseño #2"
+(condición de carrera pool automático vs. reasignación manual) que esta
+sección marcaba como vacío sin tarea **ya está resuelto e implementado** —
+ver Grupo 3 abajo.
 
-**Vacío detectado, sin cubrir por ninguna de las 35 tareas — pendiente antes de
-poder cerrar este bloque:** el "riesgo de diseño #2" de la sección siguiente
-(condición de carrera entre el pool automático de asignación y una
-reasignación manual de Administrador/Supervisor sobre el mismo `Lead`) fue
-resuelto como decisión — **versión optimista: columna de versión +
-compare-and-swap en el UPDATE, con reintento en la capa de servicio** — pero
-esa decisión nunca se incorporó al pipeline `sdd-propose`→`sdd-tasks`, así que
-no hay tarea que la implemente en ninguna de las 3 etapas. Este documento
-sigue exigiendo su corrección en los "Criterios de salida" de abajo. Quien
-retome este bloque debe: (a) agregar esta corrección como tarea explícita
-(probablemente Etapa 3, junto a la suite adversarial que la ejercitaría), o
-(b) confirmar con `sdd-propose`/`sdd-design` si corresponde re-scopearla hacia
-Bloque D una vez que `Oportunidad` reemplace a `Lead` como el registro sobre
-el que compiten pool y reasignación manual (ver D13/D14 en `docs/16` §8) —
-pero no darla por resuelta sin una de las dos.
+### Etapa 3 — desglose real por grupo de tareas
 
-**Para retomar Etapa 3 desde otra sesión/equipo:**
-- Leer `sdd/bloque-c-aislamiento/{spec,design,tasks,apply-progress,verify-report}`
-  en Engram (`mem_search` → `mem_get_observation`), en ese orden.
-- Base estable: commit `f45923e` en `origin/test/gpt`, 832/832 tests en verde.
-- Contenedor de test DB usado en esta sesión (`crm-test-db`,
-  postgres:16.14-alpine, puerto 55432) no persiste entre sesiones — recrear y
-  correr `prisma migrate deploy` + `prisma generate` antes de testear.
-- `pnpm install`/`pnpm exec` fallan con EACCES en el sandbox usado en esta
-  sesión — si persiste, invocar vitest/prisma/tsc directo desde
-  `node_modules/.pnpm/` en la raíz del workspace.
-- Ledger nativo de intentos (`gentle-ai sdd-attempt`) para este `change` está
-  en estado limpio (`interrupted`, sin bloqueo) — un `acquire` nuevo debería
-  proceder sin necesitar `reset`.
+| Grupo | Alcance | Estado |
+|---|---|---|
+| 0 | Rol Postgres `crm_app` sin superuser (D8) — hace que RLS proteja de verdad | ✅ Completo |
+| 1 | Migración: columna `version`, `empresaId` denormalizado, políticas RLS, rol `crm_bypass_jobs` | ✅ Completo |
+| 2 | Tenant context (`AsyncLocalStorage` + Prisma `$extends` + middleware) | ✅ Completo |
+| 3 | CAS optimista en asignación de `Lead` (el riesgo de diseño #2, ya resuelto) | ✅ Completo |
+| 4 | Notificación a usuario + supervisor al agotar el CAS | ⏳ **NO iniciada** |
+| 5 | `sla-atrasado.service` y jobs bajo rol de bypass | ✅ Completo |
+| 6 | Suite adversarial completa (cross-holding read/write/HTTP/side-channels) | ⏳ **NO iniciada** — solo existe `rls-policy-coverage.test.ts` |
+
+**Hallazgo crítico corregido en el camino**: `crm_dev` (rol Postgres original de
+la app) es superusuario, y Postgres ignora RLS/`FORCE ROW LEVEL SECURITY` de
+forma incondicional para superusuarios — sin el rol `crm_app` del Grupo 0,
+todas las políticas RLS de este bloque no protegían nada. Se encontraron y
+arreglaron además 9 bugs de producción reales que RLS-ya-real expuso (gaps de
+auth-bootstrap, 3 jobs programados sin `runAsBypassJob`, SQL crudo que se
+saltaba el GUC de tenant en el dashboard de métricas) — detalle completo en
+`sdd/bloque-c-etapa3-rls-adversarial/apply-progress` (Engram, revisión 18).
+
+**Para retomar Etapa 3 (Grupos 4 y 6) desde otra sesión/equipo:**
+- Leer, en este orden: `mem_search` → `mem_get_observation` para
+  `sdd/bloque-c-etapa3-rls-adversarial/{apply-progress,tasks,design,spec}`
+  en Engram (project `crm_comercial`) — `apply-progress` tiene el detalle
+  técnico completo (archivos, deviations de diseño, comandos exactos).
+- Base: este mismo commit en `origin/test/gpt`, suite completa confirmada
+  verde (836/837 y 47/48, únicos fallos son timeouts transitorios por
+  contención de Docker/DB bajo suite completa, confirmados no-regresión
+  corriendo el archivo solo).
+- Grupo 4 depende de Grupo 3 (ya cerrado) — chico, un helper de notificación.
+- Grupo 6 es el más grande: 4 archivos de test nuevos + fixtures, y es el
+  gate de aceptación final de toda la etapa (suite completa + reseed). Usar
+  desde el arranque `backend/tests/fixtures/admin-prisma.ts` y el patrón
+  `conContexto`/`runWithTenantContext` ya establecido este batch — no
+  redescubrir el mismo problema de fixtures.
+- Strict TDD sigue activo: `docker compose exec -e NODE_ENV=test backend
+  pnpm test`, reseed obligatorio después con
+  `docker compose exec backend pnpm exec prisma db seed`. Nunca correr
+  pnpm/prisma/vitest directo en el host.
 
 ## Alcance
 

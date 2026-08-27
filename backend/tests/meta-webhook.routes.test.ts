@@ -5,10 +5,21 @@ import { createApp } from "../src/app.js";
 import { env } from "../src/config/env.js";
 import { encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `procesarRecepcion`
+ * corre en producción dentro de `runWithTenantContext({ empresaId: null },
+ * ...)` (ver `jobs/ingesta-inbox.job.ts`), mismo criterio que
+ * `meta-webhook.worker.test.ts`.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: null }, fn);
+}
 
 const app = createApp();
 let contador = 0;
@@ -53,7 +64,7 @@ async function crearBridgeConCuenta(
   overrides: { estadoToken?: "VALIDO" | "TOKEN_EXPIRADO" | "ERROR"; tokenCifrado?: string | null } = {},
 ): Promise<CuentaFixture> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge Meta ${contador}`,
@@ -262,7 +273,7 @@ describe("POST /api/v1/ingesta/meta → worker — pipeline completo (docs/05-br
       leaseHasta: row.leaseHasta!,
       entradaProcesamiento: row.entradaProcesamiento as unknown as leadRecibidoRepository.PersistedEntradaProcesamiento,
     };
-    const completado = await procesarRecepcion(claim);
+    const completado = await conContexto(() => procesarRecepcion(claim));
 
     expect(completado).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -271,7 +282,7 @@ describe("POST /api/v1/ingesta/meta → worker — pipeline completo (docs/05-br
     });
     expect(recepcion.estado).toBe("PROCESADO");
     expect(recepcion.leadId).not.toBeNull();
-    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: recepcion.leadId! } });
+    const lead = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: recepcion.leadId! } });
     expect(lead.redSocial).toBe("FACEBOOK");
     expect(lead.payloadOriginal).toMatchObject({ id: leadgenId, campaign_id: "campania-1" });
 

@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { startCitasRecordatorioJob } from "../src/jobs/citas-recordatorio.job.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import {
   enviarRecordatoriosCita,
   type ResultadoRecordatorioCitas,
@@ -27,7 +28,7 @@ async function crearLead(): Promise<{ id: string }> {
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente recordatorio ${contador}`, telefonoValido: false },
   });
-  return prisma.lead.create({
+  return testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, origen: "NUEVO", etapa: "CITA", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
 }
@@ -39,9 +40,10 @@ async function crearCita(overrides: {
 }): Promise<{ id: string }> {
   const usuario = await crearUsuario();
   const lead = await crearLead();
-  return prisma.cita.create({
+  return testAdminPrisma.cita.create({
     data: {
       leadId: lead.id,
+      empresaId: EMPRESA_BOOTSTRAP_ID,
       usuarioId: usuario.id,
       programadaPara: overrides.programadaPara,
       modalidad: "VIRTUAL",
@@ -65,7 +67,7 @@ describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist:
     expect(resultado.candidatos).toBeGreaterThanOrEqual(1);
     expect(resultado.recordatoriosMarcados).toBeGreaterThanOrEqual(1);
 
-    const citaActualizada = await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
+    const citaActualizada = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaActualizada.recordatorioEnviado).toBe(true);
   });
 
@@ -87,7 +89,7 @@ describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist:
 
     await enviarRecordatoriosCita(ahora);
 
-    const citaSinCambios = await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
+    const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaSinCambios.recordatorioEnviado).toBe(false);
   });
 
@@ -97,7 +99,7 @@ describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist:
 
     await enviarRecordatoriosCita(ahora);
 
-    const citaSinCambios = await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
+    const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaSinCambios.recordatorioEnviado).toBe(false);
   });
 
@@ -110,7 +112,7 @@ describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist:
 
     await enviarRecordatoriosCita(ahora);
 
-    const citaSinCambios = await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
+    const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaSinCambios.recordatorioEnviado).toBe(false);
   });
 
@@ -124,7 +126,7 @@ describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist:
     const resultado = await enviarRecordatoriosCita(ahora);
 
     expect(resultado.candidatos).toBe(0);
-    const citaSinCambios = await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
+    const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaSinCambios.recordatorioEnviado).toBe(true);
   });
 });

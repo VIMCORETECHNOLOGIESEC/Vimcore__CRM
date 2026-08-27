@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger.js";
 import { decrypt } from "../lib/cifrado-token.js";
+import { runAsBypassJob, VERIFICACION_TOKEN_TRANSACTION_BOUNDS } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
@@ -116,31 +117,47 @@ const VENTANA_ALERTA_DIAS = 7;
 export async function produceAlertaTokenPorExpirar(
   ahora: Date = new Date(),
 ): Promise<ResultadoAlertaTokenPorExpirar> {
-  const candidatas = await cuentaPublicitariaRepository.listPorExpirar(ahora, VENTANA_ALERTA_DIAS);
+  // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies", batch 3
+  // discovery): mismo razonamiento que `sla-atrasado.service.ts::
+  // detectLeadsAtrasados` — este cron (`jobs/verificacion-token.job.ts`) corre
+  // sin `AsyncLocalStorage` de tenant y necesita ver cuentas publicitarias
+  // por expirar de TODAS las empresas. Sin `runAsBypassJob`, la lectura
+  // inicial (0 filas bajo RLS fail-closed) Y el `include: { bridge: {...} }`
+  // requerido de `listPorExpirar` (Prisma exige que una relación no-nullable
+  // resuelva, nunca `null`) fallarían — este segundo síntoma
+  // (`PrismaClientUnknownRequestError: Inconsistent query result: Field
+  // bridge is required to return data, got null instead`) fue el primer
+  // indicio real del gap, batch 3.
+  const { alertadas } = await runAsBypassJob(async (tx) => {
+    const candidatas = await cuentaPublicitariaRepository.listPorExpirar(ahora, VENTANA_ALERTA_DIAS, tx);
 
-  let alertadas = 0;
-  for (const cuenta of candidatas) {
-    // `listPorExpirar` ya garantiza `tokenExpiraEn != null` — no-null
-    // assertion segura acá, no una nueva invariante.
-    const tokenExpiraEn = cuenta.tokenExpiraEn as Date;
-    const yaAlertada = cuenta.alertaExpiracionParaEn?.getTime() === tokenExpiraEn.getTime();
-    if (yaAlertada) continue;
+    let alertadas = 0;
+    for (const cuenta of candidatas) {
+      // `listPorExpirar` ya garantiza `tokenExpiraEn != null` — no-null
+      // assertion segura acá, no una nueva invariante.
+      const tokenExpiraEn = cuenta.tokenExpiraEn as Date;
+      const yaAlertada = cuenta.alertaExpiracionParaEn?.getTime() === tokenExpiraEn.getTime();
+      if (yaAlertada) continue;
 
-    // Bloque C (D5/D8): `cuenta.bridge.empresaId` cierra el chokepoint de la
-    // alerta de expiración de token — cada alerta llega solo a la empresa del
-    // bridge dueño de la cuenta (spec, "Job output never mixes empresas").
-    await createForActiveRoles(
-      ADMIN_ROLES,
-      {
-        tipo: "TOKEN_POR_EXPIRAR",
-        titulo: "Token de red social por expirar",
-        mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
-      },
-      cuenta.bridge.empresaId,
-    );
-    await cuentaPublicitariaRepository.updateAlertaExpiracionParaEn(cuenta.id, tokenExpiraEn);
-    alertadas += 1;
-  }
+      // Bloque C (D5/D8): `cuenta.bridge.empresaId` cierra el chokepoint de la
+      // alerta de expiración de token — cada alerta llega solo a la empresa del
+      // bridge dueño de la cuenta (spec, "Job output never mixes empresas").
+      await createForActiveRoles(
+        ADMIN_ROLES,
+        {
+          tipo: "TOKEN_POR_EXPIRAR",
+          titulo: "Token de red social por expirar",
+          mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
+        },
+        cuenta.bridge.empresaId,
+        tx,
+      );
+      await cuentaPublicitariaRepository.updateAlertaExpiracionParaEn(cuenta.id, tokenExpiraEn, tx);
+      alertadas += 1;
+    }
+
+    return { alertadas };
+  }, VERIFICACION_TOKEN_TRANSACTION_BOUNDS);
 
   return { alertadas };
 }

@@ -259,6 +259,7 @@ export async function transitionEtapa(
           await leadEventoRepository.createEvento(
             {
               leadId: id,
+              empresaId: lead.empresaId,
               tipo: "CAMBIO_SEMAFORO",
               semaforoAnterior: lead.semaforo,
               semaforoNuevo,
@@ -285,6 +286,7 @@ export async function transitionEtapa(
       await leadEventoRepository.createEvento(
         {
           leadId: id,
+          empresaId: lead.empresaId,
           tipo: "CAMBIO_ETAPA",
           etapaAnterior: lead.etapa,
           etapaNueva: body.etapa,

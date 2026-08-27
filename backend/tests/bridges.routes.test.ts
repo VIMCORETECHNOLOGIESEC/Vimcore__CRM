@@ -5,6 +5,7 @@ import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 function mockFetchJson(status: number, body: unknown): Response {
@@ -28,7 +29,7 @@ async function crearBridgeDirecto(
   overrides: Partial<{ estado: "ACTIVO" | "INACTIVO"; redSocial: RedSocial; nombre: string }> = {},
 ): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: overrides.redSocial ?? "GOOGLE_FORMS",
       nombre: overrides.nombre ?? `Bridge ruta ${contador}`,
@@ -340,7 +341,7 @@ describe("DELETE /api/v1/bridges/:id (Requirement: Delete mode is decided by lea
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.resultado).toBe("BAJA_LOGICA");
 
-    const filaTrasBaja = await prisma.bridge.findUniqueOrThrow({ where: { id } });
+    const filaTrasBaja = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } });
     expect(filaTrasBaja.estado).toBe("INACTIVO");
   });
 

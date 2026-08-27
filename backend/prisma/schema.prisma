@@ -43,6 +43,13 @@ enum TipoNotificacion {
   // bridge ADVERTENCIA por datos incompletos notifica a los SUPERVISOR
   // activos, uno por lead, sin agregación.
   LEAD_DATO_INCOMPLETO
+  // Bloque C (Etapa 3, spec "Exhaustion notifies actor and supervisor"):
+  // agregado AL FINAL, mismo criterio que SIN_ASIGNAR/ASIGNACION_FALLIDA
+  // arriba en `TipoEventoLead` — un `ADD VALUE` sin BEFORE/AFTER lo anexa al
+  // final del orden físico de PG. Notifica agotamiento del CAS de asignación
+  // (3 intentos, sin backoff) al usuario que intentó reasignar y a su
+  // supervisor de empresa.
+  ASIGNACION_CONFLICTO
 
   @@map("tipo_notificacion")
 }
@@ -93,9 +100,16 @@ model Empresa {
   nombre   String   @db.Text
   creadoEn DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 
-  membresias Membresia[]
-  bridges    Bridge[]
-  leads      Lead[]
+  membresias     Membresia[]
+  bridges        Bridge[]
+  leads          Lead[]
+  // Bloque C (Etapa 3, D4 — RLS de Postgres): denormalizado desde `Lead` en
+  // `Cita`/`LeadEvento`/`Notificacion` (ver esos modelos abajo) para que la
+  // política RLS de esas tablas compare `empresa_id` directo, sin un join a
+  // `leads` por fila.
+  citas          Cita[]
+  leadEventos    LeadEvento[]
+  notificaciones Notificacion[]
 
   @@map("empresas")
 }
@@ -319,6 +333,12 @@ model Lead {
   // la misma razón: un `Bridge` sin empresa es la única vía por la que un
   // `Lead.empresaId` podría volver a quedar huérfano.
   empresaId            String   @map("empresa_id") @db.Uuid
+  // Bloque C (Etapa 3, spec "Optimistic concurrency on lead assignment"):
+  // versión monotónica Lead-wide (R-C, spec) — cualquier escritura vía
+  // `assignResponsable`/`assignResponsableBulk` hace CAS sobre esta columna
+  // y la incrementa en 1 al ganar. Arranca en 0 para todo lead existente
+  // (backfill implícito del default de columna).
+  version              Int      @default(0)
 
   cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
@@ -374,12 +394,19 @@ model LeadEvento {
   semaforoNuevo    Semaforo?      @map("semaforo_nuevo")
   detalle          Json?          @db.JsonB
   ocurridoEn       DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  // Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId` en la
+  // migración de este cambio (backfill vía join por `leadId`). NOT NULL —
+  // todo `LeadEvento` cuelga de un `Lead`, que ya es NOT NULL en `empresaId`
+  // (cutover Bloque C, Fase 2/Stage 2).
+  empresaId        String         @map("empresa_id") @db.Uuid
 
   lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@index([leadId, ocurridoEn])
   @@index([tipo, ocurridoEn])
+  @@index([empresaId], map: "idx_lead_eventos_empresa")
   @@map("lead_eventos")
 }
 
@@ -416,12 +443,21 @@ model Notificacion {
   leadId    String?           @map("lead_id") @db.Uuid
   leidaEn   DateTime?         @map("leida_en") @db.Timestamptz(6)
   creadaEn  DateTime          @default(now()) @map("creada_en") @db.Timestamptz(6)
+  // Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId` cuando
+  // `leadId` está presente (backfill vía join); NULL para notificaciones
+  // holding-wide (mismo convenio ya existente en
+  // `notificacion.repository.ts::findActiveRecipientIds`, `empresaId: null` =
+  // sin restricción). La política RLS de `notificaciones` deja pasar
+  // `empresa_id IS NULL` como parte del mismo `OR` de contexto unrestricted.
+  empresaId String?           @map("empresa_id") @db.Uuid
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
 
   @@index([usuarioId, creadaEn(sort: Desc)], map: "idx_notificaciones_usuario_creada")
   @@index([leadId])
+  @@index([empresaId], map: "idx_notificaciones_empresa")
   @@map("notificaciones")
 }
 
@@ -471,6 +507,11 @@ model Cita {
   notas               String?       @db.Text
   recordatorioEnviado Boolean       @default(false) @map("recordatorio_enviado")
   creadoEn            DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  // Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId` en la
+  // migración de este cambio (backfill vía join por `leadId`). NOT NULL —
+  // toda `Cita` cuelga de un `Lead`, que ya es NOT NULL en `empresaId`
+  // (cutover Bloque C, Fase 2/Stage 2).
+  empresaId           String        @map("empresa_id") @db.Uuid
 
   lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   // Restrict (no SetNull): a diferencia de `Lead.asesorId`/`vendedorId`
@@ -478,8 +519,10 @@ model Cita {
   // modelo de datos (docs/03) — mismo criterio que
   // `RespuestaFormulario.usuario` (M5), que también es requerido.
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@index([leadId])
+  @@index([empresaId], map: "citas_empresa_id_idx")
   // M7: forma de consulta del trabajo de recordatorio (`estado = AGENDADA`,
   // `recordatorioEnviado = false`, `programadaPara` en la ventana de 1h) —
   // volumen de `citas` muy por debajo de `leads`, así que un índice compuesto

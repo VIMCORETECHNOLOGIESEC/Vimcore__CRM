@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 /**
  * Bloque B (Fase 1, spec tenant-empresa-membresia-schema / membership-backfill,
@@ -54,7 +55,7 @@ function sentenciasBackfill(): string[] {
 }
 
 async function ejecutarBackfill(
-  client: { $executeRawUnsafe: (sql: string) => Promise<number> } = prisma,
+  client: { $executeRawUnsafe: (sql: string) => Promise<number> } = testAdminPrisma,
 ): Promise<void> {
   for (const sentencia of sentenciasBackfill()) {
     await client.$executeRawUnsafe(`${sentencia};`);
@@ -130,12 +131,12 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
         rol: "ASESOR",
       },
     });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR" },
     });
 
     await expect(
-      prisma.membresia.create({
+      testAdminPrisma.membresia.create({
         data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR" },
       }),
     ).rejects.toThrow();
@@ -150,17 +151,17 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
         rol: "SUPERVISOR",
       },
     });
-    const membresia = await prisma.membresia.create({
+    const membresia = await testAdminPrisma.membresia.create({
       data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "SUPERVISOR" },
     });
 
-    const desactivada = await prisma.membresia.update({
+    const desactivada = await testAdminPrisma.membresia.update({
       where: { id: membresia.id },
       data: { activa: false },
     });
 
     expect(desactivada.activa).toBe(false);
-    const filaAunPresente = await prisma.membresia.findUnique({ where: { id: membresia.id } });
+    const filaAunPresente = await testAdminPrisma.membresia.findUnique({ where: { id: membresia.id } });
     expect(filaAunPresente).not.toBeNull();
   });
 
@@ -206,7 +207,7 @@ describe("Fase 1 backfill (membership-backfill): mapeo determinístico e idempot
 
     await ejecutarBackfill();
 
-    const membresias = await prisma.membresia.findMany({ where: { usuarioId: { in: usuarioIds } } });
+    const membresias = await testAdminPrisma.membresia.findMany({ where: { usuarioId: { in: usuarioIds } } });
     expect(membresias).toHaveLength(4);
 
     const porUsuario = new Map(membresias.map((m) => [m.usuarioId, m]));
@@ -246,12 +247,12 @@ describe("Fase 1 backfill (membership-backfill): mapeo determinístico e idempot
     });
 
     await ejecutarBackfill();
-    const primeraCorrida = await prisma.membresia.findMany({ where: { usuarioId: usuario.id } });
+    const primeraCorrida = await testAdminPrisma.membresia.findMany({ where: { usuarioId: usuario.id } });
     expect(primeraCorrida).toHaveLength(1);
 
     await ejecutarBackfill();
     await ejecutarBackfill();
-    const trasVariasCorridas = await prisma.membresia.findMany({ where: { usuarioId: usuario.id } });
+    const trasVariasCorridas = await testAdminPrisma.membresia.findMany({ where: { usuarioId: usuario.id } });
 
     expect(trasVariasCorridas).toHaveLength(1);
     expect(trasVariasCorridas[0]?.id).toBe(primeraCorrida[0]?.id);
@@ -272,7 +273,7 @@ describe("Fase 1 backfill (membership-backfill): mapeo determinístico e idempot
     });
 
     await expect(
-      prisma.$transaction(async (tx) => {
+      testAdminPrisma.$transaction(async (tx) => {
         await ejecutarBackfill(tx);
         // Corrupción deliberada a mitad de la transacción: un usuario_id
         // inexistente viola la FK `membresias_usuario_id_fkey` y aborta toda
@@ -283,7 +284,7 @@ describe("Fase 1 backfill (membership-backfill): mapeo determinístico e idempot
       }),
     ).rejects.toThrow();
 
-    const membresiaTrasRollback = await prisma.membresia.findFirst({
+    const membresiaTrasRollback = await testAdminPrisma.membresia.findFirst({
       where: { usuarioId: usuario.id },
     });
     expect(membresiaTrasRollback).toBeNull();

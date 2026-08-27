@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { resolveRangoFechas } from "../src/lib/rango-fechas.js";
 import { hashPassword } from "../src/lib/password.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import type { MetricasQuery } from "../src/schemas/metricas.schema.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 import {
@@ -57,7 +58,7 @@ async function crearLead(overrides: LeadOverrides = {}): Promise<{ id: string }>
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente MS ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -81,8 +82,8 @@ async function crearEvento(
   ocurridoEn: Date,
   extra: { etapaAnterior?: "NUEVO" | "CONTACTADO" | "CITA"; etapaNueva?: "CONTACTADO" | "CITA" | "VENTA" } = {},
 ): Promise<void> {
-  await prisma.leadEvento.create({
-    data: { leadId, tipo, ocurridoEn, etapaAnterior: extra.etapaAnterior, etapaNueva: extra.etapaNueva },
+  await testAdminPrisma.leadEvento.create({
+    data: { leadId, empresaId: EMPRESA_BOOTSTRAP_ID, tipo, ocurridoEn, etapaAnterior: extra.etapaAnterior, etapaNueva: extra.etapaNueva },
   });
 }
 
@@ -94,8 +95,19 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `metricas.
+ * service.ts` no acepta un `client`/contexto swappable — se llama DIRECTO
+ * (sin HTTP) en todo este archivo, y toca `leads`/`lead_eventos` (RLS).
+ * Todos los fixtures viven en la empresa bootstrap.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
+}
+
 describe("services/metricas.service — alcance por rol (docs/08 §1)", () => {
-  it("un asesor consultando /resumen recibe solo datos de su cartera", async () => {
+  it("un asesor consultando /resumen recibe solo datos de su cartera", () =>
+    conContexto(async () => {
     const asesorA = await crearUsuario("ASESOR");
     const asesorB = await crearUsuario("ASESOR");
     await crearLead({ asesorId: asesorA.id });
@@ -105,9 +117,10 @@ describe("services/metricas.service — alcance por rol (docs/08 §1)", () => {
 
     const resumen = await getResumen(asesorA, query());
     expect(resumen.totalIngresados.actual).toBe(2);
-  });
+  }));
 
-  it("un administrador ve todos los leads del período", async () => {
+  it("un administrador ve todos los leads del período", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     await crearLead({ campania: cam });
@@ -116,9 +129,10 @@ describe("services/metricas.service — alcance por rol (docs/08 §1)", () => {
 
     const resumen = await getResumen(admin, query({ campania: cam }));
     expect(resumen.totalIngresados.actual).toBe(3);
-  });
+  }));
 
-  it("responsableId enviado por un asesor es ignorado — sigue viendo solo lo suyo", async () => {
+  it("responsableId enviado por un asesor es ignorado — sigue viendo solo lo suyo", () =>
+    conContexto(async () => {
     const asesorA = await crearUsuario("ASESOR");
     const otroAsesor = await crearUsuario("ASESOR");
     await crearLead({ asesorId: asesorA.id });
@@ -127,11 +141,12 @@ describe("services/metricas.service — alcance por rol (docs/08 §1)", () => {
 
     const resumen = await getResumen(asesorA, query({ responsableId: otroAsesor.id }));
     expect(resumen.totalIngresados.actual).toBe(1);
-  });
+  }));
 });
 
 describe("services/metricas.service — getResumen: criterio de fecha (docs/08 §2.3)", () => {
-  it("un lead ingresado en el período anterior pero cerrado en el actual cuenta en el cierre correcto, no en el ingreso", async () => {
+  it("un lead ingresado en el período anterior pero cerrado en el actual cuenta en el cierre correcto, no en el ingreso", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     const desde = new Date("2026-06-10T00:00:00.000Z");
@@ -152,11 +167,12 @@ describe("services/metricas.service — getResumen: criterio de fecha (docs/08 �
     expect(resumen.totalIngresados.anterior).toBe(1);
     expect(resumen.cerrados.total.actual).toBe(1);
     expect(resumen.cerrados.venta.actual).toBe(1);
-  });
+  }));
 });
 
 describe("services/metricas.service — getResumen: comparativa (docs/08 §4)", () => {
-  it("período anterior con >=10 leads devuelve variacionPorcentual numérico", async () => {
+  it("período anterior con >=10 leads devuelve variacionPorcentual numérico", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     const desde = new Date("2026-05-10T00:00:00.000Z");
@@ -174,9 +190,10 @@ describe("services/metricas.service — getResumen: comparativa (docs/08 §4)", 
     expect(resumen.totalIngresados.actual).toBe(5);
     expect(resumen.totalIngresados.anterior).toBe(10);
     expect(resumen.totalIngresados.variacionPorcentual).toBe(-50);
-  });
+  }));
 
-  it("período anterior con <10 leads omite el porcentaje (null)", async () => {
+  it("período anterior con <10 leads omite el porcentaje (null)", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     const desde = new Date("2026-04-10T00:00:00.000Z");
@@ -194,9 +211,10 @@ describe("services/metricas.service — getResumen: comparativa (docs/08 §4)", 
     expect(resumen.totalIngresados.actual).toBe(5);
     expect(resumen.totalIngresados.anterior).toBe(3);
     expect(resumen.totalIngresados.variacionPorcentual).toBeNull();
-  });
+  }));
 
-  it("cerrados.venta/noVenta usan su PROPIO conteo anterior como umbral, no el total combinado de cierres", async () => {
+  it("cerrados.venta/noVenta usan su PROPIO conteo anterior como umbral, no el total combinado de cierres", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     const desde = new Date("2026-07-10T00:00:00.000Z");
@@ -241,11 +259,12 @@ describe("services/metricas.service — getResumen: comparativa (docs/08 §4)", 
 
     expect(resumen.cerrados.noVenta.anterior).toBe(9);
     expect(resumen.cerrados.noVenta.variacionPorcentual).toBeNull();
-  });
+  }));
 });
 
 describe("services/metricas.service — 2.5/2.7: primera respuesta y SLA (docs/08 §2.5/§2.7)", () => {
-  it("calcula promedio de respuesta, sin-respuesta y cumplimiento de SLA correlacionando lead_eventos", async () => {
+  it("calcula promedio de respuesta, sin-respuesta y cumplimiento de SLA correlacionando lead_eventos", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const asesor = await crearUsuario("ASESOR");
     const cam = marcador();
@@ -278,19 +297,21 @@ describe("services/metricas.service — 2.5/2.7: primera respuesta y SLA (docs/0
     expect(resumen.tiempoPrimeraRespuesta.horasPromedio).toBe(16); // (2+30)/2
     expect(resumen.tiempoPrimeraRespuesta.sinPrimeraRespuesta).toBe(1);
     expect(resumen.cumplimientoSla.porcentaje).toBeCloseTo((1 / 3) * 100, 2);
-  });
+  }));
 });
 
 describe("services/metricas.service — getPorAsesor (docs/08 §3.2, solo admin/supervisor)", () => {
-  it("403 cuando un asesor/vendedor consulta directamente esta gráfica", async () => {
+  it("403 cuando un asesor/vendedor consulta directamente esta gráfica", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     await expect(getPorAsesor(asesor, query())).rejects.toMatchObject({ statusHttp: 403 });
 
     const vendedor = await crearUsuario("VENDEDOR");
     await expect(getPorAsesor(vendedor, query())).rejects.toMatchObject({ statusHttp: 403 });
-  });
+  }));
 
-  it("un admin ve el desglose por responsable con tasa de conversión", async () => {
+  it("un admin ve el desglose por responsable con tasa de conversión", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const asesor = await crearUsuario("ASESOR");
     const cam = marcador();
@@ -304,9 +325,10 @@ describe("services/metricas.service — getPorAsesor (docs/08 §3.2, solo admin/
     expect(fila?.ventas).toBe(2);
     expect(fila?.noVentas).toBe(1);
     expect(fila?.tasaConversionPct).toBeCloseTo((2 / 3) * 100, 2);
-  });
+  }));
 
-  it("un asesor desactivado (M2) sigue mostrando su nombre real, con sufijo '(usuario dado de baja)'", async () => {
+  it("un asesor desactivado (M2) sigue mostrando su nombre real, con sufijo '(usuario dado de baja)'", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     contador += 1;
     const asesorDadoDeBaja = await prisma.usuario.create({
@@ -324,11 +346,12 @@ describe("services/metricas.service — getPorAsesor (docs/08 §3.2, solo admin/
     const filas = await getPorAsesor(admin, query({ campania: cam }));
     const fila = filas.find((f) => f.responsableId === asesorDadoDeBaja.id);
     expect(fila?.nombre).toBe(`${asesorDadoDeBaja.nombre} (usuario dado de baja)`);
-  });
+  }));
 });
 
 describe("services/metricas.service — getPorRedSocial (docs/08 §3.1)", () => {
-  it("agrupa por red social con tasa de conversión por red", async () => {
+  it("agrupa por red social con tasa de conversión por red", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     await crearLead({ campania: cam, redSocial: "FACEBOOK", etapa: "VENTA" });
@@ -343,11 +366,12 @@ describe("services/metricas.service — getPorRedSocial (docs/08 §3.1)", () => 
     expect(facebook?.tasaConversionPct).toBeCloseTo(50, 2);
     expect(instagram?.total).toBe(1);
     expect(instagram?.tasaConversionPct).toBe(100);
-  });
+  }));
 });
 
 describe("services/metricas.service — getPorEtapa", () => {
-  it("suma el total de leads del período incluyendo las 5 etapas", async () => {
+  it("suma el total de leads del período incluyendo las 5 etapas", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     await crearLead({ campania: cam, etapa: "NUEVO" });
@@ -361,11 +385,12 @@ describe("services/metricas.service — getPorEtapa", () => {
     const total = filas.reduce((acc, f) => acc + f.total, 0);
     expect(total).toBe(5);
     expect(filas.find((f) => f.etapa === "NO_VENTA")?.total).toBe(1);
-  });
+  }));
 });
 
 describe("services/metricas.service — getEmbudo (docs/08 §3.3)", () => {
-  it("NO_VENTA nunca aparece como paso del embudo, solo VENTA es el último paso", async () => {
+  it("NO_VENTA nunca aparece como paso del embudo, solo VENTA es el último paso", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     for (let i = 0; i < 4; i += 1) await crearLead({ campania: cam, etapa: "NUEVO" });
@@ -383,11 +408,12 @@ describe("services/metricas.service — getEmbudo (docs/08 §3.3)", () => {
     expect(embudo.pasos[2]?.caidaPct).toBeCloseTo(50, 2);
     expect(embudo.pasos[3]?.total).toBe(1);
     expect(embudo.noVenta).toBe(1);
-  });
+  }));
 });
 
 describe("services/metricas.service — getPorCampania (docs/08 §3.4)", () => {
-  it("agrupa por nombre de campaña Y red social — mismo nombre en redes distintas son filas independientes", async () => {
+  it("agrupa por nombre de campaña Y red social — mismo nombre en redes distintas son filas independientes", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     await crearLead({ campania: cam, redSocial: "FACEBOOK" });
@@ -399,11 +425,12 @@ describe("services/metricas.service — getPorCampania (docs/08 §3.4)", () => {
     const ig = filas.find((f) => f.redSocial === "INSTAGRAM");
     expect(fb?.total).toBe(2);
     expect(ig?.total).toBe(1);
-  });
+  }));
 });
 
 describe("services/metricas.service — getRedSocialXSemaforo (docs/08 §3.5, matriz cruzada)", () => {
-  it("cruza red social por color de semáforo con porcentaje de verdes por red", async () => {
+  it("cruza red social por color de semáforo con porcentaje de verdes por red", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     const cam = marcador();
     await crearLead({ campania: cam, redSocial: "FACEBOOK", semaforo: "VERDE" });
@@ -422,5 +449,5 @@ describe("services/metricas.service — getRedSocialXSemaforo (docs/08 §3.5, ma
     expect(facebook?.pctVerde).toBeCloseTo(50, 2);
     expect(instagram?.total).toBe(1);
     expect(instagram?.pctVerde).toBe(100);
-  });
+  }));
 });

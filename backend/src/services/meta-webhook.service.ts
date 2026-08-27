@@ -2,6 +2,7 @@ import { env } from "../config/env.js";
 import { AppError } from "../lib/app-error.js";
 import { decrypt } from "../lib/cifrado-token.js";
 import { logger } from "../lib/logger.js";
+import { runWithTenantContext } from "../lib/prisma.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import { adaptMeta } from "../adapters/meta.adapter.js";
@@ -175,12 +176,22 @@ export async function encolarLeadgenMeta(
  * `ingesta.service.ts::procesarRecepcion`.
  */
 export async function procesarNotificacionMeta(body: MetaWebhookNotificationBody): Promise<void> {
-  for (const entry of body.entry) {
-    for (const change of entry.changes) {
-      if (change.field !== "leadgen") continue;
-      await encolarLeadgenMeta(change.value.leadgen_id, change.value.page_id);
+  // Bloque C (Etapa 3, D2/D3, batch 3 discovery): este webhook se autentica
+  // por `X-Hub-Signature-256` (secreto compartido de la app de Meta, nunca
+  // por bridge/empresa) y un solo POST puede traer `entry`/`changes` de
+  // MÚLTIPLES Páginas — potencialmente de distintos bridges/empresas — así
+  // que no hay un único `TenantContext` de request que fijar de antemano.
+  // `empresaId: null` (D3, "holding-wide" vía el ROL DE APLICACIÓN, nunca
+  // `crm_bypass_jobs` — spec §2) le da a `encolarLeadgenMeta` la visibilidad
+  // que necesita para resolver cada `page_id` a su `Bridge`/empresa real.
+  await runWithTenantContext({ empresaId: null }, async () => {
+    for (const entry of body.entry) {
+      for (const change of entry.changes) {
+        if (change.field !== "leadgen") continue;
+        await encolarLeadgenMeta(change.value.leadgen_id, change.value.page_id);
+      }
     }
-  }
+  });
 }
 
 /**

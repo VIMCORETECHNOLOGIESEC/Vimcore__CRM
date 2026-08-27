@@ -23,6 +23,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_APP: ${DATABASE_URL_APP}
+      CRM_APP_DB_PASSWORD: ${CRM_APP_DB_PASSWORD}
       PORT: ${PORT}
       NODE_ENV: ${NODE_ENV}
       JWT_SECRET: ${JWT_SECRET}
@@ -41,7 +43,16 @@ services:
       - ./:/app
       - backend_node_modules:/app/node_modules
       - backend_pkg_node_modules:/app/backend/node_modules
-    command: sh -c "pnpm --filter backend exec prisma migrate deploy && pnpm --filter backend dev"
+    # D8 (Bloque C, Etapa 3): entre `migrate deploy` (rol superusuario,
+    # DATABASE_URL) y el arranque del servidor, fija la contraseña del rol
+    # de runtime no-superusuario `crm_app` de forma idempotente. La
+    # contraseña nunca vive en la migración versionada (git) — solo en
+    # `.env` (gitignored) vía CRM_APP_DB_PASSWORD.
+    command: >
+      sh -c "pnpm --filter backend exec prisma migrate deploy &&
+      echo \"ALTER ROLE crm_app WITH LOGIN PASSWORD '$$CRM_APP_DB_PASSWORD';\" |
+      pnpm --filter backend exec prisma db execute --url \"$$DATABASE_URL\" --stdin &&
+      pnpm --filter backend dev"
     healthcheck:
       test:
         [

@@ -4,6 +4,7 @@ import { AppError } from "../lib/app-error.js";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jwt.js";
 import { logger } from "../lib/logger.js";
 import { verifyPassword } from "../lib/password.js";
+import { withBootstrapCorreoGuc } from "../lib/prisma.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
@@ -106,7 +107,12 @@ export async function login(
     return { ...pair, user: toPublicUser(user) };
   }
 
-  const membresia = await membresiaRepository.findByEmail(correo);
+  // Bloque C (Etapa 3, D2 gap closure, batch 3 discovery): ver
+  // `lib/prisma.ts::withBootstrapCorreoGuc` — esta lectura ocurre ANTES de
+  // que exista un TenantContext (login es el paso que lo origina).
+  const membresia = await withBootstrapCorreoGuc(correo, (tx) =>
+    membresiaRepository.findByEmail(correo, tx),
+  );
   // `passwordHash` es NULL en toda Membresia backfillada (Fase 1) — nunca
   // puede autenticar; mismo mensaje genérico, sin revelar la causa exacta.
   if (!membresia || membresia.passwordHash === null) {

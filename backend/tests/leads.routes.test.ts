@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
@@ -30,7 +31,7 @@ async function crearUsuarioConToken(
     },
   });
   if (ROLES_CON_MEMBRESIA.has(rol)) {
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: {
         usuarioId: usuario.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
@@ -60,7 +61,7 @@ async function crearLead(
   const cliente = await prisma.cliente.create({
     data: { nombre: clienteNombre, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -209,10 +210,10 @@ describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de clie
         telefonoValido: true,
       },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: { clienteId: clienteMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: { clienteId: clienteNoMatch.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID },
     });
 
@@ -232,7 +233,7 @@ describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de clie
     const clienteAjeno = await prisma.cliente.create({
       data: { nombre: `Cliente Busqueda Camp ${contador}`, telefonoValido: false },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: clienteAjeno.id,
         origen: "NUEVO",
@@ -339,7 +340,7 @@ describe("PATCH /api/v1/leads/:id/etapa — mandatory test (docs/06 §M5): un as
       .send({ etapa: "CONTACTADO", respuestas: RESPUESTAS_ALTAS_NUEVO });
 
     expect(respuesta.status).toBe(403);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.etapa).toBe("NUEVO");
   });
 });
@@ -355,7 +356,7 @@ describe("PATCH /api/v1/leads/:id/etapa — mandatory test (docs/06 §M5): cambi
       .send({ etapa: "CONTACTADO" });
 
     expect(respuesta.status).toBe(400);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.etapa).toBe("NUEVO");
   });
 });
@@ -371,7 +372,7 @@ describe("PATCH /api/v1/leads/:id/etapa — validación de cierre en etapas term
       .send({ etapa: "VENTA", productoServicio: "Plan X", formaPago: "CONTADO" });
 
     expect(respuesta.status).toBe(400);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.etapa).toBe("CONTACTADO");
   });
 

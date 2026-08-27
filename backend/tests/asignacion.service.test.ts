@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import * as leadRepository from "../src/repositories/lead.repository.js";
 import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
@@ -41,9 +42,9 @@ async function crearCliente(): Promise<{ id: string }> {
   });
 }
 
-async function crearLeadSinAsignar(): Promise<{ id: string }> {
+async function crearLeadSinAsignar(): Promise<{ id: string; empresaId: string }> {
   const cliente = await crearCliente();
-  return prisma.lead.create({
+  return testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
 }
@@ -93,8 +94,20 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `asignacion.
+ * service.ts` no acepta un `client`/contexto swappable — se llama DIRECTO
+ * (sin HTTP) en todo este archivo, y toca `leads`/`lead_eventos`/`usuarios`
+ * (los dos primeros con RLS). Todos los fixtures viven en la empresa
+ * bootstrap.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
+}
+
 describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
-  it("prueba obligatoria 5: lead nuevo sale asignado, con slaInicioEn poblado y evento ASIGNACION, en un solo tx", async () => {
+  it("prueba obligatoria 5: lead nuevo sale asignado, con slaInicioEn poblado y evento ASIGNACION, en un solo tx", () =>
+    conContexto(async () => {
     // Aislamiento: la suite completa corre archivos de prueba concurrentes
     // contra la misma BD real; otro archivo (p. ej. leads.access.test.ts)
     // puede haber dejado asesores activos. Desactivarlos garantiza que el
@@ -121,9 +134,10 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
 
     const usuarioActualizado = await prisma.usuario.findUniqueOrThrow({ where: { id: asesor.id } });
     expect(usuarioActualizado.ultimaAsignacionEn).not.toBeNull();
-  });
+  }));
 
-  it("prueba obligatoria 6: sin asesores activos, el lead queda sin asignar y se escribe SIN_ASIGNAR con requiereNotificacion", async () => {
+  it("prueba obligatoria 6: sin asesores activos, el lead queda sin asignar y se escribe SIN_ASIGNAR con requiereNotificacion", () =>
+    conContexto(async () => {
     // Aislamiento explícito: desactiva CUALQUIER asesor que otra prueba de
     // este archivo haya creado antes (p. ej. la prueba 5), sin depender del
     // orden de ejecución — "sin candidatos" es la precondición del caso.
@@ -149,9 +163,10 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
       motivo: "sin_candidatos",
       responsableId: null,
     });
-  });
+  }));
 
-  it("prueba obligatoria 11: el FIFO respeta ultimaAsignacionEn — el receptor recien asignado no gana la siguiente ronda en empate", async () => {
+  it("prueba obligatoria 11: el FIFO respeta ultimaAsignacionEn — el receptor recien asignado no gana la siguiente ronda en empate", () =>
+    conContexto(async () => {
     // Aislamiento: ningun asesor de pruebas previas debe competir aqui.
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
 
@@ -180,9 +195,10 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
     const leadDosActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
     expect(leadDosActualizado.asesorId).not.toBe(primerGanadorId);
     expect([asesorA.id, asesorB.id]).toContain(leadDosActualizado.asesorId);
-  });
+  }));
 
-  it("prueba obligatoria 12: fallo inyectado tras actualizar Lead deja ultimaAsignacionEn intacto y cero lead_eventos (D11, todo o nada)", async () => {
+  it("prueba obligatoria 12: fallo inyectado tras actualizar Lead deja ultimaAsignacionEn intacto y cero lead_eventos (D11, todo o nada)", () =>
+    conContexto(async () => {
     // Aislamiento: mismo motivo que la prueba 5 — garantiza que el asesor de
     // esta prueba sea el único candidato elegible.
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
@@ -207,10 +223,11 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
 
     const totalEventos = await prisma.leadEvento.count({ where: { leadId: lead.id } });
     expect(totalEventos).toBe(0);
-  });
+  }));
 });
 describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commit con reintento acotado)", () => {
-  it("reintenta hasta 3 veces ante fallos transitorios, con backoff, y nunca lanza — éxito en el tercer intento", async () => {
+  it("reintenta hasta 3 veces ante fallos transitorios, con backoff, y nunca lanza — éxito en el tercer intento", () =>
+    conContexto(async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const lead = await crearLeadSinAsignar();
     const asesor = await crearAsesorActivo();
@@ -234,9 +251,10 @@ describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commi
       where: { leadId: lead.id, tipo: "ASIGNACION_FALLIDA" },
     });
     expect(eventoFallido).toBeNull();
-  }, 10_000);
+  }), 10_000);
 
-  it('"sin candidatos" cuenta como 1 solo intento (no reintentable) y no escribe ASIGNACION_FALLIDA', async () => {
+  it('"sin candidatos" cuenta como 1 solo intento (no reintentable) y no escribe ASIGNACION_FALLIDA', () =>
+    conContexto(async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const lead = await crearLeadSinAsignar();
 
@@ -262,11 +280,12 @@ describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commi
     // retorna tras el primer intento — un único createEvento (SIN_ASIGNAR).
     const llamadasDespues = mockCreateEvento.mock.calls.length;
     expect(llamadasDespues - llamadasAntes).toBe(1);
-  });
+  }));
 });
 
 describe("asignacion.service — guarda de idempotencia obligatoria (D-A2 revisión 2)", () => {
-  it("lead ya asignado manualmente antes del intento automático: assignAutomatically no-opea sin sobrescribir ni generar eventos nuevos", async () => {
+  it("lead ya asignado manualmente antes del intento automático: assignAutomatically no-opea sin sobrescribir ni generar eventos nuevos", () =>
+    conContexto(async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const lead = await crearLeadSinAsignar();
     const asesorManual = await crearAsesorActivo();
@@ -293,11 +312,12 @@ describe("asignacion.service — guarda de idempotencia obligatoria (D-A2 revisi
 
     const eventosDespues = await prisma.leadEvento.count({ where: { leadId: lead.id } });
     expect(eventosDespues).toBe(eventosAntes);
-  });
+  }));
 });
 
 describe("asignacion.service — degradación tras agotar reintentos (D-A2 revisión 2)", () => {
-  it("agota los 3 intentos: escribe ASIGNACION_FALLIDA (requiereNotificacion: true) + bridge_logs ERROR, lead queda sin asesor y listable", async () => {
+  it("agota los 3 intentos: escribe ASIGNACION_FALLIDA (requiereNotificacion: true) + bridge_logs ERROR, lead queda sin asesor y listable", () =>
+    conContexto(async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const lead = await crearLeadSinAsignar();
     await crearAsesorActivo();
@@ -332,11 +352,43 @@ describe("asignacion.service — degradación tras agotar reintentos (D-A2 revis
     // Sigue visible/filtrable en el listado de leads sin asignar.
     const leadListable = await prisma.lead.findFirst({ where: { id: lead.id, asesorId: null } });
     expect(leadListable).not.toBeNull();
-  }, 10_000);
+  }), 10_000);
+});
+
+describe("asignacion.service — assignLead con withCasRetry (Group 3, design D6, spec §4 'Retry succeeds')", () => {
+  it("dos assignLead concurrentes sobre el MISMO lead (auto-select, sin destino explícito): el perdedor del CAS reintenta y termina asignando al OTRO candidato — ambas llamadas resuelven, version final es 2, nunca se pierde un write", () =>
+    conContexto(async () => {
+      await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+      const lead = await crearLeadSinAsignar();
+      const [asesorA, asesorB, supervisor] = await Promise.all([
+        crearAsesorActivo(),
+        crearAsesorActivo(),
+        crearSupervisorActivo(),
+      ]);
+      const actor: UsuarioAcceso = { id: supervisor.id, rol: "SUPERVISOR", empresaId: null };
+
+      const resultados = await Promise.all([
+        assignLead(actor, lead.id, {}),
+        assignLead(actor, lead.id, {}),
+      ]);
+
+      const asignadosA = resultados.map((r) => r.asesorId).sort();
+      expect(asignadosA).toEqual([asesorA.id, asesorB.id].sort());
+
+      const leadFinal = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+      // Dos escrituras exitosas (una directa, una tras retry) — nunca 1
+      // (una se perdió en silencio) ni 3+ (algo se aplicó de más).
+      expect(leadFinal.version).toBe(2);
+      expect([asesorA.id, asesorB.id]).toContain(leadFinal.asesorId);
+
+      const eventos = await prisma.leadEvento.count({ where: { leadId: lead.id, tipo: "ASIGNACION" } });
+      expect(eventos).toBe(2);
+    }));
 });
 
 describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infraestructura abortan el lote)", () => {
-  it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", async () => {
+  it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", () =>
+    conContexto(async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const asesor = await crearAsesorActivo();
     const leadUno = await crearLeadSinAsignar();
@@ -358,11 +410,12 @@ describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infra
     // reportarse como "estos leads son inválidos").
     const leadDosTrasFallo = await prisma.lead.findUniqueOrThrow({ where: { id: leadDos.id } });
     expect(leadDosTrasFallo.asesorId).toBeNull();
-  });
+  }));
 });
 
 describe("asignacion.service — applyAsignacionesEnLote (fix bulk writes, deactivateUsuario)", () => {
-  it("agrupa por receptor: 2 entradas al mismo receptor + 1 a otro receptor llaman assignResponsableBulk exactamente 2 veces, con los leadIds agrupados correctos, y el orden de eventos devuelto respeta el orden de las entradas de entrada", async () => {
+  it("agrupa por receptor: 2 entradas al mismo receptor + 1 a otro receptor llaman assignResponsableBulk exactamente 2 veces, con los leadIds agrupados correctos, y el orden de eventos devuelto respeta el orden de las entradas de entrada", () =>
+    conContexto(async () => {
     const receptorA = await crearAsesorActivo();
     const receptorB = await crearAsesorActivo();
     const leadUno = await crearLeadSinAsignar();
@@ -375,9 +428,9 @@ describe("asignacion.service — applyAsignacionesEnLote (fix bulk writes, deact
     const eventos = await prisma.$transaction((tx) =>
       applyAsignacionesEnLote(
         [
-          { leadId: leadUno.id, receptorId: receptorA.id, responsableAnteriorId: null },
-          { leadId: leadDos.id, receptorId: receptorA.id, responsableAnteriorId: null },
-          { leadId: leadTres.id, receptorId: receptorB.id, responsableAnteriorId: null },
+          { leadId: leadUno.id, empresaId: leadUno.empresaId, receptorId: receptorA.id, responsableAnteriorId: null },
+          { leadId: leadDos.id, empresaId: leadDos.empresaId, receptorId: receptorA.id, responsableAnteriorId: null },
+          { leadId: leadTres.id, empresaId: leadTres.empresaId, receptorId: receptorB.id, responsableAnteriorId: null },
         ],
         { pool: "ASESOR", tipoEvento: "REASIGNACION", motivo: "reasignacion", ejecutadoPorId: null, ahora },
         tx,
@@ -409,7 +462,7 @@ describe("asignacion.service — applyAsignacionesEnLote (fix bulk writes, deact
     expect(leadUnoActualizado.asesorId).toBe(receptorA.id);
     expect(leadDosActualizado.asesorId).toBe(receptorA.id);
     expect(leadTresActualizado.asesorId).toBe(receptorB.id);
-  });
+  }));
 });
 
 describe("asignacion.service — M9 señal de métricas (docs/08-dashboard-kpis.md §5, asignación)", () => {
@@ -423,7 +476,8 @@ describe("asignacion.service — M9 señal de métricas (docs/08-dashboard-kpis.
    * recién DESPUÉS del commit — acá se prueba a través de `assignAfterCommit`,
    * el camino real de asignación automática post-ingesta.
    */
-  it("assignAfterCommit programa la señal de métricas después del commit, no dentro de la transacción", async () => {
+  it("assignAfterCommit programa la señal de métricas después del commit, no dentro de la transacción", () =>
+    conContexto(async () => {
     await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
     const lead = await crearLeadSinAsignar();
     await crearAsesorActivo();
@@ -434,5 +488,5 @@ describe("asignacion.service — M9 señal de métricas (docs/08-dashboard-kpis.
     expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length).toBeGreaterThan(
       llamadasAntes,
     );
-  });
+  }));
 });

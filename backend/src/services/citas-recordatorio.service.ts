@@ -1,5 +1,5 @@
 import * as citaRepository from "../repositories/cita.repository.js";
-import { CITAS_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { CITAS_TRANSACTION_BOUNDS, runAsBypassJob } from "../lib/prisma.js";
 import * as notificationRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 
@@ -40,12 +40,20 @@ export async function enviarRecordatoriosCita(
 ): Promise<ResultadoRecordatorioCitas> {
   const hasta = new Date(ahora.getTime() + VENTANA_RECORDATORIO_MS);
 
-  const candidatos = await citaRepository.findPendientesDeRecordatorio(ahora, hasta);
+  // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies", batch 3
+  // discovery): este cron (`jobs/citas-recordatorio.job.ts`) corre sin
+  // `AsyncLocalStorage` de tenant y necesita ver citas pendientes de TODAS
+  // las empresas — mismo criterio que `sla-atrasado.service.ts::
+  // detectLeadsAtrasados`.
+  const candidatos = await runAsBypassJob(
+    (tx) => citaRepository.findPendientesDeRecordatorio(ahora, hasta, tx),
+    CITAS_TRANSACTION_BOUNDS,
+  );
   if (candidatos.length === 0) return { candidatos: 0, recordatoriosMarcados: 0 };
 
   let recordatoriosMarcados = 0;
   for (const cita of candidatos) {
-    const committed = await runInTransaction(undefined, async (tx) => {
+    const committed = await runAsBypassJob(async (tx) => {
       const claimed = await citaRepository.marcarRecordatorioEnviado([cita.id], tx);
       if (claimed.count === 0) return [];
       const notification = await notificationRepository.createNotificacion(

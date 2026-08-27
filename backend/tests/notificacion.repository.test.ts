@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { RolMembresia } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as notificacionRepository from "../src/repositories/notificacion.repository.js";
 
 /**
@@ -31,7 +32,7 @@ async function crearUsuarioConMembresia(
       activo: overrides.usuarioActivo ?? true,
     },
   });
-  await prisma.membresia.create({
+  await testAdminPrisma.membresia.create({
     data: {
       usuarioId: usuario.id,
       empresaId,
@@ -57,6 +58,7 @@ describe("repositories/notificacion — findActiveRecipientIds (Bloque C, D5, ch
     const destinatarios = await notificacionRepository.findActiveRecipientIds(
       ["ADMINISTRADOR"],
       empresaA.id,
+      testAdminPrisma,
     );
 
     expect(destinatarios).toEqual([adminEmpresaA.id]);
@@ -67,7 +69,11 @@ describe("repositories/notificacion — findActiveRecipientIds (Bloque C, D5, ch
     const adminA = await crearUsuarioConMembresia(BOOTSTRAP_EMPRESA_ID, "ADMINISTRADOR");
     const adminB = await crearUsuarioConMembresia(empresaB.id, "ADMINISTRADOR");
 
-    const destinatarios = await notificacionRepository.findActiveRecipientIds(["ADMINISTRADOR"], null);
+    const destinatarios = await notificacionRepository.findActiveRecipientIds(
+      ["ADMINISTRADOR"],
+      null,
+      testAdminPrisma,
+    );
 
     expect(destinatarios).toEqual(expect.arrayContaining([adminA.id, adminB.id]));
   });
@@ -83,6 +89,7 @@ describe("repositories/notificacion — findActiveRecipientIds (Bloque C, D5, ch
     const destinatarios = await notificacionRepository.findActiveRecipientIds(
       ["VENDEDOR"],
       BOOTSTRAP_EMPRESA_ID,
+      testAdminPrisma,
     );
 
     expect(destinatarios).toContain(vendedor.id);
@@ -97,6 +104,7 @@ describe("repositories/notificacion — findActiveRecipientIds (Bloque C, D5, ch
     const destinatarios = await notificacionRepository.findActiveRecipientIds(
       ["SUPERVISOR"],
       BOOTSTRAP_EMPRESA_ID,
+      testAdminPrisma,
     );
 
     expect(destinatarios).not.toContain(inactivo.id);
@@ -110,26 +118,32 @@ describe("repositories/notificacion — findActiveRecipientIds (Bloque C, D5, ch
     const destinatarios = await notificacionRepository.findActiveRecipientIds(
       ["SUPERVISOR"],
       BOOTSTRAP_EMPRESA_ID,
+      testAdminPrisma,
     );
 
     expect(destinatarios).not.toContain(inactivo.id);
   });
 
   it("sin roles solicitados: no consulta la BD y devuelve arreglo vacío", async () => {
-    const destinatarios = await notificacionRepository.findActiveRecipientIds([], BOOTSTRAP_EMPRESA_ID);
+    const destinatarios = await notificacionRepository.findActiveRecipientIds(
+      [],
+      BOOTSTRAP_EMPRESA_ID,
+      testAdminPrisma,
+    );
     expect(destinatarios).toEqual([]);
   });
 
   it("dedupe: un usuario con dos Membresias que matchean roles solicitados aparece una sola vez", async () => {
     const empresaB = await prisma.empresa.create({ data: { nombre: `Empresa B dedupe ${randomUUID()}` } });
     const usuario = await crearUsuarioConMembresia(BOOTSTRAP_EMPRESA_ID, "ADMINISTRADOR");
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: { usuarioId: usuario.id, empresaId: empresaB.id, rol: "SUPERVISOR", activa: true },
     });
 
     const destinatarios = await notificacionRepository.findActiveRecipientIds(
       ["ADMINISTRADOR", "SUPERVISOR"],
       null,
+      testAdminPrisma,
     );
 
     expect(destinatarios.filter((id) => id === usuario.id)).toHaveLength(1);

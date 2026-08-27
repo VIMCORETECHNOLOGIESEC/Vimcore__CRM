@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import {
   produceAlertaTokenPorExpirar,
   verifyTokensVigentes,
@@ -23,7 +24,7 @@ function mockFetchJson(status: number, body: unknown): Response {
 
 async function crearBridge(empresaId: string = EMPRESA_BOOTSTRAP_ID): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge verificacion-token ${contador}`,
@@ -214,7 +215,7 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
         activo: true,
       },
     });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: {
         usuarioId: usuario.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
@@ -331,7 +332,7 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
         activo: true,
       },
     });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: { usuarioId: adminEmpresaB.id, empresaId: empresaB, rol: "ADMINISTRADOR", activa: true },
     });
 

@@ -1,5 +1,6 @@
 import { BRIDGE_MUDO_HORAS } from "../config/negocio.js";
 import { logger } from "../lib/logger.js";
+import { BRIDGE_TRANSACTION_BOUNDS, runAsBypassJob } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
@@ -52,7 +53,16 @@ export async function detectarBridgesMudos(
 ): Promise<ResultadoDeteccionMudos> {
   const umbral = new Date(ahora.getTime() - UMBRAL_MUDO_MS);
 
-  const candidatos = await bridgeRepository.findBridgesMudos(umbral);
+  // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies", batch 3
+  // discovery): este cron (`jobs/bridge-mudo.job.ts`) corre sin
+  // `AsyncLocalStorage` de tenant y necesita ver bridges mudos de TODAS las
+  // empresas — mismo criterio que `sla-atrasado.service.ts::
+  // detectLeadsAtrasados`. `bridge_logs` (via `registrarLogSeguro`) no tiene
+  // RLS, así que esa escritura corre fuera de este bloque sin problema.
+  const candidatos = await runAsBypassJob(
+    (tx) => bridgeRepository.findBridgesMudos(umbral, tx),
+    BRIDGE_TRANSACTION_BOUNDS,
+  );
   if (candidatos.length === 0) return { candidatos: 0, advertenciasRegistradas: 0 };
 
   let advertenciasRegistradas = 0;
@@ -65,7 +75,10 @@ export async function detectarBridgesMudos(
     });
     if (!logRegistrado) continue;
 
-    const claimed = await bridgeRepository.markAdvertenciaMudoEnviada([bridge.id], umbral);
+    const claimed = await runAsBypassJob(
+      (tx) => bridgeRepository.markAdvertenciaMudoEnviada([bridge.id], umbral, tx),
+      BRIDGE_TRANSACTION_BOUNDS,
+    );
     if (claimed.count === 0) continue;
 
     advertenciasRegistradas += 1;

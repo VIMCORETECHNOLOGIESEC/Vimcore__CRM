@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { hashPassword } from "../src/lib/password.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import * as metricasBroadcast from "../src/lib/metricas-broadcast.js";
 import {
@@ -67,7 +68,7 @@ async function crearLead(
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente LS ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -97,8 +98,19 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `leads.service.ts`
+ * no acepta un `client`/contexto swappable — se llama DIRECTO (sin HTTP) en
+ * todo este archivo, y toca `leads`/`lead_eventos` (RLS). Todos los
+ * fixtures viven en la empresa bootstrap.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
+}
+
 describe("services/leads.service — findLeads (spec: Listado filtrado por rol)", () => {
-  it("un asesor ve solo su cartera, no la de otro asesor ni leads sin asignar", async () => {
+  it("un asesor ve solo su cartera, no la de otro asesor ni leads sin asignar", () =>
+    conContexto(async () => {
     const asesorA = await crearUsuario("ASESOR");
     const asesorB = await crearUsuario("ASESOR");
     await crearLead({ asesorId: asesorA.id });
@@ -116,9 +128,10 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     for (const lead of resultado.leads) {
       expect(lead.asesorId).toBe(asesorA.id);
     }
-  });
+  }));
 
-  it("un supervisor ve todos los leads sin importar asesorId/vendedorId", async () => {
+  it("un supervisor ve todos los leads sin importar asesorId/vendedorId", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const asesor = await crearUsuario("ASESOR");
     const totalAntes = await prisma.lead.count();
@@ -132,9 +145,10 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     } as Parameters<typeof findLeads>[1]);
 
     expect(resultado.total).toBe(totalAntes + 2);
-  });
+  }));
 
-  it("M-hardening Bloque A (WU8): vista=activos devuelve solo leads con cerradoEn null", async () => {
+  it("M-hardening Bloque A (WU8): vista=activos devuelve solo leads con cerradoEn null", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const abierto = await crearLead({ cerradoEn: null });
     await crearLead({ etapa: "VENTA", cerradoEn: new Date() });
@@ -148,9 +162,10 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
 
     expect(resultado.leads.some((l) => l.id === abierto.id)).toBe(true);
     expect(resultado.leads.every((l) => l.cerradoEn === null)).toBe(true);
-  });
+  }));
 
-  it("M-hardening Bloque A (WU8): vista=cerrados devuelve solo leads con cerradoEn no nulo", async () => {
+  it("M-hardening Bloque A (WU8): vista=cerrados devuelve solo leads con cerradoEn no nulo", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     await crearLead({ cerradoEn: null });
     const cerrado = await crearLead({ etapa: "VENTA", cerradoEn: new Date() });
@@ -164,9 +179,10 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
 
     expect(resultado.leads.some((l) => l.id === cerrado.id)).toBe(true);
     expect(resultado.leads.every((l) => l.cerradoEn !== null)).toBe(true);
-  });
+  }));
 
-  it("M-hardening Bloque A (WU8): vista omitida no filtra por cerradoEn (comportamiento sin cambios)", async () => {
+  it("M-hardening Bloque A (WU8): vista omitida no filtra por cerradoEn (comportamiento sin cambios)", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const abierto = await crearLead({ cerradoEn: null });
     const cerrado = await crearLead({ etapa: "VENTA", cerradoEn: new Date() });
@@ -180,16 +196,17 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     const ids = resultado.leads.map((l) => l.id);
     expect(ids).toContain(abierto.id);
     expect(ids).toContain(cerrado.id);
-  });
+  }));
 
-  it("filtro semaforo=sin_calificar devuelve únicamente leads con semaforo null", async () => {
+  it("filtro semaforo=sin_calificar devuelve únicamente leads con semaforo null", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const marcador = `marcador-${Date.now()}`;
     const cliente = await prisma.cliente.create({ data: { nombre: marcador, telefonoValido: false } });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: null, ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: "ROJO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
@@ -203,15 +220,16 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     const idsCliente = resultado.leads.filter((l) => l.clienteId === cliente.id);
     expect(idsCliente).toHaveLength(1);
     expect(idsCliente[0]?.semaforo).toBeNull();
-  });
+  }));
 
-  it("filtro estadoSla=sin_iniciar devuelve únicamente leads con slaInicioEn null", async () => {
+  it("filtro estadoSla=sin_iniciar devuelve únicamente leads con slaInicioEn null", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const cliente = await prisma.cliente.create({ data: { nombre: `SLA-null-${Date.now()}`, telefonoValido: false } });
-    const sinIniciar = await prisma.lead.create({
+    const sinIniciar = await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", slaInicioEn: null, ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
@@ -232,9 +250,10 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     const idsCliente = resultado.leads.filter((l) => l.clienteId === cliente.id);
     expect(idsCliente).toHaveLength(1);
     expect(idsCliente[0]?.id).toBe(sinIniciar.id);
-  });
+  }));
 
-  it("un query param asesorId (no expuesto por el schema) no llega al where — DD5 estructural", async () => {
+  it("un query param asesorId (no expuesto por el schema) no llega al where — DD5 estructural", () =>
+    conContexto(async () => {
     const asesorA = await crearUsuario("ASESOR");
     const asesorB = await crearUsuario("ASESOR");
     await crearLead({ asesorId: asesorA.id });
@@ -250,28 +269,31 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
 
     expect(resultado.total).toBe(1);
     expect(resultado.leads[0]?.asesorId).toBe(asesorA.id);
-  });
+  }));
 });
 
 describe("services/leads.service — findLeadById (spec: Detalle con verificación de acceso)", () => {
-  it("403 (AppError) cuando un asesor sin relación con el lead intenta leerlo", async () => {
+  it("403 (AppError) cuando un asesor sin relación con el lead intenta leerlo", () =>
+    conContexto(async () => {
     const asesorAjeno = await crearUsuario("ASESOR");
     const otroAsesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: otroAsesor.id });
 
     await expect(findLeadById(asesorAjeno, lead.id)).rejects.toMatchObject({ statusHttp: 403 });
-  });
+  }));
 
-  it("200: el asesor que traspasó el lead (ahora vendedorId=V) conserva lectura (D4)", async () => {
+  it("200: el asesor que traspasó el lead (ahora vendedorId=V) conserva lectura (D4)", () =>
+    conContexto(async () => {
     const asesorOriginal = await crearUsuario("ASESOR");
     const vendedor = await crearUsuario("VENDEDOR");
     const lead = await crearLead({ asesorId: asesorOriginal.id, vendedorId: vendedor.id });
 
     const resultado = await findLeadById(asesorOriginal, lead.id);
     expect(resultado.id).toBe(lead.id);
-  });
+  }));
 
-  it("Bloque C (task 2.7/2.8, spec 'Write and SSE-triggered refetch endpoints revalidate at request time'): un refetch tras perder la titularidad (reasignado a otro asesor) se deniega sobre el estado ACTUAL, nunca uno cacheado — sin código nuevo, la arquitectura ya relee el lead en cada llamada", async () => {
+  it("Bloque C (task 2.7/2.8, spec 'Write and SSE-triggered refetch endpoints revalidate at request time'): un refetch tras perder la titularidad (reasignado a otro asesor) se deniega sobre el estado ACTUAL, nunca uno cacheado — sin código nuevo, la arquitectura ya relee el lead en cada llamada", () =>
+    conContexto(async () => {
     const asesorOriginal = await crearUsuario("ASESOR");
     const asesorNuevo = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesorOriginal.id });
@@ -284,7 +306,7 @@ describe("services/leads.service — findLeadById (spec: Detalle con verificaci�
     // Reasignación ocurre POR FUERA de este actor (otro operador, otro
     // request) — simula la ventana entre el evento SSE emitido y el
     // refetch/write que lo procesa.
-    await prisma.lead.update({ where: { id: lead.id }, data: { asesorId: asesorNuevo.id } });
+    await testAdminPrisma.lead.update({ where: { id: lead.id }, data: { asesorId: asesorNuevo.id } });
 
     // El refetch del titular ORIGINAL, ahora stale, se deniega contra el
     // estado actual de la BD — nunca contra el valor leído en la llamada
@@ -293,18 +315,20 @@ describe("services/leads.service — findLeadById (spec: Detalle con verificaci�
     // El nuevo titular sí puede leerlo — confirma que el estado consultado es el actual.
     const despues = await findLeadById(asesorNuevo, lead.id);
     expect(despues.asesorId).toBe(asesorNuevo.id);
-  });
+  }));
 
-  it("404 (AppError) cuando el lead no existe", async () => {
+  it("404 (AppError) cuando el lead no existe", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     await expect(
       findLeadById(supervisor, "00000000-0000-0000-0000-000000000000"),
     ).rejects.toMatchObject({ statusHttp: 404 });
-  });
+  }));
 });
 
 describe("services/leads.service — transitionEtapa (spec: Transición de etapa transaccional)", () => {
-  it("transición exitosa a CONTACTADO: etapa cambia, respuestas_formulario y lead_eventos CAMBIO_ETAPA nuevos", async () => {
+  it("transición exitosa a CONTACTADO: etapa cambia, respuestas_formulario y lead_eventos CAMBIO_ETAPA nuevos", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO" });
 
@@ -321,9 +345,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     });
     expect(eventoEtapa?.etapaAnterior).toBe("NUEVO");
     expect(eventoEtapa?.etapaNueva).toBe("CONTACTADO");
-  });
+  }));
 
-  it("409: una etapa terminal (VENTA) no se reabre", async () => {
+  it("409: una etapa terminal (VENTA) no se reabre", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "VENTA", semaforo: "VERDE" });
 
@@ -333,9 +358,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
 
     const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.etapa).toBe("VENTA");
-  });
+  }));
 
-  it("409: no se puede retroceder de CITA a CONTACTADO", async () => {
+  it("409: no se puede retroceder de CITA a CONTACTADO", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CITA" });
 
@@ -345,9 +371,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
 
     const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.etapa).toBe("CITA");
-  });
+  }));
 
-  it("409: no se puede saltar de NUEVO a CITA sin pasar por CONTACTADO", async () => {
+  it("409: no se puede saltar de NUEVO a CITA sin pasar por CONTACTADO", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO" });
 
@@ -357,9 +384,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
 
     const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.etapa).toBe("NUEVO");
-  });
+  }));
 
-  it("403: el asesor original tras un traspaso no puede editar; el vendedor sí", async () => {
+  it("403: el asesor original tras un traspaso no puede editar; el vendedor sí", () =>
+    conContexto(async () => {
     const asesorOriginal = await crearUsuario("ASESOR");
     const vendedor = await crearUsuario("VENDEDOR");
     const lead = await crearLead({ asesorId: asesorOriginal.id, vendedorId: vendedor.id, etapa: "NUEVO" });
@@ -373,9 +401,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
       respuestas: RESPUESTAS_ALTAS_NUEVO,
     });
     expect(resultado.etapa).toBe("CONTACTADO");
-  });
+  }));
 
-  it("D17: bitácora doble cuando etapa y semáforo cambian juntos (CAMBIO_ETAPA + CAMBIO_SEMAFORO, misma tx)", async () => {
+  it("D17: bitácora doble cuando etapa y semáforo cambian juntos (CAMBIO_ETAPA + CAMBIO_SEMAFORO, misma tx)", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO", semaforo: null });
 
@@ -384,9 +413,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     const eventos = await prisma.leadEvento.findMany({ where: { leadId: lead.id } });
     expect(eventos.some((e) => e.tipo === "CAMBIO_ETAPA")).toBe(true);
     expect(eventos.some((e) => e.tipo === "CAMBIO_SEMAFORO")).toBe(true);
-  });
+  }));
 
-  it("VENTA fija verde sin cálculo, exige monto/producto/formaPago y marca cerradoEn", async () => {
+  it("VENTA fija verde sin cálculo, exige monto/producto/formaPago y marca cerradoEn", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CONTACTADO", semaforo: "AMARILLO" });
 
@@ -402,9 +432,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(actualizado.cerradoEn).not.toBeNull();
     // sin recalcular: la puntuación previa (o su ausencia) queda intacta.
     expect(actualizado.puntuacion).toBeNull();
-  });
+  }));
 
-  it("NO_VENTA fija rojo, exige observacionCierre >= 20 caracteres y marca cerradoEn", async () => {
+  it("NO_VENTA fija rojo, exige observacionCierre >= 20 caracteres y marca cerradoEn", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CONTACTADO", semaforo: "VERDE" });
 
@@ -416,9 +447,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(actualizado.etapa).toBe("NO_VENTA");
     expect(actualizado.semaforo).toBe("ROJO");
     expect(actualizado.cerradoEn).not.toBeNull();
-  });
+  }));
 
-  it("fallo inyectado tras actualizar la etapa pero antes de lead_eventos: cero estado parcial persistido", async () => {
+  it("fallo inyectado tras actualizar la etapa pero antes de lead_eventos: cero estado parcial persistido", () =>
+    conContexto(async () => {
     // Lead ya VERDE -> transición a VENTA no dispara CAMBIO_SEMAFORO (mismo
     // color), así la ÚNICA llamada a createEvento es CAMBIO_ETAPA, exactamente
     // después de `updateEtapa` — el punto de falla que exige el escenario.
@@ -442,9 +474,10 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(sinCambios.montoVenta).toBeNull();
     const eventos = await prisma.leadEvento.count({ where: { leadId: lead.id } });
     expect(eventos).toBe(0);
-  });
+  }));
 
-  it("M9: programa la señal de métricas tras una transición exitosa (docs/08-dashboard-kpis.md §5, cambio de etapa/cierre)", async () => {
+  it("M9: programa la señal de métricas tras una transición exitosa (docs/08-dashboard-kpis.md §5, cambio de etapa/cierre)", () =>
+    conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO" });
     const llamadasAntes = vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length;
@@ -454,11 +487,12 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length).toBeGreaterThan(
       llamadasAntes,
     );
-  });
+  }));
 });
 
 describe("services/leads.service — listRedesSocialesVisibles (catálogo en cascada, reemplazo de GET /bridges/redes-activas)", () => {
-  it("un ADMINISTRADOR ve las redes sociales de todos los leads", async () => {
+  it("un ADMINISTRADOR ve las redes sociales de todos los leads", () =>
+    conContexto(async () => {
     const admin = await crearUsuario("ADMINISTRADOR");
     await crearLead({ redSocial: "FACEBOOK" });
     await crearLead({ redSocial: "GOOGLE_FORMS" });
@@ -470,9 +504,10 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
     } as Parameters<typeof listRedesSocialesVisibles>[1]);
 
     expect(redes).toEqual(expect.arrayContaining(["FACEBOOK", "GOOGLE_FORMS"]));
-  });
+  }));
 
-  it("un ASESOR solo ve las redes sociales de su propia cartera, no las de otro asesor", async () => {
+  it("un ASESOR solo ve las redes sociales de su propia cartera, no las de otro asesor", () =>
+    conContexto(async () => {
     const asesorA = await crearUsuario("ASESOR");
     const asesorB = await crearUsuario("ASESOR");
     await crearLead({ asesorId: asesorA.id, redSocial: "FACEBOOK" });
@@ -485,14 +520,15 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
     } as Parameters<typeof listRedesSocialesVisibles>[1]);
 
     expect(redes).toEqual(["FACEBOOK"]);
-  });
+  }));
 
-  it("el filtro en cascada por etapa reduce las redes sociales devueltas", async () => {
+  it("el filtro en cascada por etapa reduce las redes sociales devueltas", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const cliente = await prisma.cliente.create({
       data: { nombre: `Cliente cascada ${Date.now()}`, telefonoValido: false },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
@@ -502,7 +538,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
         empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
@@ -522,9 +558,10 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
 
     expect(redes).toEqual(expect.arrayContaining(["FACEBOOK"]));
     expect(redes).not.toContain("GOOGLE_FORMS");
-  });
+  }));
 
-  it("el filtro redSocial ya activo en el query no se autolimita: sigue devolviendo esa misma red como opción", async () => {
+  it("el filtro redSocial ya activo en el query no se autolimita: sigue devolviendo esa misma red como opción", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     await crearLead({ redSocial: "GOOGLE_FORMS" });
 
@@ -536,9 +573,10 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
     } as Parameters<typeof listRedesSocialesVisibles>[1]);
 
     expect(redes).toContain("GOOGLE_FORMS");
-  });
+  }));
 
-  it("el filtro en cascada por busqueda (nombre de cliente) reduce las redes sociales devueltas", async () => {
+  it("el filtro en cascada por busqueda (nombre de cliente) reduce las redes sociales devueltas", () =>
+    conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const clienteBuscado = await prisma.cliente.create({
       data: { nombre: `Cliente busqueda cascada ${Date.now()}`, telefonoValido: false },
@@ -546,7 +584,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
     const otroCliente = await prisma.cliente.create({
       data: { nombre: `Otro cliente ${Date.now()}`, telefonoValido: false },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: clienteBuscado.id,
         origen: "NUEVO",
@@ -556,7 +594,7 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
         empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: otroCliente.id,
         origen: "NUEVO",
@@ -576,5 +614,5 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
 
     expect(redes).toEqual(expect.arrayContaining(["FACEBOOK"]));
     expect(redes).not.toContain("GOOGLE_FORMS");
-  });
+  }));
 });

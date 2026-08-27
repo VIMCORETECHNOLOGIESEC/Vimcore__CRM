@@ -1,7 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { eventBroker } from "../src/lib/event-broker.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { assignAutomatically, assignLead, transferLead } from "../src/services/asignacion.service.js";
 import { deduplicateLead } from "../src/services/deduplicacion.service.js";
 import { transitionEtapa } from "../src/services/leads.service.js";
@@ -9,6 +10,14 @@ import type { UsuarioAcceso } from "../src/services/leads.access.js";
 
 let sequence = 0;
 const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): estos servicios se
+ * invocan DIRECTO (sin HTTP), así que sin `runWithTenantContext` cualquier
+ * lectura/escritura suya sobre una tabla RLS ve 0 filas (fail-closed).
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: BOOTSTRAP_EMPRESA_ID }, fn);
+}
 // Bloque C (D2): ADMINISTRADOR/SUPERVISOR resuelven `empresaId: null`
 // (holding-wide) incondicionalmente en producción (`require-authentication.middleware.ts`)
 // — este helper construye el `UsuarioAcceso` a mano (sin pasar por el
@@ -23,7 +32,7 @@ const actor = async (rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR"
 };
 const lead = async (responsables: { asesorId?: string; vendedorId?: string } = {}) => {
   const cliente = await prisma.cliente.create({ data: { nombre: "M8 producer", telefonoValido: false } });
-  return prisma.lead.create({ data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID, ...responsables } });
+  return testAdminPrisma.lead.create({ data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID, ...responsables } });
 };
 /**
  * Bloque C (D5): `createForActiveSupervisorsAndAdmins` (usado por
@@ -34,7 +43,7 @@ const lead = async (responsables: { asesorId?: string; vendedorId?: string } = {
  */
 const actorConMembresia = async (rol: "ADMINISTRADOR" | "SUPERVISOR", activo = true) => {
   const usuario = await actor(rol, activo);
-  await prisma.membresia.create({
+  await testAdminPrisma.membresia.create({
     data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol, activa: true },
   });
   return usuario;
@@ -42,7 +51,7 @@ const actorConMembresia = async (rol: "ADMINISTRADOR" | "SUPERVISOR", activo = t
 
 beforeEach(async () => {
   vi.restoreAllMocks();
-  await prisma.notificacion.deleteMany();
+  await testAdminPrisma.notificacion.deleteMany();
 });
 afterAll(() => prisma.$disconnect());
 
@@ -52,8 +61,8 @@ describe("M8 transactional lead producers", () => {
     const asesor = await actor("ASESOR");
     const target = await lead();
     const publish = vi.spyOn(eventBroker, "publish");
-    await assignLead(supervisor, target.id, { asesorId: asesor.id });
-    expect(await prisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: target.id, tipo: "LEAD_ASIGNADO" } })).toBe(1);
+    await conContexto(() => assignLead(supervisor, target.id, { asesorId: asesor.id }));
+    expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: target.id, tipo: "LEAD_ASIGNADO" } })).toBe(1);
     expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "LEAD_ASIGNADO" }));
     expect(publish).toHaveBeenCalledWith(asesor.id, "lead.asignado", expect.objectContaining({ leadId: target.id }));
   });
@@ -64,8 +73,8 @@ describe("M8 transactional lead producers", () => {
     const target = await lead();
     const publish = vi.spyOn(eventBroker, "publish");
     await prisma.usuario.delete({ where: { id: supervisor.id } });
-    await expect(assignLead(supervisor, target.id, { asesorId: asesor.id })).rejects.toThrow();
-    expect(await prisma.notificacion.count({ where: { leadId: target.id } })).toBe(0);
+    await expect(conContexto(() => assignLead(supervisor, target.id, { asesorId: asesor.id }))).rejects.toThrow();
+    expect(await testAdminPrisma.notificacion.count({ where: { leadId: target.id } })).toBe(0);
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -74,16 +83,18 @@ describe("M8 transactional lead producers", () => {
     const asesor = await actor("ASESOR");
     const vendedor = await actor("VENDEDOR");
     const target = await lead({ asesorId: asesor.id });
-    await prisma.lead.update({ where: { id: target.id }, data: { etapa: "CONTACTADO" } });
+    await testAdminPrisma.lead.update({ where: { id: target.id }, data: { etapa: "CONTACTADO" } });
     const publish = vi.spyOn(eventBroker, "publish");
-    await transferLead(supervisor, target.id, { vendedorId: vendedor.id });
-    const beforeStage = await prisma.notificacion.count({ where: { leadId: target.id } });
+    await conContexto(() => transferLead(supervisor, target.id, { vendedorId: vendedor.id }));
+    const beforeStage = await testAdminPrisma.notificacion.count({ where: { leadId: target.id } });
     // M-hardening Bloque A (D1-D3, memoria #82): SUPERVISOR ya no puede
     // cerrar (canClose deniega con "rol"); el vendedor, ya responsable
     // operativo tras el traspaso de arriba, es quien cierra el lead.
-    await transitionEtapa(vendedor, target.id, { etapa: "VENTA", montoVenta: 100, productoServicio: "CRM", formaPago: "CONTADO" });
-    expect(await prisma.notificacion.count({ where: { usuarioId: vendedor.id, leadId: target.id, tipo: "LEAD_TRASPASADO" } })).toBe(1);
-    expect(await prisma.notificacion.count({ where: { leadId: target.id } })).toBe(beforeStage);
+    await conContexto(() =>
+      transitionEtapa(vendedor, target.id, { etapa: "VENTA", montoVenta: 100, productoServicio: "CRM", formaPago: "CONTADO" }),
+    );
+    expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: vendedor.id, leadId: target.id, tipo: "LEAD_TRASPASADO" } })).toBe(1);
+    expect(await testAdminPrisma.notificacion.count({ where: { leadId: target.id } })).toBe(beforeStage);
     expect(publish).toHaveBeenCalledWith(vendedor.id, "lead.etapa-cambiada", expect.objectContaining({ etapaNueva: "VENTA" }));
   });
 
@@ -93,8 +104,8 @@ describe("M8 transactional lead producers", () => {
     const admin = await actorConMembresia("ADMINISTRADOR");
     const inactive = await actorConMembresia("SUPERVISOR", false);
     const target = await lead();
-    await prisma.$transaction((tx) => assignAutomatically(target.id, new Date(), tx));
-    const recipients = await prisma.notificacion.findMany({ where: { leadId: target.id, tipo: "LEAD_SIN_ASIGNAR" }, select: { usuarioId: true } });
+    await conContexto(() => prisma.$transaction((tx) => assignAutomatically(target.id, new Date(), tx)));
+    const recipients = await testAdminPrisma.notificacion.findMany({ where: { leadId: target.id, tipo: "LEAD_SIN_ASIGNAR" }, select: { usuarioId: true } });
     const ids = recipients.map(({ usuarioId }) => usuarioId);
     expect(ids).toContain(supervisor.id);
     expect(ids).toContain(admin.id);
@@ -108,7 +119,7 @@ describe("M8 transactional lead producers", () => {
     // `bridgeId` resoluble — la primera llamada crea el lead, así que
     // necesita empresa; la segunda (repetición) no toca ese guard.
     sequence += 1;
-    const bridge = await prisma.bridge.create({
+    const bridge = await testAdminPrisma.bridge.create({
       data: {
         redSocial: "GOOGLE_FORMS",
         nombre: `Bridge M8 repeated ${sequence}`,
@@ -117,11 +128,13 @@ describe("M8 transactional lead producers", () => {
         empresaId: BOOTSTRAP_EMPRESA_ID,
       },
     });
-    const first = await deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date(), bridgeId: bridge.id });
-    await prisma.lead.update({ where: { id: first.leadId }, data: { asesorId: asesor.id } });
+    const first = await conContexto(() =>
+      deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date(), bridgeId: bridge.id }),
+    );
+    await testAdminPrisma.lead.update({ where: { id: first.leadId }, data: { asesorId: asesor.id } });
     const publish = vi.spyOn(eventBroker, "publish");
-    await deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date() });
-    expect(await prisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: first.leadId, tipo: "INTERACCION_REPETIDA" } })).toBe(1);
+    await conContexto(() => deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date() }));
+    expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: first.leadId, tipo: "INTERACCION_REPETIDA" } })).toBe(1);
     expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "INTERACCION_REPETIDA" }));
   });
 });

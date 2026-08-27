@@ -4,9 +4,21 @@ import {
   DEDUPLICACION_TRANSACTION_BOUNDS,
   INGESTA_TRANSACTION_BOUNDS,
 } from "../src/lib/prisma.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { deduplicateLead, type DeduplicacionInput } from "../src/services/deduplicacion.service.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `deduplicateLead`
+ * llama internamente a `resolverAtribucion`/`resolverEmpresaIdDesdeBridge`,
+ * que leen `bridges` (RLS). Estas pruebas invocan `deduplicateLead` DIRECTO
+ * (sin HTTP), así que sin `runWithTenantContext` esa lectura ve 0 filas
+ * (fail-closed) y `deduplicateLead` rechaza con `empresa_no_resuelta`.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
+}
 
 let contadorTelefono = 0;
 
@@ -22,7 +34,7 @@ function telefonoUnico(): string {
 let DEFAULT_BRIDGE_ID: string;
 
 beforeAll(async () => {
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: "Bridge PR0 runInTransaction",
@@ -59,7 +71,7 @@ describe("lib/prisma — runInTransaction (M4, DD1c/DD3)", () => {
 describe("deduplicacion.service — deduplicateLead(txExterna) (M4, PR0)", () => {
   it("txExterna omitido: deduplicateLead abre su propia transacción, exactamente igual que antes del seam", async () => {
     const entrada = entradaBase();
-    const resultado = await deduplicateLead(entrada);
+    const resultado = await conContexto(() => deduplicateLead(entrada));
 
     expect(resultado.clienteCreado).toBe(true);
     expect(resultado.leadCreado).toBe(true);
@@ -78,12 +90,14 @@ describe("deduplicacion.service — deduplicateLead(txExterna) (M4, PR0)", () =>
     let leadId: string | undefined;
 
     await expect(
-      prisma.$transaction(async (tx) => {
-        const resultado = await deduplicateLead(entradaBase({ telefono }), undefined, tx);
-        clienteId = resultado.clienteId;
-        leadId = resultado.leadId;
-        throw new Error("rollback forzado del llamador externo");
-      }),
+      conContexto(() =>
+        prisma.$transaction(async (tx) => {
+          const resultado = await deduplicateLead(entradaBase({ telefono }), undefined, tx);
+          clienteId = resultado.clienteId;
+          leadId = resultado.leadId;
+          throw new Error("rollback forzado del llamador externo");
+        }),
+      ),
     ).rejects.toThrow("rollback forzado del llamador externo");
 
     // Si deduplicateLead hubiera abierto su propia transacción interna (en vez

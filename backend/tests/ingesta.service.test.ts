@@ -1,17 +1,28 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import type { LeadEntrante } from "../src/types/lead-entrante.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `procesarRecepcion`
+ * corre en producción dentro de `runWithTenantContext({ empresaId: null },
+ * ...)` (ver `jobs/ingesta-inbox.job.ts`) porque el worker no tiene ciclo de
+ * request HTTP.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: null }, fn);
+}
 
 let contador = 0;
 
 /** Bridge de prueba con clave de API unica — evita colision del UNIQUE. */
 async function crearBridge(): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: `Bridge de prueba ingesta ${contador}`,
@@ -127,7 +138,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
         activo: true,
       },
     });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: {
         usuarioId: usuario.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
@@ -171,7 +182,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     const entrada = entradaBase(bridgeId, { telefono: null, correo: null });
     const claim = await reclamar(entrada, ahora);
 
-    const procesado = await procesarRecepcion(claim);
+    const procesado = await conContexto(() => procesarRecepcion(claim));
 
     expect(procesado).toBe(true);
     const notificaciones = await prisma.notificacion.findMany({
@@ -190,9 +201,9 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     });
 
     const claim1 = await reclamar(entradaBase(bridgeId, { telefono: null, correo: null }), ahora);
-    await procesarRecepcion(claim1);
+    await conContexto(() => procesarRecepcion(claim1));
     const claim2 = await reclamar(entradaBase(bridgeId, { telefono: null, correo: null }), ahora);
-    await procesarRecepcion(claim2);
+    await conContexto(() => procesarRecepcion(claim2));
 
     const notificaciones = await prisma.notificacion.findMany({
       where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
@@ -207,7 +218,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     const ahora = new Date();
     const claim = await reclamar(entradaBase(bridgeId), ahora); // entradaBase ya trae telefono
 
-    await procesarRecepcion(claim);
+    await conContexto(() => procesarRecepcion(claim));
 
     expect(
       await prisma.notificacion.count({ where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" } }),

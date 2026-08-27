@@ -1,5 +1,6 @@
 import { EtapaLead, type RedSocial, type Semaforo } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
+import { prisma } from "../lib/prisma.js";
 import { resolveRangoFechas } from "../lib/rango-fechas.js";
 import * as metricasRepository from "../repositories/metricas.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
@@ -166,20 +167,33 @@ export async function getResumen(usuario: UsuarioAcceso, query: MetricasQuery): 
 
   // 2.5/2.7 — correlacionados contra lead_eventos, scopeados por ingresadoEn
   // (ver nota de decisión en `metricas.repository.ts::getRespuestaYSla`).
+  //
+  // Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `getRespuestaYSla`/
+  // `getCierrePromedio` usan `$queryRaw` — la extensión `$allOperations` de
+  // `lib/prisma.ts` SOLO aplica las GUCs de tenant para operaciones de
+  // MODELO (`model !== undefined`); una raw query llamada directo sobre
+  // `prisma` nunca abre transacción propia, así que corre SIEMPRE sin GUCs,
+  // sin importar el `TenantContext` ambiente. Envolver en `prisma.
+  // $transaction(...)` fuerza que la extensión SÍ las aplique como primer
+  // statement de esa transacción antes de cada raw query.
   const filtroIngresoActual = resolveFiltroSql(usuario, query, "ingresado_en", desde, hasta);
   const filtroIngresoAnterior = resolveFiltroSql(usuario, query, "ingresado_en", anteriorDesde, anteriorHasta);
-  const [respuestaActual, respuestaAnterior] = await Promise.all([
-    metricasRepository.getRespuestaYSla(filtroIngresoActual),
-    metricasRepository.getRespuestaYSla(filtroIngresoAnterior),
-  ]);
+  const [respuestaActual, respuestaAnterior] = await prisma.$transaction((tx) =>
+    Promise.all([
+      metricasRepository.getRespuestaYSla(filtroIngresoActual, tx),
+      metricasRepository.getRespuestaYSla(filtroIngresoAnterior, tx),
+    ]),
+  );
 
   // 2.6 — por cerradoEn, solo VENTA.
   const filtroCierreActual = resolveFiltroSql(usuario, query, "cerrado_en", desde, hasta);
   const filtroCierreAnterior = resolveFiltroSql(usuario, query, "cerrado_en", anteriorDesde, anteriorHasta);
-  const [cierrePromedioActual, cierrePromedioAnterior] = await Promise.all([
-    metricasRepository.getCierrePromedio(filtroCierreActual),
-    metricasRepository.getCierrePromedio(filtroCierreAnterior),
-  ]);
+  const [cierrePromedioActual, cierrePromedioAnterior] = await prisma.$transaction((tx) =>
+    Promise.all([
+      metricasRepository.getCierrePromedio(filtroCierreActual, tx),
+      metricasRepository.getCierrePromedio(filtroCierreAnterior, tx),
+    ]),
+  );
 
   // 3.6 — distribución por semáforo sobre "en gestión" (actual, sin comparativa).
   const distribucionFilas = await metricasRepository.countPorSemaforo(whereGestionActual);
@@ -314,7 +328,10 @@ export async function getPorAsesor(usuario: UsuarioAcceso, query: MetricasQuery)
 
   const { desde, hasta } = resolvePeriodo(query);
   const filtro = resolveFiltroSql(usuario, query, "ingresado_en", desde, hasta);
-  const filas = await metricasRepository.getPorAsesorConSla(filtro);
+  // Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): ver nota en
+  // `getResumen` — `getPorAsesorConSla` usa `$queryRaw`, necesita una
+  // transacción explícita para que se apliquen las GUCs de tenant.
+  const filas = await prisma.$transaction((tx) => metricasRepository.getPorAsesorConSla(filtro, tx));
   const nombres = await usuarioRepository.findNombresPorIds(filas.map((f) => f.responsableId));
 
   return filas.map((fila) => {
@@ -398,7 +415,10 @@ export interface PorCampaniaItem {
 export async function getPorCampania(usuario: UsuarioAcceso, query: MetricasQuery): Promise<PorCampaniaItem[]> {
   const { desde, hasta } = resolvePeriodo(query);
   const filtro = resolveFiltroSql(usuario, query, "ingresado_en", desde, hasta);
-  const filas = await metricasRepository.getPorCampaniaTop10(filtro);
+  // Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): ver nota en
+  // `getResumen` — `getPorCampaniaTop10` usa `$queryRaw`, necesita una
+  // transacción explícita para que se apliquen las GUCs de tenant.
+  const filas = await prisma.$transaction((tx) => metricasRepository.getPorCampaniaTop10(filtro, tx));
   return filas.map((f) => ({
     nombreCampania: f.nombreCampania,
     redSocial: f.redSocial as RedSocial | null,

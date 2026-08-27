@@ -5,6 +5,16 @@ import { hashPassword } from "../src/lib/password.js";
 import { seedTenant, type UsuarioParaMembresia } from "./seed-tenant.js";
 
 /**
+ * Bloque C (Etapa 3 — fix pre-existente, no relacionado a esta etapa): mismo
+ * id fijo que `tests/fixtures/empresa.ts::EMPRESA_BOOTSTRAP_ID` — la
+ * migración `20260827113454_bloque_c_empresa_id_not_null` (previa a este
+ * cambio) volvió `bridges.empresa_id` NOT NULL pero este script nunca se
+ * actualizó; sin este id, `prisma.bridge.upsert`/`create` fallaban con
+ * "Argument `empresa` is missing" en toda corrida de siembra.
+ */
+const EMPRESA_BOOTSTRAP_ID = "00000000-0000-0000-0000-000000000001";
+
+/**
  * D11, D-G: la contraseña de semillas NUNCA está en el código ni en
  * `.env.example` con valor. Validación propia, fuera de `src/config/env.ts`
  * (D-G) — `env.ts` es configuración de runtime del servidor y aborta el
@@ -79,6 +89,7 @@ async function main(): Promise<void> {
         nombre: "Google Forms (pruebas)",
         claveApiHash: hashClaveBridge(seedEnv.data.SEED_BRIDGE_CLAVE_API),
         estado: "INACTIVO",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -107,6 +118,7 @@ async function main(): Promise<void> {
           nombre: bridge.nombre,
           claveApiHash: hashClaveBridge(claveApi),
           estado: "INACTIVO",
+          empresaId: EMPRESA_BOOTSTRAP_ID,
         },
       });
       console.log(`Bridge ${bridge.nombre} — X-Bridge-Key: ${claveApi}`);

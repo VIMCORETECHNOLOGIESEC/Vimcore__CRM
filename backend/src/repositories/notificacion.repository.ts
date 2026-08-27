@@ -7,6 +7,13 @@ export interface CreateNotificacionData {
   titulo: string;
   mensaje: string;
   leadId?: string | null;
+  /**
+   * Bloque C (Etapa 3, D4 — RLS): `notificaciones.empresa_id` es nullable
+   * (holding-wide, mismo convenio de `findActiveRecipientIds`) — omitido u
+   * `undefined` deja la columna en NULL, sin cambio de comportamiento para
+   * los call sites que todavía no resuelven una empresa.
+   */
+  empresaId?: string | null;
 }
 export async function createNotificacion(
   data: CreateNotificacionData,

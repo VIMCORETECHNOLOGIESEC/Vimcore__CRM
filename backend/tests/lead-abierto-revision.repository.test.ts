@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadAbiertoRevisionRepository from "../src/repositories/lead-abierto-revision.repository.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
@@ -14,7 +15,7 @@ async function crearClienteYLead(): Promise<{ clienteId: string; leadId: string 
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente revision ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { clienteId: cliente.id, leadId: lead.id };

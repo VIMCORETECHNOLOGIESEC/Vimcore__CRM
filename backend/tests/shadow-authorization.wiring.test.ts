@@ -24,6 +24,7 @@ const shadowAuthorizationService = await import(
 const { createApp } = await import("../src/app.js");
 const { hashPassword } = await import("../src/lib/password.js");
 const { prisma } = await import("../src/lib/prisma.js");
+const { testAdminPrisma } = await import("./fixtures/admin-prisma.js");
 const { EMPRESA_BOOTSTRAP_ID } = await import("./fixtures/empresa.js");
 
 const app = createApp();
@@ -59,7 +60,7 @@ async function crearLead(overrides: {
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente Shadow ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",

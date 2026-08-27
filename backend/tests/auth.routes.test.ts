@@ -5,6 +5,7 @@ import { createApp } from "../src/app.js";
 import { env } from "../src/config/env.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD_ACTIVO = "clave-integracion-123";
@@ -29,7 +30,7 @@ beforeAll(async () => {
   // Bloque C follow-up (D2 gap closure): este VENDEDOR hace peticiones
   // autenticadas más abajo (logout, perfil) — sin Membresia activa,
   // `requireAuthentication` rechazaría el TenantContext (D2).
-  await prisma.membresia.create({
+  await testAdminPrisma.membresia.create({
     data: {
       usuarioId: usuarioActivo.id,
       empresaId: BOOTSTRAP_EMPRESA_ID,
@@ -81,7 +82,7 @@ describe("POST /api/v1/auth/login — dual-login-routing (Bloque B, Fase 2)", ()
         activo: true,
       },
     });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: {
         usuarioId: usuario.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
@@ -113,7 +114,7 @@ describe("POST /api/v1/auth/login — dual-login-routing (Bloque B, Fase 2)", ()
         activo: true,
       },
     });
-    await prisma.membresia.create({
+    await testAdminPrisma.membresia.create({
       data: {
         usuarioId: usuario.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,

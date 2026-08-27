@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
@@ -32,7 +33,7 @@ describe("schema Bloque C — empresa_id NOT NULL en leads/bridges (D4, sin back
     });
 
     await expect(
-      prisma.$executeRawUnsafe(
+      testAdminPrisma.$executeRawUnsafe(
         `INSERT INTO "leads" ("id", "cliente_id", "origen", "etapa", "ingresado_en") VALUES ($1::uuid, $2::uuid, 'NUEVO', 'NUEVO', now())`,
         randomUUID(),
         cliente.id,
@@ -42,7 +43,7 @@ describe("schema Bloque C — empresa_id NOT NULL en leads/bridges (D4, sin back
 
   it("bridges.empresa_id es NOT NULL: un INSERT crudo sin empresa_id es rechazado por Postgres (23502, not_null_violation)", async () => {
     await expect(
-      prisma.$executeRawUnsafe(
+      testAdminPrisma.$executeRawUnsafe(
         `INSERT INTO "bridges" ("id", "red_social", "nombre", "clave_api_hash", "estado") VALUES ($1::uuid, 'GOOGLE_FORMS', 'Bridge sin empresa', $2, 'INACTIVO')`,
         randomUUID(),
         `hash-${randomUUID()}`,
@@ -55,13 +56,13 @@ describe("schema Bloque C — empresa_id NOT NULL en leads/bridges (D4, sin back
       data: { nombre: `Cliente con empresa ${randomUUID()}`, telefonoValido: false },
     });
     const leadId = randomUUID();
-    await prisma.$executeRawUnsafe(
+    await testAdminPrisma.$executeRawUnsafe(
       `INSERT INTO "leads" ("id", "cliente_id", "origen", "etapa", "ingresado_en", "empresa_id") VALUES ($1::uuid, $2::uuid, 'NUEVO', 'NUEVO', now(), $3::uuid)`,
       leadId,
       cliente.id,
       EMPRESA_BOOTSTRAP_ID,
     );
-    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+    const lead = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: leadId } });
     expect(lead.empresaId).toBe(EMPRESA_BOOTSTRAP_ID);
   });
 });
