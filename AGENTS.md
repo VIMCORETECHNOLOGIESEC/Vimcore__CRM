@@ -112,13 +112,17 @@ backend y frontend, `.dockerignore` y `.env.example` con las claves sin valores.
 ├── backend/          APIs, lógica de bridges, jobs
 ├── frontend/         GUI web
 ├── docs/             Documentación funcional (fuente de verdad del negocio)
-├── openspec/         Artefactos SDD generados por fase
 ├── AGENTS.md
 ├── docker-compose.yml
 ├── .env.example
 ├── pnpm-workspace.yaml
 └── pnpm-lock.yaml    Versionado. No debe existir package-lock.json ni yarn.lock
 ```
+
+No hay directorio `openspec/` en este repo: los artefactos SDD (proposal,
+spec, design, tasks, apply-progress, verify) se persisten en Engram, no en
+archivos versionados — ver `sdd-init/crm_comercial` y el ejemplo de
+`docs/blocks/c-aislamiento.md`.
 
 ---
 
@@ -259,7 +263,7 @@ de npm (§2.1 — cadena de suministro): procedencia verificable (vendor oficial
 o repo de GitHub inspeccionable con autor y licencia identificables), nunca un
 agregador que liste variaciones duplicadas del mismo tema sin mantenedor
 claro. El detalle por skill — fuente, comando de instalación y en qué caso
-concreto debe usarla el agente — vive en `docs/09-skills-agentes-backend.md`
+concreto debe usarla el agente — vive en `docs/24-skills-agentes-backend.md`
 (backend) y `docs/10-skills-agente-frontend.md` (frontend); esos documentos
 también registran las skills evaluadas y descartadas, para no repetir la
 evaluación.

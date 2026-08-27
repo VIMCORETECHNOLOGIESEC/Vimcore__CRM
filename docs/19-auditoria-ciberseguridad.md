@@ -125,7 +125,7 @@ No implementar estos cambios fuera del change SDD de los bloques B–F.
 Las pruebas siguientes **no se han ejecutado**, salvo donde el estado diga
 "hecho". Cada SDD de seguridad debe registrar comando, versión de herramienta,
 fecha, entorno aislado, resultado y evidencia redaccionada en
-`openspec/changes/<change>/verify.md`; los resultados consolidados se reflejan
+Engram (`sdd/<change>/apply-progress` o `verify`, artifact store — no `openspec/`); los resultados consolidados se reflejan
 en este documento, no en handoffs temporales.
 
 | Prioridad | Prueba | Estado | Evidencia mínima de aceptación |
