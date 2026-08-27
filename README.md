@@ -1,126 +1,96 @@
 # CRM Embudo de Leads
 
-CRM comercial para captar, calificar y dar seguimiento a leads publicitarios
-de una sola empresa (instancia aislada, sin multi-tenant) a lo largo de un
-embudo de cinco etapas: **Nuevo → Contactado → Cita → Venta/No Venta**.
-Ingesta multicanal por webhook (Meta, Google Forms, y en el futuro
-LinkedIn/X), deduplicación de clientes, asignación automática por carga de
-trabajo, semáforo de calificación calculado, control de SLA de 24 h,
-notificaciones en vivo por SSE y un dashboard de KPIs también en vivo.
+CRM comercial para captar, deduplicar, asignar y dar seguimiento a leads de
+campañas digitales mediante un embudo de cinco etapas:
+**Nuevo → Contactado → Cita → Venta/No Venta**.
 
-Alcance completo, riesgos y decisiones de diseño: [`docs/01-alcance-mvp.md`](docs/01-alcance-mvp.md).
-Estado real de cada módulo backend/frontend, verificado contra el código:
-[`docs/06-modulos-backend.md`](docs/06-modulos-backend.md) y
-[`docs/07-modulos-frontend.md`](docs/07-modulos-frontend.md).
+El producto implementado es **single-company**: cada cliente usa una instancia
+aislada y una base de datos propia. La evolución hacia holdings y múltiples
+empresas ya tiene sus decisiones resueltas en
+[`docs/16-hallazgos-y-preguntas.md`](docs/16-hallazgos-y-preguntas.md) §8, pero
+la migración e implementación siguen pendientes; todavía no existe aislamiento
+multi-tenant ni debe asumirse en cambios técnicos fuera de la SDD change del
+bloque correspondiente ([`docs/blocks/`](docs/blocks/)).
 
----
+> Antes de diseñar o implementar, consulte
+> [`docs/00-estado-documentacion.md`](docs/00-estado-documentacion.md). Ese mapa
+> indica qué documentos están vigentes, cuáles requieren verificar el código y
+> cuáles no son confiables todavía.
+
+## Qué incluye hoy
+
+- Ingesta por bridges de Meta y Google Forms.
+- Normalización y deduplicación de clientes por teléfono.
+- Asignación de leads por carga y roles operativos.
+- Seguimiento por etapas, semáforo, SLA, citas y cierre comercial.
+- Notificaciones in-app y actualizaciones unidireccionales por SSE.
+- Dashboard de KPIs comerciales.
+
+El alcance comprometido y sus exclusiones están en
+[`docs/01-alcance-mvp.md`](docs/01-alcance-mvp.md). El snapshot técnico vigente,
+incluidas las brechas conocidas, está en
+[`docs/11-plan-integracion.md`](docs/11-plan-integracion.md).
+
+Para una revisión ejecutiva entre equipos, comience por
+[`docs/16-hallazgos-y-preguntas.md`](docs/16-hallazgos-y-preguntas.md). Sintetiza
+hallazgos y el orden de las decisiones pendientes, pero no es un contrato
+funcional ni autoriza implementación.
 
 ## Stack
 
-Monorepo `pnpm` con tres paquetes:
+Monorepo `pnpm` ejecutado mediante Docker Compose:
 
-| Paquete | Qué es | Detalle |
+| Paquete | Responsabilidad | Tecnología principal |
 |---|---|---|
-| [`backend/`](backend/README.md) | API REST — Express + TypeScript + Prisma + PostgreSQL | ver su README |
-| [`frontend/`](frontend/README.md) | SPA — React 19 + TypeScript + Vite + Tailwind CSS + shadcn/ui | ver su README |
-| `packages/schemas/` | Schemas Zod compartidos entre backend y frontend (ej. política de contraseña, login) | sin README propio, es solo tipos/schemas |
+| `backend/` | API REST, Prisma, bridges, jobs y SSE | Express + TypeScript + PostgreSQL |
+| `frontend/` | SPA responsive | React 19 + TypeScript + Vite + Tailwind CSS |
+| `packages/schemas/` | Contratos Zod compartidos | TypeScript + Zod |
 
-Node 22+, pnpm 11.21.0 (fijado en `packageManager` de `package.json`).
+La versión de pnpm está fijada en `package.json`. No se soporta instalar Node,
+pnpm ni PostgreSQL directamente en el host para trabajar en este repositorio.
 
----
+## Inicio rápido — solo Docker
 
-## Estado del desarrollo (verificado, no aspiracional)
+### Requisitos
 
-**Backend — 9 módulos (M1-M9):** 7 completos al 100%. `M4` (ingesta/bridges)
-tiene los adaptadores Meta y Google Forms terminados; LinkedIn y X quedan
-pendientes por depender de aprobación externa de cada plataforma. `M5`
-(gestión de leads) tiene dos mejoras de UX documentadas como backlog no
-bloqueante. Detalle módulo por módulo: [`docs/06-modulos-backend.md`](docs/06-modulos-backend.md#estado-consolidado-verificado-contra-código-real-en-testintegration-2026-08-19).
+- Docker Engine con Docker Compose v2.
+- Puertos `3000` y `5173` libres.
 
-**Frontend — 8 módulos (F1-F8):** 6 completos al 100%, incluido el dashboard
-con actualización en tiempo real por SSE. Los dos módulos restantes (listado
-y detalle de leads) tienen gaps puntuales de UX/tiempo real, todos
-documentados como backlog no bloqueante. Detalle: [`docs/07-modulos-frontend.md`](docs/07-modulos-frontend.md#estado-consolidado-verificado-contra-código-real-en-testintegration-2026-08-19).
-
-Ningún módulo propuesto está sin empezar. Los pendientes que quedan no
-bloquean un despliegue para pruebas con los bridges de **Meta** y
-**Google Forms** (los dos que sí están completos de punta a punta).
-
----
-
-## Despliegue local con Docker
-
-Todo el stack (base de datos, backend, frontend) levanta con Docker Compose
-desde la raíz del repositorio — no hace falta instalar Node/PostgreSQL en la
-máquina host.
-
-### 1. Variables de entorno
+### 1. Configurar variables
 
 ```bash
 cp .env.example .env
 ```
 
-Completá `.env` con valores reales. Como mínimo para levantar el stack:
+Complete `.env` sin versionarlo. Para el entorno Docker local:
 
-- `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` — credenciales de la
-  base de datos del contenedor `db`.
-- `DATABASE_URL` — debe apuntar al host `db` (nombre del servicio en
-  `docker-compose.yml`), nunca a `localhost`, porque backend y `db` se
-  conectan por la red interna de Compose:
-  `postgresql://<user>:<password>@db:5432/<db_name>?schema=public`.
-- `JWT_SECRET` — mínimo 32 caracteres (`openssl rand -hex 32`).
-- `TOKEN_ENCRYPTION_KEY` — exactamente 64 caracteres hex / 32 bytes
-  (`openssl rand -hex 32`), usado para cifrar en reposo los tokens de las
-  cuentas publicitarias de los bridges.
-- `SEED_PASSWORD` / `SEED_BRIDGE_CLAVE_API` — solo si vas a correr el seed
-  de datos de desarrollo (ver más abajo).
+- `DATABASE_URL` debe usar el host interno `db`, no `localhost`.
+- `JWT_SECRET` requiere al menos 32 caracteres.
+- `TOKEN_ENCRYPTION_KEY` requiere 64 caracteres hexadecimales.
+- `SEED_PASSWORD` y `SEED_BRIDGE_CLAVE_API` solo son necesarios para sembrar
+  datos de desarrollo.
 
-El resto de variables (Meta, CORS, TTL de JWT) tienen su propio comentario
-en [`.env.example`](.env.example) — es la guía versionada de qué necesita
-cada entorno.
+La referencia completa y sin secretos vive en [`.env.example`](.env.example).
 
-### 2. Levantar el stack
+### 2. Construir y levantar
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
-Esto construye y levanta tres servicios:
+Compose espera a que la base esté saludable, aplica las migraciones pendientes,
+arranca el backend y, cuando este responde, inicia el frontend con recarga en
+desarrollo. `db` y `backend` tienen healthcheck; `frontend` no. Cuando Vite
+termine de arrancar, abra:
 
-| Servicio | Puerto host | Notas |
-|---|---|---|
-| `db` (PostgreSQL 16) | no expuesto por defecto | ver nota de Windows más abajo si necesitás conectarte desde el host |
-| `backend` | `3000` | corre `prisma migrate deploy` automáticamente antes de arrancar (`pnpm --filter backend dev`), con hot-reload vía bind mount |
-| `frontend` | `5173` | `pnpm --filter frontend dev` (Vite), con hot-reload vía bind mount |
+- Aplicación: `http://localhost:5173`
+- API: `http://localhost:3000/api/v1`
+- Salud: `http://localhost:3000/api/v1/salud`
 
-`backend` espera a que `db` esté saludable (`healthcheck` con `pg_isready`);
-`frontend` espera a que `backend` esté saludable (`GET /api/v1/salud`) antes
-de arrancar. La primera vez que corre, `backend` aplica todas las
-migraciones de Prisma pendientes contra `db` — no hace falta correrlas a
-mano.
+PostgreSQL no expone un puerto al host. El acceso soportado ocurre desde los
+contenedores de Compose.
 
-Accedé a la app en `http://localhost:5173`. La API queda en
-`http://localhost:3000/api/v1`.
-
-### Nota Windows/local: exponer el puerto de la base
-
-Si necesitás conectarte a `db` desde el host (un cliente SQL, correr tests
-del backend fuera de Docker, etc.), el servicio `db` no publica su puerto
-por defecto. Agregá un `docker-compose.override.yml` (gitignored,
-específico de tu máquina) con un puerto libre en el host:
-
-```yaml
-services:
-  db:
-    ports:
-      - "5433:5432"
-```
-
-Con eso, `DATABASE_URL` para herramientas del host (no para el contenedor
-`backend`, que sigue usando `db:5432` interno) pasa a ser
-`postgresql://<user>:<password>@localhost:5433/<db_name>?schema=public`.
-
-### 3. Sembrar datos de desarrollo (opcional)
+### 3. Sembrar datos de desarrollo — opcional
 
 Con el stack levantado:
 
@@ -128,43 +98,36 @@ Con el stack levantado:
 docker compose exec backend pnpm exec prisma db seed
 ```
 
-Crea un usuario `activo=true` por cada rol de `RolUsuario`
-(`ADMINISTRADOR`/`SUPERVISOR`/`ASESOR`/`VENDEDOR`) con la contraseña de
-`SEED_PASSWORD`, y un bridge de Google Forms de prueba con la clave de API
-de `SEED_BRIDGE_CLAVE_API`. Pensado para desarrollo/demo, no para producción.
+El seed vigente crea cuatro usuarios, uno por rol, y tres bridges inactivos de
+prueba: Google Forms, Facebook e Instagram. Las contraseñas provienen de
+`SEED_PASSWORD`; el proceso informa las claves generadas que correspondan.
 
-### Apagar y limpiar
+### 4. Ejecutar verificaciones
+
+Todos los comandos se ejecutan dentro de los contenedores:
 
 ```bash
-docker compose down            # detiene los contenedores, conserva el volumen de datos
-docker compose down -v         # además borra el volumen (pierde los datos de la BD)
+docker compose exec backend pnpm test
+docker compose exec frontend pnpm test
+docker compose exec backend pnpm build
+docker compose exec frontend pnpm build
 ```
 
----
+### 5. Detener el entorno
 
-## Desarrollo sin Docker
+```bash
+docker compose down
+```
 
-Cada paquete documenta su propio flujo de desarrollo local (instalación,
-tests, build) en su README: [`backend/README.md`](backend/README.md) y
-[`frontend/README.md`](frontend/README.md). Necesitás un PostgreSQL propio
-accesible (local o el mismo contenedor `db` con el puerto expuesto, ver nota
-de arriba) y replicar las variables de `.env.example` en tu entorno.
-
----
+El volumen de PostgreSQL se conserva. Para reiniciar desde una base vacía,
+use `docker compose down -v` sabiendo que elimina los datos locales.
 
 ## Documentación
 
-| Documento | Contenido |
-|---|---|
-| [`docs/01-alcance-mvp.md`](docs/01-alcance-mvp.md) | Qué está dentro y fuera del MVP, riesgos abiertos |
-| [`docs/02-reglas-negocio.md`](docs/02-reglas-negocio.md) | Reglas de negocio del embudo, asignación, SLA |
-| [`docs/03-modelo-datos.md`](docs/03-modelo-datos.md) | Modelo de datos (Prisma) |
-| [`docs/04-formularios-semaforo.md`](docs/04-formularios-semaforo.md) | Formularios de calificación por etapa y rúbrica del semáforo |
-| [`docs/05-bridges.md`](docs/05-bridges.md) | Contrato de ingesta por red social/bridge |
-| [`docs/06-modulos-backend.md`](docs/06-modulos-backend.md) | Checklist y estado real de cada módulo backend (M1-M9) |
-| [`docs/07-modulos-frontend.md`](docs/07-modulos-frontend.md) | Checklist y estado real de cada módulo frontend (F1-F8) |
-| [`docs/08-dashboard-kpis.md`](docs/08-dashboard-kpis.md) | Definición de los KPIs del dashboard |
-| [`docs/09-linea-grafica-frontend.md`](docs/09-linea-grafica-frontend.md) | Paleta, línea gráfica, librerías de UI |
-| [`docs/11-plan-integracion.md`](docs/11-plan-integracion.md) | Plan de integración de las ramas de desarrollo |
-| [`docs/12-pruebas-manuales-qa.md`](docs/12-pruebas-manuales-qa.md) | Checklist de pruebas manuales de QA contra el ambiente Docker con datos sembrados |
-| [`docs/13-configuracion-bridges.md`](docs/13-configuracion-bridges.md) | Guía operativa de configuración de bridges (Meta y Google Forms) |
+El mapa canónico de autoridad, estado de confianza y brechas de cada
+documento vive en un único lugar:
+[`docs/00-estado-documentacion.md`](docs/00-estado-documentacion.md).
+
+Para variables de entorno, comandos de build/test y estructura de carpetas
+de cada paquete, ver [`docs/18-desarrollo-local.md`](docs/18-desarrollo-local.md)
+— complementa, sin repetir, el flujo Docker de este README.

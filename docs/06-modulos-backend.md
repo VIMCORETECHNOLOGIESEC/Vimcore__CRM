@@ -54,3 +54,19 @@ es endurecimiento del contrato existente.
 El diario de PR/commit por módulo (M1-M9) que este documento conservaba se
 retiró: `git log --follow` sobre `backend/src/**` recupera esa cronología
 completa. Este documento mantiene solo el estado consolidado vigente.
+
+---
+
+## Archivos de alto riesgo — coordinar antes de tocar en paralelo
+
+Archivos transversales donde un cambio de bloque en curso puede colisionar
+con otro si se tocan al mismo tiempo sin coordinación:
+
+| Archivo | Motivo |
+|---|---|
+| `backend/prisma/schema.prisma` | Único archivo; cada bloque nuevo le agrega modelos → conflicto de migración si se toca en paralelo |
+| `backend/src/lib/event-broker.ts` | Hub SSE transversal, 24 símbolos dependientes de `publish` |
+| `backend/src/services/leads.access.ts` | Autoridad `canEdit`/`canTransfer`, reescrita tanto por Bloque C como por Bloque D |
+| `backend/src/lib/jwt.ts` + middlewares de rol | Transversal a toda ruta protegida; 17 archivos backend siguen referenciando `RolUsuario` (retiro real es Bloque F) |
+| `frontend/src/api/httpClient.ts` | Cliente HTTP único, 8 módulos de negocio dependen directo |
+| `frontend/src/router.tsx` + `frontend/src/layouts/navigation.ts` | Edición obligatoria por cada módulo nuevo → colisión de merge frecuente aunque trivial |

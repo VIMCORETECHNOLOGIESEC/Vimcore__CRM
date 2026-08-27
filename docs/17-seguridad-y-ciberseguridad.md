@@ -12,7 +12,7 @@
 
 1. Para el producto actual, aplicar §1 y el checklist de §3.
 2. Para multi-tenant, implementar §2 sólo mediante el SDD del bloque B–F.
-3. Registrar cada prueba en `openspec/changes/<change>/verify.md`; actualizar
+3. Registrar cada prueba en Engram (`sdd/<change>/apply-progress` o `verify`, artifact store — no `openspec/`, ver `docs/blocks/c-aislamiento.md`); actualizar
    `docs/19` únicamente con el resultado consolidado.
 4. Nunca documentar, loguear ni incluir en fixtures contraseñas, secretos,
    tokens, payloads completos de webhook o PII innecesaria.

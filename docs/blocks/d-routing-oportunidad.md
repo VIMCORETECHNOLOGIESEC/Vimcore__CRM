@@ -11,6 +11,22 @@ competencia asesor/venta, el canal de ingreso manual de leads, y separar
 `Lead` (contacto) de `Oportunidad` (negociación) para permitir varias
 negociaciones paralelas del mismo cliente en la misma empresa.
 
+### Esencial vs. diferido
+
+Para llegar al multi-tenant esencial no hace falta todo lo de arriba de una
+sola vez:
+
+- **Esencial** (cierra este bloque): modelos `Oportunidad`/`Producto`, pool
+  de asignación scopeado por empresa (D3/D4), autoridad de cierre (D7),
+  split `Lead`/`Oportunidad` (D13), y la decisión registrada del riesgo de
+  invariante `asesorId` (abajo).
+- **Diferido** (módulo de catálogo, con mock — ver "Contratos mock para
+  módulos dependientes" más abajo): el canal de ingreso manual
+  (`CanalManual`, más abajo) y las excepciones auditadas de
+  Administrador/Supervisor (D9). Ninguno de los dos bloquea que el
+  aislamiento y el routing esencial funcionen; se integran cuando este
+  bloque cierre, contra el shape ya especificado acá.
+
 ## Requiere cerrado
 
 - **Bloque C** — el pool de asignación y la autoridad de cierre deben operar
@@ -28,9 +44,9 @@ negociaciones paralelas del mismo cliente en la misma empresa.
   actualmente responsable puede marcar `VENTA`/`NO_VENTA`.
 - **D8 — Modalidad del handoff**: asignación automática inmediata al pool de
   habilitados para venta, sin aceptación manual.
-- **D9 — Política de excepciones**: Administrador y Supervisor conservan
-  reasignación manual auditada, sobre el flujo automático de D8, no como
-  reemplazo.
+- **D9 — Política de excepciones** *(diferido, ver "Esencial vs. diferido" arriba)*:
+  Administrador y Supervisor conservan reasignación manual auditada, sobre
+  el flujo automático de D8, no como reemplazo.
 - **D13 — Límite Lead→Oportunidad**: un mismo cliente puede tener varias
   negociaciones paralelas en la misma empresa; `Lead` (contacto) y
   `Oportunidad` (negociación) dejan de ser la misma fila.
@@ -111,6 +127,11 @@ anclada al responsable vigente, sin importar cómo llegó a serlo.
 
 ## Canal de ingreso manual y catálogo dinámico (movido desde `docs/16` §8.4)
 
+> **Diferido** — no bloquea el cierre esencial de este bloque; se construye
+> como módulo de catálogo con mock (ver "Contratos mock para módulos
+> dependientes" más abajo) contra el shape de abajo y se integra cuando se
+> agregue el endpoint real.
+
 ```prisma
 model CanalManual {
   id        String   @id @default(uuid()) @db.Uuid
@@ -145,6 +166,47 @@ model CanalManual {
   para reactivarlos sin reconstruir la opción. El `enum RedSocial` no
   cambia. `CanalManual` es la vía para canales sin bridge (referido,
   llamada, feria) y es dinámico por empresa.
+
+## Contratos mock para módulos dependientes (frontend)
+
+Módulos de frontend que dependen de este bloque pero no necesitan esperar a
+que esté cerrado para construirse, si fijan su contrato contra el shape ya
+especificado acá y lo enchufan al backend real después.
+
+### Autoridad de cierre de negociación
+
+Los campos de cierre (`montoVenta`, `observacionCierre`, `formaPago`,
+`cerradaEn`) migran de `Lead` a `Oportunidad` (ver esquema arriba). El
+contrato de cierre en frontend se tipa contra el modelo `Oportunidad` ya
+documentado en este bloque, con fixture local (`msw` o similar) en vez de
+pegarle al endpoint actual de `Lead` — hacerlo directo sobre `Lead` hoy es
+retrabajo garantizado.
+
+- **Front:** `frontend/src/funcionalidades/leads/detalle/CierreVentaForm.tsx`,
+  `cierre.schemas.ts`.
+- **Back:** ninguno todavía — el mock se reemplaza por el endpoint real
+  cuando el split `Lead`/`Oportunidad` (D13) y la autoridad de cierre (D7)
+  esenciales de este bloque queden cerrados.
+
+### Guard de edición y sesión en detalle de lead
+
+Depende de `backend/src/services/leads.access.ts` (`canEdit`/`canTransfer`),
+reescrito tanto por Bloque C como por este bloque. Mock a construir ahora:
+interfaz `AutorizacionEdicion { puedeEditar, puedeTransferir, motivo }`
+consumida vía un hook (`useAutorizacionLead`) que hoy pega contra el
+endpoint actual — cuando el endpoint real esté disponible, solo cambia la
+fuente de datos del hook, no el contrato que ya consume la UI.
+
+- **Front:** `LeadTimeline.tsx`, `FormularioEtapaLead.tsx`,
+  `LeadDetallePage.tsx` (guard de edición + redirección ante 403).
+- **Back:** ninguno nuevo por ahora.
+
+### Canal de ingreso manual (UI)
+
+Mientras el endpoint real de `CanalManual` (arriba) no existe: UI de "Cargar
+lead manual" + administración del catálogo de canales, contra el shape ya
+especificado (`nombre`, `activo`, `empresaId`) con datos fixture; wiring
+real cuando se agregue el endpoint.
 
 ## Migración (de `docs/14` §13, Fase 5)
 
