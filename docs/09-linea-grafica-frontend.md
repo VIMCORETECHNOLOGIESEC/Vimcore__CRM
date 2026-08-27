@@ -173,14 +173,11 @@ Restricciones: sin bloqueo de interfaz (mostrar estado de carga), estados de
       `projectId 8669152245244265576` / `assets/15350993658645954285`. Esperar
       timeouts en pantallas complejas (ver §6) y tener listo el patrón de
       wireframe HTML como plan B.
-- [x] Instalar shadcn/ui (CLI legacy `3.8.5`, la última pre-v4: `@latest`
-      resuelve a la generación v4, preset-based con Tailwind v4/oklch,
-      incompatible con Tailwind v3.4 fijado en este repo) + React Router
-      (enrutado, no TanStack Router — corrección de esta línea, ver
-      `docs/07-modulos-frontend.md` §1 tabla de stack) + TanStack Query +
-      React Hook Form + Zod (pendientes de uso hasta F4/F7/F8) + lucide-react
-      + sonner + date-fns, como parte de F1. **Pendiente:** `@tanstack/react-table`
-      no está instalado todavía — se agrega cuando arranque F3.
+- [x] Instalar shadcn/ui (CLI legacy `3.8.5`, fijado por incompatibilidad
+      de `@latest`/v4 con Tailwind v3.4 de este repo) + React Router +
+      TanStack Query + React Hook Form + Zod + lucide-react + sonner +
+      date-fns, como parte de F1. **Pendiente:** `@tanstack/react-table` se
+      agrega cuando arranque F3.
 - [x] Definir la paleta categórica final de Recharts junto con F5 — resuelta
       en §3 (`#DB2777 #2563EB #0D9488 #7C3AED #0891B2`, corregida y validada
       con la skill de dataviz; el punto de partida original de 4 tonos
