@@ -1,8 +1,9 @@
-# 23 — Contrato frontend: bridge API_EXTERNA (bridgeApi)
+# Contrato frontend: bridge API_EXTERNA (bridgeApi) — material de prueba
 
-> **Estado:** vigente para los endpoints implementados abajo. El job de
-> polling que efectivamente trae los leads todavía no existe — esto es
-> solo la administración del bridge (crear, configurar, probar conexión).
+> **Estado:** material de trabajo/pruebas, fuera de la secuencia numerada de
+> `docs/` y sin registrar en `docs/00-estado-documentacion.md` a propósito —
+> no es documentación de producción. Cubre los endpoints implementados abajo;
+> el job de polling que efectivamente trae los leads todavía no existe.
 
 Bridge genérico tipo *pull*: en vez de un adaptador de código por proveedor
 (como Meta o Google Forms), el administrador carga la URL, la API key y un
