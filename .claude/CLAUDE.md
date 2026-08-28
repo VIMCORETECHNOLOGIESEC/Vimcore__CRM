@@ -272,8 +272,11 @@ The user controls receipt-driven development with a switch: `gentle-ai review mo
 
 Instalado 2026-08-26. Fuente: repo público verificado `anthropics/skills` (GitHub, org `anthropics`, 171k+ stars), mirror local en el marketplace oficial `anthropics/claude-plugins-official` ya registrado en esta máquina. Sin dependencias extra (son guías en Markdown, no código a ejecutar). Instalado solo en este worktree (`dev-front`), copiado en `.claude/skills/frontend-design/` desde `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/frontend-design/skills/frontend-design/`.
 
+`design-dashboards` sumado 2026-08-26, fuente externa verificada `github.com/dastoyan/skills` (MIT, atribución en `.claude/skills/design-dashboards/NOTICE.md`), copiado completo (`SKILL.md` + `references/dashboard-design-principles.md` + `README.md` + `NOTICE.md`) en `.claude/skills/design-dashboards/`. Instalado solo en este worktree (`dev-front`).
+
 **Antes de proponer, generar o revisar cualquier pantalla/mock/variante visual del CRM** (incluyendo trabajo tipo `docs/mockups/*`), cargar explícitamente estos skills en este orden — la regla "Contextual Skill Loading" del CLAUDE.md base ya obliga a chequear esto antes de cada respuesta, esta sección solo fija el orden y el rol de cada uno para este tipo de tarea:
 
+0. **`design-dashboards`** (nuevo) — crítica/estrategia del Dashboard del CRM (no toca estilo visual): valida audiencia, decisión que soporta cada KPI/gráfico, contexto de comparación, antes de tocar layout. Usar primero cuando se audite, rediseñe o especifique el Dashboard (7 KPIs + 6 gráficos ya fijados en `docs/mockups/2026-08-26-propuestas-visuales-multitenant.md` y `.interface-design/system.md` — este skill no reabre esos hechos de negocio, solo valida si el tratamiento visual/orden sirve a la decisión real). `disable-model-invocation: true` en su frontmatter: invocar siempre explícito, nunca automático.
 1. **`frontend-design`** (nuevo) — dirección estética: paleta, tipografía, evitar el "look genérico de IA" (fondo crema + serif, negro + acento ácido, broadsheet), tomar un riesgo estético justificado por el brief. Usar primero, antes de tocar código, para fijar la dirección de cada propuesta (A/B/C).
 2. **`interface-design`** — craft de producto: dashboards, paneles, jerarquía visual, tokens, estados. Es el skill correcto para pantallas de datos como Dashboard/Kanban del CRM (no para landing pages).
 3. **`transitions-dev`** + **`transitions-polish`** — animaciones/microinteracciones (hover, stagger, modales, badges) con escala de tokens de motion; usar cuando la propuesta pida "animaciones, elementos modernos" (ej. Propuesta C).
@@ -285,6 +288,16 @@ Instalado 2026-08-26. Fuente: repo público verificado `anthropics/skills` (GitH
 9. **`vercel-react-best-practices`** — patrones de performance React/Next al implementar en código real.
 10. **`harden`** — estados vacíos/error/carga cuando la pantalla pase de mock a producción.
 
+**Skills con `disable-model-invocation: true` (ej. `design-dashboards`)**: ningún agente de este proyecto — yo mismo, `crm-frontend`, `crm-backend`, o cualquier subagente delegado — puede disparar estas skills vía tool `Skill`; el intento devuelve un error explícito del harness ("cannot be used with Skill tool due to disable-model-invocation"). Verificado 2026-08-26 contra `design-dashboards`. Cuando el flujo de trabajo necesite ese skill y la auto-invocación falle:
+
+1. **No replicar el workflow del skill "a mano"** leyendo su `SKILL.md`/`references/*` y actuando por fuera del framework — eso viola la misma restricción que invocarlo directo (el propio `design-dashboards` lo prohíbe explícitamente: "Do not replicate this skill's workflow by other means").
+2. **Indicarle al usuario, en texto plano de la respuesta, el comando slash exacto** que debe tipear él mismo (ej. `/design-dashboards`) y la razón (el skill exige invocación explícita por diseño, no es un bug ni una skill rota).
+3. **Detenerse en ese punto** — no continuar la parte del trabajo que dependía de ese skill hasta que el usuario lo ejecute y comparta el resultado.
+
+Esta regla aplica a cualquier skill futura que se instale con el mismo flag, no solo a `design-dashboards`.
+
 **No instalados / evaluados y descartados para esta tarea** (mismo repo oficial `anthropics/skills`): `theme-factory` (pensado para slide decks/presentaciones, no para UI de producto — no aplica) y `web-artifacts-builder` (toolchain React+Vite+shadcn completo para artifacts de claude.ai; útil si en el futuro se quiere prototipar variantes interactivas en vez de estáticos de Stitch, pero no requerido para el alcance actual — instalar solo si se pide explícitamente).
+
+**Evaluadas y descartadas 2026-08-26** (pedido explícito del usuario, 3 fuentes externas de dashboard): `kpi-dashboard-design` (`secondsky/claude-skills`, espejo de `mcpmarket.com/.../kpi-dashboard-designer-1`) — genérica, sus KPIs y colores de semáforo de ejemplo (`#22c55e`/`#f59e0b`/`#ef4444`) chocan con los ya fijados acá (`#16A34A`/`#D97706`/`#DC2626`/`#94A3B8`), riesgo de drift sin aportar nada no cubierto ya. `housegarofalo/claude-code-base` → `dashboard-design` (mirror en `lobehub.com`) — repo de origen en GitHub devolvió 404 al verificar (fuente inverificable), y por descripción de terceros es un skill genérico de design-system (Tailwind/cards/forms) ya cubierto por `interface-design` + `baseline-ui` + `better-layout`, no específico de dashboards. No reintentar sin pedido explícito y sin poder verificar el contenido real primero.
 
 `ui-skills.com/skills` no pudo verificarse (bloqueó el acceso, HTTP 403) — no se documenta nada de ese catálogo por no poder confirmarlo de forma independiente.

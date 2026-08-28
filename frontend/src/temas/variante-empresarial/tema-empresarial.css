@@ -1,0 +1,532 @@
+/*
+ * Tokens de la variante "Propuesta B -- Consejo directivo (empresarial
+ * premium)" (.interface-design/system.md). Scopeados bajo `.tema-empresarial`
+ * a propósito -- ver `temas/README.md`: esta paleta NO es la línea gráfica
+ * base del proyecto (esa vive en `src/index.css`/`tailwind.config.js`, negro
+ * #111113 sobre blanco), es una dirección exploratoria que solo debe pintar
+ * dentro de esta página de referencia.
+ *
+ * Valores copiados 1:1 de `docs/mockups/assets/propuesta-b-empresarial.html`
+ * (mock de referencia visual ya corregido), no reinventados acá.
+ */
+
+.tema-empresarial {
+  --indigo: #1e2a5e;
+  --indigo-2: #14204a;
+  --papel: #f6f1e7;
+  --verde: #16a34a;
+  --amarillo: #d97706;
+  --rojo: #dc2626;
+  --gris-semaforo: #94a3b8;
+  --cat-1: #db2777;
+  --cat-2: #2563eb;
+  --cat-3: #7c3aed;
+  --cat-4: #0891b2;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /*
+   * Colores de marca del holding que inicia sesión -- pensados para
+   * sobreescribirse por empresa (login demo, 2026-08-27). Acá quedan en
+   * `--indigo`/`--cat-2` como default de esta variante, pero son la
+   * variable que un futuro theming por tenant reemplazaría, no un valor
+   * fijo hardcodeado en el componente.
+   */
+  --marca-color-1: var(--indigo);
+  --marca-color-2: var(--cat-2);
+
+  background: var(--papel);
+  color: var(--indigo-2);
+  font-family: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+}
+
+.tema-empresarial .headline {
+  font-family: "Fraunces", Georgia, serif;
+  color: var(--indigo);
+}
+
+.tema-empresarial .tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Regla de libro contable": divisor vertical fino reutilizable entre
+   bloques/columnas, a propósito distinto de un `border` Tailwind genérico --
+   ver la nota de "abierto a retoque" en system.md sobre variar su peso. */
+.tema-empresarial .ledger-divider {
+  border-top: 1px solid rgba(30, 42, 94, 0.18);
+}
+
+.tema-empresarial .ledger-divider-v {
+  border-left: 1px solid rgba(30, 42, 94, 0.18);
+}
+
+/*
+ * Login premium (2026-08-27, `LoginScreenDemo.tsx`) -- extiende el motivo
+ * "regla de libro contable" (`.ledger-divider`, arriba) a un patrón de fondo
+ * de página completa, en vez de inventar una textura sin relación con el
+ * resto de la variante: retícula fina en diagonal, mismo tinte
+ * `rgba(30, 42, 94, ...)` que ya usan los bordes/divisores de todo este
+ * archivo, solo mucho más tenue (.045) para que quede como textura, no
+ * como líneas visibles. Fondo base `--papel`.
+ */
+.tema-empresarial .login-patron-fondo {
+  background-color: var(--papel);
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(30, 42, 94, 0.045) 0,
+      rgba(30, 42, 94, 0.045) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(30, 42, 94, 0.045) 0,
+      rgba(30, 42, 94, 0.045) 1px,
+      transparent 1px,
+      transparent 26px
+    );
+}
+
+/*
+ * Panel de marca (gradiente personalizable por holding, `--marca-color-1`/
+ * `--marca-color-2` de arriba) -- esquina superior izquierda a inferior
+ * derecha (135deg). `box-shadow` solo en X (sin desplazamiento vertical) para
+ * que se lea como el panel "flotando" delante del patrón de fondo, no como
+ * una sombra de caída genérica -- refuerza la separación de los dos bloques
+ * con profundidad en vez de un borde/línea dura entre ellos (criterio de la
+ * skill interface-design: "jerarquía por espacio y sombra antes que por
+ * líneas").
+ */
+.tema-empresarial .login-panel-marca {
+  background: linear-gradient(135deg, var(--marca-color-1) 0%, var(--marca-color-2) 100%);
+  box-shadow: 32px 0 56px -24px rgba(20, 32, 74, 0.5);
+  position: relative;
+  z-index: 1;
+}
+
+/* Card del formulario, flotando sobre el patrón -- misma familia de sombra
+   de una sola capa que `.leads-table-card` (Fijo, "sombras suaves de una
+   sola capa"), radio y peso ligeramente mayores por ser la pieza central de
+   una pantalla de login en vez de un elemento embebido en un catálogo. */
+.tema-empresarial .login-card {
+  background: var(--papel);
+  border: 1px solid rgba(30, 42, 94, 0.14);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 56px -20px rgba(30, 42, 94, 0.32),
+    0 2px 8px rgba(30, 42, 94, 0.08);
+}
+
+/* Sello/credencial cuadrada (selector de empresa) -- identidad de esta
+   variante, nunca un dropdown genérico (system.md). Específico de esta
+   carpeta: no es una primitiva reutilizable por otra dirección visual. */
+.tema-empresarial .seal {
+  display: flex;
+  height: 64px;
+  width: 64px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--indigo);
+  border-radius: 9999px;
+  font-family: "Fraunces", serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--indigo);
+}
+
+/*
+ * Boot -- dos alternativas de contenido interno del `.seal` de arriba,
+ * mostradas lado a lado en el catálogo para que el usuario elija en vivo en
+ * vez de un tercer round de rechazo (el diamante mecánico indexado, dos
+ * veces rechazado -- "descuadrado", después "tosco" -- ya no existe como
+ * opción). El marco circular del sello NO cambió, es identidad fija de la
+ * dirección; solo cambia lo que va adentro. Colores: `--cat-2` (`#2563EB`,
+ * ya establecido), ningún color nuevo. `color-mix()` para el anillo de fondo
+ * tenue -- nunca el modificador `/NN` de Tailwind sobre estas variables
+ * (ese es justo el bug de `Skeleton`/`bg-primary/10`: `/NN` no resuelve de
+ * forma confiable sobre una CSS var en hex plano).
+ */
+
+/* Opción A -- circular: arco (no círculo completo) vía SVG + stroke-dasharray,
+   rotación continua y suave (a propósito NO indexada -- esa textura fue lo
+   que se leyó como "tosco" en el diamante). Anillo de fondo tenue detrás del
+   arco para dar sensación de capas, no un arco solo flotando en el vacío. */
+.tema-empresarial .boot-circular-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--cat-2) 18%, transparent);
+  stroke-width: 3;
+}
+
+.tema-empresarial .boot-circular-arc {
+  fill: none;
+  stroke: var(--cat-2);
+  stroke-width: 3;
+  stroke-linecap: round;
+  /* Circunferencia de r=13: 2*PI*13 ~= 81.68 -- "55 200" deja ~67% del anillo
+     visible (un arco, no el círculo completo) y el resto oculto. */
+  stroke-dasharray: 55 200;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.tema-empresarial .boot-circular.is-playing .boot-circular-arc {
+  animation: bootCircularSpin 1100ms linear infinite;
+}
+
+@keyframes bootCircularSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Opción B -- puntos: 3 puntos en cascada (stagger), escala + opacidad, con
+   un leve `translateY` sincronizado ("bobbing"). Timing equivalente a los
+   tokens de motion de la skill `transitions-dev`
+   (`--duration-stagger`/`--ease-in-out`) -- valores literales acá porque esa
+   skill es una guía de agente, no un paquete de runtime a importar. */
+.tema-empresarial .boot-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tema-empresarial .boot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--cat-2);
+  opacity: 0.35;
+  transform: scale(0.7);
+}
+
+.tema-empresarial .boot-dots.is-playing .boot-dot {
+  animation: bootDotPulse 1100ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.tema-empresarial .boot-dots.is-playing .boot-dot:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.tema-empresarial .boot-dots.is-playing .boot-dot:nth-child(2) {
+  animation-delay: 50ms;
+}
+
+.tema-empresarial .boot-dots.is-playing .boot-dot:nth-child(3) {
+  animation-delay: 100ms;
+}
+
+@keyframes bootDotPulse {
+  0%,
+  100% {
+    transform: scale(0.7) translateY(0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1) translateY(-2px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tema-empresarial .boot-circular.is-playing .boot-circular-arc,
+  .tema-empresarial .boot-dots.is-playing .boot-dot {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+/*
+ * Puntos del welcome splash (2026-08-27) -- propuesta modernizada, propia de
+ * `WelcomeSplashLoader.tsx`, desacoplada de `.boot-dots`/`.boot-dot` de
+ * arriba (esos quedan intactos, los sigue usando `SelloBootLoader.tsx`
+ * reservado para el selector de empresa -- no se toca ese componente).
+ * Cambios respecto al patrón anterior:
+ * - Color en `--papel` en vez de `--cat-2`: el fondo ahora es un gradiente
+ *   `--marca-color-1` → `--marca-color-2` (arriba), y el extremo del
+ *   gradiente ES `--cat-2` -- un punto de ese mismo color se volvía casi
+ *   invisible ahí. `--papel` mantiene contraste garantizado contra
+ *   cualquier combinación de colores de marca.
+ * - Glow real (`box-shadow` difuso en el pico de la animación) en vez de
+ *   solo escala/opacidad -- lee como una luz respirando, más premium que un
+ *   simple "puntito que crece".
+ * - Ciclo más largo (1500ms vs. 1100ms) y stagger más marcado (180ms vs.
+ *   50ms) con una curva `cubic-bezier(0.4, 0, 0.2, 1)` más suave (menos
+ *   mecánica que la anterior `cubic-bezier(0.65, 0, 0.35, 1)`) -- ola más
+ *   fluida y perceptible en vez de un parpadeo rápido y sincronizado.
+ */
+.tema-empresarial .welcome-dots {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tema-empresarial .welcome-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: var(--papel);
+  opacity: 0.3;
+  transform: scale(0.6);
+}
+
+.tema-empresarial .welcome-dots.is-playing .welcome-dot {
+  animation: welcomeDotPulse 1500ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.tema-empresarial .welcome-dots.is-playing .welcome-dot:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.tema-empresarial .welcome-dots.is-playing .welcome-dot:nth-child(2) {
+  animation-delay: 180ms;
+}
+
+.tema-empresarial .welcome-dots.is-playing .welcome-dot:nth-child(3) {
+  animation-delay: 360ms;
+}
+
+@keyframes welcomeDotPulse {
+  0%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.3;
+    box-shadow: 0 0 0 0 rgba(246, 241, 231, 0);
+  }
+  45% {
+    transform: scale(1.15);
+    opacity: 1;
+    box-shadow: 0 0 12px 2px rgba(246, 241, 231, 0.55);
+  }
+  75% {
+    transform: scale(0.85);
+    opacity: 0.7;
+    box-shadow: 0 0 4px 0 rgba(246, 241, 231, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tema-empresarial .welcome-dots.is-playing .welcome-dot {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+/*
+ * Welcome splash -- overlay full-screen de bienvenida, mostrado al entrar a
+ * la app ANTES de montar el layout (`App.tsx`) -- distinto del sello de boot
+ * de arriba (`.seal`/`SelloBootLoader`, credencial fija del sidebar/topbar,
+ * no reemplazada). Reutiliza la misma paleta ya definida arriba: fondo
+ * `--indigo` sólido (mismo tono del sidebar/header de esta variante), marca
+ * sobre `--papel`, e indicador de progreso con el mismo patrón de puntos en
+ * `--cat-2` (`.boot-dots`/`.boot-dot`, reutilizado tal cual) -- ningún color
+ * nuevo. Posicionamiento (`fixed`/`absolute`/`inset-0`) vía clases Tailwind
+ * en el componente (`WelcomeSplashLoader.tsx`), no acá -- esta hoja solo
+ * resuelve fondo + transición de entrada.
+ */
+/*
+ * Fondo del splash (2026-08-27, segunda pasada) -- tres capas, de arriba
+ * hacia abajo: (1) viñeta radial sutil (centro transparente, bordes hacia
+ * `--indigo-2`) para dar foco central, sensación de profundidad en vez de
+ * un plano liso; (2) la misma retícula fina que ya usa el fondo del login
+ * (`.login-patron-fondo`), acá en tinte CLARO (`--papel`) porque el fondo
+ * de abajo es oscuro, no papel -- mismo motivo "regla de libro contable",
+ * ningún patrón nuevo; (3) el gradiente diagonal de marca
+ * `--marca-color-1` → `--marca-color-2` (mismas variables personalizables
+ * por holding del login) reemplazando el `--indigo` sólido liso de antes.
+ */
+.tema-empresarial .welcome-splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--marca-color-1);
+  background-image:
+    radial-gradient(ellipse at center, transparent 40%, rgba(20, 32, 74, 0.38) 100%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(246, 241, 231, 0.045) 0,
+      rgba(246, 241, 231, 0.045) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(246, 241, 231, 0.045) 0,
+      rgba(246, 241, 231, 0.045) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    linear-gradient(135deg, var(--marca-color-1) 0%, var(--marca-color-2) 100%);
+  opacity: 0;
+  /*
+   * 600ms (antes 400ms, 2026-08-28) -- feedback de que el traspaso
+   * boot/transición -> pantalla siguiente se sentía "tosco". El fundamento
+   * real del golpe era arquitectónico (`FlujoIntegracionDemo.tsx` montaba la
+   * pantalla destino recién CUANDO el splash ya había terminado de
+   * desvanecerse, así que aparecía de golpe en vez de revelarse) -- eso ya
+   * se corrigió ahí (la pantalla destino queda montada DETRÁS del splash
+   * desde antes, este fade-out revela algo que ya está asentado, no un pop).
+   * Este 600ms es el ajuste complementario: un poco más lento y suave que
+   * antes para que el disolvido en sí también se sienta más liviano/fluido.
+   */
+  transition: opacity 600ms var(--ease-out);
+  pointer-events: none;
+}
+
+.tema-empresarial .welcome-splash.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tema-empresarial .welcome-splash-marca {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  transform: translateY(6px);
+  opacity: 0;
+  transition:
+    transform 650ms var(--ease-out) 120ms,
+    opacity 650ms var(--ease-out) 120ms;
+}
+
+.tema-empresarial .welcome-splash.is-visible .welcome-splash-marca {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tema-empresarial .welcome-splash,
+  .tema-empresarial .welcome-splash-marca {
+    transition-duration: 0.01ms;
+  }
+}
+
+/*
+ * Card real de la tabla de leads (2026-08-27, sección "Tabla de leads") --
+ * segunda pasada tras feedback de que se veía plana: el frame de muestra
+ * genérico del catálogo comparte el mismo `--papel` del canvas de fondo, sin
+ * separación real. Acá se le da el tratamiento que tendría en la app de
+ * verdad: superficie propia + elevación de una sola capa (Fijo, "Profundidad:
+ * sombras suaves de una sola capa" -- NUNCA capas apiladas ni bordes duros
+ * como única fuente de jerarquía). `overflow: hidden` para que el header
+ * sólido de abajo respete el radio del card en vez de sobresalir en
+ * ángulo recto por las esquinas.
+ */
+.tema-empresarial .leads-table-card {
+  background: var(--papel);
+  border: 1px solid rgba(30, 42, 94, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -8px rgba(30, 42, 94, 0.18);
+  overflow: hidden;
+}
+
+/*
+ * Header sólido índigo -- mismo índigo del sidebar/header (Fijo, ningún
+ * color nuevo): le da a la tabla la jerarquía interna (header vs. filas)
+ * que le faltaba compartiendo un solo `--papel` para todo. Selector por tag
+ * (`table thead`), no una clase nueva en `LeadsTable.tsx` -- mismo criterio
+ * que el hover de fila de abajo: cero cambios en el componente real, el
+ * tratamiento entero vive acá scopeado bajo `.leads-table-card`.
+ */
+.tema-empresarial .leads-table-card table thead {
+  background: var(--indigo);
+}
+
+/*
+ * `components/ui/table.tsx` le pone `hover:bg-muted/50` a TODO `<TableRow>`
+ * por diseño (pensado para filas de datos seleccionables) -- eso incluye la
+ * fila del header, que hereda el mismo `<TableRow>` sin distinción. Antes
+ * pasaba desapercibido sobre el fondo papel genérico; con el header sólido
+ * índigo se nota como un tinte gris sucio al pasar el mouse, y no tiene
+ * sentido lógico: el header no es una fila seleccionable. Se neutraliza acá
+ * (mayor especificidad que la utilidad de Tailwind) reafirmando el índigo
+ * sólido en `:hover` -- sin tocar `LeadsTable.tsx` ni el primitive
+ * compartido, que sigue aplicando ese hover a cualquier otra tabla del
+ * proyecto real donde sí corresponde.
+ */
+.tema-empresarial .leads-table-card table thead tr:hover {
+  background: var(--indigo);
+}
+
+.tema-empresarial .leads-table-card table thead th {
+  color: var(--papel);
+  opacity: 0.85;
+  border-color: rgba(246, 241, 231, 0.15);
+}
+
+/* Checkbox "seleccionar todos" del header -- mismo componente real
+   (`components/ui/checkbox.tsx`, borde `--primary` sin tocar), solo se
+   refuerza el contraste del borde contra el fondo índigo sólido. */
+.tema-empresarial .leads-table-card table thead [role="checkbox"] {
+  border-color: rgba(246, 241, 231, 0.6);
+}
+
+/*
+ * Hover de fila de la tabla de leads (catálogo, sección "Tabla de leads") --
+ * refinamiento propio de esta variante SOBRE el hover base compartido
+ * (`.leads-table-row:hover`, `src/index.css`, no tocado/replicado fuera de
+ * acá): en vez del glow gris genérico, un tinte muy sutil de `--indigo` +
+ * una barra de acento vertical en `--cat-2` (mismo azul que ya usa el sello
+ * de boot y el welcome splash de arriba). El `<tr>` real
+ * (`LeadsTable.tsx`) ya trae `className="leads-table-row relative"` -- el
+ * pseudo-elemento de la barra ancla contra ese `relative` existente, sin
+ * tocar el componente.
+ *
+ * La barra entra/sale con `transform: scaleX()` + `opacity`, nunca `width`
+ * (animar `width` dispara layout/reflow en cada frame -- justo lo que evita
+ * un `transform`, compositable por la GPU). Easing propio
+ * `cubic-bezier(0.23, 1, 0.32, 1)` (ease-out marcado, distinto del `ease`
+ * genérico del hover base y del `--ease-out` ya usado por el welcome
+ * splash) -- 180ms, dentro del rango 150-200ms de un hover de fila (rápido,
+ * nunca `transition: all`).
+ */
+.tema-empresarial .leads-table-row {
+  transition:
+    background-color 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tema-empresarial .leads-table-row::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  background: var(--cat-2);
+  transform: scaleX(0);
+  transform-origin: left center;
+  opacity: 0;
+  transition:
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tema-empresarial .leads-table-row:hover,
+.tema-empresarial .leads-table-row:focus-within {
+  background-color: color-mix(in srgb, var(--indigo) 4%, var(--papel));
+}
+
+.tema-empresarial .leads-table-row:hover::before,
+.tema-empresarial .leads-table-row:focus-within::before {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tema-empresarial .leads-table-row {
+    transition-duration: 0.01ms;
+  }
+
+  /* Reducción explícita del efecto (no solo su timing): con reduced motion
+     se conserva el cambio de color de fondo del hover, pero se retira por
+     completo la barra de acento animada por transform -- no tiene sentido
+     dejarla "saltando" a duración casi cero. */
+  .tema-empresarial .leads-table-row::before {
+    display: none;
+  }
+}

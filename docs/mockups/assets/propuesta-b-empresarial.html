@@ -43,7 +43,7 @@
     opacity:0; transform: scale(1.6) rotate(-8deg);
     transition: opacity 260ms var(--ease-out), transform 260ms cubic-bezier(0.34,1.36,0.64,1);
   }
-  #boot-stamp.stamped{ opacity:1; transform: scale(1) rotate(-3deg); }
+  #boot-stamp.stamped{ opacity:1; transform: scale(1) rotate(0deg); }
   #boot-screen.hide{ opacity:0; transition: opacity 400ms var(--ease-out); pointer-events:none; }
 
   .skeleton-block{ background: rgba(30,42,94,0.08); border-radius:4px; position:relative; overflow:hidden; }
@@ -118,17 +118,18 @@
 </div>
 
 <!-- ============ SELECCION DE EMPRESA (TO-BE) ============ -->
+<!-- Este paso solo se muestra cuando el usuario tiene membresía en +1 empresa del holding.
+     Un solo sello aquí es el patrón real: es un paso de confirmación de contexto, no un
+     selector entre opciones — cuando haya más de una empresa, este mismo sello se repite
+     por cada una en la grilla, cada botón navegando a SU propia empresa real. -->
 <div id="view-empresa" class="view min-h-dvh flex items-center justify-center px-4" data-display="flex">
   <div class="fade-in w-full max-w-lg text-center">
     <span class="inline-block text-[10px] font-bold tracking-wide uppercase border border-[color:var(--indigo)] rounded-sm px-2.5 py-1 mb-4">Nuevo · TO-BE</span>
-    <h1 class="headline text-xl font-semibold mb-1" style="color:var(--indigo)">Seleccioná tu empresa</h1>
-    <p class="text-xs opacity-70 max-w-sm mx-auto mb-6">Sos parte de más de una empresa dentro del holding Arcano. Esto solo define el contexto de navegación — el acceso real lo valida el servidor.</p>
-    <div class="flex flex-wrap items-center justify-center gap-6">
+    <h1 class="headline text-xl font-semibold mb-1" style="color:var(--indigo)">Tu empresa</h1>
+    <p class="text-xs opacity-70 max-w-sm mx-auto mb-6">Este paso define el contexto de navegación dentro del holding Arcano — el acceso real ya fue validado por el servidor.</p>
+    <div class="flex items-center justify-center">
       <button class="empresa-btn seal rounded-sm hover:bg-[color:var(--indigo)]/5" data-empresa="Arcano Motos">
         ARCANO<br>MOTOS
-      </button>
-      <button class="empresa-btn seal rounded-sm hover:bg-[color:var(--indigo)]/5" data-empresa="Arcano Repuestos">
-        ARCANO<br>REPUESTOS
       </button>
     </div>
   </div>
@@ -404,13 +405,29 @@
 
   const bootStamp = document.getElementById('boot-stamp');
   const bootScreen = document.getElementById('boot-screen');
-  if (!debugTarget) requestAnimationFrame(() => {
-    setTimeout(() => bootStamp.classList.add('stamped'), 150);
-    setTimeout(() => {
-      bootScreen.classList.add('hide');
-      setTimeout(() => { bootScreen.style.display = 'none'; showView('login'); }, 420);
-    }, 1500);
+  let bootFinished = false;
+
+  function finishBoot(){
+    if (bootFinished) return;
+    bootFinished = true;
+    bootScreen.classList.add('hide');
+  }
+
+  // Única fuente de verdad para el fin del boot: la propia transición CSS de
+  // opacidad dispara el display:none + el cambio de vista, en vez de un
+  // segundo setTimeout hardcodeado que puede desincronizarse del CSS.
+  bootScreen.addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'opacity' && bootScreen.classList.contains('hide')) {
+      bootScreen.style.display = 'none';
+      showView('login');
+    }
   });
+
+  if (!debugTarget) {
+    requestAnimationFrame(() => setTimeout(() => bootStamp.classList.add('stamped'), 150));
+    setTimeout(finishBoot, 1500);
+    bootScreen.addEventListener('click', finishBoot);
+  }
 
   document.getElementById('login-form').addEventListener('submit', (e) => {
     e.preventDefault();

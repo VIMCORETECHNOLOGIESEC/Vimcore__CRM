@@ -13,7 +13,7 @@ import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
 import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
 
-interface AuthContextValue {
+export interface AuthContextValue {
   user: AuthenticatedUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -22,7 +22,16 @@ interface AuthContextValue {
   hasRole: (allowedRoles?: readonly RolUsuario[]) => boolean;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+/**
+ * Exportado a propósito (además de `AuthProvider`/`useAuth`): permite
+ * componer un `<AuthContext.Provider value={...}>` stub con un usuario mock
+ * fijo, sin pasar por la lógica real de `AuthProvider` (restauración de
+ * sesión, `useQuery` de perfil). Único consumidor hoy:
+ * `frontend/src/temas/variante-empresarial/StyleguidePage.tsx`, para previsualizar
+ * `Sidebar`/`Header` de forma aislada sin wiring de red. No cambia el
+ * comportamiento de `AuthProvider`/`useAuth` para el resto de la app.
+ */
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
  * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver
