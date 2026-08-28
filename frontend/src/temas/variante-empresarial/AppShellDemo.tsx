@@ -153,6 +153,10 @@ export function AppShellDemo({ onReiniciar }: AppShellDemoProps) {
                 onToggleSeleccion={onToggleSeleccion}
                 onToggleSeleccionTodos={onToggleSeleccionTodos}
               />
+              <div className="leads-table-footer flex items-center justify-between px-4 py-3 text-sm">
+                <span>Mostrando 1–{LEADS_MOCK_STYLEGUIDE.length} de {LEADS_MOCK_STYLEGUIDE.length} leads</span>
+                <span>Página 1 de 1</span>
+              </div>
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-[var(--indigo-2)] opacity-60">

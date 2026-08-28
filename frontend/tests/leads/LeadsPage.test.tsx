@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
 import type { RolUsuario } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   ),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { fetchLeadsApi, assignLeadsMasivoApi, fetchRedesSocialesCatalogoApi } = await import(
   "@/funcionalidades/leads/leads.api"
 );
@@ -160,7 +160,7 @@ describe("LeadsPage — tabla y vista por rol", () => {
 
     expect(await screen.findByText("Roberto Salazar")).toBeInTheDocument();
     expect(screen.getByText("Reingreso")).toBeInTheDocument();
-    expect(screen.getByText("Rojo · Lead frío")).toBeInTheDocument();
+    expect(screen.getByText("Lead frío")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Responsable" })).toBeInTheDocument();
     expect(screen.getByText("Marta Herrera")).toBeInTheDocument();
     expect(

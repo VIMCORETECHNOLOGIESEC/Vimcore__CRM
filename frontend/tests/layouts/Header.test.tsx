@@ -2,15 +2,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/notificaciones/CampanaNotificaciones", () => ({
   CampanaNotificaciones: () => null,
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { Header } = await import("@/layouts/Header");
 const { PageHeaderProvider, usePageHeader } = await import("@/layouts/PageHeaderContext");
 
@@ -35,10 +36,12 @@ function renderHeader(config: Parameters<typeof usePageHeader>[0]) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <PageHeaderProvider>
-          <Publicador config={config} />
-          <Header />
-        </PageHeaderProvider>
+        <SidebarProvider>
+          <PageHeaderProvider>
+            <Publicador config={config} />
+            <Header />
+          </PageHeaderProvider>
+        </SidebarProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );

@@ -8,6 +8,10 @@
  * ("37 99 235"), nunca como hex plano -- ver el comentario de `:root` en
  * `index.css` para el bug que este envoltorio arregla de raíz.
  *
+ * NOTA: el CLI de shadcn (`add`) reescribe este archivo y deja los tokens
+ * como strings literales ('withOpacity("--x")'), lo que rompe TODOS los
+ * colores. Si el CLI vuelve a tocarlo, restaurar desde este comentario.
+ *
  * @param {string} variableName
  */
 function withOpacity(variableName) {
@@ -21,7 +25,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Montserrat", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -67,6 +71,22 @@ export default {
           DEFAULT: withOpacity("--warning"),
           foreground: withOpacity("--warning-foreground"),
         },
+        // Azul corporativo IDEC Corp (token de marca): mismo valor que
+        // --primary hoy, separado a propósito para que la marca evolucione
+        // sin acoplar el azul de acción genérico. Se usa en la capa de chat
+        // flotante del detalle de lead y su botón flotante de WhatsApp.
+        idec: {
+          DEFAULT: withOpacity("--idec"),
+          foreground: withOpacity("--idec-foreground"),
+        },
+        // Familia vimcore: chrome del sidebar (indigo sólido + pill azul).
+        vimcore: {
+          DEFAULT: withOpacity("--vimcore"),
+          2: withOpacity("--vimcore-2"),
+          hueso: withOpacity("--vimcore-hueso"),
+          accent: withOpacity("--vimcore-accent"),
+          foreground: withOpacity("--vimcore-accent-foreground"),
+        },
         border: withOpacity("--border"),
         input: withOpacity("--input"),
         ring: withOpacity("--ring"),
@@ -77,6 +97,9 @@ export default {
           4: withOpacity("--chart-4"),
           5: withOpacity("--chart-5"),
         },
+        // Superficies del sidebar (componente `ui/sidebar.tsx`): mapeadas al
+        // azul IDEC -- fondo azul, texto blanco, acento/activo pill blanco
+        // con texto azul.
         sidebar: {
           DEFAULT: withOpacity("--sidebar"),
           foreground: withOpacity("--sidebar-foreground"),

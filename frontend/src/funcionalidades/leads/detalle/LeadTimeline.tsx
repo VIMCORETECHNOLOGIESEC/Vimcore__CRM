@@ -39,6 +39,7 @@ const CLASES_ETIQUETA: Record<EstadoNodo, string> = {
 interface LeadTimelineProps {
   lead: Lead;
   mostrarCierre?: boolean;
+  puntuacionActual?: number | null;
   onPuntuacionChange?: (puntuacion: number) => void;
 }
 
@@ -60,6 +61,7 @@ interface LeadTimelineProps {
 export function LeadTimeline({
   lead,
   mostrarCierre = true,
+  puntuacionActual,
   onPuntuacionChange,
 }: LeadTimelineProps) {
   const [cierreAbierto, setCierreAbierto] = useState<"VENTA" | "NO_VENTA" | null>(null);
@@ -120,14 +122,23 @@ export function LeadTimeline({
                     {estado === "completado" ? <Check className="size-5" aria-label="Completado" /> : indice + 1}
                   </span>
                   {estado !== "completado" ? (
-                    <span className={`max-w-full break-words text-sm ${CLASES_ETIQUETA[estado]}`}>
-                      {ETAPA_TIMELINE_ETIQUETAS[etapa]}
-                    </span>
+                    <div className="flex flex-col items-center gap-1">
+                      {estado === "actual" && (etapa === "NUEVO" || etapa === "CONTACTADO") ? (
+                        <span className="text-xs font-semibold tabular-nums text-idec">
+                          Puntuación {puntuacionActual ?? lead.puntuacion ?? "—"}
+                        </span>
+                      ) : null}
+                      <span className={`max-w-full break-words text-sm ${CLASES_ETIQUETA[estado]}`}>
+                        {ETAPA_TIMELINE_ETIQUETAS[etapa]}
+                      </span>
+                    </div>
                   ) : null}
                   {estado === "completado" ? (
                     <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
                       {etapa === "NUEVO" ? (
-                        <span>Puntuación: {lead.puntuacion ?? "Sin calificar"}</span>
+                        <span className="font-medium text-foreground">
+                          Puntuación: {lead.puntuacion ?? "Sin calificar"}
+                        </span>
                       ) : null}
                       <span>{etapa === "NUEVO" ? formatFecha(lead.ingresadoEn) : "Fecha no disponible"}</span>
                     </div>

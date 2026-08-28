@@ -18,14 +18,19 @@ interface FiltroRangoFechasProps {
  */
 export function FiltroRangoFechas({ rango, onChange }: FiltroRangoFechasProps) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Rango de fechas">
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Rango de fechas">
         {PRESETS_AUTOMATICOS.map((preset) => (
           <Button
             key={preset}
             type="button"
             size="sm"
             variant={rango.preset === preset ? "default" : "outline"}
+            className={`h-9 rounded-full px-3.5 text-xs font-medium shadow-none transition-colors sm:px-4 ${
+              rango.preset === preset
+                ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                : "border-border/60 bg-muted/35 text-foreground hover:border-primary/30 hover:bg-primary/5"
+            }`}
             aria-pressed={rango.preset === preset}
             onClick={() => onChange({ ...rango, preset })}
           >
@@ -36,6 +41,11 @@ export function FiltroRangoFechas({ rango, onChange }: FiltroRangoFechasProps) {
           type="button"
           size="sm"
           variant={rango.preset === "personalizado" ? "default" : "outline"}
+          className={`h-9 rounded-full px-3.5 text-xs font-medium shadow-none transition-colors sm:px-4 ${
+            rango.preset === "personalizado"
+              ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+              : "border-border/60 bg-muted/35 text-foreground hover:border-primary/30 hover:bg-primary/5"
+          }`}
           aria-pressed={rango.preset === "personalizado"}
           onClick={() => onChange({ ...rango, preset: "personalizado" })}
         >
@@ -44,7 +54,7 @@ export function FiltroRangoFechas({ rango, onChange }: FiltroRangoFechasProps) {
       </div>
 
       {rango.preset === "personalizado" ? (
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3 border-t border-border/50 pt-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="dashboard-fecha-desde" className="text-xs text-muted-foreground">
               Desde

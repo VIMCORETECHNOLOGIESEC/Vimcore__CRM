@@ -17,7 +17,8 @@ vi.mock("@/api/httpClient", () => ({
 
 const authApi = await import("@/funcionalidades/autenticacion/autenticacion.api");
 const httpClientModule = await import("@/api/httpClient");
-const { AuthProvider, useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { AuthProvider } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 
 const loginApiMock = vi.mocked(authApi.loginApi);
 const logoutApiMock = vi.mocked(authApi.logoutApi);

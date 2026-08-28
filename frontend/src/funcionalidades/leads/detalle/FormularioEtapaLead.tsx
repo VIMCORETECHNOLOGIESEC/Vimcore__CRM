@@ -137,13 +137,13 @@ export function FormularioEtapaLead({
                 {pregunta.opciones.map((opcion) => (
                   <label
                     key={opcion.valor}
-                    className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground"
+                    className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground transition-colors has-[:checked]:text-foreground"
                   >
                     <input
                       type="radio"
                       value={opcion.valor}
                       {...register(pregunta.clave)}
-                      className="size-3.5"
+                      className="size-4 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-muted-foreground/50 bg-background transition-[border-color,border-width] checked:border-[5px] checked:border-primary focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     {opcion.etiqueta}
                   </label>

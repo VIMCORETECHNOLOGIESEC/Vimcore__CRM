@@ -4,11 +4,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/httpClient";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { LoginPage } = await import("@/funcionalidades/autenticacion/LoginPage");
 
 const useAuthMock = vi.mocked(useAuth);

@@ -8,7 +8,13 @@ import type { RolUsuario } from "./usuario";
 
 export type OrigenLead = "NUEVO" | "REINGRESO";
 
-export type RedSocial = "FACEBOOK" | "INSTAGRAM" | "X" | "LINKEDIN" | "GOOGLE_FORMS";
+export type RedSocial =
+  | "FACEBOOK"
+  | "INSTAGRAM"
+  | "X"
+  | "LINKEDIN"
+  | "GOOGLE_FORMS"
+  | "API_EXTERNA";
 
 export type EtapaLead = "NUEVO" | "CONTACTADO" | "CITA" | "VENTA" | "NO_VENTA";
 

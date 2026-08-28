@@ -39,7 +39,7 @@ export function SemaforoBadge({ semaforo, className }: SemaforoBadgeProps) {
     : { badge: "border-border bg-secondary text-muted-foreground", dot: "text-muted-foreground" };
   return (
     <span
-      className={`inline-flex w-fit items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium ${clases.badge} ${className ?? ""}`}
+      className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tracking-[-0.01em] ${clases.badge} ${className ?? ""}`}
     >
       <Circle className={`size-2 fill-current ${clases.dot}`} aria-hidden="true" />
       {semaforo ? SEMAFORO_ETIQUETAS[semaforo] : "Sin calificar"}

@@ -113,6 +113,13 @@ describe("LeadTimeline — progreso lineal hacia adelante (docs/02-reglas-negoci
     expect(screen.getByRole("button", { name: "Guardar y pasar a Cita" })).toBeInTheDocument();
   });
 
+  it("muestra la puntuación en tiempo real encima de la etapa activa calificable", async () => {
+    renderTimeline(leadFake({ etapa: "CONTACTADO", puntuacion: 31 }));
+
+    expect(await screen.findByText("Puntuación 31")).toBeInTheDocument();
+    expect(screen.getByText("Contactado")).toBeInTheDocument();
+  });
+
   it("etapa CITA: último paso lineal, sin formulario de avance lineal (el único destino restante es el cierre)", () => {
     renderTimeline(leadFake({ etapa: "CITA" }));
     expect(screen.queryByText(/^Formulario —/)).not.toBeInTheDocument();

@@ -74,6 +74,14 @@ function renderBridgesPage() {
   );
 }
 
+async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Filtros" }));
+}
+
+async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombre: string) {
+  await user.click(screen.getByRole("button", { name: `Acciones de ${nombre}` }));
+}
+
 beforeEach(() => {
   fetchBridgesApiMock.mockReset();
   createBridgeApiMock.mockReset();
@@ -282,6 +290,7 @@ describe("BridgesPage — filtro (búsqueda, red social, estado, F8)", () => {
     renderBridgesPage();
     await screen.findByText("Meta Ads — Facebook");
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Estado" }));
     await user.click(await screen.findByRole("option", { name: "Inactivo" }));
 
@@ -296,6 +305,7 @@ describe("BridgesPage — filtro (búsqueda, red social, estado, F8)", () => {
     renderBridgesPage();
     await screen.findByText("Meta Ads — Facebook");
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Red social" }));
     await user.click(await screen.findByRole("option", { name: "Google Forms" }));
 
@@ -335,7 +345,7 @@ describe("BridgesPage — paginación (F8)", () => {
     renderBridgesPage();
     await screen.findByText("Meta Ads — Facebook");
 
-    expect(screen.getByRole("button", { name: "Anterior" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Página anterior" })).toBeDisabled();
   });
 
   it("«Siguiente» avanza de página y manda `pagina: 2` a fetchBridgesApi", async () => {
@@ -344,7 +354,7 @@ describe("BridgesPage — paginación (F8)", () => {
     renderBridgesPage();
     await screen.findByText("Meta Ads — Facebook");
 
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Página siguiente" }));
 
     await waitFor(() => {
       expect(fetchBridgesApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2);
@@ -357,7 +367,7 @@ describe("BridgesPage — paginación (F8)", () => {
     renderBridgesPage();
     await screen.findByText("Meta Ads — Facebook");
 
-    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Página siguiente" })).toBeDisabled();
   });
 
   it("cambiar el estado filtrado reinicia la paginación a la página 1", async () => {
@@ -366,9 +376,10 @@ describe("BridgesPage — paginación (F8)", () => {
     renderBridgesPage();
     await screen.findByText("Meta Ads — Facebook");
 
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Página siguiente" }));
     await waitFor(() => expect(fetchBridgesApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2));
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Estado" }));
     await user.click(await screen.findByRole("option", { name: "Activo" }));
 
@@ -446,7 +457,8 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
     renderBridgesPage();
     await screen.findByText("Sin Leads");
 
-    await user.click(screen.getByRole("button", { name: "Dar de baja" }));
+    await abrirMenuAcciones(user, "Sin Leads");
+    await user.click(await screen.findByRole("menuitem", { name: "Dar de baja" }));
     expect(await screen.findByText(/eliminará de forma permanente/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Confirmar" }));
@@ -469,7 +481,8 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
     renderBridgesPage();
     await screen.findByText("Con Leads");
 
-    await user.click(screen.getByRole("button", { name: "Dar de baja" }));
+    await abrirMenuAcciones(user, "Con Leads");
+    await user.click(await screen.findByRole("menuitem", { name: "Dar de baja" }));
     expect(await screen.findByText(/podés reactivarlo/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Confirmar" }));
@@ -491,8 +504,9 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
     renderBridgesPage();
     await screen.findByText("Bridge Pausado");
 
-    expect(screen.queryByRole("button", { name: "Dar de baja" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Reactivar" }));
+    await abrirMenuAcciones(user, "Bridge Pausado");
+    expect(screen.queryByRole("menuitem", { name: "Dar de baja" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("menuitem", { name: "Reactivar" }));
 
     await waitFor(() => expect(reactivateBridgeApiMock).toHaveBeenCalledWith("bridge-inactivo"));
     expect(toastSuccessMock).toHaveBeenCalledWith("Bridge reactivado correctamente.");

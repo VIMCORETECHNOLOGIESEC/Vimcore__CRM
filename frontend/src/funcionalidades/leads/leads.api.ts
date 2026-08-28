@@ -28,6 +28,8 @@ export interface LeadsQueryParams {
    * el servidor no reconoce.
    */
   campaniaId?: string;
+  /** Nombre de campaña, filtrado por el backend contra `payload_original`. */
+  campania?: string;
   responsableId?: string;
   /** ISO `YYYY-MM-DD`, inclusive. Se manda como `desde` al backend real. */
   fechaDesde?: string;
@@ -166,6 +168,7 @@ export async function fetchLeadsApi(params: LeadsQueryParams): Promise<LeadsResp
       semaforo: params.semaforo,
       redSocial: params.redSocial,
       responsableId: params.responsableId,
+      campania: params.campania,
       desde: params.fechaDesde,
       hasta: params.fechaHasta,
       // INTEGRACION-BACKEND-GAP: `EstadoSla` del frontend incluye "CERRADO"

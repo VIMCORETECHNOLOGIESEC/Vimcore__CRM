@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useState } from "react";
-import { CalendarIcon } from "lucide-react";
+import { CalendarDays, CalendarIcon, Clock3 } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { EmptyState } from "@/componentes/states/EmptyState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import type { Cita, ModalidadCita } from "@/tipos/cita";
 import { citaRescheduleSchema, citaScheduleSchema, type CitaScheduleFormValues } from "./cita.schemas";
@@ -64,18 +63,19 @@ function CitaDateTimeField({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <Label htmlFor="programadaPara">Fecha y hora</Label>
-      <div className="flex min-w-0 flex-wrap gap-2">
+    <fieldset className="flex min-w-0 flex-col gap-2">
+      <legend className="text-sm font-medium text-foreground">Fecha y hora</legend>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_7.5rem] gap-2">
         <Popover>
           <PopoverTrigger asChild>
             <Button
               type="button"
               variant="outline"
-              className="min-w-0 flex-1 justify-start px-3 text-left font-normal"
+              id="fecha-cita"
+              className="h-10 min-w-0 justify-start gap-2 border-input bg-background px-3 text-left font-normal hover:bg-accent hover:text-accent-foreground"
             >
-              <CalendarIcon className="size-4 shrink-0" aria-hidden="true" />
-              <span className="truncate">
+              <CalendarIcon className="size-4 shrink-0 text-idec" aria-hidden="true" />
+              <span className="truncate text-sm">
                 {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Elegí una fecha"}
               </span>
             </Button>
@@ -90,17 +90,18 @@ function CitaDateTimeField({
           </PopoverContent>
         </Popover>
         <Input
+          id="hora-cita"
           aria-label="Hora de la cita"
           type="time"
           value={timePart ?? ""}
           onChange={(event) =>
             onChange(`${datePart || format(new Date(), "yyyy-MM-dd")}T${event.target.value}`)
           }
-          className="w-28"
+          className="h-10 min-w-0"
         />
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
+    </fieldset>
   );
 }
 
@@ -231,17 +232,39 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
   });
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-border bg-background p-4">
-      <h2 className="text-sm font-semibold text-foreground">Citas</h2>
+    <section className="flex min-w-0 flex-col gap-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-idec/10 text-idec">
+            <CalendarDays className="size-5" aria-hidden="true" />
+          </span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-base font-semibold leading-tight text-foreground">Agendar cita</h2>
+            <p className="text-xs text-muted-foreground">Coordiná el próximo contacto con este lead</p>
+          </div>
+        </div>
+        <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+          <Clock3 className="size-3.5" aria-hidden="true" />
+          Próxima actividad
+        </span>
+      </div>
 
       {isLoading ? (
         <LoadingState rows={2} rowHeight="h-16" />
       ) : isError ? (
         <p className="text-sm text-destructive">No se pudieron cargar las citas.</p>
       ) : !citas || citas.length === 0 ? (
-        <EmptyState title="Sin citas registradas" description="Agendá la primera cita para este lead." />
+        <div className="flex items-center gap-3 border-y border-dashed border-border py-4" role="status">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <CalendarDays className="size-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Todavía no hay citas</p>
+            <p className="text-sm text-muted-foreground">Elegí una fecha para registrar el primer encuentro.</p>
+          </div>
+        </div>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2" aria-label="Citas registradas">
           {citas.map((cita) => (
             <CitaItem
               key={cita.id}
@@ -253,26 +276,28 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
         </ul>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="grid gap-4 border-t border-border pt-4 sm:grid-cols-[minmax(0,1.2fr)_10rem_minmax(12rem,1fr)_auto] sm:items-end">
-        <Controller
-          control={control}
-          name="programadaPara"
-          render={({ field }) => (
-            <CitaDateTimeField
-              value={field.value}
-              onChange={field.onChange}
-              error={errors.programadaPara?.message}
-            />
-          )}
-        />
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="modalidad">Modalidad</Label>
+      <form onSubmit={onSubmit} noValidate className="grid gap-4 border-t border-border pt-5">
+        <div className="min-w-0">
+          <Controller
+            control={control}
+            name="programadaPara"
+            render={({ field }) => (
+              <CitaDateTimeField
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.programadaPara?.message}
+              />
+            )}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor="modalidad" className="text-sm font-medium">Modalidad</Label>
           <Controller
             control={control}
             name="modalidad"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger id="modalidad" className="w-full" aria-label="Modalidad">
+                <SelectTrigger id="modalidad" className="h-10 w-full" aria-label="Modalidad">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -286,18 +311,18 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
             )}
           />
         </div>
-        <div className="flex min-w-0 flex-col gap-1">
-          <Label htmlFor="notas">Notas (opcional)</Label>
+        <div className="flex min-w-0 flex-col gap-2">
+          <Label htmlFor="notas" className="text-sm font-medium">Notas (opcional)</Label>
           <Textarea
             id="notas"
-            rows={3}
-            className="min-h-24 resize-none"
-            placeholder="Agregá contexto para la cita..."
+            rows={2}
+            className="min-h-20 resize-none"
+            placeholder="Ej: confirmar documentación"
             {...register("notas")}
           />
         </div>
 
-        <Button type="submit" disabled={scheduleCita.isPending}>
+        <Button type="submit" disabled={scheduleCita.isPending} className="h-10 w-full">
           {scheduleCita.isPending ? "Agendando…" : "Agendar"}
         </Button>
       </form>

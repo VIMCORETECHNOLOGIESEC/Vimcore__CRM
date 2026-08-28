@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
@@ -28,7 +29,7 @@ const LEADS_POR_PAGINA = 10;
  * integración exacto con el backend real (M5/M6).
  */
 export function LeadsPage() {
-  usePageHeader({ title: "Leads" });
+  usePageHeader({ title: "Gestión de Leads" });
 
   const { hasRole } = useAuth();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
@@ -118,7 +119,7 @@ export function LeadsPage() {
       ) : null}
 
       {isLoading ? (
-        <LoadingState rows={LEADS_POR_PAGINA} rowHeight="h-12" />
+        <LoadingState rows={LEADS_POR_PAGINA} rowHeight="h-10" />
       ) : isError ? (
         <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
       ) : !data || data.datos.length === 0 ? (
@@ -127,7 +128,7 @@ export function LeadsPage() {
           description="Probá ajustar o limpiar los filtros combinados."
         />
       ) : (
-        <>
+        <div className="flex flex-col">
           <LeadsTable
             leads={data.datos}
             mostrarColumnaResponsable={esGestorDeCartera}
@@ -137,33 +138,61 @@ export function LeadsPage() {
             onToggleSeleccionTodos={toggleSeleccionTodos}
           />
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
             <span>
               Mostrando {desde}–{hasta} de {total} leads
             </span>
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no "
+                disabled={pagina <= 1}
+                onClick={() => setPagina(1)}
+                aria-label="Primera página"
+                title="Primera página"
+              >
+                <ChevronsLeft aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no"
                 disabled={pagina <= 1}
                 onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                aria-label="Página anterior"
+                title="Página anterior"
               >
-                Anterior
+                <ChevronLeft aria-hidden="true" />
               </Button>
               <span>
                 Página {pagina} de {totalPaginas}
               </span>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no"
                 disabled={pagina >= totalPaginas}
                 onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                aria-label="Página siguiente"
+                title="Página siguiente"
               >
-                Siguiente
+                <ChevronRight aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no"
+                disabled={pagina >= totalPaginas}
+                onClick={() => setPagina(totalPaginas)}
+                aria-label="Última página"
+                title="Última página"
+              >
+                <ChevronsRight aria-hidden="true" />
               </Button>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

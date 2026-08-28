@@ -45,7 +45,7 @@ la fecha de entrega del núcleo.
 | Multi-tenant y panel matriz | Se despliega una instancia aislada por empresa; no hay tiempo de desarrollo para el sistema matriz | No. Introducirlo después será una migración de esquema, y es la decisión correcta: agregar `tenant_id` "por si acaso" contamina cada consulta del MVP sin beneficio |
 | Personalización de formularios y puntuación | Recorte explícito por tiempo y personal disponible | Sí. Los formularios y la rúbrica viven en un módulo aislado (`config/formularios.ts`) para que la migración a base de datos configurable no toque el resto |
 | Módulo de remarketing | Definido como desarrollo futuro | Sí. No se elimina ni anonimiza ningún dato de lead, y la ventana de reingreso ya queda modelada |
-| Exportación Excel / PDF | No requerido actualmente | Sí. Los servicios de consulta del dashboard devuelven estructuras serializables; solo faltaría la capa de formato |
+| Exportación Excel / PDF | Incorporada posteriormente al MVP | Sí. El panel genera ambos formatos con los filtros activos, gráficos, resumen, conclusión y listado de leads |
 | Calendarios externos | Solo se requiere registro interno | No |
 | Correo / SMS / WhatsApp | Solo notificación in-app confirmada | Sí. La tabla `notificaciones` incluye columna `canal` con un único valor válido en el MVP |
 | App móvil nativa | Se confirmó web responsive únicamente | No aplica |

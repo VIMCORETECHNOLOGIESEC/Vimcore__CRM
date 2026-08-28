@@ -8,10 +8,17 @@ import { RotateCcw } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
-import { ETAPA_ETIQUETAS, RED_SOCIAL_ETIQUETAS } from "./catalogos";
+import { ETAPA_ETIQUETAS } from "./catalogos";
 import { getResponsable } from "./leads.utils";
 import { SemaforoBadge } from "./SemaforoBadge";
 import { SlaCountdownCell } from "./SlaCountdownCell";
@@ -20,9 +27,7 @@ function formatFechaIngreso(iso: string): string {
   const fecha = new Date(iso);
   const dia = String(fecha.getDate()).padStart(2, "0");
   const mes = String(fecha.getMonth() + 1).padStart(2, "0");
-  const horas = String(fecha.getHours()).padStart(2, "0");
-  const minutos = String(fecha.getMinutes()).padStart(2, "0");
-  return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
+  return `${dia}/${mes}/${fecha.getFullYear()}`;
 }
 
 const columnHelper = createColumnHelper<Lead>();
@@ -54,8 +59,6 @@ const COLUMN_WIDTHS_PX: Record<string, number> = {
   seleccion: 40, // w-10 -- checkbox, ahora una columna TanStack real (ver useMemo de `columns`)
   cliente: 192, // w-48
   telefono: 128, // w-32
-  redSocial: 112, // w-28
-  campania: 144, // w-36
   etapa: 112, // w-28
   semaforo: 128, // w-32
   responsable: 128, // w-32
@@ -111,6 +114,7 @@ export function LeadsTable({
           checked={todosSeleccionados}
           onCheckedChange={(marcar) => onToggleSeleccionTodos(marcar === true)}
           aria-label="Seleccionar todos los leads de esta página"
+          className="border-white data-[state=checked]:bg-white data-[state=checked]:text-primary"
         />
       ),
       cell: ({ row }) => (
@@ -158,8 +162,8 @@ export function LeadsTable({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Cliente conocido que volvió a ingresar por el embudo (nueva oportunidad,
-                    ventana de 90 días)
+                    Cliente conocido que volvió a ingresar por el embudo (nueva oportunidad, ventana
+                    de 90 días)
                   </TooltipContent>
                 </Tooltip>
               ) : null}
@@ -181,26 +185,6 @@ export function LeadsTable({
         id: "telefono",
         header: "Teléfono",
         cell: ({ getValue }) => <span className="tabular-nums">{getValue()}</span>,
-      }),
-      columnHelper.accessor((lead) => lead.redSocial, {
-        id: "redSocial",
-        header: "Red social",
-        cell: ({ getValue }) => RED_SOCIAL_ETIQUETAS[getValue()],
-      }),
-      columnHelper.accessor((lead) => lead.campania?.nombre ?? "—", {
-        id: "campania",
-        header: "Campaña",
-        cell: ({ getValue }) => {
-          const nombre = getValue();
-          return (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="block truncate">{nombre}</span>
-              </TooltipTrigger>
-              <TooltipContent>{nombre}</TooltipContent>
-            </Tooltip>
-          );
-        },
       }),
       columnHelper.accessor((lead) => lead.etapa, {
         id: "etapa",
@@ -323,47 +307,66 @@ export function LeadsTable({
      * era incorrecto), pero sigue siendo la forma correcta de declarar
      * anchos de columna vs. celdas sueltas por fuera del modelo.
      */
-    <Table className="table-fixed" style={{ minWidth: anchoTotalPx }}>
+    <Table className="table-fixed" wrapperClassName="min-h-0" style={{ minWidth: anchoTotalPx }}>
       <colgroup>
         {colWidthsPx.map((ancho, indice) => (
           // eslint-disable-next-line react/no-array-index-key -- el orden de `colWidthsPx` es estable dentro de un mismo render (deriva de `columns`, memoizado junto con él); no hay reordenamiento que justifique otra key.
           <col key={indice} style={{ width: ancho }} />
         ))}
       </colgroup>
-      <TableHeader>
+      <TableHeader className="sticky top-0 z-20 bg-sidebar">
         {table.getHeaderGroups().map((headerGroup) => (
-          <TableRow key={headerGroup.id}>
+          <TableRow key={headerGroup.id} className="h-10 hover:bg-transparent">
             {headerGroup.headers.map((header) => (
-              <TableHead key={header.id}>
+              <TableHead key={header.id} className="text-sidebar-foreground/80">
                 {flexRender(header.column.columnDef.header, header.getContext())}
               </TableHead>
             ))}
           </TableRow>
         ))}
       </TableHeader>
-      <TableBody>
-        {table.getRowModel().rows.map((row) => (
-          <TableRow
-            key={row.id}
-            data-state={seleccionados.has(row.original.id) ? "selected" : undefined}
-            // `relative`: ancla la fila estirada del <Link> de Cliente (ver comentario
-            // ahí). `.leads-table-row` trae el glow de hover (index.css).
-            className="leads-table-row relative"
-          >
-            {row.getVisibleCells().map((cell) => (
-              <TableCell
-                key={cell.id}
-                // `relative z-10` SOLO en la celda de checkbox -- se eleva por
-                // encima del overlay invisible del `<Link>` de Cliente (ver
-                // comentario ahí), para no quedar debajo y volverse
-                // inclickeable.
-                className={cell.column.id === "seleccion" ? "relative z-10" : undefined}
-              >
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
+      <TableBody className="bg-card">
+        {table.getRowModel().rows.map((row) => {
+          const estaSeleccionado = seleccionados.has(row.original.id);
+
+          return (
+            <TableRow
+              key={row.id}
+              data-state={estaSeleccionado ? "selected" : undefined}
+              // `relative`: ancla la fila estirada del <Link> de Cliente (ver comentario
+              // ahí). `.leads-table-row` trae el glow de hover (index.css).
+              className="leads-table-row relative h-12"
+            >
+              {row.getVisibleCells().map((cell) => {
+                /*
+                 * `relative z-10`: la celda de checkbox Y la de SLA se elevan por
+                 * encima del overlay invisible del `<Link>` de Cliente (ver
+                 * comentario ahí) -- el checkbox para seguir siendo clickeable, y
+                 * el badge de SLA para que el puntero alcance su `Tooltip`
+                 * (sino el `::after` del link tapa el hover y el tooltip nunca
+                 * abre). La columna Cliente se ajusta a `h-10` (sin padding
+                 * vertical sobrante y con `overflow-hidden`) para que la fila
+                 * mida exactamente 40px como el resto.
+                 */
+                const cellClassName =
+                  cell.column.id === "seleccion"
+                    ? estaSeleccionado
+                      ? "relative z-10 pl-3"
+                      : "relative z-10"
+                    : cell.column.id === "sla"
+                      ? "relative z-10"
+                      : cell.column.id === "cliente"
+                        ? "overflow-hidden py-0"
+                        : undefined;
+                return (
+                  <TableCell key={cell.id} className={cellClassName}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

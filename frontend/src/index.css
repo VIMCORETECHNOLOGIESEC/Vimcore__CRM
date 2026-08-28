@@ -67,14 +67,19 @@
     --chart-4: 124 58 237;
     --chart-5: 113 113 122;
     --radius: 0.5rem;
-    --sidebar: 245 243 238;
-    --sidebar-foreground: 63 63 70;
-    --sidebar-primary: 37 99 235;
-    --sidebar-primary-foreground: 255 255 255;
-    --sidebar-accent: 231 237 250;
-    --sidebar-accent-foreground: 29 78 216;
-    --sidebar-border: 226 223 214;
-    --sidebar-ring: 37 99 235;
+    /*
+     * Superficies del sidebar (`ui/sidebar.tsx`) consumen la marca vimcore:
+     * fondo indigo sólido, texto hueso, y el ítem activo/en-hover como pill
+     * azul con texto blanco.
+     */
+    --sidebar: var(--vimcore);
+    --sidebar-foreground: var(--vimcore-hueso);
+    --sidebar-primary: var(--vimcore-accent);
+    --sidebar-primary-foreground: var(--vimcore-accent-foreground);
+    --sidebar-accent: var(--vimcore-accent);
+    --sidebar-accent-foreground: var(--vimcore-accent-foreground);
+    --sidebar-border: var(--vimcore-hueso);
+    --sidebar-ring: 255 255 255;
 
     /* Semáforo -- siempre acompañado de etiqueta de texto (ver F3, F4). */
     --semaforo-frio: 22 163 74;
@@ -83,6 +88,28 @@
     --semaforo-tibio-foreground: 255 255 255;
     --semaforo-caliente: 220 38 38;
     --semaforo-caliente-foreground: 255 255 255;
+
+    /*
+     * Azul corporativo IDEC Corp (token de marca). Hoy coincide con
+     * --primary (37 99 235), pero vive separado a propósito: si la marca
+     * cambia de azul, se toca acá sin acoplar el azul de acción genérico
+     * del resto de la app. Se usa en la capa de chat flotante del detalle
+     * de lead (ver `.modo-idec` al final de este archivo) y en el botón
+     * flotante de WhatsApp.
+     */
+    --idec: 37 99 235;
+    --idec-foreground: 255 255 255;
+
+    /*
+     * Marca "vimcore" (sidebar, inspirada en la variante empresarial):
+     * chrome indigo sólido, texto hueso, pill activa azul --1029.
+     * Canales RGB crudos como el resto de los tokens (ver nota de :root).
+     */
+    --vimcore: 30 42 94;
+    --vimcore-2: 20 32 74;
+    --vimcore-hueso: 245 243 238;
+    --vimcore-accent: 37 99 235;
+    --vimcore-accent-foreground: 255 255 255;
   }
 }
 
@@ -122,6 +149,25 @@
  * interacción -- limitación real del motor, no un bug nuestro.
  */
 @layer utilities {
+  .patron-papel {
+    background-color: rgb(var(--background));
+    background-image:
+      repeating-linear-gradient(
+        45deg,
+        rgb(var(--vimcore) / 0.045) 0,
+        rgb(var(--vimcore) / 0.045) 1px,
+        transparent 1px,
+        transparent 26px
+      ),
+      repeating-linear-gradient(
+        -45deg,
+        rgb(var(--vimcore) / 0.045) 0,
+        rgb(var(--vimcore) / 0.045) 1px,
+        transparent 1px,
+        transparent 26px
+      );
+  }
+
   .scrollbar-themed {
     scrollbar-width: thin;
     /* `rgb(var(--x))` explícito -- `--muted-foreground` ahora son canales
@@ -203,13 +249,76 @@
  * legible como CSS declarado que como bracket-string de una sola línea.
  */
 .leads-table-row {
-  transition: box-shadow 150ms ease, background-color 150ms ease;
+  transition:
+    box-shadow 150ms ease,
+    background-color 150ms ease;
 }
 
 .leads-table-row:hover {
-  /* `color-mix()` necesita un `<color>` real como primer operando --
-     `rgb(var(--x))` explícito, ídem al resto de este archivo. */
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, rgb(var(--muted-foreground)) 35%, transparent),
-    0 2px 10px -3px color-mix(in srgb, rgb(var(--muted-foreground)) 30%, transparent);
+  /* Barra de acento a la izquierda en el color vimcore (--sidebar) vía
+     `box-shadow` inset: pinta el borde sin desplazar el contenido (un
+     `border-left` real correría las celdas 3px). Fondo gris suave de
+     --muted para que el hover se note. */
+  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  background-color: rgb(var(--muted));
+}
+
+.leads-table-row[data-state="selected"] {
+  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  background-color: rgb(var(--muted));
+}
+
+.leads-table-row[data-state="selected"]:hover {
+  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+}
+
+.bulk-actions-content {
+  animation: bulkActionsEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes bulkActionsEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-actions-content {
+    animation-duration: 0.01ms;
+  }
+}
+
+/*
+ * Capa "modo IDEC" (vista expandida del chat del detalle de lead): mientras
+ * el chat está abierto, los controles de formulario de esa superficie usan
+ * el azul corporativo IDEC Corp como borde por defecto y lo refuerzan al
+ * enfocar. Vive como clase contenedora (`.modo-idec` en LeadDetallePage) y
+ * no como utilidades por componente para no tocar el resto de la app -- el
+ * detalle normal conserva sus bordes neutros.
+ *
+ * Especificidad: (0,2,1) le gana a la utilidad `border-input` (0,1,0) y a
+ * `focus-visible:ring-2` (0,2,0) sin `!important`; el `:focus-visible` de
+ * teclado activa ambas sombras, así que acá se fija la caja combinada
+ * (borde pleno + halo suave) en lugar de competir con el ring de Tailwind.
+ */
+.modo-idec input,
+.modo-idec textarea,
+.modo-idec select {
+  border-color: rgb(var(--idec) / 0.45);
+}
+
+.modo-idec input:focus,
+.modo-idec input:focus-visible,
+.modo-idec textarea:focus,
+.modo-idec textarea:focus-visible,
+.modo-idec select:focus,
+.modo-idec select:focus-visible {
+  border-color: rgb(var(--idec));
+  box-shadow: 0 0 0 3px rgb(var(--idec) / 0.18);
 }

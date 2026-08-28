@@ -91,13 +91,13 @@ function WhatsAppChat({
   return (
     <section
       className={`flex min-h-0 flex-col overflow-hidden border-border bg-background ${
-        expanded ? "h-full rounded-none border-0 border-l shadow-none" : "h-[min(680px,calc(100vh-15rem))] min-h-[520px] rounded-lg border shadow-sm"
+        expanded ? "h-full rounded-none border-0 border-l border-idec/20 shadow-none" : "h-[min(680px,calc(100vh-15rem))] min-h-[520px] rounded-lg border shadow-sm"
       }`}
       aria-label="Chat de WhatsApp"
     >
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-idec/20 px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-foreground">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-idec text-sm font-semibold text-idec-foreground">
             {leadName.charAt(0).toUpperCase()}
           </span>
           <div className="min-w-0">
@@ -127,7 +127,7 @@ function WhatsAppChat({
           </p>
         </div>
         <div className="flex items-end justify-end gap-2">
-          <p className="max-w-[82%] rounded-2xl rounded-br-sm bg-[#e8e8e8] px-3 py-2 text-sm text-foreground">
+          <p className="max-w-[82%] rounded-2xl rounded-br-sm bg-idec/10 px-3 py-2 text-sm text-foreground">
             Hola, sí. Me gustaría conocer más detalles.
             <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:44</span>
           </p>
@@ -147,12 +147,12 @@ function WhatsAppChat({
           id="mensaje-whatsapp"
           type="text"
           placeholder="Escribí un mensaje..."
-          className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-10 min-w-0 flex-1 rounded-md border border-idec/40 bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-idec/50"
         />
         <button
           type="submit"
           aria-label="Enviar mensaje"
-          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-idec text-idec-foreground transition-colors hover:bg-idec/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-idec/50"
         >
           <Send className="size-4" aria-hidden="true" />
         </button>
@@ -207,31 +207,39 @@ export function LeadDetallePage() {
       <div className="flex flex-col gap-4">
         <LeadDetalleEncabezado
           lead={lead}
-          puntuacionOverride={puntuacionActual ?? lead.puntuacion}
         />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <LeadDatosContacto cliente={lead.cliente} />
           <LeadOrigenInfo lead={lead} />
         </div>
         <AccionesResponsable lead={lead} user={user} />
-        <LeadTimeline lead={lead} onPuntuacionChange={setPuntuacionActual} />
+        <LeadTimeline
+          lead={lead}
+          puntuacionActual={puntuacionActual ?? lead.puntuacion}
+          onPuntuacionChange={setPuntuacionActual}
+        />
         <PanelCitas leadId={lead.id} usuarioId={user.id} />
       </div>
       {chatAbierto ? (
-        <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-background md:left-60">
-          <div className="flex shrink-0 items-center bg-background">
-            <div className="min-w-0 flex-1">
+        <div className="modo-idec fixed inset-0 z-40 flex flex-col overflow-hidden bg-background md:left-60">
+          <div className="flex shrink-0 items-center gap-3 p-3 md:p-4 md:pl-5">
+            {/*
+             * Navbar flotante (solo en la vista de chat): la información del
+             * lead vive en una tarjeta elevada con halo azul IDEC, separada
+             * del botón de cierre, en vez de pegada al borde superior.
+             */}
+            <div className="min-w-0 flex-1 rounded-2xl border border-border bg-background shadow-[0_10px_26px_-16px_rgb(var(--idec)/0.35)]">
               <LeadDetalleEncabezado
                 lead={lead}
-                puntuacionOverride={puntuacionActual ?? lead.puntuacion}
                 sinBorde
+                mostrarEtapa={false}
               />
             </div>
             <button
               type="button"
               onClick={() => setChatAbierto(false)}
               aria-label="Cerrar vista de WhatsApp"
-              className="mr-4 flex size-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:border-idec/40 hover:text-idec focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-idec/50"
             >
               <X className="size-5" aria-hidden="true" />
             </button>
@@ -248,13 +256,13 @@ export function LeadDetallePage() {
                     role="tab"
                     aria-selected={activa}
                     onClick={() => setVistaActiva(vista)}
-                    className="group relative flex h-14 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className={`group relative flex h-14 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 px-2 text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-idec/50 ${activa ? "text-idec" : "text-muted-foreground"}`}
                   >
                     <span className="inline-flex items-center gap-2 truncate">
                       <Icon className="size-4 shrink-0" aria-hidden="true" />
                       <span className="truncate">{label}</span>
                     </span>
-                    <span className={`absolute inset-x-0 bottom-0 h-1 ${activa ? "bg-gray-600" : "bg-transparent"}`} aria-hidden="true" />
+                    <span className={`absolute inset-x-0 bottom-0 h-1 ${activa ? "bg-idec" : "bg-transparent"}`} aria-hidden="true" />
                   </button>
                 );
               })}
@@ -281,7 +289,7 @@ export function LeadDetallePage() {
           onClick={() => setChatAbierto(true)}
           aria-label="Abrir chat de WhatsApp"
           title="Abrir chat de WhatsApp"
-          className="fixed bottom-6 right-6 z-30 flex size-14 cursor-pointer items-center justify-center rounded-full bg-black text-white shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-600 focus-visible:ring-offset-2 active:scale-95"
+          className="fixed bottom-6 right-6 z-30 flex size-14 cursor-pointer items-center justify-center rounded-full bg-idec text-idec-foreground shadow-[0_12px_28px_-8px_rgb(var(--idec)/0.55)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-idec/50 focus-visible:ring-offset-2 active:scale-95"
         >
           <WhatsAppIcon />
         </button>

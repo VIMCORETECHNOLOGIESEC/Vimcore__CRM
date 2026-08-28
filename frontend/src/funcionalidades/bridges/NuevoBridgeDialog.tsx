@@ -39,6 +39,7 @@ interface NuevoBridgeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (valores: CrearBridgeInput) => void;
+  onApiExterna: (nombre: string) => void;
   enviando: boolean;
 }
 
@@ -49,10 +50,11 @@ interface NuevoBridgeDialogProps {
  * `REDES_SOCIALES` estático que F3 tenía antes de esta misma iniciativa
  * (ver `leads/LeadsFiltros.tsx`).
  */
-export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, enviando }: NuevoBridgeDialogProps) {
+export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, onApiExterna, enviando }: NuevoBridgeDialogProps) {
   const { data: redesSociales, isLoading } = useRedesSocialesSoportadas();
   const {
     control,
+    watch,
     register,
     handleSubmit,
     formState: { errors },
@@ -60,8 +62,15 @@ export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, enviando }: Nu
     resolver: zodResolver(crearBridgeSchema),
     defaultValues: { redSocial: "", nombre: "" },
   });
+  const redSocialSeleccionada = watch("redSocial");
+  // La opción es UI-only hasta que el catálogo backend incorpore API_EXTERNA.
+  const redesDisponibles = Array.from(new Set([...(redesSociales ?? []), "API_EXTERNA" as RedSocial]));
 
   const enviar = handleSubmit((valores) => {
+    if (valores.redSocial === "API_EXTERNA") {
+      onApiExterna(valores.nombre);
+      return;
+    }
     onSubmit({ redSocial: valores.redSocial as RedSocial, nombre: valores.nombre });
   });
 
@@ -71,12 +80,20 @@ export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, enviando }: Nu
         <DialogHeader>
           <DialogTitle>Nuevo bridge</DialogTitle>
           <DialogDescription>
-            Elegí la red social y asignale un nombre para identificarlo. La clave de acceso se
-            genera automáticamente al confirmar.
+            Elegí de dónde vienen tus leads y poné un nombre para reconocer esta conexión.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={enviar} noValidate className="flex flex-col gap-4">
+          {redSocialSeleccionada === "API_EXTERNA" ? (
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+              <p className="font-medium text-foreground">Conexión con una API propia</p>
+              <p className="mt-1 text-muted-foreground">
+                Sirve para traer leads desde cualquier sistema que tengas. En el próximo paso te vamos a pedir los datos de acceso.
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="nuevo-bridge-red-social">Red social</Label>
             <Controller
@@ -88,7 +105,7 @@ export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, enviando }: Nu
                     <SelectValue placeholder={isLoading ? "Cargando…" : "Elegir red social…"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {(redesSociales ?? []).map((red) => (
+                    {redesDisponibles.map((red) => (
                       <SelectItem key={red} value={red}>
                         {RED_SOCIAL_ETIQUETAS[red]}
                       </SelectItem>
@@ -116,7 +133,7 @@ export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, enviando }: Nu
               Cancelar
             </Button>
             <Button type="submit" disabled={enviando}>
-              {enviando ? "Creando…" : "Crear bridge"}
+              {enviando ? "Creando…" : redSocialSeleccionada === "API_EXTERNA" ? "Configurar API" : "Crear bridge"}
             </Button>
           </DialogFooter>
         </form>

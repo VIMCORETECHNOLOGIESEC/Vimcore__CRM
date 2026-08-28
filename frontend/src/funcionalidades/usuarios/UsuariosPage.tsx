@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
@@ -88,14 +88,11 @@ export function UsuariosPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <Button onClick={() => setDialogAltaAbierto(true)}>
-          <Plus className="size-4" aria-hidden="true" />
-          Nuevo usuario
-        </Button>
-      </div>
-
-      <UsuariosFiltros filtros={filtros} onChange={updateFiltros} />
+      <UsuariosFiltros
+        filtros={filtros}
+        onChange={updateFiltros}
+        onNuevo={() => setDialogAltaAbierto(true)}
+      />
 
       {isLoading ? (
         <LoadingState rows={USUARIOS_POR_PAGINA} rowHeight="h-12" />
@@ -115,7 +112,7 @@ export function UsuariosPage() {
           }
         />
       ) : (
-        <>
+        <div className="flex flex-col">
           <UsuariosTable
             usuarios={usuarios}
             onEditar={setUsuarioEnEdicion}
@@ -126,33 +123,29 @@ export function UsuariosPage() {
             atenuarInactivos={filtros.estado !== "ACTIVOS"}
           />
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
             <span>
               Mostrando {desde}–{hasta} de {total} usuarios
             </span>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pagina <= 1}
-                onClick={() => setPagina((p) => Math.max(1, p - 1))}
-              >
-                Anterior
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina <= 1} onClick={() => setPagina(1)} aria-label="Primera página" title="Primera página">
+                <ChevronsLeft aria-hidden="true" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina <= 1} onClick={() => setPagina((p) => Math.max(1, p - 1))} aria-label="Página anterior" title="Página anterior">
+                <ChevronLeft aria-hidden="true" />
               </Button>
               <span>
                 Página {pagina} de {totalPaginas}
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pagina >= totalPaginas}
-                onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-              >
-                Siguiente
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina >= totalPaginas} onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} aria-label="Página siguiente" title="Página siguiente">
+                <ChevronRight aria-hidden="true" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina >= totalPaginas} onClick={() => setPagina(totalPaginas)} aria-label="Última página" title="Última página">
+                <ChevronsRight aria-hidden="true" />
               </Button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {dialogAltaAbierto ? (

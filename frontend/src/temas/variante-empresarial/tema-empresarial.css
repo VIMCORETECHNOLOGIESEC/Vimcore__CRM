@@ -564,7 +564,7 @@
  * acá scopeado bajo `.leads-table-card`.
  */
 .tema-empresarial .leads-table-card table thead {
-  background: var(--indigo);
+  background: rgb(var(--vimcore));
 }
 
 /*
@@ -580,13 +580,19 @@
  * proyecto real donde sí corresponde.
  */
 .tema-empresarial .leads-table-card table thead tr:hover {
-  background: var(--indigo);
+  background: rgb(var(--vimcore));
 }
 
 .tema-empresarial .leads-table-card table thead th {
   color: var(--papel);
   opacity: 0.85;
   border-color: rgba(246, 241, 231, 0.15);
+}
+
+.tema-empresarial .leads-table-footer {
+  background: rgb(var(--vimcore));
+  border-color: rgba(246, 241, 231, 0.15);
+  color: var(--papel);
 }
 
 /* Checkbox "seleccionar todos" del header -- mismo componente real
@@ -639,7 +645,7 @@
 
 .tema-empresarial .leads-table-row:hover,
 .tema-empresarial .leads-table-row:focus-within {
-  background-color: color-mix(in srgb, var(--indigo) 4%, var(--papel));
+  background-color: color-mix(in srgb, var(--indigo) 12%, var(--papel));
 }
 
 .tema-empresarial .leads-table-row:hover::before,

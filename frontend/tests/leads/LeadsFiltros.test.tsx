@@ -15,12 +15,12 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
 // `LeadsPage` (no `LeadsFiltros` en sí, ya no gatea nada por rol) sigue
 // dependiendo de `<AuthProvider>` real en la app -- se mockea igual que en
 // `LeadsPage.test.tsx` por si algún test futuro de este archivo lo necesita.
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
 const { fetchRedesSocialesCatalogoApi } = await import("@/funcionalidades/leads/leads.api");
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { LeadsFiltros } = await import("@/funcionalidades/leads/LeadsFiltros");
 
 const fetchRedesSocialesCatalogoApiMock = vi.mocked(fetchRedesSocialesCatalogoApi);
