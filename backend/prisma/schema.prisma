@@ -92,6 +92,11 @@ model Usuario {
   // existente); `Usuario.rol` sigue siendo la ÚNICA fuente de autorización
   // en producción (shadow, no cutover).
   membresias           Membresia[]
+  // LinkedIn Lead Sync (TO-BE): el administrador que inicia OAuth queda como
+  // dueño auditado de la conexión/state. No implica multi-tenant nuevo; el
+  // alcance de empresa sigue viniendo del `Bridge.empresaId` vigente.
+  conexionesLinkedInAutorizadas LinkedInConexion[]
+  oauthStatesLinkedIn            LinkedInOAuthState[]
 
   @@map("usuarios")
 }
@@ -546,6 +551,10 @@ enum RedSocial {
   X
   LINKEDIN
   GOOGLE_FORMS
+  // bridgeApi: pull genérico vía GET + X-Api-Key, mapeo de campos
+  // configurable por bridge (`Bridge.configuracionJson`) en vez de un
+  // adaptador nuevo por proveedor.
+  API_EXTERNA
 
   @@map("red_social")
 }
@@ -591,6 +600,40 @@ enum EstadoTokenCuenta {
   @@map("estado_token_cuenta")
 }
 
+enum EstadoConexionLinkedIn {
+  ACTIVA
+  TOKEN_EXPIRADO
+  REVOCADA
+  ERROR
+
+  @@map("estado_conexion_linkedin")
+}
+
+enum TipoFuenteLinkedIn {
+  SPONSORED_ACCOUNT
+  ORGANIZATION
+
+  @@map("tipo_fuente_linkedin")
+}
+
+enum TipoLeadLinkedIn {
+  SPONSORED
+  EVENT
+  COMPANY
+  ORGANIZATION_PRODUCT
+
+  @@map("tipo_lead_linkedin")
+}
+
+enum EstadoSuscripcionLinkedIn {
+  PENDIENTE
+  ACTIVA
+  ERROR
+  REVOCADA
+
+  @@map("estado_suscripcion_linkedin")
+}
+
 // Conexión con una red social (docs/05-bridges.md §1, §7). El cifrado de
 // token (`CuentaPublicitaria.tokenCifrado`/`secretoWebhook`) se añade en el
 // módulo que lo consume (adaptador Meta, M4) — ver `CuentaPublicitaria` abajo.
@@ -620,9 +663,29 @@ model Bridge {
   // exige `empresaId` en el body (`bridges.schema.ts`).
   empresaId String @map("empresa_id") @db.Uuid
 
+  // bridgeApi (RedSocial.API_EXTERNA): NULL en Meta/Google Forms/etc.
+  // Forma: `ConfiguracionBridgeApi`
+  // (`types/bridgeApi/configuracion-bridge-api.ts`) — url, parametroFecha
+  // opcional, mapeoCampos (clave externa -> campo fijo de LeadEntrante).
+  // Validado en el borde por `bridges.schema.ts`, no acá.
+  configuracionJson Json? @map("configuracion_json") @db.JsonB
+
+  // bridgeApi: API key del sistema EXTERNO, cifrada AES-256-GCM vía
+  // `lib/cifrado-token.ts` (mismo mecanismo que
+  // `CuentaPublicitaria.tokenCifrado`). No es `claveApiHash`: esa es un hash
+  // irreversible de una key que NOSOTROS emitimos y solo verificamos; esta
+  // hay que poder descifrarla para reenviarla en el header `X-Api-Key` de
+  // cada poll.
+  credencialExternaCifrada String? @map("credencial_externa_cifrada") @db.Text
+
   bridgeLogs          BridgeLog[]
   leadsRecibidos      LeadRecibido[]
   cuentasPublicitarias CuentaPublicitaria[]
+  // LinkedIn OAuth: una conexión vigente por bridge y states efímeros de
+  // autorización. Los tokens viven cifrados en `LinkedInConexion`, no en
+  // `CuentaPublicitaria.tokenCifrado` porque esa columna es Meta-céntrica.
+  linkedinConexion     LinkedInConexion?
+  linkedinOAuthStates  LinkedInOAuthState[]
   // Bloque C (D4): Restrict, no SetNull — `empresaId` es NOT NULL ahora.
   empresa              Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
@@ -668,6 +731,10 @@ model CuentaPublicitaria {
   bridge    Bridge     @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
   campanias Campania[]
   leads     Lead[]
+  // LinkedIn sponsored accounts pueden reutilizar `CuentaPublicitaria` para
+  // atribución canónica. Organizaciones LinkedIn quedan como fuente sin cuenta
+  // publicitaria asociada.
+  linkedinFuentes LinkedInFuente[]
 
   @@unique([bridgeId, idExterno])
   @@map("cuentas_publicitarias")
@@ -690,6 +757,95 @@ model Campania {
 
   @@unique([cuentaPublicitariaId, idExterno])
   @@map("campanias")
+}
+
+// Conexión OAuth de LinkedIn Lead Sync. Guarda credenciales del miembro que
+// autorizó la aplicación, cifradas con `TOKEN_ENCRYPTION_KEY`. Una conexión
+// puede descubrir y activar varias fuentes (`LinkedInFuente`).
+model LinkedInConexion {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  bridgeId               String                 @unique @map("bridge_id") @db.Uuid
+  autorizadoPorUsuarioId String                 @map("autorizado_por_usuario_id") @db.Uuid
+  memberUrn              String?                @map("member_urn") @db.Text
+  accessTokenCifrado     String                 @map("access_token_cifrado") @db.Text
+  refreshTokenCifrado    String?                @map("refresh_token_cifrado") @db.Text
+  accessTokenExpiraEn    DateTime               @map("access_token_expira_en") @db.Timestamptz(6)
+  refreshTokenExpiraEn   DateTime?              @map("refresh_token_expira_en") @db.Timestamptz(6)
+  scopes                 String[]
+  estado                 EstadoConexionLinkedIn @default(ACTIVA)
+  revocadoEn             DateTime?              @map("revocado_en") @db.Timestamptz(6)
+  creadoEn               DateTime               @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn          DateTime               @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  bridge         Bridge           @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  autorizadoPor  Usuario          @relation(fields: [autorizadoPorUsuarioId], references: [id], onDelete: Restrict)
+  fuentes        LinkedInFuente[]
+
+  @@index([estado, accessTokenExpiraEn], map: "idx_linkedin_conexiones_estado_access_expira")
+  @@map("linkedin_conexiones")
+}
+
+// State efímero anti-CSRF para OAuth LinkedIn. Solo se persiste el hash del
+// state y se consume una vez; el valor plano nunca queda en base de datos.
+model LinkedInOAuthState {
+  id        String    @id @default(uuid()) @db.Uuid
+  stateHash String    @unique @map("state_hash") @db.Text
+  bridgeId  String    @map("bridge_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  bridge  Bridge  @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([expiraEn], map: "idx_linkedin_oauth_states_expira")
+  @@index([bridgeId, usuarioId], map: "idx_linkedin_oauth_states_bridge_usuario")
+  @@map("linkedin_oauth_states")
+}
+
+// Fuente LinkedIn seleccionable después del OAuth. Una misma autorización puede
+// tener varias fuentes activas; cada fuente representa un owner + tipo de lead.
+model LinkedInFuente {
+  id                         String                    @id @default(uuid()) @db.Uuid
+  conexionId                 String                    @map("conexion_id") @db.Uuid
+  cuentaPublicitariaId       String?                   @map("cuenta_publicitaria_id") @db.Uuid
+  tipo                       TipoFuenteLinkedIn
+  ownerUrn                   String                    @map("owner_urn") @db.Text
+  nombre                     String                    @db.Text
+  tipoLead                   TipoLeadLinkedIn          @map("tipo_lead")
+  activa                     Boolean                   @default(false)
+  estadoSuscripcion          EstadoSuscripcionLinkedIn @default(PENDIENTE) @map("estado_suscripcion")
+  subscriptionId             String?                   @map("subscription_id") @db.Text
+  ultimaSincronizacionEn     DateTime?                 @map("ultima_sincronizacion_en") @db.Timestamptz(6)
+  creadoEn                   DateTime                  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn              DateTime                  @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  conexion           LinkedInConexion    @relation(fields: [conexionId], references: [id], onDelete: Cascade)
+  cuentaPublicitaria CuentaPublicitaria? @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: SetNull)
+  formularios        LinkedInFormulario[]
+
+  @@unique([conexionId, ownerUrn, tipoLead], map: "linkedin_fuentes_conexion_owner_tipo_lead_key")
+  @@index([activa, estadoSuscripcion], map: "idx_linkedin_fuentes_activa_estado_suscripcion")
+  @@index([ownerUrn], map: "idx_linkedin_fuentes_owner_urn")
+  @@map("linkedin_fuentes")
+}
+
+// Snapshot del formulario/version usado para mapear respuestas por
+// `questionId`/`predefinedField`, nunca por el texto visible de la pregunta.
+model LinkedInFormulario {
+  id                   String   @id @default(uuid()) @db.Uuid
+  fuenteId             String   @map("fuente_id") @db.Uuid
+  versionedFormUrn     String   @map("versioned_form_urn") @db.Text
+  nombre               String?  @db.Text
+  contenido            Json     @db.JsonB
+  activo               Boolean  @default(true)
+  sincronizadoEn       DateTime @map("sincronizado_en") @db.Timestamptz(6)
+
+  fuente LinkedInFuente @relation(fields: [fuenteId], references: [id], onDelete: Cascade)
+
+  @@unique([fuenteId, versionedFormUrn], map: "linkedin_formularios_fuente_versioned_form_key")
+  @@map("linkedin_formularios")
 }
 
 // Bitácora de errores/eventos por bridge (docs/05-bridges.md §8). Se escribe

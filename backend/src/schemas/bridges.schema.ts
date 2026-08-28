@@ -1,17 +1,64 @@
 import { EstadoBridge, NivelBridgeLog, RedSocial } from "@prisma/client";
 import { z } from "zod";
 
+import type { CampoLeadMapeable } from "../types/bridgeApi/configuracion-bridge-api.js";
+
+const CAMPOS_LEAD_MAPEABLES = [
+  "nombre",
+  "telefono",
+  "correo",
+  "idExternoLead",
+  "idExternoCampania",
+  "nombreCampania",
+  "idExternoCuenta",
+] as const satisfies readonly CampoLeadMapeable[];
+
+/**
+ * bridgeApi (`RedSocial.API_EXTERNA`): forma runtime de
+ * `ConfiguracionBridgeApi` (`types/bridgeApi/configuracion-bridge-api.ts`).
+ * `mapeoCampos` debe mapear al menos una clave externa a `idExternoLead` —
+ * sin eso `LeadRecibido` no puede aplicar su
+ * `UNIQUE(bridgeId, idExternoLead)` y cada poll duplicaría leads.
+ */
+const configuracionBridgeApiSchema = z.object({
+  url: z.string().trim().pipe(z.url()),
+  parametroFecha: z.string().trim().min(1).optional(),
+  mapeoCampos: z
+    .record(z.string().trim().min(1), z.enum(CAMPOS_LEAD_MAPEABLES))
+    .refine(
+      (mapeo) => Object.values(mapeo).includes("idExternoLead"),
+      "mapeoCampos debe mapear al menos una clave externa a idExternoLead",
+    ),
+});
+
 // D-M4-fundacion (diseño m4-bridges-crud-fundacion): Zod 4.4.3, mismo patrón
 // que `usuarios.schema.ts` (formatos top-level, enum nativo de Prisma como
 // valor en runtime).
 // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `empresaId` obligatorio
 // desde que `Bridge.empresaId` es NOT NULL (`schema.prisma`) — un bridge ya
 // no puede crearse sin empresa asignada.
-export const createBridgeBodySchema = z.object({
-  redSocial: z.enum(RedSocial),
-  nombre: z.string().trim().min(1).max(120),
-  empresaId: z.uuid(),
-});
+// bridgeApi (RedSocial.API_EXTERNA): `configuracionJson` y `credencialExterna`
+// (esta última en texto plano en el body — se cifra en `bridge.service.ts`
+// antes de persistir, igual que `cargarTokenBodySchema` con el token de
+// Meta) son obligatorios solo para este `redSocial`, y rechazados para
+// cualquier otro (los dos `.refine` de abajo) para que no queden campos de
+// un tipo de bridge colgando en otro.
+export const createBridgeBodySchema = z
+  .object({
+    redSocial: z.enum(RedSocial),
+    nombre: z.string().trim().min(1).max(120),
+    empresaId: z.uuid(),
+    configuracionJson: configuracionBridgeApiSchema.optional(),
+    credencialExterna: z.string().trim().min(1).optional(),
+  })
+  .refine((v) => v.redSocial !== "API_EXTERNA" || (v.configuracionJson && v.credencialExterna), {
+    message: "API_EXTERNA requiere configuracionJson y credencialExterna",
+    path: ["configuracionJson"],
+  })
+  .refine((v) => v.redSocial === "API_EXTERNA" || (!v.configuracionJson && !v.credencialExterna), {
+    message: "configuracionJson/credencialExterna solo aplican a redSocial API_EXTERNA",
+    path: ["redSocial"],
+  });
 
 /**
  * Requirement: PATCH /bridges/:id es el único endpoint para rename/
