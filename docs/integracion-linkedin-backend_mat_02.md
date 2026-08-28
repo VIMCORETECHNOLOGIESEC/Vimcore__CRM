@@ -1,6 +1,8 @@
-# 22 — Integración backend de LinkedIn Lead Sync
+# Integración backend de LinkedIn Lead Sync — material de prueba
 
-> **Estado:** borrador técnico TO-BE, no implementado.
+> **Estado:** material de trabajo/pruebas, fuera de la secuencia numerada de
+> `docs/` y sin registrar en `docs/00-estado-documentacion.md` a propósito —
+> no es documentación de producción. Borrador técnico TO-BE, no implementado.
 >
 > **Autoridad:** diseño propuesto para una futura SDD change. Este documento no
 > autoriza migraciones ni cambia el comportamiento AS-IS.
