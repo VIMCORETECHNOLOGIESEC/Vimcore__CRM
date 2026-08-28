@@ -1,4 +1,4 @@
-# 20 — Integración backend de LinkedIn Lead Sync
+# 22 — Integración backend de LinkedIn Lead Sync
 
 > **Estado:** borrador técnico TO-BE, no implementado.
 >
