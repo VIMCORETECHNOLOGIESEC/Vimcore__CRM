@@ -66,7 +66,17 @@ con otro si se tocan al mismo tiempo sin coordinación:
 |---|---|
 | `backend/prisma/schema.prisma` | Único archivo; cada bloque nuevo le agrega modelos → conflicto de migración si se toca en paralelo |
 | `backend/src/lib/event-broker.ts` | Hub SSE transversal, 24 símbolos dependientes de `publish` |
-| `backend/src/services/leads.access.ts` | Autoridad `canEdit`/`canTransfer`, reescrita tanto por Bloque C como por Bloque D |
+| `backend/src/services/leads.access.ts` | Autoridad `canEdit`/`canTransfer`. Bloque C (cerrado) ya reescribió el scope de empresa; la autoridad de rol (`Usuario.rol` → `Membresia`) sigue pendiente, es alcance de Bloque D |
 | `backend/src/lib/jwt.ts` + middlewares de rol | Transversal a toda ruta protegida; 17 archivos backend siguen referenciando `RolUsuario` (retiro real es Bloque F) |
 | `frontend/src/api/httpClient.ts` | Cliente HTTP único, 8 módulos de negocio dependen directo |
 | `frontend/src/router.tsx` + `frontend/src/layouts/navigation.ts` | Edición obligatoria por cada módulo nuevo → colisión de merge frecuente aunque trivial |
+
+**Coordinar vs. bloqueante de secuencia (2026-08-28):** para Bloques D y E,
+esta tabla es una lista de "avisar antes de editar" — D3/D7/D13 exigen editar
+`leads.access.ts` y `asignacion.service.ts`, no hay forma de implementar esa
+funcionalidad sin tocarlos, así que el conflicto de merge de contenido es un
+costo de coordinación aceptado. Para Bloque F, `jwt.ts` + middlewares de rol
+es distinto: retirar `Usuario.rol` mientras otro developer sigue escribiendo
+código contra ese mismo enum no es un conflicto de merge coordinable con un
+aviso — es una dependencia dura de secuencia. Ver
+`docs/blocks/f-retiro-legacy.md`.

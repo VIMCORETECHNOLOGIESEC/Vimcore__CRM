@@ -61,6 +61,48 @@ empresas, mismo criterio que las credenciales de login por empresa
 - `docs/00-estado-documentacion.md` refleja el esquema multi-tenant como
   AS-IS vigente, no como TO-BE.
 
+## Enfoque de implementación — capas existentes, sin reestructuración
+
+Directiva vigente (2026-08-28): mismo criterio de capas que Bloques D/E —
+sin embargo, este bloque tiene una **incompatibilidad estructural real**
+con la premisa de "no afectar al resto de devs", no solo un riesgo de
+archivo compartido.
+
+**Incompatibilidad de secuencia, no de arquitectura.** El alcance de este
+bloque es retirar `Usuario.rol`/`enum RolUsuario` — verificado: 17 archivos
+backend todavía lo referencian hoy (`rg -l "RolUsuario|usuario\.rol"
+backend/src`). Mientras otros developers (`dev-back`) sigan
+"perfeccionando el funcionamiento actual del single" usando esa misma
+autoridad de rol, retirarla no es un cambio de contenido coordinable como
+en D/E — es quitarles el suelo bajo los pies: cualquier código nuevo que
+escriban contra `Usuario.rol` dejaría de compilar o de tener efecto en
+cuanto este bloque se mergee. No hay forma de "avisar antes del PR" que
+resuelva esto, porque no es un conflicto de merge, es una dependencia dura
+de secuencia.
+
+**Regla de secuencia explícita:** Bloque F solo puede ejecutarse después de
+que el trabajo de `dev-back`/`dev-front` sobre el single-company legacy
+quede congelado o ya mergeado a la rama de integración — nunca en paralelo.
+Esto ya era cierto por diseño (`docs/16` §8 documenta el corte de
+`Usuario.rol` como el cierre final de la migración), pero esta sección lo
+deja explícito como bloqueante de proceso, no solo de arquitectura.
+
+**Cuando llegue su momento, dentro de las capas existentes:**
+
+- Editar los 17 archivos backend que referencian `RolUsuario`/`usuario.rol`
+  (no crear una capa de compatibilidad nueva ni un archivo puente) —
+  reemplazo directo por `Membresia.rol`/`habilitadoParaVenta`, ya cutover
+  funcionalmente por Bloque D en `leads.access.ts` y el pool de asignación.
+- `backend/prisma/schema.prisma` — `Bridge.empresaId`/`Lead.empresaId` pasan
+  a `NOT NULL`; se retira `enum RolUsuario` y la columna `Usuario.rol`.
+  Mismo archivo único ya extendido por A/B/C/D/E.
+- `backend/src/lib/jwt.ts` + middlewares de rol — listado como alto riesgo
+  en `docs/06` por ser transversal a toda ruta protegida; acá no es
+  "coordinar", es el punto final del cutover, se edita una sola vez cuando
+  el resto del código ya no depende de `Usuario.rol`.
+- Sin archivos nuevos de primer nivel: este bloque es retiro de código
+  dentro de archivos ya existentes, no adición.
+
 ## Bloque anterior
 
 Este es el último bloque de la migración multi-tenant. No hay bloque

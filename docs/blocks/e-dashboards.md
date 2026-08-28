@@ -4,6 +4,12 @@
 > Cubre Fase 6 de `docs/14-evolucion-multitenant.md` §13 ("Dashboard
 > jerárquico").
 
+> **Nota (2026-08-28):** su sección "embudo de Oportunidad" depende de que
+> `Oportunidad`/`Producto` existan en Prisma, y Bloque D (quien los crea)
+> quedó diferido a después del despliegue — ver
+> `docs/blocks/d-routing-oportunidad.md`. El resto de este bloque no
+> depende de esa entrada.
+
 ## Alcance
 
 Sincronizar métricas publicitarias reales de Meta, exponer
@@ -159,6 +165,47 @@ nueva); el ítem 5 depende de que Bloque B ya esté mergeado.
 - Exportación PDF y XLSX disponible con la misma autorización que el
   dashboard en vivo.
 - Embudo de Oportunidad y rendimiento por producto visibles en el dashboard.
+
+## Enfoque de implementación — capas existentes, sin reestructuración
+
+Directiva vigente (2026-08-28): mismo criterio que Bloque D — editar lógica
+dentro de la estructura de capas ya usada por Bloques A/B/C, sin mover ni
+renombrar carpetas, para no interferir con el trabajo paralelo de otros
+developers sobre el layout físico actual.
+
+**Archivos existentes que se editan:**
+
+- `backend/src/services/metricas.service.ts` — se extiende con los nuevos
+  cálculos (embudo de Oportunidad, rendimiento por producto, cascada
+  Lead→Oportunidad→Venta); explícitamente reutilizado, no duplicado, según
+  ya fija el "Alcance" de este documento.
+- `backend/src/lib/event-broker.ts` — nuevos eventos
+  `reporte.iniciado`/`reporte.listo`/`reporte.error` sobre el mismo hub SSE.
+  Está en la lista de "archivos de alto riesgo" de `docs/06` (24 símbolos
+  dependientes de `publish`) — agregar eventos nuevos es de menor riesgo que
+  cambiar la firma de `publish`, pero igual amerita avisar antes del PR.
+
+**Archivos nuevos — dentro de carpetas ya existentes:**
+
+- `backend/src/services/reportes.service.ts`,
+  `backend/src/repositories/reporte-job.repository.ts`,
+  `backend/src/controllers/reportes.controller.ts`,
+  `backend/src/routes/reportes.routes.ts`,
+  `backend/src/jobs/sincronizacion-meta.job.ts` (mismo patrón que los jobs
+  ya existentes en `backend/src/jobs/`, ej. `sla-atrasado.service`,
+  `bridge-mudo.service.ts`) — sin carpeta nueva.
+- `backend/prisma/schema.prisma` — agrega `CampaniaMetricaDiaria`,
+  `ConfiguracionReporte`, `ReporteJob`, `Lead.campaniaId`. Mismo archivo
+  único ya extendido por A/B/C/D.
+- Frontend: nuevo módulo `frontend/src/funcionalidades/reportes/` (mismo
+  nivel que `dashboard/`), y extensión de
+  `frontend/src/funcionalidades/dashboard/` con los componentes de embudo de
+  Oportunidad/rendimiento por producto (`GraficoEmbudoOportunidad.tsx`,
+  `GraficoPorProducto.tsx` — mismo patrón flat que
+  `GraficoPorCampania.tsx`/`GraficoPorAsesor.tsx` ya existentes).
+
+Ningún directorio se mueve ni se renombra. Este bloque tiene menor riesgo de
+colisión que D: no toca `leads.access.ts` ni `asignacion.service.ts`.
 
 ## Siguiente bloque
 

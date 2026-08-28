@@ -1,5 +1,18 @@
 # Bloque D — Routing, handoff y Oportunidad
 
+> **Diferido a después del despliegue (2026-08-28).** Prioridad del cliente:
+> completar primero lo mínimo visualizable del multi-tenant sin tocar
+> archivos de alto riesgo compartidos con trabajo paralelo sobre el
+> single-company actual (ver `docs/06-modulos-backend.md`
+> §"Archivos de alto riesgo"). El slice previo que sí se ejecuta antes del
+> despliegue es `docs/blocks/d0-visualizacion-multitenant.md`. Todo el
+> contenido de este documento sigue vigente como el plan real de Bloque D —
+> solo se pospone su ejecución, no se descarta. Su ciclo SDD completo
+> (proposal/spec/design/tasks) ya corrió y quedó persistido en Engram
+> (`sdd/bloque-d-routing-oportunidad/{proposal,spec,design,tasks}`,
+> observations #83-#86) — al retomarlo, leer esos artefactos antes de
+> replanificar desde cero.
+
 > Fase 5 de `docs/16-hallazgos-y-preguntas.md` §7 ("Routing y handoff").
 > Cubre Fase 5 de `docs/14-evolucion-multitenant.md` §13 ("Routing y
 > handoff").
@@ -225,6 +238,64 @@ real cuando se agregue el endpoint.
   ya pueden consumirlos.
 - El riesgo de invariante de `asesorId` (arriba) tiene decisión registrada,
   no solo señalada.
+
+## Enfoque de implementación — capas existentes, sin reestructuración
+
+Directiva vigente (2026-08-28): implementar como edición de lógica dentro de
+la estructura de capas ya usada por Bloques A/B/C, nunca moviendo/renombrando
+carpetas ni introduciendo un patrón nuevo. Otros developers (`dev-back`,
+`dev-front`) siguen trabajando sobre el layout físico actual perfeccionando
+el single-company — reestructurar rompería sus imports; editar contenido de
+archivos ya existentes es un costo de coordinación aceptado.
+
+**Archivos existentes que se editan (inevitable, no se puede evitar tocarlos
+para D3/D7/D13):**
+
+- `backend/src/services/leads.access.ts` — cutover de `canClose`/`canEdit`/
+  `canTransfer` de `Usuario.rol` a `Membresia.rol`/`habilitadoParaVenta`
+  (D7). Ya señalado en `docs/06-modulos-backend.md` como archivo de alto
+  riesgo "reescrito tanto por Bloque C como por Bloque D" — bajo esta
+  directiva pasa de "evitar" a "coordinar antes de editar": avisar al equipo
+  antes del PR, no diferirlo a un archivo nuevo paralelo (dividiría la
+  autoridad de cierre en dos fuentes de verdad).
+- `backend/src/services/asignacion.service.ts` — pool D3 scopeado por
+  empresa; reescribe `selectResponsable`/`applyAsignacion` para operar sobre
+  `Oportunidad` en vez de `Lead`. Mismo criterio: coordinar, no evitar.
+- `backend/src/repositories/usuario.repository.ts` (`findActivosPorRol`) y
+  `backend/src/repositories/lead.repository.ts`
+  (`countCargaActivaPorResponsable`) — filtro de candidatos y cálculo de
+  carga migran a `Membresia`/`Oportunidad`.
+- `backend/prisma/schema.prisma` — agrega `Oportunidad`/`Producto` (y
+  `CanalManual` si se activa el diferido). Es el mismo archivo único que
+  Bloques A/B/C ya extendieron así; no es infraestructura nueva, es la
+  convención ya establecida del repo. Conflicto de merge es de contenido
+  (resoluble), no de estructura.
+
+**Archivos nuevos — todos dentro de carpetas ya existentes, ningún directorio
+de primer nivel nuevo:**
+
+- `backend/src/services/oportunidad.service.ts`,
+  `backend/src/repositories/oportunidad.repository.ts`,
+  `backend/src/repositories/producto.repository.ts`,
+  `backend/src/controllers/oportunidad.controller.ts`,
+  `backend/src/routes/oportunidad.routes.ts`,
+  `backend/src/schemas/oportunidad.schema.ts` — siguen exactamente el mismo
+  patrón `routes/ → controllers/ → services/ → repositories/` que ya usan
+  `leads.*`/`bridges.*`.
+- Frontend: nuevo módulo `frontend/src/funcionalidades/oportunidades/` (al
+  mismo nivel que `leads/`, `dashboard/`, `usuarios/` ya existentes) con
+  `oportunidad.api.ts`, `useOportunidades.ts`, componentes `.tsx` — mismo
+  patrón flat que ya usa `frontend/src/funcionalidades/leads/`. No es una
+  carpeta de arquitectura nueva, es un módulo de negocio nuevo dentro del
+  patrón de módulos ya existente (mismo criterio que agregar `bridges/` o
+  `notificaciones/` en su momento).
+- Reemplazo de los mocks ya construidos (`CierreVentaForm.tsx`,
+  `useAutorizacionLead`, ver "Contratos mock" arriba) por su fuente real —
+  edición de archivos ya existentes, no archivos nuevos.
+
+Ningún directorio se mueve ni se renombra. `routes/`, `controllers/`,
+`services/`, `repositories/` (backend) y `funcionalidades/<módulo>/`
+(frontend) quedan exactamente como están hoy.
 
 ## Siguiente bloque
 

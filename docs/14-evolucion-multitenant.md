@@ -473,9 +473,17 @@ doc del bloque.
 | 2 — Membresías y autorización en sombra | Autorizador nuevo comparado contra legacy antes de cortar el switch | `docs/blocks/b-tenant-prisma-foundation.md` |
 | 3 — Procedencia y deduplicación | Empresa/fuente derivadas del bridge; dedupe con scope empresarial | `docs/blocks/b-tenant-prisma-foundation.md` |
 | 4 — Aislamiento efectivo | Scoping obligatorio en consultas, jobs, SSE y logs; pruebas adversariales | `docs/blocks/c-aislamiento.md` |
-| 5 — Routing y handoff | Elegibilidad por fuente, matriz asesor-vendedor, límite Lead→Oportunidad | `docs/blocks/d-routing-oportunidad.md` |
-| 6 — Dashboard jerárquico | Selectores por empresa/fuente, métricas separadas por rol | `docs/blocks/e-dashboards.md` |
-| 7 — Endurecimiento y retiro legacy | Ownership `NOT NULL`, retiro de `Usuario.rol`, verificación de backup/rollback | `docs/blocks/f-retiro-legacy.md` |
+| 5 — Routing y handoff | Elegibilidad por fuente, matriz asesor-vendedor, límite Lead→Oportunidad | `docs/blocks/d-routing-oportunidad.md` (diferido a después del despliegue) |
+| 6 — Dashboard jerárquico | Selectores por empresa/fuente, métricas separadas por rol | `docs/blocks/e-dashboards.md` (diferido, depende de Bloque D) |
+| 7 — Endurecimiento y retiro legacy | Ownership `NOT NULL`, retiro de `Usuario.rol`, verificación de backup/rollback | `docs/blocks/f-retiro-legacy.md` (bloqueado por secuencia: solo tras congelar/mergear el legacy `Usuario.rol` de `dev-back`/`dev-front`) |
+
+**Slice previo a Fase 5 (2026-08-28):** `docs/blocks/d0-visualizacion-multitenant.md`
+no corresponde a ninguna Fase de esta tabla ni de `docs/16` §7 — es un
+recorte mínimo dentro de la Fase 5 que se ejecuta antes del despliegue
+(expone en frontend el `empresaId`/`sessionScope` que el backend ya
+resuelve, sin routing ni migraciones nuevas). El resto de la Fase 5
+(pool D3/D4, cutover D7, split D13/D14) permanece diferido bajo
+`d-routing-oportunidad.md`.
 
 La numeración de Fase de esta tabla no coincide 1:1 con la de `docs/16` §7
 (los planes se escribieron en momentos distintos con distinto nivel de
