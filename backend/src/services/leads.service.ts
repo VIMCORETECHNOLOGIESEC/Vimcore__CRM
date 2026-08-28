@@ -295,7 +295,15 @@ export async function transitionEtapa(
       );
 
       const recipients = [...new Set([leadActualizado.asesorId, leadActualizado.vendedorId].filter((id): id is string => id !== null))];
-      return { lead: leadActualizado, events: recipients.map((userId) => ({ userId, type: "lead.etapa-cambiada" as const, data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa } })) };
+      return {
+        lead: leadActualizado,
+        events: recipients.map((userId) => ({
+          userId,
+          empresaId: lead.empresaId,
+          type: "lead.etapa-cambiada" as const,
+          data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa },
+        })),
+      };
     },
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );
@@ -330,4 +338,3 @@ export async function recalificarLead(
     new Date(),
   );
 }
-

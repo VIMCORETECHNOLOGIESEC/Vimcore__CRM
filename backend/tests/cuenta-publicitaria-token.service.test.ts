@@ -43,7 +43,7 @@ async function crearBridge(): Promise<{ id: string }> {
 
 async function crearCuenta(bridgeId: string, overrides: { tokenCifrado?: string | null } = {}): Promise<{ id: string }> {
   contador += 1;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId,
       idExterno: `page-token-service-${contador}`,
@@ -78,7 +78,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     expect(dto.estadoToken).toBe("VALIDO");
     expect(dto.tokenExpiraEn).toEqual(new Date(1_900_000_000 * 1000));
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
     expect(fila.tokenCifrado).not.toBeNull();
     expect(decrypt(fila.tokenCifrado as string)).toBe("page-access-token-en-claro");
@@ -98,7 +98,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
       statusHttp: 422,
     });
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.tokenCifrado).toBeNull();
     expect(fila.estadoToken).toBe("VALIDO"); // default, sin cambios
   });
@@ -138,12 +138,12 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     });
     const fetchMock = vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true } }));
     vi.stubGlobal("fetch", fetchMock);
-    const antes = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const antes = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
 
     const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
 
     expect(resultado).toEqual({ ok: true, mensaje: "Conexión verificada correctamente." });
-    const despues = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const despues = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(despues).toEqual(antes);
   });
 
@@ -158,7 +158,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
   });
 
@@ -196,7 +196,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     expect(typeof resultado.mensaje).toBe("string");
     expect(resultado.mensaje.length).toBeGreaterThan(0);
     expect(fetchMock).not.toHaveBeenCalled();
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO"); // puramente diagnóstica, nunca persiste
   });
 });

@@ -63,8 +63,8 @@ describe("M8 transactional lead producers", () => {
     const publish = vi.spyOn(eventBroker, "publish");
     await conContexto(() => assignLead(supervisor, target.id, { asesorId: asesor.id }));
     expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: target.id, tipo: "LEAD_ASIGNADO" } })).toBe(1);
-    expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "LEAD_ASIGNADO" }));
-    expect(publish).toHaveBeenCalledWith(asesor.id, "lead.asignado", expect.objectContaining({ leadId: target.id }));
+    expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "LEAD_ASIGNADO" }), BOOTSTRAP_EMPRESA_ID);
+    expect(publish).toHaveBeenCalledWith(asesor.id, "lead.asignado", expect.objectContaining({ leadId: target.id }), BOOTSTRAP_EMPRESA_ID);
   });
 
   it("rolls back assignment notification and stays silent when the transaction fails", async () => {
@@ -95,7 +95,7 @@ describe("M8 transactional lead producers", () => {
     );
     expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: vendedor.id, leadId: target.id, tipo: "LEAD_TRASPASADO" } })).toBe(1);
     expect(await testAdminPrisma.notificacion.count({ where: { leadId: target.id } })).toBe(beforeStage);
-    expect(publish).toHaveBeenCalledWith(vendedor.id, "lead.etapa-cambiada", expect.objectContaining({ etapaNueva: "VENTA" }));
+    expect(publish).toHaveBeenCalledWith(vendedor.id, "lead.etapa-cambiada", expect.objectContaining({ etapaNueva: "VENTA" }), BOOTSTRAP_EMPRESA_ID);
   });
 
   it("fans an unassigned lead out only to active supervisors and administrators", async () => {
@@ -135,6 +135,6 @@ describe("M8 transactional lead producers", () => {
     const publish = vi.spyOn(eventBroker, "publish");
     await conContexto(() => deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date() }));
     expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: first.leadId, tipo: "INTERACCION_REPETIDA" } })).toBe(1);
-    expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "INTERACCION_REPETIDA" }));
+    expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "INTERACCION_REPETIDA" }), BOOTSTRAP_EMPRESA_ID);
   });
 });

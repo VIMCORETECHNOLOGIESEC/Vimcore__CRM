@@ -66,11 +66,20 @@ describe("repositories/bridge-log — listByBridge (m4-bridges-crud-fundacion, P
   it("devuelve solo los logs del bridge indicado, más reciente primero", async () => {
     const bridge = await crearBridge();
     const otroBridge = await crearBridge();
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "INFO", mensaje: "primero" });
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "ERROR", mensaje: "segundo" });
-    await bridgeLogRepository.registrarLog({ bridgeId: otroBridge.id, nivel: "INFO", mensaje: "de otro bridge" });
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "primero" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "ERROR", mensaje: "segundo" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: otroBridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "de otro bridge" },
+      testAdminPrisma,
+    );
 
-    const logs = await bridgeLogRepository.listByBridge({ bridgeId: bridge.id }, 100);
+    const logs = await bridgeLogRepository.listByBridge({ bridgeId: bridge.id }, 100, testAdminPrisma);
 
     expect(logs).toHaveLength(2);
     expect(logs[0]?.mensaje).toBe("segundo");
@@ -79,10 +88,20 @@ describe("repositories/bridge-log — listByBridge (m4-bridges-crud-fundacion, P
 
   it("filtra por nivel cuando se provee", async () => {
     const bridge = await crearBridge();
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "INFO", mensaje: "info" });
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "ERROR", mensaje: "error" });
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "info" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "ERROR", mensaje: "error" },
+      testAdminPrisma,
+    );
 
-    const logs = await bridgeLogRepository.listByBridge({ bridgeId: bridge.id, nivel: "ERROR" }, 100);
+    const logs = await bridgeLogRepository.listByBridge(
+      { bridgeId: bridge.id, nivel: "ERROR" },
+      100,
+      testAdminPrisma,
+    );
 
     expect(logs).toHaveLength(1);
     expect(logs[0]?.nivel).toBe("ERROR");
@@ -90,18 +109,30 @@ describe("repositories/bridge-log — listByBridge (m4-bridges-crud-fundacion, P
 
   it("respeta el límite indicado (cap del caller)", async () => {
     const bridge = await crearBridge();
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "INFO", mensaje: "uno" });
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "INFO", mensaje: "dos" });
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "INFO", mensaje: "tres" });
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "uno" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "dos" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "tres" },
+      testAdminPrisma,
+    );
 
-    const logs = await bridgeLogRepository.listByBridge({ bridgeId: bridge.id }, 2);
+    const logs = await bridgeLogRepository.listByBridge({ bridgeId: bridge.id }, 2, testAdminPrisma);
 
     expect(logs).toHaveLength(2);
   });
 
   it("filtra por rango de fechas (fechaDesde/fechaHasta) cuando se provee", async () => {
     const bridge = await crearBridge();
-    await bridgeLogRepository.registrarLog({ bridgeId: bridge.id, nivel: "INFO", mensaje: "dentro de rango" });
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: bridge.id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "dentro de rango" },
+      testAdminPrisma,
+    );
 
     const futuro = new Date(Date.now() + 60_000);
     const dentroDeRango = new Date(Date.now() - 60_000);
@@ -109,10 +140,12 @@ describe("repositories/bridge-log — listByBridge (m4-bridges-crud-fundacion, P
     const logsFuera = await bridgeLogRepository.listByBridge(
       { bridgeId: bridge.id, fechaDesde: futuro },
       100,
+      testAdminPrisma,
     );
     const logsDentro = await bridgeLogRepository.listByBridge(
       { bridgeId: bridge.id, fechaDesde: dentroDeRango },
       100,
+      testAdminPrisma,
     );
 
     expect(logsFuera).toHaveLength(0);

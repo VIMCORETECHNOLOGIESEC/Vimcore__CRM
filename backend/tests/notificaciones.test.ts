@@ -174,7 +174,7 @@ describe("M8 active supervisor/admin fan-out", () => {
         titulo: "Lead sin asignar",
         mensaje: "No hay responsables disponibles",
       },
-      null,
+      BOOTSTRAP_EMPRESA_ID,
       testAdminPrisma,
     );
     const recipients = await testAdminPrisma.notificacion.findMany({
@@ -196,7 +196,7 @@ describe("M8 active supervisor/admin fan-out", () => {
             titulo: "Lead sin asignar",
             mensaje: "Rollback expected",
           },
-          null,
+          BOOTSTRAP_EMPRESA_ID,
           tx,
         );
         throw new Error("forced rollback");

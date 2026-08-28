@@ -35,7 +35,7 @@ async function crearCuentaPublicitaria(
 ): Promise<{ id: string; idExterno: string }> {
   contador += 1;
   const idExterno = overrides.idExterno ?? `page-${contador}-${randomUUID()}`;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId,
       idExterno,
@@ -54,7 +54,7 @@ describe("schema M4-fundacion — CuentaPublicitaria (migración, round-trip rea
   it("persiste una Página con su Instagram vinculado en la misma fila", async () => {
     const bridge = await crearBridge();
 
-    const cuenta = await prisma.cuentaPublicitaria.create({
+    const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
       data: {
         bridgeId: bridge.id,
         idExterno: `page-vinculada-${randomUUID()}`,
@@ -73,7 +73,7 @@ describe("schema M4-fundacion — CuentaPublicitaria (migración, round-trip rea
     const cuenta = await crearCuentaPublicitaria(bridge.id);
 
     expect(cuenta).toBeDefined();
-    const encontrada = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.id } });
+    const encontrada = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.id } });
     expect(encontrada.idExternoVinculado).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe("schema M4-fundacion — CuentaPublicitaria (migración, round-trip rea
     const { idExterno } = await crearCuentaPublicitaria(bridge.id);
 
     await expect(
-      prisma.cuentaPublicitaria.create({
+      testAdminPrisma.cuentaPublicitaria.create({
         data: { bridgeId: bridge.id, idExterno, nombre: "Duplicada" },
       }),
     ).rejects.toThrow();
@@ -105,7 +105,7 @@ describe("schema M4-fundacion — CuentaPublicitaria (migración, round-trip rea
 
     await testAdminPrisma.bridge.delete({ where: { id: bridge.id } });
 
-    const encontrada = await prisma.cuentaPublicitaria.findUnique({ where: { id: cuenta.id } });
+    const encontrada = await testAdminPrisma.cuentaPublicitaria.findUnique({ where: { id: cuenta.id } });
     expect(encontrada).toBeNull();
   });
 });
@@ -115,7 +115,7 @@ describe("schema M4-fundacion — Campania (migración, round-trip real)", () =>
     const bridge = await crearBridge();
     const cuenta = await crearCuentaPublicitaria(bridge.id);
 
-    const campania = await prisma.campania.create({
+    const campania = await testAdminPrisma.campania.create({
       data: {
         cuentaPublicitariaId: cuenta.id,
         idExterno: `camp-${randomUUID()}`,
@@ -134,12 +134,12 @@ describe("schema M4-fundacion — Campania (migración, round-trip real)", () =>
     const cuenta = await crearCuentaPublicitaria(bridge.id);
     const idExterno = `camp-dup-${randomUUID()}`;
 
-    await prisma.campania.create({
+    await testAdminPrisma.campania.create({
       data: { cuentaPublicitariaId: cuenta.id, idExterno, nombre: "Original", redSocial: "FACEBOOK" },
     });
 
     await expect(
-      prisma.campania.create({
+      testAdminPrisma.campania.create({
         data: { cuentaPublicitariaId: cuenta.id, idExterno, nombre: "Duplicada", redSocial: "FACEBOOK" },
       }),
     ).rejects.toThrow();
@@ -151,10 +151,10 @@ describe("schema M4-fundacion — Campania (migración, round-trip real)", () =>
     const cuentaB = await crearCuentaPublicitaria(bridge.id);
     const idExternoCompartido = `camp-compartida-${randomUUID()}`;
 
-    await prisma.campania.create({
+    await testAdminPrisma.campania.create({
       data: { cuentaPublicitariaId: cuentaA.id, idExterno: idExternoCompartido, nombre: "A", redSocial: "FACEBOOK" },
     });
-    const campaniaB = await prisma.campania.create({
+    const campaniaB = await testAdminPrisma.campania.create({
       data: { cuentaPublicitariaId: cuentaB.id, idExterno: idExternoCompartido, nombre: "B", redSocial: "FACEBOOK" },
     });
 
@@ -164,7 +164,7 @@ describe("schema M4-fundacion — Campania (migración, round-trip real)", () =>
   it("onDelete Cascade: eliminar la CuentaPublicitaria elimina sus Campania", async () => {
     const bridge = await crearBridge();
     const cuenta = await crearCuentaPublicitaria(bridge.id);
-    const campania = await prisma.campania.create({
+    const campania = await testAdminPrisma.campania.create({
       data: {
         cuentaPublicitariaId: cuenta.id,
         idExterno: `camp-cascade-${randomUUID()}`,
@@ -173,9 +173,9 @@ describe("schema M4-fundacion — Campania (migración, round-trip real)", () =>
       },
     });
 
-    await prisma.cuentaPublicitaria.delete({ where: { id: cuenta.id } });
+    await testAdminPrisma.cuentaPublicitaria.delete({ where: { id: cuenta.id } });
 
-    const encontrada = await prisma.campania.findUnique({ where: { id: campania.id } });
+    const encontrada = await testAdminPrisma.campania.findUnique({ where: { id: campania.id } });
     expect(encontrada).toBeNull();
   });
 });

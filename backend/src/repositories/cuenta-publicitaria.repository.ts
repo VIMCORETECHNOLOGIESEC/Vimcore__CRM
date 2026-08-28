@@ -110,9 +110,10 @@ export async function updateToken(
  */
 export async function listConTokenCargado(
   client: PrismaClientOrTransaction = prisma,
-): Promise<CuentaPublicitaria[]> {
+): Promise<CuentaPublicitariaConEmpresa[]> {
   return client.cuentaPublicitaria.findMany({
     where: { tokenCifrado: { not: null } },
+    include: { bridge: { select: { empresaId: true } } },
   });
 }
 
@@ -165,7 +166,7 @@ export async function findByBridgeEIdExterno(
  * `TOKEN_POR_EXPIRAR` sin una consulta extra por cuenta dentro del loop.
  */
 export type CuentaPublicitariaConEmpresa = CuentaPublicitaria & {
-  bridge: { empresaId: string | null };
+  bridge: { empresaId: string };
 };
 
 export async function listPorExpirar(

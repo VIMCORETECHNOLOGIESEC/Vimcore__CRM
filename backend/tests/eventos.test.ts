@@ -15,6 +15,7 @@ const password = "clave-eventos-123456";
 // helper crea la Membresia equivalente, mismo criterio que
 // `notificaciones.test.ts::createUserConMembresia`.
 const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+const COMPANY_SCOPE = { sessionScope: "company" as const, empresaId: BOOTSTRAP_EMPRESA_ID };
 
 async function createToken(): Promise<{ id: string; token: string }> {
   const user = await prisma.usuario.create({
@@ -40,16 +41,35 @@ afterAll(async () => {
 });
 
 describe("M8 EventBroker", () => {
+  it("aísla conexiones y replay del mismo usuario por empresa, entregando eventos company también a holding", () => {
+    const broker = new EventBroker({ bootNonce: "tenant", capacity: 100 });
+    const empresaA: string[] = [];
+    const empresaB: string[] = [];
+    const holding: string[] = [];
+    broker.subscribe("multi", { sessionScope: "company", empresaId: "empresa-a" }, undefined, (event) => empresaA.push(event.id));
+    broker.subscribe("multi", { sessionScope: "company", empresaId: "empresa-b" }, undefined, (event) => empresaB.push(event.id));
+    broker.subscribe("multi", { sessionScope: "holding", empresaId: null }, undefined, (event) => holding.push(event.id));
+
+    const publicado = broker.publish("multi", "notificacion.nueva", { empresaId: "empresa-a" }, "empresa-a");
+
+    expect(empresaA).toEqual([publicado.id]);
+    expect(empresaB).toEqual([]);
+    expect(holding).toEqual([publicado.id]);
+    const replayEmpresaB: string[] = [];
+    broker.subscribe("multi", { sessionScope: "company", empresaId: "empresa-b" }, publicado.id, (event) => replayEmpresaB.push(event.type));
+    expect(replayEmpresaB).toEqual(["sincronizacion.requerida"]);
+  });
+
   it("delivers live events only to the recipient and supports sibling tabs", () => {
     const broker = new EventBroker({ bootNonce: "boot", capacity: 100 });
     const firstTab: string[] = [];
     const secondTab: string[] = [];
     const foreignTab: string[] = [];
-    broker.subscribe("owner", undefined, (event) => firstTab.push(event.id));
-    broker.subscribe("owner", undefined, (event) => secondTab.push(event.id));
-    broker.subscribe("foreign", undefined, (event) => foreignTab.push(event.id));
+    broker.subscribe("owner", COMPANY_SCOPE, undefined, (event) => firstTab.push(event.id));
+    broker.subscribe("owner", COMPANY_SCOPE, undefined, (event) => secondTab.push(event.id));
+    broker.subscribe("foreign", COMPANY_SCOPE, undefined, (event) => foreignTab.push(event.id));
 
-    const published = broker.publish("owner", "notificacion.nueva", { id: "n-1" });
+    const published = broker.publish("owner", "notificacion.nueva", { id: "n-1" }, BOOTSTRAP_EMPRESA_ID);
 
     expect(published.id).toBe("boot:1");
     expect(firstTab).toEqual(["boot:1"]);
@@ -59,27 +79,27 @@ describe("M8 EventBroker", () => {
 
   it("replays only later retained events in order for the same user", () => {
     const broker = new EventBroker({ bootNonce: "boot", capacity: 100 });
-    const first = broker.publish("owner", "lead.asignado", { leadId: "l-1" });
-    broker.publish("foreign", "lead.asignado", { leadId: "foreign" });
-    broker.publish("owner", "lead.etapa-cambiada", { leadId: "l-1", etapa: "CONTACTADO" });
-    broker.publish("owner", "notificacion.nueva", { id: "n-1" });
+    const first = broker.publish("owner", "lead.asignado", { leadId: "l-1" }, BOOTSTRAP_EMPRESA_ID);
+    broker.publish("foreign", "lead.asignado", { leadId: "foreign" }, BOOTSTRAP_EMPRESA_ID);
+    broker.publish("owner", "lead.etapa-cambiada", { leadId: "l-1", etapa: "CONTACTADO" }, BOOTSTRAP_EMPRESA_ID);
+    broker.publish("owner", "notificacion.nueva", { id: "n-1" }, BOOTSTRAP_EMPRESA_ID);
     const replayed: string[] = [];
 
-    broker.subscribe("owner", first.id, (event) => replayed.push(event.id));
+    broker.subscribe("owner", COMPANY_SCOPE, first.id, (event) => replayed.push(event.id));
 
     expect(replayed).toEqual(["boot:3", "boot:4"]);
   });
 
   it("signals resynchronization for unknown and evicted cursors", () => {
     const broker = new EventBroker({ bootNonce: "new-boot", capacity: 2 });
-    const evicted = broker.publish("owner", "lead.asignado", { leadId: "l-1" });
-    broker.publish("owner", "lead.asignado", { leadId: "l-2" });
-    broker.publish("owner", "lead.asignado", { leadId: "l-3" });
+    const evicted = broker.publish("owner", "lead.asignado", { leadId: "l-1" }, BOOTSTRAP_EMPRESA_ID);
+    broker.publish("owner", "lead.asignado", { leadId: "l-2" }, BOOTSTRAP_EMPRESA_ID);
+    broker.publish("owner", "lead.asignado", { leadId: "l-3" }, BOOTSTRAP_EMPRESA_ID);
     const unknownFrames: string[] = [];
     const evictedFrames: string[] = [];
 
-    broker.subscribe("owner", "old-boot:99", (event) => unknownFrames.push(event.type));
-    broker.subscribe("owner", evicted.id, (event) => evictedFrames.push(event.type));
+    broker.subscribe("owner", COMPANY_SCOPE, "old-boot:99", (event) => unknownFrames.push(event.type));
+    broker.subscribe("owner", COMPANY_SCOPE, evicted.id, (event) => evictedFrames.push(event.type));
 
     expect(unknownFrames).toEqual(["sincronizacion.requerida"]);
     expect(evictedFrames).toEqual(["sincronizacion.requerida"]);
@@ -88,7 +108,7 @@ describe("M8 EventBroker", () => {
   it("M9 broadcastAll delivers to every connected userId and skips disconnected ones (docs/08-dashboard-kpis.md §5)", () => {
     const broker = new EventBroker({ bootNonce: "boot", capacity: 100 });
     const connectedFrames: string[] = [];
-    broker.subscribe("connected", undefined, (event) => connectedFrames.push(event.type));
+    broker.subscribe("connected", COMPANY_SCOPE, undefined, (event) => connectedFrames.push(event.type));
 
     broker.broadcastAll("metricas.actualizadas", {});
 
@@ -96,23 +116,23 @@ describe("M8 EventBroker", () => {
     // Sin conexión activa, "disconnected" nunca entra a `connections.keys()`
     // — broadcastAll no le publica nada, ni siquiera lo retiene.
     const replayed: string[] = [];
-    broker.subscribe("disconnected", undefined, (event) => replayed.push(event.type));
+    broker.subscribe("disconnected", COMPANY_SCOPE, undefined, (event) => replayed.push(event.type));
     expect(replayed).toEqual([]);
   });
 
   it("removes only a failed connection and leaves its sibling tab active", () => {
     const broker = new EventBroker({ bootNonce: "boot", capacity: 100 });
     const sibling: string[] = [];
-    broker.subscribe("owner", undefined, () => {
+    broker.subscribe("owner", COMPANY_SCOPE, undefined, () => {
       throw new Error("connection closed");
     });
-    broker.subscribe("owner", undefined, (event) => sibling.push(event.id));
+    broker.subscribe("owner", COMPANY_SCOPE, undefined, (event) => sibling.push(event.id));
 
-    broker.publish("owner", "notificacion.nueva", { id: "n-1" });
-    broker.publish("owner", "notificacion.nueva", { id: "n-2" });
+    broker.publish("owner", "notificacion.nueva", { id: "n-1" }, BOOTSTRAP_EMPRESA_ID);
+    broker.publish("owner", "notificacion.nueva", { id: "n-2" }, BOOTSTRAP_EMPRESA_ID);
 
     expect(sibling).toEqual(["boot:1", "boot:2"]);
-    expect(broker.connectionCount("owner")).toBe(1);
+    expect(broker.connectionCount("owner", COMPANY_SCOPE)).toBe(1);
   });
 });
 
@@ -132,15 +152,15 @@ describe("M8 SSE lifecycle", () => {
       }),
     });
 
-    openEventStream(requestEvents, response, "owner", broker, 25_000);
+    openEventStream(requestEvents, response, "owner", COMPANY_SCOPE, broker, 25_000);
     expect(response.setHeader).toHaveBeenCalledWith("Content-Type", "text/event-stream");
-    expect(broker.connectionCount("owner")).toBe(1);
+    expect(broker.connectionCount("owner", COMPANY_SCOPE)).toBe(1);
 
     vi.advanceTimersByTime(25_000);
     expect(chunks).toContain(": heartbeat\n\n");
 
     requestEvents.emit("close");
-    expect(broker.connectionCount("owner")).toBe(0);
+    expect(broker.connectionCount("owner", COMPANY_SCOPE)).toBe(0);
     vi.useRealTimers();
   });
 });
@@ -161,14 +181,14 @@ describe("GET /api/v1/eventos", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/event-stream");
 
-      const firstEvent = eventBroker.publish(id, "notificacion.nueva", { id: "n-live" });
+      const firstEvent = eventBroker.publish(id, "notificacion.nueva", { id: "n-live" }, BOOTSTRAP_EMPRESA_ID);
       const firstChunk = await response.body?.getReader().read();
       const firstFrame = new TextDecoder().decode(firstChunk?.value);
       expect(firstFrame).toContain("event: notificacion.nueva");
       expect(firstFrame).toContain('data: {"id":"n-live"}');
       firstAbort.abort();
 
-      eventBroker.publish(id, "lead.asignado", { leadId: "lead-replay" });
+      eventBroker.publish(id, "lead.asignado", { leadId: "lead-replay" }, BOOTSTRAP_EMPRESA_ID);
       const replay = await fetch(`http://127.0.0.1:${address.port}/api/v1/eventos`, {
         headers: { Authorization: `Bearer ${token}`, "Last-Event-ID": firstEvent.id },
         signal: replayAbort.signal,

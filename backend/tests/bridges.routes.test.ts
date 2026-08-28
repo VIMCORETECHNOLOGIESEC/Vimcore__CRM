@@ -325,7 +325,7 @@ describe("DELETE /api/v1/bridges/:id (Requirement: Delete mode is decided by lea
 
   it("200 BAJA_LOGICA cuando leadsRecibidos.count > 0", async () => {
     const { id } = await crearBridgeDirecto({ estado: "ACTIVO" });
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: id,
         idExternoLead: `lead-externo-ruta-${contador}`,
@@ -639,7 +639,7 @@ describe(
     "only activation)",
   () => {
     async function crearCuentaDirecta(bridgeId: string): Promise<{ cuentaId: string }> {
-      const cuenta = await prisma.cuentaPublicitaria.create({
+      const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
         data: { bridgeId, idExterno: `page-patch-${Date.now()}-${Math.random()}`, nombre: "Cuenta a togglear" },
       });
       return { cuentaId: cuenta.id };
@@ -720,7 +720,7 @@ describe(
     "verificación inmediata; el token nunca se devuelve por API)",
   () => {
     async function crearCuentaDirecta(bridgeId: string): Promise<{ cuentaId: string }> {
-      const cuenta = await prisma.cuentaPublicitaria.create({
+      const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
         data: { bridgeId, idExterno: `page-token-ruta-${Date.now()}-${Math.random()}`, nombre: "Cuenta a cargar" },
       });
       return { cuentaId: cuenta.id };
@@ -817,7 +817,7 @@ describe(
       bridgeId: string,
       overrides: { tokenCifrado?: string | null } = {},
     ): Promise<{ cuentaId: string }> {
-      const cuenta = await prisma.cuentaPublicitaria.create({
+      const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
         data: {
           bridgeId,
           idExterno: `page-probar-ruta-${Date.now()}-${Math.random()}`,

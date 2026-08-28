@@ -41,7 +41,7 @@ async function crearCuentaConToken(
   overrides: { tokenCifrado?: string | null; tokenExpiraEn?: Date | null } = {},
 ): Promise<{ id: string }> {
   contador += 1;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId,
       idExterno: `page-verificacion-token-${contador}`,
@@ -71,9 +71,9 @@ describe("verificacion-token.service — verifyTokensVigentes", () => {
 
     expect(resultado.candidatos).toBeGreaterThanOrEqual(1);
     expect(resultado.invalidados).toBeGreaterThanOrEqual(1);
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("TOKEN_EXPIRADO");
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -95,16 +95,16 @@ describe("verificacion-token.service — verifyTokensVigentes", () => {
     // y a ESTE bridge, verificado abajo.
     await verifyTokensVigentes(new Date());
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
-    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId } });
+    const log = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId } });
     expect(log).toBeNull();
   });
 
   it("token válido con expires_at nuevo: actualiza tokenExpiraEn sin volver a cifrar", async () => {
     const { id: bridgeId } = await crearBridge();
     const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: null });
-    const filaAntes = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const filaAntes = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true, expires_at: 1_900_000_000 } })),
@@ -112,7 +112,7 @@ describe("verificacion-token.service — verifyTokensVigentes", () => {
 
     await verifyTokensVigentes(new Date());
 
-    const filaDespues = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const filaDespues = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(filaDespues.tokenExpiraEn).toEqual(new Date(1_900_000_000 * 1000));
     expect(filaDespues.tokenCifrado).toBe(filaAntes.tokenCifrado);
   });
@@ -179,9 +179,9 @@ describe("verificacion-token.service — verifyTokensVigentes", () => {
 
     expect(resultado.invalidados).toBeGreaterThanOrEqual(1);
 
-    const filaCorrupta = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaCorruptaId } });
+    const filaCorrupta = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaCorruptaId } });
     expect(filaCorrupta.estadoToken).toBe("TOKEN_EXPIRADO");
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -191,7 +191,7 @@ describe("verificacion-token.service — verifyTokensVigentes", () => {
     // La otra cuenta del mismo tick se verifica igual — el fallo de una
     // cuenta no interrumpe el resto del loop (`listConTokenCargado` no
     // garantiza orden, así que esto cubre cualquier posición relativa).
-    const filaSana = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaSanaId } });
+    const filaSana = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaSanaId } });
     expect(filaSana.estadoToken).toBe("VALIDO");
   });
 });
@@ -236,10 +236,10 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
     const resultado = await produceAlertaTokenPorExpirar(ahora);
 
     expect(resultado.alertadas).toBeGreaterThanOrEqual(1);
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.alertaExpiracionParaEn).toEqual(expiraEn);
     expect(
-      await prisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "TOKEN_POR_EXPIRAR" } }),
+      await testAdminPrisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "TOKEN_POR_EXPIRAR" } }),
     ).toBeGreaterThanOrEqual(1);
   });
 
@@ -250,13 +250,13 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
     const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
 
     await produceAlertaTokenPorExpirar(ahora);
-    const notificacionesTrasPrimerTick = await prisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+    const notificacionesTrasPrimerTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
 
     const resultadoSegundoTick = await produceAlertaTokenPorExpirar(ahora);
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.alertaExpiracionParaEn).toEqual(expiraEn);
-    expect(await prisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } })).toBe(
+    expect(await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } })).toBe(
       notificacionesTrasPrimerTick,
     );
     // No aserta 0 en términos absolutos (universo completo, sin filtro por
@@ -273,17 +273,17 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
     await produceAlertaTokenPorExpirar(ahora);
 
     const expiraEnRenovado = new Date("2026-09-07T12:00:00.000Z");
-    await prisma.cuentaPublicitaria.update({
+    await testAdminPrisma.cuentaPublicitaria.update({
       where: { id: cuentaId },
       data: { tokenExpiraEn: expiraEnRenovado },
     });
 
     await produceAlertaTokenPorExpirar(ahora);
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.alertaExpiracionParaEn).toEqual(expiraEnRenovado);
     expect(
-      await prisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "TOKEN_POR_EXPIRAR" } }),
+      await testAdminPrisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "TOKEN_POR_EXPIRAR" } }),
     ).toBeGreaterThanOrEqual(2);
   });
 
@@ -295,7 +295,7 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
 
     await produceAlertaTokenPorExpirar(ahora);
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.alertaExpiracionParaEn).toBeNull();
   });
 
@@ -306,11 +306,11 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
     await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
 
     await produceAlertaTokenPorExpirar(ahora);
-    const trasPrimerTick = await prisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+    const trasPrimerTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
     await produceAlertaTokenPorExpirar(ahora);
-    const trasSegundoTick = await prisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+    const trasSegundoTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
     await produceAlertaTokenPorExpirar(ahora);
-    const trasTercerTick = await prisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+    const trasTercerTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
 
     expect(trasSegundoTick).toBe(trasPrimerTick);
     expect(trasTercerTick).toBe(trasPrimerTick);
@@ -344,7 +344,7 @@ describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardeni
     await produceAlertaTokenPorExpirar(ahora);
 
     const destinatarios = (
-      await prisma.notificacion.findMany({ where: { tipo: "TOKEN_POR_EXPIRAR" }, select: { usuarioId: true } })
+      await testAdminPrisma.notificacion.findMany({ where: { tipo: "TOKEN_POR_EXPIRAR" }, select: { usuarioId: true } })
     ).map((n) => n.usuarioId);
     expect(destinatarios).toContain(adminBootstrap.id);
     expect(destinatarios).not.toContain(adminEmpresaB.id);

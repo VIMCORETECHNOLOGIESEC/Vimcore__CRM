@@ -1,11 +1,13 @@
 import { logger } from "../lib/logger.js";
 import { decrypt } from "../lib/cifrado-token.js";
-import { runAsBypassJob, VERIFICACION_TOKEN_TRANSACTION_BOUNDS } from "../lib/prisma.js";
+import { prisma, runAsBypassJob, runWithTenantContext, VERIFICACION_TOKEN_TRANSACTION_BOUNDS } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 import { createForActiveRoles } from "./notificaciones.service.js";
 import { verificarTokenPagina, type VerificacionTokenPagina } from "./meta-token.service.js";
+import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
+import { partitionByEmpresa } from "./company-partition.js";
 
 export interface ResultadoVerificacionToken {
   candidatos: number;
@@ -35,11 +37,19 @@ export interface ResultadoVerificacionToken {
 export async function verifyTokensVigentes(
   _ahora: Date = new Date(),
 ): Promise<ResultadoVerificacionToken> {
-  const candidatos = await cuentaPublicitariaRepository.listConTokenCargado();
+  const candidatos = await runAsBypassJob(
+    "token-verification",
+    (tx) => cuentaPublicitariaRepository.listConTokenCargado(tx),
+    VERIFICACION_TOKEN_TRANSACTION_BOUNDS,
+  );
   if (candidatos.length === 0) return { candidatos: 0, invalidados: 0 };
 
   let invalidados = 0;
-  for (const cuenta of candidatos) {
+  for (const [empresaId, partition] of partitionByEmpresa(
+    candidatos.map((cuenta) => ({ ...cuenta, empresaId: cuenta.bridge.empresaId })),
+  )) {
+    await runWithTenantContext({ empresaId }, async () => {
+      for (const cuenta of partition) {
     // `listConTokenCargado` ya filtra `tokenCifrado != null` — no-null assertion
     // segura acá, no una nueva invariante.
     let verificacion: VerificacionTokenPagina;
@@ -68,7 +78,7 @@ export async function verifyTokensVigentes(
         },
       });
       invalidados += 1;
-      continue;
+        continue;
     }
 
     if (!verificacion.valido) {
@@ -82,13 +92,15 @@ export async function verifyTokensVigentes(
         payload: { cuentaId: cuenta.id, idExterno: cuenta.idExterno, mensaje: verificacion.mensaje },
       });
       invalidados += 1;
-      continue;
+        continue;
     }
 
     const expiraEnCambio = (cuenta.tokenExpiraEn?.getTime() ?? null) !== (verificacion.expiraEn?.getTime() ?? null);
     if (expiraEnCambio) {
       await cuentaPublicitariaRepository.updateTokenExpiraEn(cuenta.id, verificacion.expiraEn);
     }
+      }
+    });
   }
 
   return { candidatos: candidatos.length, invalidados };
@@ -128,11 +140,17 @@ export async function produceAlertaTokenPorExpirar(
   // (`PrismaClientUnknownRequestError: Inconsistent query result: Field
   // bridge is required to return data, got null instead`) fue el primer
   // indicio real del gap, batch 3.
-  const { alertadas } = await runAsBypassJob(async (tx) => {
-    const candidatas = await cuentaPublicitariaRepository.listPorExpirar(ahora, VENTANA_ALERTA_DIAS, tx);
-
-    let alertadas = 0;
-    for (const cuenta of candidatas) {
+  const candidatas = await runAsBypassJob(
+    "token-expiry-alert",
+    (tx) => cuentaPublicitariaRepository.listPorExpirar(ahora, VENTANA_ALERTA_DIAS, tx),
+    VERIFICACION_TOKEN_TRANSACTION_BOUNDS,
+  );
+  let alertadas = 0;
+  for (const [empresaId, partition] of partitionByEmpresa(
+    candidatas.map((cuenta) => ({ ...cuenta, empresaId: cuenta.bridge.empresaId })),
+  )) {
+    await runWithTenantContext({ empresaId }, async () => {
+      for (const cuenta of partition) {
       // `listPorExpirar` ya garantiza `tokenExpiraEn != null` — no-null
       // assertion segura acá, no una nueva invariante.
       const tokenExpiraEn = cuenta.tokenExpiraEn as Date;
@@ -142,22 +160,26 @@ export async function produceAlertaTokenPorExpirar(
       // Bloque C (D5/D8): `cuenta.bridge.empresaId` cierra el chokepoint de la
       // alerta de expiración de token — cada alerta llega solo a la empresa del
       // bridge dueño de la cuenta (spec, "Job output never mixes empresas").
-      await createForActiveRoles(
-        ADMIN_ROLES,
-        {
-          tipo: "TOKEN_POR_EXPIRAR",
-          titulo: "Token de red social por expirar",
-          mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
-        },
-        cuenta.bridge.empresaId,
-        tx,
-      );
-      await cuentaPublicitariaRepository.updateAlertaExpiracionParaEn(cuenta.id, tokenExpiraEn, tx);
-      alertadas += 1;
+        const committed = await prisma.$transaction(async (tx) => {
+          const notifications = await createForActiveRoles(
+            ADMIN_ROLES,
+            {
+              tipo: "TOKEN_POR_EXPIRAR",
+              titulo: "Token de red social por expirar",
+              mensaje: `El token de la cuenta ${cuenta.idExterno} vence pronto — renuévalo antes de que expire`,
+            },
+            empresaId,
+            tx,
+          );
+          await cuentaPublicitariaRepository.updateAlertaExpiracionParaEn(cuenta.id, tokenExpiraEn, tx);
+          return notifications.flatMap(notificationEvents);
+        }, VERIFICACION_TOKEN_TRANSACTION_BOUNDS);
+        alertadas += 1;
+        publishCommittedEvents(committed);
+      }
     }
-
-    return { alertadas };
-  }, VERIFICACION_TOKEN_TRANSACTION_BOUNDS);
+    );
+  }
 
   return { alertadas };
 }

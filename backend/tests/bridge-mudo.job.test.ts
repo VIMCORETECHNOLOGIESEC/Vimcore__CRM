@@ -60,7 +60,7 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
 
     expect(resultado.candidatos).toBeGreaterThanOrEqual(1);
     expect(resultado.advertenciasRegistradas).toBeGreaterThanOrEqual(1);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: id, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -75,11 +75,11 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
 
     const primera = await detectarBridgesMudos(ahora);
     expect(primera.advertenciasRegistradas).toBeGreaterThanOrEqual(1);
-    const logsAntes = await prisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
+    const logsAntes = await testAdminPrisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
 
     await detectarBridgesMudos(new Date(ahora.getTime() + 1000));
 
-    const logsDespues = await prisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
+    const logsDespues = await testAdminPrisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
     expect(logsDespues).toBe(logsAntes);
   });
 
@@ -94,7 +94,7 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
     const ahoraSimulado = new Date(Date.now() + UMBRAL_MS + 60 * 60 * 1000);
     const resultado = await detectarBridgesMudos(ahoraSimulado);
 
-    const log = await prisma.bridgeLog.findMany({
+    const log = await testAdminPrisma.bridgeLog.findMany({
       where: { bridgeId: id, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "asc" },
     });
@@ -112,7 +112,7 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
 
     await detectarBridgesMudos(new Date());
 
-    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId: id } });
+    const log = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId: id } });
     expect(log).toBeNull();
   });
 

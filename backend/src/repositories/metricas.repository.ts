@@ -26,7 +26,8 @@ export async function countPorEtapa(
   where: Prisma.LeadWhereInput,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<ConteoPorEtapa[]> {
-  const filas = await client.lead.groupBy({ by: ["etapa"], where, _count: { _all: true } });
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+  const filas = await lead.groupBy({ by: ["etapa"], where, _count: { _all: true } });
   return filas.map((f) => ({ etapa: f.etapa, total: f._count._all }));
 }
 
@@ -40,7 +41,8 @@ export async function countPorRedSocial(
   where: Prisma.LeadWhereInput,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<ConteoPorRedSocial[]> {
-  const filas = await client.lead.groupBy({
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+  const filas = await lead.groupBy({
     by: ["redSocial"],
     where: { ...where, redSocial: { not: null } },
     _count: { _all: true },
@@ -59,7 +61,8 @@ export async function countPorRedSocialYEtapaCierre(
   where: Prisma.LeadWhereInput,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<ConteoPorRedYEtapa[]> {
-  const filas = await client.lead.groupBy({
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+  const filas = await lead.groupBy({
     by: ["redSocial", "etapa"],
     where: { ...where, redSocial: { not: null }, etapa: { in: ["VENTA", "NO_VENTA"] } },
     _count: { _all: true },
@@ -78,7 +81,8 @@ export async function countPorRedSocialYSemaforo(
   where: Prisma.LeadWhereInput,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<ConteoPorRedYSemaforo[]> {
-  const filas = await client.lead.groupBy({
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+  const filas = await lead.groupBy({
     by: ["redSocial", "semaforo"],
     where: { ...where, redSocial: { not: null } },
     _count: { _all: true },
@@ -96,7 +100,8 @@ export async function countPorSemaforo(
   where: Prisma.LeadWhereInput,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<ConteoPorSemaforo[]> {
-  const filas = await client.lead.groupBy({ by: ["semaforo"], where, _count: { _all: true } });
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+  const filas = await lead.groupBy({ by: ["semaforo"], where, _count: { _all: true } });
   return filas.map((f) => ({ semaforo: f.semaforo, total: f._count._all }));
 }
 

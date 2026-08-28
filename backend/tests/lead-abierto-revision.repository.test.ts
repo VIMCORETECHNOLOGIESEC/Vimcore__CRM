@@ -27,12 +27,15 @@ describe("repositories/lead-abierto-revision — upsertRevisionPendiente", () =>
     const empresaLeadId = "00000000-0000-0000-0000-000000000001";
     const empresaIngestaId = "00000000-0000-0000-0000-000000000002";
 
-    const fila = await leadAbiertoRevisionRepository.upsertRevisionPendiente({
-      clienteId,
-      leadAbiertoId: leadId,
-      empresaLeadId,
-      empresaIngestaId,
-    });
+    const fila = await leadAbiertoRevisionRepository.upsertRevisionPendiente(
+      {
+        clienteId,
+        leadAbiertoId: leadId,
+        empresaLeadId,
+        empresaIngestaId,
+      },
+      testAdminPrisma,
+    );
 
     expect(fila.clienteId).toBe(clienteId);
     expect(fila.leadAbiertoId).toBe(leadId);
@@ -46,21 +49,27 @@ describe("repositories/lead-abierto-revision — upsertRevisionPendiente", () =>
     const empresaLeadId = "00000000-0000-0000-0000-000000000001";
     const empresaIngestaId = "00000000-0000-0000-0000-000000000002";
 
-    const primera = await leadAbiertoRevisionRepository.upsertRevisionPendiente({
-      clienteId,
-      leadAbiertoId: leadId,
-      empresaLeadId,
-      empresaIngestaId,
-    });
-    const segunda = await leadAbiertoRevisionRepository.upsertRevisionPendiente({
-      clienteId,
-      leadAbiertoId: leadId,
-      empresaLeadId,
-      empresaIngestaId,
-    });
+    const primera = await leadAbiertoRevisionRepository.upsertRevisionPendiente(
+      {
+        clienteId,
+        leadAbiertoId: leadId,
+        empresaLeadId,
+        empresaIngestaId,
+      },
+      testAdminPrisma,
+    );
+    const segunda = await leadAbiertoRevisionRepository.upsertRevisionPendiente(
+      {
+        clienteId,
+        leadAbiertoId: leadId,
+        empresaLeadId,
+        empresaIngestaId,
+      },
+      testAdminPrisma,
+    );
 
     expect(segunda.id).toBe(primera.id);
-    const total = await prisma.leadAbiertoRevisionPendiente.count({
+    const total = await testAdminPrisma.leadAbiertoRevisionPendiente.count({
       where: { clienteId, leadAbiertoId: leadId, empresaIngestaId },
     });
     expect(total).toBe(1);

@@ -15,6 +15,12 @@ const TABLAS_TENANT_SCOPED = [
   "citas",
   "lead_eventos",
   "notificaciones",
+  "respuestas_formulario",
+  "leads_recibidos",
+  "cuentas_publicitarias",
+  "campanias",
+  "bridge_logs",
+  "leads_abiertos_revision_pendiente",
 ] as const;
 
 afterAll(async () => {
@@ -34,11 +40,13 @@ describe("adversarial/rls-policy-coverage — RLS enabled + forced (spec §1)", 
 
   it.each(TABLAS_TENANT_SCOPED)("%s tiene al menos una policy tenant_isolation", async (tabla) => {
     const filas = await prisma.$queryRaw<
-      { policyname: string }[]
-    >`SELECT policyname FROM pg_policies WHERE tablename = ${tabla}`;
+      { policyname: string; qual: string | null; with_check: string | null }[]
+    >`SELECT policyname, qual, with_check FROM pg_policies WHERE tablename = ${tabla}`;
 
     expect(filas.length).toBeGreaterThanOrEqual(1);
-    expect(filas.some((f) => f.policyname === "tenant_isolation")).toBe(true);
+    const policy = filas.find((f) => f.policyname === "tenant_isolation");
+    expect(policy?.qual).toEqual(expect.any(String));
+    expect(policy?.with_check).toEqual(expect.any(String));
   });
 });
 

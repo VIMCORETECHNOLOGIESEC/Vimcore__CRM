@@ -64,7 +64,7 @@ afterAll(async () => {
 
 describe("buzón durable de ingesta", () => {
   async function cerrarRecepcionesElegibles(): Promise<void> {
-    await prisma.$executeRawUnsafe(
+    await testAdminPrisma.$executeRawUnsafe(
       `UPDATE leads_recibidos SET estado = 'PROCESADO', lease_owner = NULL, lease_hasta = NULL WHERE estado <> 'PROCESADO'`,
     );
   }
@@ -74,11 +74,11 @@ describe("buzón durable de ingesta", () => {
     const { id: bridgeId } = await crearBridge();
     const entrada = entradaBase(bridgeId);
     const ahora = new Date("2026-08-18T00:00:00.000Z");
-    await leadRecibidoRepository.aceptarLeadRecibido(entrada, ahora);
+    await leadRecibidoRepository.aceptarLeadRecibido(entrada, ahora, testAdminPrisma);
 
     const [primero, segundo] = await Promise.all([
-      leadRecibidoRepository.claimNext(ahora, "worker-a"),
-      leadRecibidoRepository.claimNext(ahora, "worker-b"),
+      leadRecibidoRepository.claimNext(ahora, "worker-a", testAdminPrisma),
+      leadRecibidoRepository.claimNext(ahora, "worker-b", testAdminPrisma),
     ]);
     const claims = [primero, segundo].filter((claim) => claim !== null);
 
@@ -86,7 +86,7 @@ describe("buzón durable de ingesta", () => {
     expect(claims[0]).toEqual(
       expect.objectContaining({ intento: 1, leaseOwner: expect.stringMatching(/^worker-[ab]$/) }),
     );
-    expect(await leadRecibidoRepository.claimNext(ahora, "worker-c")).toBeNull();
+    expect(await leadRecibidoRepository.claimNext(ahora, "worker-c", testAdminPrisma)).toBeNull();
   });
 
   it("recupera un lease vencido y rechaza al propietario anterior", async () => {
@@ -94,18 +94,20 @@ describe("buzón durable de ingesta", () => {
     const { id: bridgeId } = await crearBridge();
     const entrada = entradaBase(bridgeId);
     const inicio = new Date("2026-08-18T01:00:00.000Z");
-    const recepcion = await leadRecibidoRepository.aceptarLeadRecibido(entrada, inicio);
-    await leadRecibidoRepository.claimNext(inicio, "worker-vencido");
+    const recepcion = await leadRecibidoRepository.aceptarLeadRecibido(entrada, inicio, testAdminPrisma);
+    await leadRecibidoRepository.claimNext(inicio, "worker-vencido", testAdminPrisma);
 
     const recuperado = await leadRecibidoRepository.claimNext(
       new Date(inicio.getTime() + 61_000),
       "worker-recuperacion",
+      testAdminPrisma,
     );
     const propietarioAnteriorAceptado = await leadRecibidoRepository.marcarFallo(
       recepcion.recepcionId,
       "worker-vencido",
       "error tardío",
       new Date(inicio.getTime() + 62_000),
+      testAdminPrisma,
     );
 
     expect(recuperado).toEqual(
@@ -161,8 +163,8 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
    */
   async function reclamar(entrada: LeadEntrante, ahora: Date): Promise<leadRecibidoRepository.InboxClaim> {
     const owner = `worker-wu7-${++contador}`;
-    const receipt = await leadRecibidoRepository.aceptarLeadRecibido(entrada, ahora);
-    const row = await prisma.leadRecibido.update({
+    const receipt = await leadRecibidoRepository.aceptarLeadRecibido(entrada, ahora, testAdminPrisma);
+    const row = await testAdminPrisma.leadRecibido.update({
       where: { id: receipt.recepcionId },
       data: { estado: "PROCESANDO", intentos: 1, leaseOwner: owner, leaseHasta: new Date(ahora.getTime() + 60_000) },
     });
@@ -185,7 +187,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     const procesado = await conContexto(() => procesarRecepcion(claim));
 
     expect(procesado).toBe(true);
-    const notificaciones = await prisma.notificacion.findMany({
+    const notificaciones = await testAdminPrisma.notificacion.findMany({
       where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
     });
     expect(notificaciones).toHaveLength(1);
@@ -196,7 +198,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     const supervisor = await crearSupervisor();
     const { id: bridgeId } = await crearBridge();
     const ahora = new Date();
-    const antes = await prisma.notificacion.count({
+    const antes = await testAdminPrisma.notificacion.count({
       where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
     });
 
@@ -205,7 +207,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     const claim2 = await reclamar(entradaBase(bridgeId, { telefono: null, correo: null }), ahora);
     await conContexto(() => procesarRecepcion(claim2));
 
-    const notificaciones = await prisma.notificacion.findMany({
+    const notificaciones = await testAdminPrisma.notificacion.findMany({
       where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" },
     });
     expect(notificaciones.length - antes).toBe(2);
@@ -221,7 +223,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     await conContexto(() => procesarRecepcion(claim));
 
     expect(
-      await prisma.notificacion.count({ where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" } }),
+      await testAdminPrisma.notificacion.count({ where: { usuarioId: supervisor.id, tipo: "LEAD_DATO_INCOMPLETO" } }),
     ).toBe(0);
   });
 });

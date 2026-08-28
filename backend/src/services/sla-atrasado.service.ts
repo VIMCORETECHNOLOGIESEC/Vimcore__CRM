@@ -2,10 +2,11 @@ import { Prisma } from "@prisma/client";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { DetalleEventoAsignacion } from "./asignacion.service.js";
-import { ASIGNACION_TRANSACTION_BOUNDS, runAsBypassJob } from "../lib/prisma.js";
+import { ASIGNACION_TRANSACTION_BOUNDS, prisma, runAsBypassJob, runWithTenantContext } from "../lib/prisma.js";
 import * as notificationRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 import { slaFilterBoundaries } from "./sla.calculator.js";
+import { partitionByEmpresa } from "./company-partition.js";
 
 export interface ResultadoDeteccion {
   candidatos: number;
@@ -41,14 +42,17 @@ export async function detectLeadsAtrasados(
   // 0 filas bajo RLS fail-closed y el job jamás encontraría candidatos de
   // ninguna empresa.
   const candidatos = await runAsBypassJob(
+    "sla-overdue",
     (tx) => leadRepository.findAtrasadosAbiertos(fronteraAtrasado, tx),
     ASIGNACION_TRANSACTION_BOUNDS,
   );
   if (candidatos.length === 0) return { candidatos: 0, eventosCreados: 0 };
 
   let eventosCreados = 0;
-  for (const candidato of candidatos) {
-    const result = await runAsBypassJob(async (tx) => {
+  for (const [empresaId, partition] of partitionByEmpresa(candidatos)) {
+    await runWithTenantContext({ empresaId }, async () => {
+      for (const candidato of partition) {
+        const result = await prisma.$transaction(async (tx) => {
       const lead = await leadRepository.findByIdForUpdate(candidato.id, tx);
       if (!lead.slaInicioEn || lead.slaInicioEn > fronteraAtrasado || lead.cerradoEn) {
         return { eventoCreado: false, committed: [] };
@@ -77,9 +81,11 @@ export async function detectLeadsAtrasados(
       const notifications = [];
       for (const usuarioId of recipientIds) notifications.push(await notificationRepository.createNotificacion({ usuarioId, tipo: "LEAD_SIN_ATENDER", titulo: "Lead sin atender", mensaje: "El SLA de atención del lead ha vencido", leadId: lead.id, empresaId: lead.empresaId }, tx));
       return { eventoCreado: true, committed: notifications.flatMap(notificationEvents) };
-    }, ASIGNACION_TRANSACTION_BOUNDS);
-    if (result.eventoCreado) eventosCreados += 1;
-    publishCommittedEvents(result.committed);
+        }, ASIGNACION_TRANSACTION_BOUNDS);
+        if (result.eventoCreado) eventosCreados += 1;
+        publishCommittedEvents(result.committed);
+      }
+    });
   }
 
   return { candidatos: candidatos.length, eventosCreados };

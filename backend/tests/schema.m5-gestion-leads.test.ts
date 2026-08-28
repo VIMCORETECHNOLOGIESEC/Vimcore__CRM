@@ -163,7 +163,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
-    const respuesta = await prisma.respuestaFormulario.create({
+    const respuesta = await testAdminPrisma.respuestaFormulario.create({
       data: {
         leadId: lead.id,
         usuarioId: usuario.id,
@@ -187,7 +187,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
-    await prisma.respuestaFormulario.create({
+    await testAdminPrisma.respuestaFormulario.create({
       data: {
         leadId: lead.id,
         usuarioId: usuario.id,
@@ -198,7 +198,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
         versionRubrica: "v1",
       },
     });
-    await prisma.respuestaFormulario.create({
+    await testAdminPrisma.respuestaFormulario.create({
       data: {
         leadId: lead.id,
         usuarioId: usuario.id,
@@ -210,7 +210,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
       },
     });
 
-    const total = await prisma.respuestaFormulario.count({ where: { leadId: lead.id } });
+    const total = await testAdminPrisma.respuestaFormulario.count({ where: { leadId: lead.id } });
     expect(total).toBe(2);
   });
 });
@@ -244,7 +244,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
     const payloadCrudo = { idExternoLead: `backfill-${randomUUID()}`, nombre: "Lead pre-fix" };
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: bridge.id,
         idExternoLead: payloadCrudo.idExternoLead,
@@ -277,7 +277,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
         empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: bridgeGoogle.id,
         idExternoLead: `backfill-no-overwrite-${randomUUID()}`,

@@ -19,11 +19,14 @@ async function crearCuenta(): Promise<{ id: string }> {
       empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
-  const cuenta = await cuentaPublicitariaRepository.create({
-    bridgeId: bridge.id,
-    idExterno: `page-campania-${contador}`,
-    nombre: "Cuenta para campañas",
-  });
+  const cuenta = await cuentaPublicitariaRepository.create(
+    {
+      bridgeId: bridge.id,
+      idExterno: `page-campania-${contador}`,
+      nombre: "Cuenta para campañas",
+    },
+    testAdminPrisma,
+  );
   return { id: cuenta.id };
 }
 
@@ -31,7 +34,7 @@ describe("repositories/campania — findByCuentaEIdExterno (M-hardening Bloque A
   it("encuentra la campaña por cuentaPublicitariaId + idExterno (mismo criterio que @@unique)", async () => {
     const cuenta = await crearCuenta();
     contador += 1;
-    const creada = await prisma.campania.create({
+    const creada = await testAdminPrisma.campania.create({
       data: {
         cuentaPublicitariaId: cuenta.id,
         idExterno: `camp-lookup-${contador}`,
@@ -43,6 +46,7 @@ describe("repositories/campania — findByCuentaEIdExterno (M-hardening Bloque A
     const encontrada = await campaniaRepository.findByCuentaEIdExterno(
       cuenta.id,
       `camp-lookup-${contador}`,
+      testAdminPrisma,
     );
 
     expect(encontrada?.id).toBe(creada.id);
@@ -54,6 +58,7 @@ describe("repositories/campania — findByCuentaEIdExterno (M-hardening Bloque A
     const encontrada = await campaniaRepository.findByCuentaEIdExterno(
       cuenta.id,
       "camp-inexistente",
+      testAdminPrisma,
     );
 
     expect(encontrada).toBeNull();

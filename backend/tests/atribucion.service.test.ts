@@ -52,12 +52,15 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
   it("Scenario 'Known account and campaign': cuenta y campaña conocidas resuelven ambas FKs y conservan los escalares crudos", async () => {
     const bridge = await crearBridge();
     contador += 1;
-    const cuenta = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `cuenta-conocida-${contador}`,
-      nombre: "Cuenta conocida",
-    });
-    const campania = await prisma.campania.create({
+    const cuenta = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `cuenta-conocida-${contador}`,
+        nombre: "Cuenta conocida",
+      },
+      testAdminPrisma,
+    );
+    const campania = await testAdminPrisma.campania.create({
       data: {
         cuentaPublicitariaId: cuenta.id,
         idExterno: `campania-conocida-${contador}`,
@@ -85,11 +88,14 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
   it("Scenario 'Unknown campaign (no match)': campaña sin match degrada a null sin lanzar, escalares crudos se conservan", async () => {
     const bridge = await crearBridge();
     contador += 1;
-    const cuenta = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `cuenta-sin-campania-${contador}`,
-      nombre: "Cuenta sin campaña registrada",
-    });
+    const cuenta = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `cuenta-sin-campania-${contador}`,
+        nombre: "Cuenta sin campaña registrada",
+      },
+      testAdminPrisma,
+    );
 
     const entrada = leadEntrante({
       bridgeId: bridge.id,
@@ -109,11 +115,14 @@ describe("services/atribucion — resolverAtribucion (M-hardening Bloque A, WU4,
   it("TRIANGULACION: cuenta conocida + campaña desconocida en un bridge distinto también degrada solo la campaña", async () => {
     const bridge = await crearBridge();
     contador += 1;
-    const cuenta = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `cuenta-mixta-${contador}`,
-      nombre: "Cuenta mixta",
-    });
+    const cuenta = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `cuenta-mixta-${contador}`,
+        nombre: "Cuenta mixta",
+      },
+      testAdminPrisma,
+    );
 
     const entrada = leadEntrante({
       bridgeId: bridge.id,

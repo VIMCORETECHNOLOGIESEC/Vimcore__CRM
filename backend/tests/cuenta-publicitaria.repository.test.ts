@@ -26,11 +26,14 @@ describe("repositories/cuenta-publicitaria — create (m4-bridges-crud-fundacion
     contador += 1;
     const bridge = await crearBridge();
 
-    const cuenta = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `page-create-${contador}`,
-      nombre: "Página creada por repositorio",
-    });
+    const cuenta = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `page-create-${contador}`,
+        nombre: "Página creada por repositorio",
+      },
+      testAdminPrisma,
+    );
 
     expect(cuenta.bridgeId).toBe(bridge.id);
     expect(cuenta.idExterno).toBe(`page-create-${contador}`);
@@ -42,12 +45,15 @@ describe("repositories/cuenta-publicitaria — create (m4-bridges-crud-fundacion
     contador += 1;
     const bridge = await crearBridge();
 
-    const cuenta = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `page-vinculada-${contador}`,
-      nombre: "Página con Instagram",
-      idExternoVinculado: `ig-${contador}`,
-    });
+    const cuenta = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `page-vinculada-${contador}`,
+        nombre: "Página con Instagram",
+        idExternoVinculado: `ig-${contador}`,
+      },
+      testAdminPrisma,
+    );
 
     expect(cuenta.idExternoVinculado).toBe(`ig-${contador}`);
   });
@@ -58,19 +64,25 @@ describe("repositories/cuenta-publicitaria — listByBridge (m4-bridges-crud-fun
     const bridgeA = await crearBridge();
     const bridgeB = await crearBridge();
     contador += 1;
-    await cuentaPublicitariaRepository.create({
-      bridgeId: bridgeA.id,
-      idExterno: `page-list-a-${contador}`,
-      nombre: "Cuenta A",
-    });
+    await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridgeA.id,
+        idExterno: `page-list-a-${contador}`,
+        nombre: "Cuenta A",
+      },
+      testAdminPrisma,
+    );
     contador += 1;
-    await cuentaPublicitariaRepository.create({
-      bridgeId: bridgeB.id,
-      idExterno: `page-list-b-${contador}`,
-      nombre: "Cuenta B",
-    });
+    await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridgeB.id,
+        idExterno: `page-list-b-${contador}`,
+        nombre: "Cuenta B",
+      },
+      testAdminPrisma,
+    );
 
-    const cuentasDeA = await cuentaPublicitariaRepository.listByBridge(bridgeA.id);
+    const cuentasDeA = await cuentaPublicitariaRepository.listByBridge(bridgeA.id, testAdminPrisma);
 
     expect(cuentasDeA).toHaveLength(1);
     expect(cuentasDeA[0]?.nombre).toBe("Cuenta A");
@@ -89,14 +101,17 @@ describe("repositories/cuenta-publicitaria — updateActiva (m4-bridges-crud-fun
   it("cambia únicamente el flag activa, sin tocar otras columnas", async () => {
     const bridge = await crearBridge();
     contador += 1;
-    const cuenta = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `page-toggle-${contador}`,
-      nombre: "Cuenta a desactivar",
-    });
+    const cuenta = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `page-toggle-${contador}`,
+        nombre: "Cuenta a desactivar",
+      },
+      testAdminPrisma,
+    );
     expect(cuenta.activa).toBe(true);
 
-    const actualizada = await cuentaPublicitariaRepository.updateActiva(cuenta.id, false);
+    const actualizada = await cuentaPublicitariaRepository.updateActiva(cuenta.id, false, testAdminPrisma);
 
     expect(actualizada.activa).toBe(false);
     expect(actualizada.nombre).toBe("Cuenta a desactivar");
@@ -107,15 +122,19 @@ describe("repositories/cuenta-publicitaria — findByBridgeEIdExterno (M-hardeni
   it("encuentra la cuenta por bridgeId + idExterno (mismo criterio que @@unique([bridgeId, idExterno]))", async () => {
     const bridge = await crearBridge();
     contador += 1;
-    const creada = await cuentaPublicitariaRepository.create({
-      bridgeId: bridge.id,
-      idExterno: `page-lookup-${contador}`,
-      nombre: "Cuenta encontrable por lookup",
-    });
+    const creada = await cuentaPublicitariaRepository.create(
+      {
+        bridgeId: bridge.id,
+        idExterno: `page-lookup-${contador}`,
+        nombre: "Cuenta encontrable por lookup",
+      },
+      testAdminPrisma,
+    );
 
     const encontrada = await cuentaPublicitariaRepository.findByBridgeEIdExterno(
       bridge.id,
       `page-lookup-${contador}`,
+      testAdminPrisma,
     );
 
     expect(encontrada?.id).toBe(creada.id);

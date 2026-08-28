@@ -283,9 +283,10 @@ export async function countCargaActivaPorResponsable(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Map<string, number>> {
   if (candidatoIds.length === 0) return new Map();
+  const lead = client.lead as Prisma.TransactionClient["lead"];
 
   if (pool === "ASESOR") {
-    const filas = await client.lead.groupBy({
+    const filas = await lead.groupBy({
       by: ["asesorId"],
       where: { asesorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
       _count: { _all: true },
@@ -293,7 +294,7 @@ export async function countCargaActivaPorResponsable(
     return groupByRowsToCountMap(filas, "asesorId");
   }
 
-  const filas = await client.lead.groupBy({
+  const filas = await lead.groupBy({
     by: ["vendedorId"],
     where: { vendedorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
     _count: { _all: true },

@@ -155,7 +155,7 @@ describe("M8 scheduled and bridge producers", () => {
     const received: Array<{ userId: string; leadId: string }> = [];
     const visibilityChecks: Array<Promise<boolean>> = [];
     const subscriptions = [asesor.id, supervisor.id].map((userId) =>
-      eventBroker.subscribe(userId, undefined, ({ data }) => {
+      eventBroker.subscribe(userId, { sessionScope: "company", empresaId: BOOTSTRAP_EMPRESA_ID }, undefined, ({ data }) => {
         const notification = data as { id: string; leadId: string };
         received.push({ userId, leadId: notification.leadId });
         visibilityChecks.push(
@@ -254,7 +254,12 @@ describe("M8 scheduled and bridge producers", () => {
     });
 
     const received: string[] = [];
-    const unsubscribe = eventBroker.subscribe(vendedor.id, undefined, ({ type }) => received.push(type));
+    const unsubscribe = eventBroker.subscribe(
+      vendedor.id,
+      { sessionScope: "company", empresaId: BOOTSTRAP_EMPRESA_ID },
+      undefined,
+      ({ type }) => received.push(type),
+    );
     await Promise.all([enviarRecordatoriosCita(), enviarRecordatoriosCita()]);
     unsubscribe();
 
@@ -286,7 +291,7 @@ describe("M8 scheduled and bridge producers", () => {
       }),
     );
 
-    expect(await prisma.bridgeLog.findUnique({ where: { id: log.id } })).not.toBeNull();
+    expect(await testAdminPrisma.bridgeLog.findUnique({ where: { id: log.id } })).not.toBeNull();
     const notifications = await testAdminPrisma.notificacion.findMany({ where: { tipo: "ERROR_BRIDGE" } });
     expect(notifications.some(({ usuarioId }) => usuarioId === activeAdmin.id)).toBe(true);
     expect(notifications.some(({ usuarioId }) => usuarioId === inactiveAdmin.id)).toBe(false);
@@ -294,7 +299,12 @@ describe("M8 scheduled and bridge producers", () => {
 
   it("does not create ERROR_BRIDGE notifications for a committed INFO log", async () => {
     const before = await testAdminPrisma.notificacion.count({ where: { tipo: "ERROR_BRIDGE" } });
-    await registrarBridgeLog({ bridgeId: null, nivel: "INFO", mensaje: "Bridge healthy" });
+    await registrarBridgeLog({
+      bridgeId: null,
+      nivel: "INFO",
+      mensaje: "Bridge healthy",
+      holdingWide: true,
+    });
     expect(await testAdminPrisma.notificacion.count({ where: { tipo: "ERROR_BRIDGE" } })).toBe(before);
   });
 

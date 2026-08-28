@@ -59,6 +59,7 @@ export interface DeduplicacionResult {
   correoAdjuntado: boolean;
   /** Lead creado, o lead al que se ancló el evento de interacción repetida. */
   leadId: string;
+  empresaId: string;
   /** M4/M6: solo si es `true` corren asignación y SLA. */
   leadCreado: boolean;
   eventoId: string;
@@ -336,7 +337,7 @@ export async function deduplicateLead(
         const currentLead = await leadRepository.findById(leadId, tx);
         const recipientId = currentLead?.vendedorId ?? currentLead?.asesorId;
         if (recipientId) {
-          const notification = await notificacionRepository.createNotificacion({ usuarioId: recipientId, tipo: "INTERACCION_REPETIDA", titulo: "Interacción repetida", mensaje: "El lead registró una nueva interacción", leadId }, tx);
+          const notification = await notificacionRepository.createNotificacion({ usuarioId: recipientId, tipo: "INTERACCION_REPETIDA", titulo: "Interacción repetida", mensaje: "El lead registró una nueva interacción", leadId, empresaId: empresaIdEvento }, tx);
           events.push(...notificationEvents(notification));
         }
       }
@@ -347,6 +348,7 @@ export async function deduplicateLead(
         identidadPor,
         correoAdjuntado,
         leadId,
+        empresaId: empresaIdEvento,
         leadCreado,
         eventoId: evento.id,
         accion,
@@ -361,4 +363,3 @@ export async function deduplicateLead(
   }
   return outcome;
 }
-

@@ -4,5 +4,8 @@ import { openEventStream } from "../services/eventos.service.js";
 
 export function getEvents(req: Request, res: Response): void {
   const user = assertAuthenticated(req);
-  openEventStream(req, res, user.id);
+  const scope = user.sessionScope === "holding"
+    ? { sessionScope: "holding" as const, empresaId: null }
+    : { sessionScope: "company" as const, empresaId: user.empresaId as string };
+  openEventStream(req, res, user.id, scope);
 }

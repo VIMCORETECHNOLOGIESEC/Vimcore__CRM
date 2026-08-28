@@ -309,8 +309,14 @@ describe("bridge.service — resolveLimiteLogs (Requirement: Log reads are bound
 describe("bridge.service — listLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
   it("filtra por bridge y nivel, respetando el límite resuelto", async () => {
     const { id } = await crearBridgeDirecto();
-    await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "INFO", mensaje: "info listarLogs" });
-    await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "ERROR", mensaje: "error listarLogs" });
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "info listarLogs" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "ERROR", mensaje: "error listarLogs" },
+      testAdminPrisma,
+    );
 
     const logs = await conContexto(() => listLogs(id, { nivel: "ERROR" }));
 
