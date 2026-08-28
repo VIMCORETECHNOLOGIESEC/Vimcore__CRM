@@ -22,13 +22,43 @@ const UNASSIGNED_RECIPIENT_ROLES: readonly RolUsuario[] = ["SUPERVISOR", "ADMINI
 export async function createForActiveRoles(
   roles: readonly RolUsuario[],
   input: NotificationInput,
-  empresaId: string | null = null,
+  empresaId: string,
   client: PrismaClientOrTransaction = prisma,
 ) {
+  if (!empresaId) {
+    throw new AppError(
+      "contexto_empresa_no_resuelto",
+      422,
+      "La notificación requiere una empresa de origen",
+    );
+  }
   const recipientIds = await notificationRepository.findActiveRecipientIds(roles, empresaId, client);
   const created = [];
   for (const usuarioId of recipientIds) {
-    created.push(await notificationRepository.createNotificacion({ usuarioId, ...input }, client));
+    created.push(
+      await notificationRepository.createNotificacion(
+        { usuarioId, ...input, empresaId },
+        client,
+      ),
+    );
+  }
+  return created;
+}
+
+export async function createHoldingForActiveRoles(
+  roles: readonly RolUsuario[],
+  input: NotificationInput,
+  client: PrismaClientOrTransaction = prisma,
+) {
+  const recipientIds = await notificationRepository.findActiveRecipientIds(roles, null, client);
+  const created = [];
+  for (const usuarioId of recipientIds) {
+    created.push(
+      await notificationRepository.createNotificacion(
+        { usuarioId, ...input, empresaId: null },
+        client,
+      ),
+    );
   }
   return created;
 }
@@ -46,9 +76,16 @@ export async function markAllNotificationsRead(usuarioId: string): Promise<void>
 }
 export async function createForActiveSupervisorsAndAdmins(
   input: NotificationInput,
-  empresaId: string | null = null,
+  empresaId: string,
   client: PrismaClientOrTransaction = prisma,
 ) {
+  if (!empresaId) {
+    throw new AppError(
+      "contexto_empresa_no_resuelto",
+      422,
+      "La notificación requiere una empresa de origen",
+    );
+  }
   const recipientIds = await notificationRepository.findActiveRecipientIds(
     UNASSIGNED_RECIPIENT_ROLES,
     empresaId,
@@ -56,7 +93,12 @@ export async function createForActiveSupervisorsAndAdmins(
   );
   const created = [];
   for (const usuarioId of recipientIds) {
-    created.push(await notificationRepository.createNotificacion({ usuarioId, ...input }, client));
+    created.push(
+      await notificationRepository.createNotificacion(
+        { usuarioId, ...input, empresaId },
+        client,
+      ),
+    );
   }
   return created;
 }

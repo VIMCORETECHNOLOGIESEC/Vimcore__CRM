@@ -23,7 +23,7 @@ vi.mock("../src/repositories/usuario.repository.js", () => ({
   findById: vi.fn(),
 }));
 vi.mock("../src/repositories/membresia.repository.js", () => ({
-  findActivasByUsuarioId: vi.fn(),
+  findById: vi.fn(),
 }));
 vi.mock("../src/lib/logger.js", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -78,14 +78,16 @@ function reqConToken(payload: Record<string, unknown> = {}): Request {
 }
 
 describe("middlewares/require-authentication — TenantContext (Bloque C, D2)", () => {
-  it("ADMINISTRADOR resuelve empresaId=null (holding-wide) INCONDICIONALMENTE, incluso con Membresia propia", async () => {
-    vi.mocked(verifyAccessToken).mockResolvedValue({ sub: "usuario-1" } as never);
+  it("una sesión holding explícita omite membresiaId y resuelve empresaId=null", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      sub: "usuario-1",
+      rol: "ADMINISTRADOR",
+      sessionScope: "holding",
+      type: "access",
+    } as never);
     vi.mocked(usuarioRepository.findById).mockResolvedValue(
       usuarioFalso({ rol: "ADMINISTRADOR" }),
     );
-    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
-      membresiaFalsa({ rol: "ADMINISTRADOR", empresaId: "empresa-1" }),
-    ]);
     const req = reqConToken();
     const next = vi.fn();
 
@@ -93,71 +95,77 @@ describe("middlewares/require-authentication — TenantContext (Bloque C, D2)", 
 
     expect(next).toHaveBeenCalledWith();
     expect(req.user?.empresaId).toBeNull();
+    expect(req.user?.sessionScope).toBe("holding");
+    expect(membresiaRepository.findById).not.toHaveBeenCalled();
   });
 
-  it("SUPERVISOR resuelve empresaId=null (holding-wide) INCONDICIONALMENTE", async () => {
-    vi.mocked(verifyAccessToken).mockResolvedValue({ sub: "usuario-1" } as never);
-    vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "SUPERVISOR" }));
-    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([]);
+  it("un ADMINISTRADOR con membresía válida permanece acotado a esa empresa", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      sub: "usuario-1",
+      rol: "ADMINISTRADOR",
+      sessionScope: "company",
+      membresiaId: "membresia-1",
+      empresaId: "empresa-1",
+      type: "access",
+    } as never);
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "ADMINISTRADOR" }));
+    vi.mocked(membresiaRepository.findById).mockResolvedValue(
+      membresiaFalsa({ rol: "ADMINISTRADOR" }),
+    );
     const req = reqConToken();
     const next = vi.fn();
 
     await requireAuthentication(req, {} as Response, next);
 
-    expect(req.user?.empresaId).toBeNull();
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user?.empresaId).toBe("empresa-1");
+    expect(req.user?.membresiaId).toBe("membresia-1");
   });
 
-  it("ASESOR resuelve el empresaId de SU PROPIA Membresia activa (rol equivalente)", async () => {
-    vi.mocked(verifyAccessToken).mockResolvedValue({ sub: "usuario-1" } as never);
+  it("resuelve únicamente la membresía identificada por el JWT", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      sub: "usuario-1",
+      rol: "ASESOR",
+      sessionScope: "company",
+      membresiaId: "membresia-objetivo",
+      empresaId: "empresa-A",
+      type: "access",
+    } as never);
     vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "ASESOR" }));
-    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
-      membresiaFalsa({ rol: "ASESOR", habilitadoParaVenta: false, empresaId: "empresa-A" }),
-    ]);
+    vi.mocked(membresiaRepository.findById).mockResolvedValue(
+      membresiaFalsa({ id: "membresia-objetivo", empresaId: "empresa-A" }),
+    );
     const req = reqConToken();
     const next = vi.fn();
 
     await requireAuthentication(req, {} as Response, next);
 
     expect(req.user?.empresaId).toBe("empresa-A");
+    expect(membresiaRepository.findById).toHaveBeenCalledWith(
+      "membresia-objetivo",
+      expect.anything(),
+    );
   });
 
-  it("VENDEDOR legado resuelve vía Membresia(ASESOR, habilitadoParaVenta=true), no vía una Membresia ASESOR sin habilitar", async () => {
-    vi.mocked(verifyAccessToken).mockResolvedValue({ sub: "usuario-1" } as never);
-    vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "VENDEDOR" }));
-    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
-      membresiaFalsa({ rol: "ASESOR", habilitadoParaVenta: false, empresaId: "empresa-X" }),
-      membresiaFalsa({ rol: "ASESOR", habilitadoParaVenta: true, empresaId: "empresa-Y" }),
-    ]);
-    const req = reqConToken();
-    const next = vi.fn();
-
-    await requireAuthentication(req, {} as Response, next);
-
-    expect(req.user?.empresaId).toBe("empresa-Y");
-  });
-
-  it("Scenario 'Client-supplied empresaId is ignored': el empresaId del claim del token NUNCA se usa, solo el resuelto server-side", async () => {
+  it.each([
+    ["sin membresiaId", { membresiaId: undefined }, membresiaFalsa()],
+    ["inexistente", {}, null],
+    ["ajena", {}, membresiaFalsa({ usuarioId: "usuario-2" })],
+    ["revocada", {}, membresiaFalsa({ activa: false })],
+    ["empresa inconsistente", {}, membresiaFalsa({ empresaId: "empresa-B" })],
+    ["rol inconsistente", {}, membresiaFalsa({ rol: "SUPERVISOR" })],
+  ])("rechaza con 401 una sesión company %s", async (_caso, overrides, membresia) => {
     vi.mocked(verifyAccessToken).mockResolvedValue({
       sub: "usuario-1",
-      empresaId: "empresa-del-claim-no-confiable",
+      rol: "ASESOR",
+      sessionScope: "company",
+      membresiaId: "membresia-1",
+      empresaId: "empresa-1",
+      type: "access",
+      ...overrides,
     } as never);
     vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "ASESOR" }));
-    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([
-      membresiaFalsa({ rol: "ASESOR", habilitadoParaVenta: false, empresaId: "empresa-resuelta" }),
-    ]);
-    const req = reqConToken();
-    const next = vi.fn();
-
-    await requireAuthentication(req, {} as Response, next);
-
-    expect(req.user?.empresaId).toBe("empresa-resuelta");
-    expect(req.user?.empresaId).not.toBe("empresa-del-claim-no-confiable");
-  });
-
-  it("TenantContext no resuelto (ninguna Membresia activa coincide con el rol legado): RECHAZA la petición con 403 (Bloque C follow-up, D2 gap closure — spec 'A request whose tenant context cannot be resolved MUST be rejected')", async () => {
-    vi.mocked(verifyAccessToken).mockResolvedValue({ sub: "usuario-1" } as never);
-    vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "ASESOR" }));
-    vi.mocked(membresiaRepository.findActivasByUsuarioId).mockResolvedValue([]);
+    vi.mocked(membresiaRepository.findById).mockResolvedValue(membresia);
     const req = reqConToken();
     const next = vi.fn();
 
@@ -165,9 +173,9 @@ describe("middlewares/require-authentication — TenantContext (Bloque C, D2)", 
 
     expect(req.user).toBeUndefined();
     const err = next.mock.calls[0]?.[0];
-    expect(err).toMatchObject({ code: "contexto_empresa_no_resuelto", statusHttp: 403 });
+    expect(err).toMatchObject({ code: "no_autenticado", statusHttp: 401 });
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ event: "tenant_context_no_resuelto", usuarioId: "usuario-1" }),
+      expect.objectContaining({ event: "tenant_context_rejected", usuarioId: "usuario-1" }),
       expect.any(String),
     );
   });
@@ -182,6 +190,6 @@ describe("middlewares/require-authentication — TenantContext (Bloque C, D2)", 
 
     const err = next.mock.calls[0]?.[0];
     expect(err).toMatchObject({ code: "no_autenticado", statusHttp: 401 });
-    expect(membresiaRepository.findActivasByUsuarioId).not.toHaveBeenCalled();
+    expect(membresiaRepository.findById).not.toHaveBeenCalled();
   });
 });

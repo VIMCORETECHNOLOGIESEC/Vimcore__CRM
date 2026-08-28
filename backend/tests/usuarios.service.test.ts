@@ -197,11 +197,13 @@ describe("usuarios.service — deactivateUsuario (M2: baja lógica con reasignac
         candidato.id,
         "lead.asignado",
         expect.objectContaining({ leadId: leadUno.id }),
+        BOOTSTRAP_EMPRESA_ID,
       );
       expect(publish).toHaveBeenCalledWith(
         candidato.id,
         "lead.asignado",
         expect.objectContaining({ leadId: leadDos.id }),
+        BOOTSTRAP_EMPRESA_ID,
       );
     }));
 

@@ -15,7 +15,7 @@ import type { ListUsuariosQuery } from "../schemas/usuarios.schema.js";
 import {
   applyAsignacionesEnLote,
   chooseCandidato,
-  type ApplyAsignacionesEnLoteEntrada,
+  type ApplyAsignacionesEnLoteInput,
   type CandidatoAsignacion,
 } from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
@@ -342,7 +342,7 @@ export async function deactivateUsuario(id: string): Promise<void> {
           // ESCRITURA se agrupa por receptor y se ejecuta una única vez
           // después del loop (`applyAsignacionesEnLote`), en vez de un
           // `applyAsignacion` awaited por lead.
-          const entradas: ApplyAsignacionesEnLoteEntrada[] = [];
+          const entradas: ApplyAsignacionesEnLoteInput[] = [];
           for (const lead of cartera) {
             const candidato = chooseCandidato(candidatos);
             if (candidato === null) {

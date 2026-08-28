@@ -180,6 +180,9 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
         usuarioId: usuario.id,
         hash: "hash-fake",
         expiraEn: new Date(Date.now() + 60_000),
+        // Migración `strict_session_scope`: backfill CASE por `membresia_id`
+        // — NULL (sesión holding-wide, este caso) siempre pasa a HOLDING.
+        sessionScope: "HOLDING",
       },
     });
 

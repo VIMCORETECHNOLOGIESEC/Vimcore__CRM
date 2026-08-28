@@ -67,7 +67,7 @@ export async function requireBridgeKey(
 
 async function registrarRechazo(bridgeId: string | null, mensaje: string): Promise<void> {
   try {
-    await registrarBridgeLog({ bridgeId, nivel: "ERROR", mensaje });
+    await registrarBridgeLog({ bridgeId, nivel: "ERROR", mensaje, ...(bridgeId ? {} : { holdingWide: true }) });
   } catch (error) {
     logger.error({ err: error, bridgeId }, "requireBridgeKey: fallo al registrar bridge_logs");
   }

@@ -4,10 +4,11 @@ import { AppError } from "../lib/app-error.js";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jwt.js";
 import { logger } from "../lib/logger.js";
 import { verifyPassword } from "../lib/password.js";
-import { withBootstrapCorreoGuc } from "../lib/prisma.js";
+import { withBootstrapCorreoGuc, withBootstrapUsuarioGuc } from "../lib/prisma.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
+import { rolEquivalente } from "./shadow-authorization.service.js";
 
 export interface TokenPair {
   accessToken: string;
@@ -61,8 +62,10 @@ async function issueTokenPair(
   const accessToken = await signAccessToken({
     id: user.id,
     rol: user.rol,
-    membresiaId: membresia?.id,
-    empresaId: membresia?.empresaId,
+    sessionScope: membresia ? "company" : "holding",
+    ...(membresia
+      ? { membresiaId: membresia.id, empresaId: membresia.empresaId }
+      : {}),
   });
   const jti = randomUUID();
   const refreshToken = await signRefreshToken({ id: user.id, jti });
@@ -72,6 +75,7 @@ async function issueTokenPair(
     usuarioId: user.id,
     hash: hashRefreshToken(refreshToken.token),
     expiraEn: refreshToken.expiraEn,
+    sessionScope: membresia ? "COMPANY" : "HOLDING",
     membresiaId: membresia?.id,
   });
 
@@ -128,6 +132,9 @@ export async function login(
   if (!usuarioDeMembresia || !usuarioDeMembresia.activo) {
     throw invalidCredentials();
   }
+  if (rolEquivalente(membresia) !== usuarioDeMembresia.rol) {
+    throw invalidCredentials();
+  }
 
   const pair = await issueTokenPair(usuarioDeMembresia, membresia);
   return { ...pair, user: toPublicUser(usuarioDeMembresia) };
@@ -170,7 +177,54 @@ export async function refresh(token: string): Promise<TokenPair> {
   }
 
   const user = await usuarioRepository.findById(row.usuarioId);
-  if (!user || !user.activo) {
+  if (!user || !user.activo || payload.sub !== row.usuarioId) {
+    throw invalidToken();
+  }
+
+  if (row.sessionScope === "COMPANY") {
+    if (!row.membresiaId) throw invalidToken();
+    const rotated = await withBootstrapUsuarioGuc(user.id, async (tx) => {
+      const membresia = await membresiaRepository.findById(row.membresiaId as string, tx);
+      if (
+        !membresia ||
+        !membresia.activa ||
+        membresia.usuarioId !== user.id ||
+        rolEquivalente(membresia) !== user.rol
+      ) {
+        await refreshTokenRepository.revokeAllForMembership(row.membresiaId as string, tx);
+        return null;
+      }
+
+      const accessToken = await signAccessToken({
+        id: user.id,
+        rol: user.rol,
+        sessionScope: "company",
+        membresiaId: membresia.id,
+        empresaId: membresia.empresaId,
+      });
+      const newJti = randomUUID();
+      const newRefreshToken = await signRefreshToken({ id: user.id, jti: newJti });
+      await refreshTokenRepository.rotate(
+        {
+          previousJti: row.jti,
+          newToken: {
+            jti: newJti,
+            usuarioId: user.id,
+            hash: hashRefreshToken(newRefreshToken.token),
+            expiraEn: newRefreshToken.expiraEn,
+            sessionScope: "COMPANY",
+            membresiaId: membresia.id,
+          },
+        },
+        tx,
+      );
+      return { accessToken, refreshToken: newRefreshToken.token };
+    });
+    if (!rotated) throw invalidToken();
+    return rotated;
+  }
+
+  if (row.sessionScope !== "HOLDING" || row.membresiaId !== null) {
     throw invalidToken();
   }
 
@@ -181,7 +235,7 @@ export async function refresh(token: string): Promise<TokenPair> {
   const accessToken = await signAccessToken({
     id: user.id,
     rol: user.rol,
-    membresiaId: row.membresiaId ?? undefined,
+    sessionScope: "holding",
   });
   const newJti = randomUUID();
   const newRefreshToken = await signRefreshToken({ id: user.id, jti: newJti });
@@ -193,7 +247,7 @@ export async function refresh(token: string): Promise<TokenPair> {
       usuarioId: user.id,
       hash: hashRefreshToken(newRefreshToken.token),
       expiraEn: newRefreshToken.expiraEn,
-      membresiaId: row.membresiaId ?? undefined,
+      sessionScope: "HOLDING",
     },
   });
 
@@ -218,4 +272,3 @@ export async function logout(usuarioId: string, token: string): Promise<void> {
     await refreshTokenRepository.revoke(row.jti);
   }
 }
-

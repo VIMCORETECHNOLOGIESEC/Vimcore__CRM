@@ -28,6 +28,13 @@ export async function findActivasByUsuarioId(
   return client.membresia.findMany({ where: { usuarioId, activa: true } });
 }
 
+export async function findById(
+  id: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Membresia | null> {
+  return client.membresia.findUnique({ where: { id } });
+}
+
 /**
  * Spec (dual-login-routing, "Cross-table email collision blocked"): guarda
  * transaccional de unicidad de aplicación entre `Usuario.correo` y
@@ -42,7 +49,7 @@ export async function findActivasByUsuarioId(
  * futuro cambio que sí escriba `Membresia.correo` la reutilice en vez de
  * re-derivar el chequeo (y arriesgar omitirlo).
  */
-export interface CrearMembresiaData {
+export interface CreateMembresiaData {
   usuarioId: string;
   empresaId: string;
   rol: RolMembresia;
@@ -59,7 +66,7 @@ export interface CrearMembresiaData {
  * atómico que `deactivateUsuario` con `revokeAllForUser`).
  */
 export async function createMembresia(
-  data: CrearMembresiaData,
+  data: CreateMembresiaData,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Membresia> {
   return client.membresia.create({
@@ -86,4 +93,3 @@ export async function assertCorreoDisponible(
     throw new AppError("correo_no_disponible", 409, "El correo ya está en uso");
   }
 }
-

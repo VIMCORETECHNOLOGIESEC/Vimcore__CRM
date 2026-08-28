@@ -13,7 +13,7 @@ export interface CreateNotificacionData {
    * `undefined` deja la columna en NULL, sin cambio de comportamiento para
    * los call sites que todavía no resuelven una empresa.
    */
-  empresaId?: string | null;
+  empresaId: string | null;
 }
 export async function createNotificacion(
   data: CreateNotificacionData,

@@ -30,6 +30,11 @@ enum RolMembresia {
   @@map("rol_membresia")
 }
 
+enum SessionScope {
+  COMPANY
+  HOLDING
+}
+
 enum TipoNotificacion {
   LEAD_ASIGNADO
   LEAD_TRASPASADO
@@ -110,6 +115,7 @@ model Empresa {
   citas          Cita[]
   leadEventos    LeadEvento[]
   notificaciones Notificacion[]
+  bridgeLogs     BridgeLog[]
 
   @@map("empresas")
 }
@@ -162,6 +168,7 @@ model RefreshToken {
   expiraEn   DateTime  @map("expira_en") @db.Timestamptz(6)
   revocadoEn DateTime? @map("revocado_en") @db.Timestamptz(6)
   creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  sessionScope SessionScope @map("session_scope")
   // Bloque B (dual-login-routing): nulo para toda sesión emitida antes de
   // este cambio (spec, "Active session after migration") y para toda sesión
   // emitida vía `Usuario.correo` (camino holding-wide, sin membresía).
@@ -170,7 +177,7 @@ model RefreshToken {
   membresiaId String?  @map("membresia_id") @db.Uuid
 
   usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  membresia Membresia? @relation(fields: [membresiaId], references: [id], onDelete: SetNull)
+  membresia Membresia? @relation(fields: [membresiaId], references: [id], onDelete: Restrict)
 
   @@index([usuarioId, revocadoEn])
   @@map("refresh_tokens")
@@ -218,6 +225,7 @@ enum TipoEventoLead {
   // sobrecargar SIN_ASIGNAR ocultaría el incidente y dispararía una
   // notificación falsa. Ver docs/06-modulos-backend.md §M6.
   ASIGNACION_FALLIDA
+  ASIGNACION_CONFLICTO
 
   @@map("tipo_evento_lead")
 }
@@ -694,10 +702,13 @@ model BridgeLog {
   mensaje    String         @db.Text
   payload    Json?          @db.JsonB
   ocurridoEn DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  empresaId  String?        @map("empresa_id") @db.Uuid
 
   bridge Bridge? @relation(fields: [bridgeId], references: [id], onDelete: SetNull)
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@index([bridgeId, ocurridoEn(sort: Desc)])
+  @@index([empresaId], map: "idx_bridge_logs_empresa")
   @@map("bridge_logs")
 }
 
@@ -761,4 +772,3 @@ model LeadAbiertoRevisionPendiente {
   @@index([resuelto])
   @@map("leads_abiertos_revision_pendiente")
 }
-

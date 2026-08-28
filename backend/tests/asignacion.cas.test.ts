@@ -30,6 +30,22 @@ describe("asignacion.service — withCasRetry (design D6, spec 'Bounded retry �
     });
   });
 
+  it("ejecuta la corrección exactamente una vez después del tercer conflicto y antes de devolver 409", async () => {
+    const fn = vi.fn(async () => {
+      throw new VersionConflictError("lead-correccion");
+    });
+    const corregir = vi.fn(async () => undefined);
+
+    await expect(withCasRetry(fn, corregir)).rejects.toMatchObject({
+      code: "asignacion_conflicto",
+      statusHttp: 409,
+    });
+
+    expect(fn).toHaveBeenCalledTimes(3);
+    expect(corregir).toHaveBeenCalledOnce();
+    expect(corregir).toHaveBeenCalledWith(expect.objectContaining({ leadId: "lead-correccion" }));
+  });
+
   it("retorna el resultado sin reintentar cuando fn resuelve en el primer intento", async () => {
     const fn = vi.fn(async () => "resultado-ok");
 

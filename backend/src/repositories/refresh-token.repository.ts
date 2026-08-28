@@ -1,4 +1,4 @@
-import type { RefreshToken } from "@prisma/client";
+import type { RefreshToken, SessionScope } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface CreateRefreshTokenParams {
@@ -6,6 +6,7 @@ export interface CreateRefreshTokenParams {
   usuarioId: string;
   hash: string;
   expiraEn: Date;
+  sessionScope: SessionScope;
   // Bloque B (dual-login-routing): `undefined` para toda sesión holding-wide
   // (`Usuario.correo`) — mismo comportamiento que antes de este cambio.
   // Presente solo cuando la sesión se emitió por el camino de `Membresia`.
@@ -44,22 +45,41 @@ export async function revokeAllForUser(
   });
 }
 
+export async function revokeAllForMembership(
+  membresiaId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<void> {
+  await client.refreshToken.updateMany({
+    where: { membresiaId, revocadoEn: null },
+    data: { revocadoEn: new Date() },
+  });
+}
+
 /**
  * Rotación atómica (paso 7 del flujo de datos del diseño): revocar el `jti`
  * anterior y crear el nuevo en la misma transacción, para que nunca existan
  * dos refresh vigentes ni una ventana con cero.
  */
-export async function rotate(params: {
-  previousJti: string;
-  newToken: CreateRefreshTokenParams;
-}): Promise<RefreshToken> {
-  const [, created] = await prisma.$transaction([
-    prisma.refreshToken.update({
+export async function rotate(
+  params: {
+    previousJti: string;
+    newToken: CreateRefreshTokenParams;
+  },
+  client?: PrismaClientOrTransaction,
+): Promise<RefreshToken> {
+  if (client) {
+    await client.refreshToken.update({
       where: { jti: params.previousJti },
       data: { revocadoEn: new Date() },
-    }),
-    prisma.refreshToken.create({ data: params.newToken }),
-  ]);
+    });
+    return client.refreshToken.create({ data: params.newToken });
+  }
 
-  return created;
+  return prisma.$transaction(async (tx) => {
+    await tx.refreshToken.update({
+      where: { jti: params.previousJti },
+      data: { revocadoEn: new Date() },
+    });
+    return tx.refreshToken.create({ data: params.newToken });
+  });
 }

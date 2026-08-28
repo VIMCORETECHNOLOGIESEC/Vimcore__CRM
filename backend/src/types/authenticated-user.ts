@@ -5,6 +5,7 @@ export interface AuthenticatedUser {
   nombre: string;
   correo: string;
   rol: RolUsuario;
+  sessionScope: "company" | "holding";
   // Bloque B (dual-login-routing): additivo, tomado tal cual del claim del
   // access token — presente solo cuando la sesión se emitió por el camino de
   // `Membresia`. `Usuario.rol` (arriba) sigue siendo la única fuente de

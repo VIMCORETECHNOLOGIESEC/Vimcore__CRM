@@ -15,6 +15,7 @@ export interface AccessTokenPayload extends JWTPayload {
   sub: string;
   rol: string;
   type: "access";
+  sessionScope: "company" | "holding";
   // Bloque B (dual-login-routing): additivos, presentes solo cuando la
   // sesión se emitió por el camino de `Membresia` (empresa) — `undefined` en
   // toda sesión holding-wide (`Usuario.correo`), como antes de este cambio.
@@ -37,12 +38,17 @@ export interface SignedRefreshToken {
 export async function signAccessToken(user: {
   id: string;
   rol: string;
+  sessionScope: "company" | "holding";
   membresiaId?: string;
   empresaId?: string;
 }): Promise<string> {
   const expSeconds = Math.floor(Date.now() / 1000) + env.JWT_ACCESS_TTL_SECONDS;
 
-  const claims: Record<string, unknown> = { rol: user.rol, type: "access" };
+  const claims: Record<string, unknown> = {
+    rol: user.rol,
+    type: "access",
+    sessionScope: user.sessionScope,
+  };
   if (user.membresiaId !== undefined) claims.membresiaId = user.membresiaId;
   if (user.empresaId !== undefined) claims.empresaId = user.empresaId;
 
@@ -107,4 +113,3 @@ export async function verifyRefreshToken(
 
   return payload as RefreshTokenPayload;
 }
-
