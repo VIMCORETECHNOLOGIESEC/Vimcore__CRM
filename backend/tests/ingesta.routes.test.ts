@@ -65,7 +65,7 @@ describe("POST /api/v1/ingesta/generico", () => {
       estado: "ACEPTADO",
     });
     expect(
-      await prisma.leadRecibido.findUnique({ where: { id: respuesta.body.recepcionId } }),
+      await testAdminPrisma.leadRecibido.findUnique({ where: { id: respuesta.body.recepcionId } }),
     ).toEqual(expect.objectContaining({ estado: "PENDIENTE", leadId: null }));
   });
 
@@ -83,7 +83,7 @@ describe("POST /api/v1/ingesta/generico", () => {
     expect(respuesta.status).not.toBe(200);
     expect(respuesta.body).not.toEqual(expect.objectContaining({ estado: "ACEPTADO" }));
     expect(
-      await prisma.leadRecibido.count({
+      await testAdminPrisma.leadRecibido.count({
         where: { bridgeId, idExternoLead: cuerpo.idExternoLead as string },
       }),
     ).toBe(0);
@@ -95,13 +95,13 @@ describe("POST /api/v1/ingesta/generico", () => {
     const respuesta = await request(app).post("/api/v1/ingesta/generico").send(cuerpo);
 
     expect(respuesta.status).toBe(401);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: null, nivel: "ERROR", mensaje: "Falta el encabezado X-Bridge-Key" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log).not.toBeNull();
 
-    const recepcion = await prisma.leadRecibido.findFirst({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirst({
       where: { idExternoLead: cuerpo.idExternoLead as string },
     });
     expect(recepcion).toBeNull();
@@ -116,13 +116,13 @@ describe("POST /api/v1/ingesta/generico", () => {
       .send(cuerpo);
 
     expect(respuesta.status).toBe(401);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: null, nivel: "ERROR", mensaje: "X-Bridge-Key inválida o bridge inactivo" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log).not.toBeNull();
 
-    const recepcion = await prisma.leadRecibido.findFirst({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirst({
       where: { idExternoLead: cuerpo.idExternoLead as string },
     });
     expect(recepcion).toBeNull();
@@ -137,13 +137,13 @@ describe("POST /api/v1/ingesta/generico", () => {
       .send(cuerpo);
 
     expect(respuesta.status).toBe(401);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: null, nivel: "ERROR", mensaje: "X-Bridge-Key inválida o bridge inactivo" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log).not.toBeNull();
 
-    const recepcion = await prisma.leadRecibido.findFirst({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirst({
       where: { idExternoLead: cuerpo.idExternoLead as string },
     });
     expect(recepcion).toBeNull();
@@ -162,7 +162,7 @@ describe("POST /api/v1/ingesta/generico", () => {
     expect(JSON.stringify(respuesta.body)).not.toContain(CLAVE_API);
     expect(JSON.stringify(respuesta.body)).not.toContain(hashClaveBridge(CLAVE_API));
 
-    const recepcion = await prisma.leadRecibido.findFirstOrThrow({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirstOrThrow({
       where: { bridgeId, idExternoLead: cuerpo.idExternoLead as string },
     });
     expect(recepcion.id).toBe(respuesta.body.recepcionId);
@@ -186,7 +186,7 @@ describe("POST /api/v1/ingesta/generico", () => {
     expect(segunda.status).toBe(200);
     expect(segunda.body).toEqual(primera.body);
 
-    const totalRecepciones = await prisma.leadRecibido.count({
+    const totalRecepciones = await testAdminPrisma.leadRecibido.count({
       where: { bridgeId, idExternoLead: cuerpo.idExternoLead as string },
     });
     expect(totalRecepciones).toBe(1);
@@ -203,7 +203,7 @@ describe("POST /api/v1/ingesta/generico", () => {
     expect(new Set(respuestas.map(({ body }) => body.recepcionId)).size).toBe(1);
     expect(respuestas.every(({ status }) => status === 200)).toBe(true);
     expect(
-      await prisma.leadRecibido.count({
+      await testAdminPrisma.leadRecibido.count({
         where: { bridgeId, idExternoLead: cuerpo.idExternoLead as string },
       }),
     ).toBe(1);

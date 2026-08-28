@@ -1,6 +1,6 @@
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
-import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { INGESTA_ACCEPT_TRANSACTION_BOUNDS, INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
@@ -27,9 +27,25 @@ export interface IngestaResultado {
  * `procesarRecepcion` (mismo archivo), invocada por el worker durable
  * (`runIngestionOnce`/`startIngestionWorker` en `jobs/ingesta-inbox.job.ts`)
  * que reclama filas pendientes del buzón.
+ *
+ * Bloque C (Etapa 3, D2 gap closure): `aceptarLeadRecibido` hace un
+ * `$queryRaw` suelto: `lib/prisma.ts::$allOperations` NUNCA aplica las GUCs
+ * de tenant a una operacion raw fuera de una transaccion explicita, sin
+ * importar que este call site corra dentro del `runWithTenantContext` que
+ * `requireBridgeKey` ya dejo activo alrededor de `next()`. Envolver la
+ * llamada en `runInTransaction` (que abre `prisma.$transaction`, cuyo
+ * override SI aplica `applyTenantGucs` como primer statement) es lo unico
+ * que hace que la politica RLS de `leads_recibidos` vea
+ * `app.tenant_empresa_id` del bridge autenticado: sin esto, todo
+ * `POST /api/v1/ingesta/generico` fallaba con 42501 en cuanto
+ * `leads_recibidos` paso a tener RLS.
  */
 export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResultado> {
-  return leadRecibidoRepository.aceptarLeadRecibido(entrada);
+  return runInTransaction(
+    undefined,
+    (tx) => leadRecibidoRepository.aceptarLeadRecibido(entrada, new Date(), tx),
+    INGESTA_ACCEPT_TRANSACTION_BOUNDS,
+  );
 }
 
 /**
@@ -95,9 +111,10 @@ export async function procesarRecepcion(
       // "datos incompletos" para ese caso también. Solo `procesarRecepcion`
       // tiene `dedup.leadId` para poblar `NotificationInput.leadId`. Una
       // notificación individual por lead, sin agregación (spec).
-      // Bloque C (D5): `empresaId` explícito null (holding-wide) — este call
-      // site queda fuera del alcance de Fase 1 / Stage 1 (sdd/bloque-c-aislamiento);
-      // conectar el `empresaId` real del lead queda como seguimiento.
+      // Bloque C (D5, Fase 2/Stage 2 — cutover bloqueante): `dedup.empresaId`
+      // es el `empresaId` real resuelto por `deduplicateLead`
+      // (`deduplicacion.service.ts` falla cerrado si no puede resolverlo) —
+      // ya no hay ningún seguimiento pendiente para este call site.
       const notificacionesDatoIncompleto = datosIncompletos
         ? await createForActiveRoles(
             ["SUPERVISOR"],
@@ -107,7 +124,7 @@ export async function procesarRecepcion(
               mensaje: "Un lead ingresó sin teléfono ni correo — requiere seguimiento manual",
               leadId: dedup.leadId,
             },
-            null,
+            dedup.empresaId,
             tx,
           )
         : [];

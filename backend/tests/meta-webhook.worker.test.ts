@@ -52,7 +52,7 @@ async function crearBridgeConCuenta(
     },
   });
   const pageId = `page-meta-worker-${contador}`;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId: bridge.id,
       idExterno: pageId,
@@ -79,8 +79,9 @@ async function encolarYReclamar(
   const receipt = await inbox.aceptarLeadgenMetaPendiente(
     { bridgeId: cuenta.bridgeId, leadgenId, pageId: cuenta.pageId },
     recibidoEn,
+    testAdminPrisma,
   );
-  const row = await prisma.leadRecibido.update({
+  const row = await testAdminPrisma.leadRecibido.update({
     where: { id: receipt.recepcionId },
     data: { estado: "PROCESANDO", intentos: 1, leaseOwner: owner, leaseHasta: new Date(Date.now() + 60_000) },
   });
@@ -112,13 +113,13 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
     expect(fetchMock).toHaveBeenCalledTimes(META_DETALLE_MAX_INTENTOS);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log?.mensaje).toContain(`tras ${META_DETALLE_MAX_INTENTOS} intentos`);
     expect(JSON.stringify(log?.payload)).toContain(leadgenId);
-    const recepcion = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
+    const recepcion = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
     expect(recepcion.leadId).toBeNull();
   }, 10_000);
 
@@ -132,7 +133,7 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
     expect(fetchMock).not.toHaveBeenCalled();
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -151,9 +152,9 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const cuentaActualizada = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.cuentaId } });
+    const cuentaActualizada = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.cuentaId } });
     expect(cuentaActualizada.estadoToken).toBe("TOKEN_EXPIRADO");
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -164,11 +165,11 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     const cuenta = await crearBridgeConCuenta();
     const leadgenId = `leadgen-worker-cuenta-eliminada-${contador}`;
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-cuenta-eliminada");
-    await prisma.cuentaPublicitaria.delete({ where: { id: cuenta.cuentaId } });
+    await testAdminPrisma.cuentaPublicitaria.delete({ where: { id: cuenta.cuentaId } });
 
     await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: null, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -193,10 +194,10 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
-    const recepcion = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
+    const recepcion = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
     expect(recepcion.datosIncompletos).toBe(true);
     expect(recepcion.leadId).not.toBeNull();
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -225,9 +226,9 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
-    const recepcion = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
+    const recepcion = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
     expect(recepcion.datosIncompletos).toBe(false);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "desc" },
     });

@@ -1,6 +1,16 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { env } from "../config/env";
+import { env } from "../config/env.js";
+import { AppError } from "./app-error.js";
+import { logger } from "./logger.js";
+import {
+  currentTenantContext,
+  runWithTenantContext,
+  type TenantContext,
+} from "./tenant-context.js";
+
+export { runWithTenantContext };
+export type { TenantContext };
 
 /**
  * Bloque C (Etapa 3, D2/D3) — carrier de tenant por-request. `empresaId:
@@ -12,12 +22,6 @@ import { env } from "../config/env";
  * confunde con `empresaId: null` (que SÍ es un estado válido y amplio,
  * D3), son dos cosas distintas a propósito.
  */
-export interface TenantContext {
-  empresaId: string | null;
-}
-
-const tenantContextStorage = new AsyncLocalStorage<TenantContext>();
-
 /**
  * D2 (fix batch 2) — carrier interno, NADA que ver con `TenantContext`
  * (D2/D3): marca "ya estamos dentro de una transacción interactiva que ya
@@ -45,17 +49,6 @@ function alreadyInGucTransaction(): boolean {
  * el resto del ciclo de vida de la request (controllers, services,
  * repositorios) corre dentro de este `AsyncLocalStorage.run`.
  */
-export function runWithTenantContext<T>(
-  context: TenantContext,
-  fn: () => T,
-): T {
-  return tenantContextStorage.run(context, fn);
-}
-
-function currentTenantContext(): TenantContext | undefined {
-  return tenantContextStorage.getStore();
-}
-
 /**
  * D2 — coloca las GUCs de sesión (`app.tenant_empresa_id`/
  * `app.tenant_unrestricted`) vía `set_config(..., true)` (tercer argumento
@@ -160,17 +153,9 @@ export const prisma = basePrisma.$extends({
      */
     $transaction<T>(
       this: unknown,
-      fnOrArray: ((tx: Prisma.TransactionClient) => Promise<T>) | unknown[],
+      fn: (tx: Prisma.TransactionClient) => Promise<T>,
       bounds?: TransactionBounds,
-    ) {
-      if (typeof fnOrArray !== "function") {
-        // Forma batch-array (`$transaction([...])`): sin callback que
-        // envolver — ningún caller de este código base la usa (todos abren
-        // transacciones interactivas), se delega tal cual por completitud de
-        // tipos, sin aplicar GUCs (no hay dónde insertarlas).
-        return basePrisma.$transaction(fnOrArray as never);
-      }
-      const fn = fnOrArray;
+    ): Promise<T> {
       return basePrisma.$transaction(async (tx) => {
         await applyTenantGucs(tx);
         return gucAppliedStorage.run(true, () => fn(tx));
@@ -206,9 +191,19 @@ export const prisma = basePrisma.$extends({
       // de modelo. Para operaciones raw sin `model` (p. ej. `$queryRaw`
       // suelto fuera de cualquier transacción explícita) no hay forma
       // genérica de reconstruir la llamada sobre `tx`, así que se ejecuta
-      // `query(args)` directo (sin transacción propia) — ningún caller de
-      // este código base usa hoy raw queries sueltas fuera de una
-      // transacción explícita o de `runAsBypassJob`.
+      // `query(args)` directo (sin transacción propia) — CUALQUIER caller
+      // que use `$queryRaw`/`$executeRaw` fuera de una transacción explícita
+      // NUNCA ve las GUCs de tenant aplicadas, sin importar si hay un
+      // `TenantContext` activo (D2 gap, batch 3+ discovery, bug real
+      // encontrado en producción — no una hipótesis). Los callers reales de
+      // este código base (`lead-recibido.repository.ts::aceptarLeadRecibido`/
+      // `aceptarLeadgenMetaPendiente`/`claimNext`/`marcarFallo`) por eso NUNCA
+      // invocan sus raw queries directo sobre `prisma` — siempre reciben un
+      // `tx` ya abierto por el llamador (`ingesta.service.ts::ingestarLead`,
+      // `meta-webhook.service.ts::encolarLeadgenMeta`,
+      // `jobs/ingesta-inbox.job.ts::runIngestionOnce`, todos vía
+      // `runInTransaction`/`prisma.$transaction` explícito) para que este
+      // seam SÍ aplique las GUCs antes del raw query.
       if (model === undefined) {
         return query(args);
       }
@@ -228,22 +223,56 @@ export const prisma = basePrisma.$extends({
 
 /**
  * D1 (diseño, "SET LOCAL ROLE ... solo desde runAsBypassJob()") — el ÚNICO
- * seam que puede correr una query bajo `crm_bypass_jobs` (BYPASSRLS). Nunca
- * llamado desde un request path HTTP (spec §2 "Bypass role unreachable from
- * HTTP") — grep-able por nombre, invocado solo desde
- * `sla-atrasado.service.ts::detectLeadsAtrasados` y
- * `asignacion.service.ts::assignAfterCommit` (los 2 call sites documentados,
- * spec "Bypass usage is enumerated and documented"). Abre SIEMPRE su propia
- * transacción — un job de bypass nunca recibe una `tx` externa por
+ * seam que puede correr una query bajo `crm_bypass_jobs` (BYPASSRLS, además
+ * `SET TRANSACTION READ ONLY` — solo sirve para DESCUBRIR filas de solo
+ * lectura entre empresas, nunca para escribir; cualquier escritura resultante
+ * corre después bajo `runWithTenantContext`/`prisma.$transaction` con el
+ * `empresaId` real ya resuelto, ver `asignacion.service.ts::assignAfterCommit`
+ * como ejemplo del patrón). Nunca llamado desde un request path HTTP (spec §2
+ * "Bypass role unreachable from HTTP") — grep-able por nombre, invocado desde
+ * los 7 call sites de `BYPASS_JOB_ALLOWLIST` (uno por entrada, spec "Bypass
+ * usage is enumerated and documented"): `sla-atrasado.service.ts`,
+ * `citas-recordatorio.service.ts`, `bridge-mudo.service.ts`,
+ * `verificacion-token.service.ts` (2 sites: `token-verification` y
+ * `token-expiry-alert`), `asignacion.service.ts::assignAfterCommit`
+ * (`post-commit-assignment`) y `asignacion.service.ts::
+ * recordAssignmentDegradation` (`assignment-degradation`). Abre SIEMPRE su
+ * propia transacción — un job de bypass nunca recibe una `tx` externa por
  * parámetro, a diferencia de `runInTransaction` (D1: los jobs corren fuera
- * de cualquier ciclo de request).
+ * de cualquier ciclo de request). El worker de ingesta durable
+ * (`jobs/ingesta-inbox.job.ts::runIngestionOnce`) NO usa este seam — necesita
+ * `UPDATE` (`claimNext`/`marcarFallo`), incompatible con `READ ONLY`; usa en
+ * cambio el GUC holding-wide (`runWithTenantContext({ empresaId: null })`,
+ * D3) bajo el rol `crm_app` normal, ver `INGESTA_WORKER_TRANSACTION_BOUNDS`.
  */
+export const BYPASS_JOB_ALLOWLIST = {
+  "sla-overdue": { owner: "sla-atrasado", reason: "discover overdue leads", partitionBy: "empresaId" },
+  "appointment-reminder": { owner: "citas-recordatorio", reason: "discover pending appointments", partitionBy: "empresaId" },
+  "silent-bridge": { owner: "bridge-mudo", reason: "discover inactive bridges", partitionBy: "empresaId" },
+  "token-verification": { owner: "verificacion-token", reason: "discover loaded tokens", partitionBy: "empresaId" },
+  "token-expiry-alert": { owner: "verificacion-token", reason: "discover expiring tokens", partitionBy: "empresaId" },
+  "post-commit-assignment": { owner: "assignAfterCommit", reason: "resolve lead company after request commit", partitionBy: "empresaId" },
+  "assignment-degradation": { owner: "assignAfterCommit", reason: "resolve incident company after retries", partitionBy: "empresaId" },
+} as const;
+
+export type BypassJobId = keyof typeof BYPASS_JOB_ALLOWLIST;
+
 export async function runAsBypassJob<T>(
+  jobId: BypassJobId,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   bounds: TransactionBounds,
 ): Promise<T> {
+  const metadata = BYPASS_JOB_ALLOWLIST[jobId];
+  if (!metadata) {
+    throw new AppError("bypass_no_autorizado", 500, "El caller no está autorizado para usar bypass");
+  }
   return basePrisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
     await tx.$executeRawUnsafe("SET LOCAL ROLE crm_bypass_jobs");
+    logger.info(
+      { event: "bypass_discovery", holdingWide: true, jobId, ...metadata },
+      "bypass de solo lectura iniciado",
+    );
     return fn(tx);
   }, bounds);
 }
@@ -419,6 +448,39 @@ export const BRIDGE_TRANSACTION_BOUNDS: TransactionBounds = {
  * `asignacion.service.ts` dentro de su propia transacción.
  */
 export const USUARIOS_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+/**
+ * Límites de la transacción del encolado durable de recepción
+ * (`ingesta.service.ts::ingestarLead`, `meta-webhook.service.ts::
+ * encolarLeadgenMeta`, D2 gap closure): ambos son el mismo tipo de operación
+ * (un único `INSERT ... ON CONFLICT DO UPDATE` idempotente sobre
+ * `leads_recibidos`, sin ningún otro I/O dentro de la transacción), así que
+ * comparten este bound — a diferencia de `INGESTA_TRANSACTION_BOUNDS`
+ * (`procesarRecepcion`, que además hace dedupe/asignación/notificaciones y
+ * por eso tiene un `timeout` mayor). Mismo criterio numérico que
+ * `AUTH_BOOTSTRAP_TRANSACTION_BOUNDS` (una sola sentencia acotada por índice).
+ */
+export const INGESTA_ACCEPT_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+/**
+ * Límites de la transacción del worker de ingesta durable
+ * (`jobs/ingesta-inbox.job.ts::runIngestionOnce`, D2 gap closure): envuelve
+ * cada llamada individual a `claimNext`/`marcarFallo` (raw queries sueltas
+ * sobre `leads_recibidos`) para que `applyTenantGucs` corra dentro de la
+ * transacción holding-wide (`empresaId: null`, D3) que activa
+ * `runWithTenantContext` alrededor de todo `runIngestionOnce` — el worker
+ * reclama filas de CUALQUIER empresa (la cola es compartida), así que nunca
+ * usa `crm_bypass_jobs` (D1: ese rol es `READ ONLY`, `claimNext`/
+ * `marcarFallo` hacen `UPDATE`) — usa el mismo mecanismo holding-wide del
+ * rol `crm_app` que ya usa `procesarNotificacionMeta`/`procesarRecepcion`.
+ */
+export const INGESTA_WORKER_TRANSACTION_BOUNDS: TransactionBounds = {
   maxWait: 10_000,
   timeout: 20_000,
 };

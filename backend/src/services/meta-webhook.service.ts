@@ -2,7 +2,7 @@ import { env } from "../config/env.js";
 import { AppError } from "../lib/app-error.js";
 import { decrypt } from "../lib/cifrado-token.js";
 import { logger } from "../lib/logger.js";
-import { runWithTenantContext } from "../lib/prisma.js";
+import { INGESTA_ACCEPT_TRANSACTION_BOUNDS, runInTransaction, runWithTenantContext } from "../lib/prisma.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import { adaptMeta } from "../adapters/meta.adapter.js";
@@ -152,6 +152,7 @@ export async function encolarLeadgenMeta(
   if (cuenta === null) {
     await registrarLogSeguro({
       bridgeId: null,
+      holdingWide: true,
       nivel: "ERROR",
       mensaje: `Meta: no se encontró ninguna CuentaPublicitaria para la Página ${pageId}`,
       payload: { leadgenId, pageId },
@@ -159,9 +160,25 @@ export async function encolarLeadgenMeta(
     return;
   }
 
-  await leadRecibidoRepository.aceptarLeadgenMetaPendiente(
-    { bridgeId: cuenta.bridgeId, leadgenId, pageId },
-    recibidoEn,
+  // Bloque C (Etapa 3, D2 gap closure): `aceptarLeadgenMetaPendiente` hace un
+  // `$queryRaw` suelto (mismo gap que `ingesta.service.ts::ingestarLead`,
+  // ver el comentario ahi) — `lib/prisma.ts::$allOperations` no aplica las
+  // GUCs de tenant a una operacion raw fuera de una transaccion explicita,
+  // sin importar que `procesarNotificacionMeta` ya haya activado
+  // `runWithTenantContext({ empresaId: null })` alrededor de este call site.
+  // Envolver la llamada en `runInTransaction` hace que `applyTenantGucs`
+  // corra primero, fijando `app.tenant_unrestricted = 'on'` (holding-wide,
+  // D3) — necesario porque un solo webhook puede traer leads de Paginas de
+  // distintas empresas.
+  await runInTransaction(
+    undefined,
+    (tx) =>
+      leadRecibidoRepository.aceptarLeadgenMetaPendiente(
+        { bridgeId: cuenta.bridgeId, leadgenId, pageId },
+        recibidoEn,
+        tx,
+      ),
+    INGESTA_ACCEPT_TRANSACTION_BOUNDS,
   );
 }
 
@@ -224,7 +241,7 @@ export async function resolverLeadgenMeta(pendiente: {
 
   if (cuenta === null) {
     const mensaje = `Meta: no se encontró ninguna CuentaPublicitaria para la Página ${pageId}`;
-    await registrarLogSeguro({ bridgeId: null, nivel: "ERROR", mensaje, payload: { leadgenId, pageId } });
+    await registrarLogSeguro({ bridgeId: null, holdingWide: true, nivel: "ERROR", mensaje, payload: { leadgenId, pageId } });
     throw new AppError("meta_cuenta_no_encontrada", 500, mensaje);
   }
 

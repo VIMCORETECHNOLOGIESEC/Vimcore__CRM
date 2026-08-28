@@ -54,12 +54,12 @@ describe("trabajador del buzón de ingesta", () => {
   it("programa 60s/300s y termina en FALLA_MANUAL tras tres intentos", async () => {
     const input = await entrada();
     const inicio = new Date();
-    const receipt = await inbox.aceptarLeadRecibido(input, inicio);
+    const receipt = await inbox.aceptarLeadRecibido(input, inicio, testAdminPrisma);
     for (const [index, delay] of [60_000, 300_000, 0].entries()) {
       const now = new Date(inicio.getTime() + (index === 0 ? 0 : index === 1 ? 60_000 : 360_000));
-      await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: index + 1, leaseOwner: `worker-${index}`, leaseHasta: new Date(now.getTime() + 60_000) } });
-      expect(await inbox.marcarFallo(receipt.recepcionId, `worker-${index}`, `fallo ${index + 1}`, now)).toBe(true);
-      const row = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: receipt.recepcionId } });
+      await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: index + 1, leaseOwner: `worker-${index}`, leaseHasta: new Date(now.getTime() + 60_000) } });
+      expect(await inbox.marcarFallo(receipt.recepcionId, `worker-${index}`, `fallo ${index + 1}`, now, testAdminPrisma)).toBe(true);
+      const row = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: receipt.recepcionId } });
       expect(row.intentos).toBe(index + 1);
       expect(row.estado).toBe(index === 2 ? "FALLA_MANUAL" : "REINTENTO");
       if (delay) expect(row.disponibleEn.getTime()).toBe(now.getTime() + delay);
@@ -70,14 +70,14 @@ describe("trabajador del buzón de ingesta", () => {
   it("revierte dominio sin efectos y solo publica/asigna después de completar", async () => {
     const input = await entrada();
     const now = new Date();
-    const receipt = await inbox.aceptarLeadRecibido(input, now);
-    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-atomic", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
+    const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-atomic", leaseHasta: new Date(now.getTime() + 60_000) } });
     const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-atomic", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
     vi.mocked(inbox.completeClaim).mockRejectedValueOnce(new Error("fallo de finalización"));
     await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow("fallo de finalización");
     expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
     expect(vi.mocked(asignacion.assignAfterCommit)).not.toHaveBeenCalled();
-    expect((await prisma.leadRecibido.findUniqueOrThrow({ where: { id: receipt.recepcionId } })).leadId).toBeNull();
+    expect((await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: receipt.recepcionId } })).leadId).toBeNull();
 
     vi.mocked(inbox.completeClaim).mockImplementationOnce(async (...args) => {
       expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
@@ -92,40 +92,40 @@ describe("trabajador del buzón de ingesta", () => {
       vi.mocked(inbox.completeClaim),
     );
 
-    const expiredReceipt = await inbox.aceptarLeadRecibido(await entrada());
-    const expired = await prisma.leadRecibido.update({ where: { id: expiredReceipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-expired", leaseHasta: new Date(Date.now() - 1_000) } });
+    const expiredReceipt = await inbox.aceptarLeadRecibido(await entrada(), undefined, testAdminPrisma);
+    const expired = await testAdminPrisma.leadRecibido.update({ where: { id: expiredReceipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-expired", leaseHasta: new Date(Date.now() - 1_000) } });
     const expiredClaim = { recepcionId: expired.id, leaseOwner: "worker-expired", intento: 1, leaseHasta: expired.leaseHasta!, entradaProcesamiento: expired.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 } satisfies inbox.InboxClaim;
     expect(await conContexto(() => procesarRecepcion(expiredClaim))).toBe(false);
-    expect(await inbox.marcarFallo(expired.id, "worker-expired", "fallo tardío", new Date(0))).toBe(false);
-    expect(await prisma.leadRecibido.findUniqueOrThrow({ where: { id: expired.id } })).toMatchObject({ estado: "PROCESANDO", leadId: null, ultimoError: null });
+    expect(await inbox.marcarFallo(expired.id, "worker-expired", "fallo tardío", new Date(0), testAdminPrisma)).toBe(false);
+    expect(await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: expired.id } })).toMatchObject({ estado: "PROCESANDO", leadId: null, ultimoError: null });
   });
 
   it("registra ADVERTENCIA en bridge_logs cuando el lead resuelto no tiene telefono ni correo (v1 generico, docs/05-bridges.md §8)", async () => {
     const base = await entrada();
     const input: LeadEntrante = { ...base, telefono: null, correo: null };
     const now = new Date();
-    const receipt = await inbox.aceptarLeadRecibido(input, now);
-    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-advertencia", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
+    const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-advertencia", leaseHasta: new Date(now.getTime() + 60_000) } });
     const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-advertencia", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
-    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" }, orderBy: { ocurridoEn: "desc" } });
+    const log = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" }, orderBy: { ocurridoEn: "desc" } });
     expect(log?.mensaje).toContain("datos incompletos");
   });
 
   it("registra INFO en bridge_logs cuando el lead resuelto tiene telefono (v1 generico)", async () => {
     const input = await entrada();
     const now = new Date();
-    const receipt = await inbox.aceptarLeadRecibido(input, now);
-    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-info", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
+    const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-info", leaseHasta: new Date(now.getTime() + 60_000) } });
     const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-info", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
-    const advertencia = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" } });
+    const advertencia = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "ADVERTENCIA" } });
     expect(advertencia).toBeNull();
-    const info = await prisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "INFO" }, orderBy: { ocurridoEn: "desc" } });
+    const info = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId: input.bridgeId, nivel: "INFO" }, orderBy: { ocurridoEn: "desc" } });
     expect(info).not.toBeNull();
   });
 
@@ -134,8 +134,8 @@ describe("trabajador del buzón de ingesta", () => {
     const antes = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id: input.bridgeId } });
     expect(antes.ultimoLeadEn).toBeNull();
     const now = new Date();
-    const receipt = await inbox.aceptarLeadRecibido(input, now);
-    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-ultimo-lead", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
+    const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-ultimo-lead", leaseHasta: new Date(now.getTime() + 60_000) } });
     const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-ultimo-lead", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
@@ -148,8 +148,8 @@ describe("trabajador del buzón de ingesta", () => {
   it("M9: programa la señal de métricas tras procesar la recepción con éxito (docs/08-dashboard-kpis.md §5, ingreso de lead)", async () => {
     const input = await entrada();
     const now = new Date();
-    const receipt = await inbox.aceptarLeadRecibido(input, now);
-    const row = await prisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-metricas", leaseHasta: new Date(now.getTime() + 60_000) } });
+    const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
+    const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-metricas", leaseHasta: new Date(now.getTime() + 60_000) } });
     const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-metricas", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
