@@ -421,7 +421,9 @@ describe(
         .set("Authorization", `Bearer ${adminAccessToken}`);
 
       expect(respuesta.status).toBe(200);
-      expect(new Set(respuesta.body.redesSociales)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS"]));
+      expect(new Set(respuesta.body.redesSociales)).toEqual(
+        new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "API_EXTERNA"]),
+      );
       expect(respuesta.body.redesSociales).not.toContain("INSTAGRAM" satisfies RedSocial);
       expect(respuesta.body.redesSociales).not.toContain("X" satisfies RedSocial);
       expect(respuesta.body.redesSociales).not.toContain("LINKEDIN" satisfies RedSocial);

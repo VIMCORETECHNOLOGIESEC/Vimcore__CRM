@@ -215,13 +215,17 @@ export async function regenerateClave(id: string): Promise<ClaveApiResult> {
  */
 const RED_SOCIAL_IMPLEMENTACION: Record<
   RedSocial,
-  { implementado: boolean; mecanismo: "webhook-meta" | "generico" | "polling-linkedin" }
+  { implementado: boolean; mecanismo: "webhook-meta" | "generico" | "polling-linkedin" | "polling-api-generica" }
 > = {
   FACEBOOK: { implementado: true, mecanismo: "webhook-meta" },
   INSTAGRAM: { implementado: false, mecanismo: "webhook-meta" },
   GOOGLE_FORMS: { implementado: true, mecanismo: "generico" },
   X: { implementado: false, mecanismo: "generico" },
   LINKEDIN: { implementado: false, mecanismo: "polling-linkedin" },
+  // bridgeApi: adapter + job de polling + endpoints de config ya existen
+  // (jobs/bridgeApi/poll.job.ts) -- implementado de verdad, no un enum
+  // reservado para después.
+  API_EXTERNA: { implementado: true, mecanismo: "polling-api-generica" },
 };
 
 /**
