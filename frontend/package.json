@@ -31,6 +31,7 @@
     "date-fns": "^4.4.0",
     "lucide-react": "^1.31.0",
     "react": "19.2.8",
+    "react-day-picker": "^10.0.1",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.85.0",
     "react-router": "^8.3.0",

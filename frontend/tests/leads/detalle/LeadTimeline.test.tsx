@@ -29,9 +29,7 @@ function formatFechaEsperada(iso: string): string {
   const fecha = new Date(iso);
   const dia = String(fecha.getDate()).padStart(2, "0");
   const mes = String(fecha.getMonth() + 1).padStart(2, "0");
-  const horas = String(fecha.getHours()).padStart(2, "0");
-  const minutos = String(fecha.getMinutes()).padStart(2, "0");
-  return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
+  return `${dia}/${mes}/${fecha.getFullYear()}`;
 }
 
 function leadFake(overrides: Partial<Lead> = {}): Lead {
@@ -70,7 +68,13 @@ function renderTimeline(lead: Lead) {
   );
 }
 
-function renderFormulario(props: { etapaActual: "NUEVO" | "CONTACTADO" | "CITA"; etapaDestino: "NUEVO" | "CONTACTADO" | "CITA" }) {
+function renderFormulario(
+  props: {
+    etapaActual: "NUEVO" | "CONTACTADO" | "CITA";
+    etapaDestino: "NUEVO" | "CONTACTADO" | "CITA";
+    onPuntuacionChange?: (puntuacion: number) => void;
+  },
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -96,7 +100,7 @@ describe("LeadTimeline — progreso lineal hacia adelante (docs/02-reglas-negoci
 
   it("etapa NUEVO: el nodo actual expande el formulario de la etapa VIGENTE (Nuevo), no el de destino (Contactado) -- regresión del bug de semáforo siempre rojo", async () => {
     renderTimeline(leadFake({ etapa: "NUEVO" }));
-    expect(await screen.findByText("Formulario — Nuevo")).toBeInTheDocument();
+    expect(await screen.findByText("¿El contacto es localizable?")).toBeInTheDocument();
     expect(screen.queryByText("Formulario — Contactado")).not.toBeInTheDocument();
     // El botón sí debe referirse a la etapa destino, no a la vigente.
     expect(screen.getByRole("button", { name: "Guardar y pasar a Contactado" })).toBeInTheDocument();
@@ -104,7 +108,7 @@ describe("LeadTimeline — progreso lineal hacia adelante (docs/02-reglas-negoci
 
   it("etapa CONTACTADO: el nodo actual expande el formulario de la etapa VIGENTE (Contactado), no el de destino (Cita)", async () => {
     renderTimeline(leadFake({ etapa: "CONTACTADO" }));
-    expect(await screen.findByText("Formulario — Contactado")).toBeInTheDocument();
+    expect(await screen.findByText("¿El medio de contacto usado fue efectivo?")).toBeInTheDocument();
     expect(screen.queryByText("Formulario — Cita")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Guardar y pasar a Cita" })).toBeInTheDocument();
   });
@@ -245,14 +249,16 @@ describe("FormularioEtapaLead — regresión del bug de semáforo siempre rojo/0
 });
 
 describe("FormularioEtapaLead — migración a React Hook Form + Zod (AGENTS.md §4)", () => {
-  it("la previsualización de puntuación se actualiza en vivo con cada respuesta, antes de enviar (watch reactivo, no solo al enviar)", async () => {
+  it("actualiza la puntuación del encabezado en vivo con cada respuesta, antes de enviar", async () => {
     const user = userEvent.setup();
-    renderFormulario({ etapaActual: "NUEVO", etapaDestino: "CONTACTADO" });
+    const onPuntuacionChange = vi.fn();
+    renderFormulario({ etapaActual: "NUEVO", etapaDestino: "CONTACTADO", onPuntuacionChange });
 
     await screen.findByText("¿El contacto es localizable?");
 
-    // Sin respuestas: previsualización en 0, ROJO.
-    expect(screen.getByText("0")).toBeInTheDocument();
+    // La puntuación ya no se muestra dentro del formulario.
+    expect(screen.queryByText("Previsualización:")).not.toBeInTheDocument();
+    expect(onPuntuacionChange).toHaveBeenCalledWith(0);
 
     // Responder "contactabilidad" (peso 3, puntaje 10 de un denominador de
     // 110) sube la previsualización a 27, todavía antes de tocar el botón de
@@ -260,7 +266,7 @@ describe("FormularioEtapaLead — migración a React Hook Form + Zod (AGENTS.md 
     await user.click(
       within(screen.getByRole("group", { name: "¿El contacto es localizable?" })).getByLabelText("Sí"),
     );
-    expect(await screen.findByText("27")).toBeInTheDocument();
+    expect(onPuntuacionChange).toHaveBeenLastCalledWith(27);
 
     // El botón sigue deshabilitado: faltan preguntas por responder.
     expect(screen.getByRole("button", { name: "Guardar y pasar a Contactado" })).toBeDisabled();

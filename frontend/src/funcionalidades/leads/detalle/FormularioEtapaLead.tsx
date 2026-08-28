@@ -1,12 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { EtapaCalificable, FormularioEtapa } from "@/tipos/formulario";
 import { ETAPA_ETIQUETAS } from "../catalogos";
-import { SemaforoBadge } from "../SemaforoBadge";
 import { calculatePuntuacion, calculateSemaforo, GUIA_ACCION_SEMAFORO } from "./puntuacion";
 import { useFormularioEtapa, useSubmitFormularioEtapa } from "./useLeadDetalle";
 
@@ -40,6 +41,7 @@ interface FormularioEtapaLeadProps {
    * muestran ni contra qué rúbrica se puntúan.
    */
   etapaDestino: EtapaCalificable;
+  onPuntuacionChange?: (puntuacion: number) => void;
 }
 
 /**
@@ -51,9 +53,15 @@ interface FormularioEtapaLeadProps {
  * (docs/02 §6, "sin formulario no hay transición") -- no hay un botón de
  * "guardar etapa" separado.
  */
-export function FormularioEtapaLead({ leadId, etapaActual, etapaDestino }: FormularioEtapaLeadProps) {
+export function FormularioEtapaLead({
+  leadId,
+  etapaActual,
+  etapaDestino,
+  onPuntuacionChange,
+}: FormularioEtapaLeadProps) {
   const { data: formulario, isLoading, isError } = useFormularioEtapa(etapaActual);
   const submitFormulario = useSubmitFormularioEtapa(leadId);
+  const [infoAbierta, setInfoAbierta] = useState(false);
 
   // El esquema es dinámico (depende de las preguntas de `formulario`, que
   // llegan del backend). Mientras `formulario` no cargó todavía, se usa un
@@ -79,34 +87,48 @@ export function FormularioEtapaLead({ leadId, etapaActual, etapaDestino }: Formu
     reset({});
   }, [etapaActual, reset]);
 
+  const respuestas = watch();
+  const puntuacion = calculatePuntuacion(
+    formulario ?? { etapa: etapaActual, preguntas: [] },
+    respuestas,
+  );
+  const semaforo = calculateSemaforo(puntuacion);
+
+  useEffect(() => {
+    onPuntuacionChange?.(puntuacion);
+  }, [onPuntuacionChange, puntuacion]);
+
   if (isLoading) return <LoadingState rows={3} rowHeight="h-10" />;
   if (isError || !formulario) {
-    return <p className="text-sm text-destructive">No se pudo cargar el formulario de esta etapa.</p>;
+    return (
+      <p className="text-sm text-destructive">No se pudo cargar el formulario de esta etapa.</p>
+    );
   }
 
-  const respuestas = watch();
-  const puntuacionPreview = calculatePuntuacion(formulario, respuestas);
-  const semaforoPreview = calculateSemaforo(puntuacionPreview);
+  const formularioCompleto = formulario.preguntas.every((pregunta) => Boolean(respuestas[pregunta.clave]));
 
   function onSubmit(valores: ValoresFormulario) {
     submitFormulario.mutate({ etapa: etapaDestino, respuestas: valores });
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-border bg-background p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">
-          Formulario — {ETAPA_ETIQUETAS[etapaActual]}
-        </h2>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>
-            Previsualización: <span className="font-medium text-foreground">{puntuacionPreview}</span>
-          </span>
-          <SemaforoBadge semaforo={semaforoPreview} />
-        </div>
-      </div>
-
+    <section className="flex flex-col gap-4 bg-transparent p-0">
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
+        <Popover open={infoAbierta} onOpenChange={setInfoAbierta}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Ver guía de acción"
+              className="absolute -right-2 -top-2 flex size-8 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Info className="size-4" aria-hidden="true" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="end" className="w-80 text-sm leading-relaxed">
+            {GUIA_ACCION_SEMAFORO[semaforo]}
+          </PopoverContent>
+        </Popover>
+
         <div className="flex flex-col gap-4">
           {formulario.preguntas.map((pregunta) => (
             <fieldset key={pregunta.clave} className="flex flex-col gap-1.5">
@@ -131,12 +153,10 @@ export function FormularioEtapaLead({ leadId, etapaActual, etapaDestino }: Formu
           ))}
         </div>
 
-        <div className="rounded-md bg-secondary px-3 py-2 text-xs text-secondary-foreground">
-          {GUIA_ACCION_SEMAFORO[semaforoPreview]}
-        </div>
-
-        <Button type="submit" disabled={!isValid || submitFormulario.isPending} className="w-fit">
-          {submitFormulario.isPending ? "Guardando…" : `Guardar y pasar a ${ETAPA_ETIQUETAS[etapaDestino]}`}
+        <Button type="submit" disabled={!isValid || !formularioCompleto || submitFormulario.isPending} className="w-fit">
+          {submitFormulario.isPending
+            ? "Guardando…"
+            : `Guardar y pasar a ${ETAPA_ETIQUETAS[etapaDestino]}`}
         </Button>
       </form>
     </section>

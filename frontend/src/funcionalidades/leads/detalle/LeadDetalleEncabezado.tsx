@@ -6,6 +6,8 @@ import { SlaCountdownCell } from "../SlaCountdownCell";
 
 interface LeadDetalleEncabezadoProps {
   lead: Lead;
+  puntuacionOverride?: number | null;
+  sinBorde?: boolean;
 }
 
 /**
@@ -13,11 +15,15 @@ interface LeadDetalleEncabezadoProps {
  * contador de SLA. Reutiliza `SemaforoBadge`/`SlaCountdownCell` de F3 en vez
  * de duplicar el formato.
  */
-export function LeadDetalleEncabezado({ lead }: LeadDetalleEncabezadoProps) {
+export function LeadDetalleEncabezado({ lead, puntuacionOverride, sinBorde = false }: LeadDetalleEncabezadoProps) {
   const responsable = getResponsable(lead);
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className={`flex flex-col gap-3 bg-background p-4 sm:flex-row sm:items-center sm:justify-between ${
+        sinBorde ? "" : "rounded-lg border border-border"
+      }`}
+    >
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <SemaforoBadge semaforo={lead.semaforo} />
@@ -26,7 +32,9 @@ export function LeadDetalleEncabezado({ lead }: LeadDetalleEncabezadoProps) {
           </span>
           <span className="text-xs text-muted-foreground">
             Puntuación:{" "}
-            <span className="font-medium text-foreground">{lead.puntuacion ?? "Sin calificar"}</span>
+            <span className="font-medium text-foreground">
+              {puntuacionOverride !== undefined ? puntuacionOverride : lead.puntuacion ?? "Sin calificar"}
+            </span>
           </span>
         </div>
       </div>

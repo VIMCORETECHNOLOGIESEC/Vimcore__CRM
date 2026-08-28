@@ -1,9 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { useState } from "react";
+import { CalendarIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -39,6 +44,65 @@ function formatFechaHora(iso: string): string {
   const horas = String(fecha.getHours()).padStart(2, "0");
   const minutos = String(fecha.getMinutes()).padStart(2, "0");
   return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
+}
+
+function CitaDateTimeField({
+  value,
+  onChange,
+  error,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  const [datePart, timePart] = value.split("T");
+  const selectedDate = datePart ? new Date(`${datePart}T12:00:00`) : undefined;
+
+  function setDate(date: Date | undefined) {
+    if (!date) return;
+    onChange(`${format(date, "yyyy-MM-dd")}T${timePart || "09:00"}`);
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <Label htmlFor="programadaPara">Fecha y hora</Label>
+      <div className="flex min-w-0 flex-wrap gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-w-0 flex-1 justify-start px-3 text-left font-normal"
+            >
+              <CalendarIcon className="size-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Elegí una fecha"}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={setDate}
+              disabled={{ before: new Date() }}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+        <Input
+          aria-label="Hora de la cita"
+          type="time"
+          value={timePart ?? ""}
+          onChange={(event) =>
+            onChange(`${datePart || format(new Date(), "yyyy-MM-dd")}T${event.target.value}`)
+          }
+          className="w-28"
+        />
+      </div>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </div>
+  );
 }
 
 interface CitaItemProps {
@@ -152,7 +216,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
     formState: { errors },
   } = useForm<CitaScheduleFormValues>({
     resolver: zodResolver(citaScheduleSchema),
-    defaultValues: { modalidad: "VIRTUAL" },
+    defaultValues: { programadaPara: "", modalidad: "VIRTUAL" },
   });
 
   const onSubmit = handleSubmit((valores) => {
@@ -190,15 +254,18 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
         </ul>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="programadaPara">Agendar cita</Label>
-          <Input id="programadaPara" type="datetime-local" {...register("programadaPara")} />
-          {errors.programadaPara ? (
-            <p className="text-sm text-destructive">{errors.programadaPara.message}</p>
-          ) : null}
-        </div>
-
+      <form onSubmit={onSubmit} noValidate className="grid gap-4 border-t border-border pt-4 sm:grid-cols-[minmax(0,1.2fr)_10rem_minmax(12rem,1fr)_auto] sm:items-end">
+        <Controller
+          control={control}
+          name="programadaPara"
+          render={({ field }) => (
+            <CitaDateTimeField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.programadaPara?.message}
+            />
+          )}
+        />
         <div className="flex flex-col gap-1">
           <Label htmlFor="modalidad">Modalidad</Label>
           <Controller
@@ -206,7 +273,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
             name="modalidad"
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger id="modalidad" className="w-40" aria-label="Modalidad">
+                <SelectTrigger id="modalidad" className="w-full" aria-label="Modalidad">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -220,10 +287,15 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
             )}
           />
         </div>
-
-        <div className="flex flex-1 flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <Label htmlFor="notas">Notas (opcional)</Label>
-          <Textarea id="notas" rows={1} {...register("notas")} />
+          <Textarea
+            id="notas"
+            rows={3}
+            className="min-h-24 resize-none"
+            placeholder="Agregá contexto para la cita..."
+            {...register("notas")}
+          />
         </div>
 
         <Button type="submit" disabled={scheduleCita.isPending}>

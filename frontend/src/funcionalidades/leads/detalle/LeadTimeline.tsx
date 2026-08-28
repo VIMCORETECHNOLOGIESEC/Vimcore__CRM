@@ -1,7 +1,13 @@
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Lead } from "@/tipos/lead";
-import { ETAPAS_LINEALES, ETAPAS_TERMINALES, ETAPA_TIMELINE_ETIQUETAS, getTransicionesValidas } from "../etapas";
+import {
+  ETAPAS_LINEALES,
+  ETAPAS_TERMINALES,
+  ETAPA_TIMELINE_ETIQUETAS,
+  getTransicionesValidas,
+} from "../etapas";
 import { CierreNoVentaForm } from "./CierreNoVentaForm";
 import { CierreVentaForm } from "./CierreVentaForm";
 import { isEtapaCalificable } from "./formulariosEtapa";
@@ -13,20 +19,18 @@ function formatFecha(iso: string): string {
   const fecha = new Date(iso);
   const dia = String(fecha.getDate()).padStart(2, "0");
   const mes = String(fecha.getMonth() + 1).padStart(2, "0");
-  const horas = String(fecha.getHours()).padStart(2, "0");
-  const minutos = String(fecha.getMinutes()).padStart(2, "0");
-  return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
+  return `${dia}/${mes}/${fecha.getFullYear()}`;
 }
 
 const CLASES_PUNTO: Record<EstadoNodo, string> = {
-  completado: "border-primary bg-primary",
-  final: "border-primary bg-primary",
-  actual: "border-primary bg-background ring-4 ring-primary/10",
-  pendiente: "border-muted-foreground/30 bg-background",
+  completado: "border-primary bg-primary text-primary-foreground",
+  final: "border-primary bg-primary text-primary-foreground",
+  actual: "border-gray-600 bg-background text-foreground",
+  pendiente: "border-muted-foreground/30 bg-background text-muted-foreground",
 };
 
 const CLASES_ETIQUETA: Record<EstadoNodo, string> = {
-  completado: "text-muted-foreground line-through decoration-1",
+  completado: "text-muted-foreground",
   final: "text-foreground font-semibold",
   actual: "text-foreground font-semibold",
   pendiente: "text-muted-foreground/70",
@@ -34,10 +38,12 @@ const CLASES_ETIQUETA: Record<EstadoNodo, string> = {
 
 interface LeadTimelineProps {
   lead: Lead;
+  mostrarCierre?: boolean;
+  onPuntuacionChange?: (puntuacion: number) => void;
 }
 
 /**
- * Línea de tiempo del progreso del lead (F4, docs/02-reglas-negocio.md §6):
+ * Línea de tiempo horizontal del progreso del lead (F4, docs/02-reglas-negocio.md §6):
  * reemplaza al `<Select>` libre de 5 etapas -- ahora solo se puede avanzar
  * linealmente `NUEVO → CONTACTADO → CITA`, nunca retroceder, con salto
  * directo a cierre (VENTA/NO_VENTA) desde cualquier etapa no terminal vía la
@@ -51,7 +57,11 @@ interface LeadTimelineProps {
  * existe ese dato todavía. Cuando `GET /api/v1/leads/:id` (M5) incluya el
  * historial de eventos, reemplazar por la fecha real de cada transición.
  */
-export function LeadTimeline({ lead }: LeadTimelineProps) {
+export function LeadTimeline({
+  lead,
+  mostrarCierre = true,
+  onPuntuacionChange,
+}: LeadTimelineProps) {
   const [cierreAbierto, setCierreAbierto] = useState<"VENTA" | "NO_VENTA" | null>(null);
   const esTerminal = ETAPAS_TERMINALES.includes(lead.etapa);
   const indiceActual = ETAPAS_LINEALES.indexOf(lead.etapa);
@@ -67,72 +77,96 @@ export function LeadTimeline({ lead }: LeadTimelineProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="flex flex-col gap-1 rounded-lg border border-border bg-background p-4">
-        <h2 className="mb-2 text-sm font-semibold text-foreground">Progreso del lead</h2>
+    <div className="relative flex flex-col gap-4">
+      <section className="flex flex-col gap-1 bg-transparent p-0">
+        <div className="relative pb-1">
+          <svg
+            className="pointer-events-none absolute inset-x-0 top-0 h-10 w-full"
+            viewBox="0 0 300 40"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <line
+              x1="50"
+              y1="20"
+              x2="150"
+              y2="20"
+              className={indiceActual > 0 || esTerminal ? "text-primary" : "text-border"}
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <line
+              x1="150"
+              y1="20"
+              x2="250"
+              y2="20"
+              className={indiceActual > 1 || esTerminal ? "text-primary" : "text-border"}
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+          </svg>
+          <ol className="relative grid grid-cols-3">
+            {ETAPAS_LINEALES.map((etapa, indice) => {
+              const estado = getEstadoNodo(indice);
 
-        <ol className="flex flex-col">
-          {ETAPAS_LINEALES.map((etapa, indice) => {
-            const estado = getEstadoNodo(indice);
-            const esUltimoNodo = indice === ETAPAS_LINEALES.length - 1 && !esTerminal;
-
-            return (
-              <li key={etapa} className="relative flex gap-3 pb-6 last:pb-0">
-                {!esUltimoNodo ? (
+              return (
+                <li
+                  key={etapa}
+                  className="flex min-w-0 flex-col items-center gap-2 px-1 text-center"
+                >
                   <span
-                    className="absolute left-[5px] top-3 h-full w-px bg-border"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <span
-                  className={`relative z-10 mt-1 size-3 shrink-0 rounded-full border-2 ${CLASES_PUNTO[estado]}`}
-                  aria-hidden="true"
-                />
-                <div className="flex flex-1 flex-col gap-1">
-                  <span className={`text-sm ${CLASES_ETIQUETA[estado]}`}>
-                    {ETAPA_TIMELINE_ETIQUETAS[etapa]}
+                    className={`relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border-2 bg-background text-sm font-semibold ${CLASES_PUNTO[estado]}`}
+                  >
+                    {estado === "completado" ? <Check className="size-5" aria-label="Completado" /> : indice + 1}
                   </span>
-
-                  {estado === "completado" ? (
-                    <span className="text-xs text-muted-foreground">
-                      {etapa === "NUEVO" ? formatFecha(lead.ingresadoEn) : "Fecha no disponible"}
+                  {estado !== "completado" ? (
+                    <span className={`max-w-full break-words text-sm ${CLASES_ETIQUETA[estado]}`}>
+                      {ETAPA_TIMELINE_ETIQUETAS[etapa]}
                     </span>
                   ) : null}
-
-                  {estado === "actual" && etapaObjetivo && isEtapaCalificable(lead.etapa) ? (
-                    <div className="mt-2">
-                      <FormularioEtapaLead
-                        leadId={lead.id}
-                        etapaActual={lead.etapa}
-                        etapaDestino={etapaObjetivo}
-                      />
+                  {estado === "completado" ? (
+                    <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+                      {etapa === "NUEVO" ? (
+                        <span>Puntuación: {lead.puntuacion ?? "Sin calificar"}</span>
+                      ) : null}
+                      <span>{etapa === "NUEVO" ? formatFecha(lead.ingresadoEn) : "Fecha no disponible"}</span>
                     </div>
                   ) : null}
-                </div>
-              </li>
-            );
-          })}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
 
-          {esTerminal ? (
-            <li className="relative flex gap-3">
-              <span
-                className="relative z-10 mt-1 size-3 shrink-0 rounded-full border-2 border-primary bg-primary"
-                aria-hidden="true"
-              />
-              <div className="flex flex-1 flex-col gap-1">
-                <span className="text-sm font-semibold text-foreground">
-                  {ETAPA_TIMELINE_ETIQUETAS[lead.etapa]}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {lead.cerradoEn ? formatFecha(lead.cerradoEn) : "—"}
-                </span>
-              </div>
-            </li>
-          ) : null}
-        </ol>
+        {esTerminal ? (
+          <div className="mt-5 flex items-center gap-3 border-t border-border pt-4">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-primary text-sm font-semibold text-primary-foreground">
+              ✓
+            </span>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-semibold text-foreground">
+                {ETAPA_TIMELINE_ETIQUETAS[lead.etapa]}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {lead.cerradoEn ? formatFecha(lead.cerradoEn) : "—"}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {etapaObjetivo && isEtapaCalificable(lead.etapa) ? (
+          <div className="mt-5 pt-0">
+            <FormularioEtapaLead
+              leadId={lead.id}
+              etapaActual={lead.etapa}
+              etapaDestino={etapaObjetivo}
+              onPuntuacionChange={onPuntuacionChange}
+            />
+          </div>
+        ) : null}
       </section>
 
-      {!esTerminal ? (
+      {!esTerminal && mostrarCierre ? (
         <section className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background p-4">
           <span className="mr-1 text-sm font-medium text-foreground">Cerrar lead</span>
           <Button
@@ -145,15 +179,19 @@ export function LeadTimeline({ lead }: LeadTimelineProps) {
           <Button
             size="sm"
             variant={cierreAbierto === "NO_VENTA" ? "secondary" : "destructive"}
-            onClick={() => setCierreAbierto((actual) => (actual === "NO_VENTA" ? null : "NO_VENTA"))}
+            onClick={() =>
+              setCierreAbierto((actual) => (actual === "NO_VENTA" ? null : "NO_VENTA"))
+            }
           >
             Cerrar como no venta
           </Button>
         </section>
       ) : null}
 
-      {cierreAbierto === "VENTA" ? <CierreVentaForm leadId={lead.id} /> : null}
-      {cierreAbierto === "NO_VENTA" ? <CierreNoVentaForm leadId={lead.id} /> : null}
+      {mostrarCierre && cierreAbierto === "VENTA" ? <CierreVentaForm leadId={lead.id} /> : null}
+      {mostrarCierre && cierreAbierto === "NO_VENTA" ? (
+        <CierreNoVentaForm leadId={lead.id} />
+      ) : null}
     </div>
   );
 }
