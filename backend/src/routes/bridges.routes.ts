@@ -15,6 +15,11 @@ import {
   postCuentaProbarConexion,
   postCuentaToken,
 } from "../controllers/bridge.controller.js";
+import {
+  patchBridgeApiConexion,
+  patchBridgeApiMapeo,
+  postBridgeApiProbarConexion,
+} from "../controllers/bridgeApi/configuracion.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../middlewares/require-role.middleware.js";
 
@@ -115,4 +120,25 @@ bridgesRouter.post(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   postCuentaProbarConexion,
+);
+// bridgeApi (RedSocial.API_EXTERNA): carga/corrección de conexión y mapeo,
+// separado del PATCH genérico de /bridges/:id -- devuelven 400 si el bridge
+// no es de este redSocial (`services/bridgeApi/configuracion.service.ts`).
+bridgesRouter.patch(
+  "/bridges/:id/api-externa/conexion",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  patchBridgeApiConexion,
+);
+bridgesRouter.patch(
+  "/bridges/:id/api-externa/mapeo",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  patchBridgeApiMapeo,
+);
+bridgesRouter.post(
+  "/bridges/:id/api-externa/probar-conexion",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postBridgeApiProbarConexion,
 );

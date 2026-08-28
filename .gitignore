@@ -16,3 +16,12 @@ dist/
 
 # Local scratch tokens (curl testing artifacts)
 .admin_token
+
+# Local Docker Compose overrides (ej. exponer el puerto de Postgres para
+# clientes de DB como DBeaver) -- nunca compartido con el equipo.
+docker-compose.override.yml
+
+# Sincronización local de la app Postman -- puede contener credenciales en
+# texto plano (bodies de requests guardados, ej. login).
+.postman/
+postman/

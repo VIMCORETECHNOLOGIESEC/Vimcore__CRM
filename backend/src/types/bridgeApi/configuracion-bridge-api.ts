@@ -29,5 +29,12 @@ export interface ConfiguracionBridgeApi {
   // 8601 UTC). Ausente = el poll trae todo y confía en el `UNIQUE` de
   // `LeadRecibido` para descartar lo repetido.
   parametroFecha?: string;
+  // Nombre del header HTTP donde va la credencial descifrada. Ausente =
+  // "X-Api-Key" (todas las APIs propias del cliente lo usan así hoy) —
+  // configurable para una API de terceros que espere otro nombre (ej.
+  // "Authorization").
+  nombreHeaderApiKey?: string;
   mapeoCampos: Record<string, CampoLeadMapeable>;
 }
+
+export const NOMBRE_HEADER_API_KEY_DEFAULT = "X-Api-Key";
