@@ -60,17 +60,36 @@ criterio de selección de cada una en
 
 ---
 
-## 3. Paleta y tipografía — APROBADA
+## 3. Paleta y tipografía — SUPERADA por "Propuesta B" (2026-08-28)
 
-> **Estado:** aprobada por el cliente/diseño. Reemplaza la propuesta inicial
-> de acento azul de este documento. Referencia visual completa (swatches,
-> tipografía, y 4 pantallas maquetadas — login, listado de leads, detalle de
-> lead, dashboard): [`docs/mockups/propuesta-visual.html`](mockups/propuesta-visual.html)
-> (ábrelo en el navegador).
+> **Estado:** la paleta blanco/negro de esta sección queda **reemplazada**
+> como línea gráfica base del proyecto — decisión de producto explícita
+> (2026-08-28), no una preferencia técnica. La nueva línea base es "Propuesta
+> B — empresarial premium" (`frontend/src/temas/variante-empresarial/` en la
+> rama `dev-front`, catálogo de referencia en `/temas/empresarial` y
+> `/temas/empresarial/demo`): paleta índigo (`--indigo #1E2A5E`,
+> `--indigo-2 #14204A`), fondo papel (`--papel #F6F1E7`), acentos categóricos
+> (`--cat-1..4`), tipografía `Fraunces` (headline) + `Source Sans 3` (body).
+> Incluye secuencia de arranque obligatoria: sello de boot (`SelloBootLoader`)
+> + splash de bienvenida (`WelcomeSplashLoader`) mostrando el scope de la
+> sesión — nombre de empresa en sesión `company`, texto de holding en sesión
+> `holding`. Contrato completo de implementación:
+> `docs/blocks/d0-visualizacion-multitenant.md` y el work unit de adopción de
+> tema (rama dedicada, ver Engram si existe ciclo SDD asociado).
+>
+> El propio código de origen (`tema-empresarial.css`,
+> `frontend/src/temas/README.md`) documentaba esta dirección como
+> "exploratoria, no adoptada" hasta esta decisión — queda registrado acá que
+> la aprobación ocurrió explícitamente en este punto, no por adopción
+> silenciosa de código de demo.
+>
+> La sección de abajo (paleta blanco/negro, `docs/mockups/propuesta-visual.html`)
+> se conserva como registro histórico de la línea gráfica anterior, ya no
+> vigente.
 
-Paleta de solo dos colores base mientras no hay manual de marca — blanco y
-negro — más los tres colores fijos del semáforo, que quedan **fuera** de esta
-paleta y nunca se usan de forma decorativa:
+Paleta histórica (dos colores base mientras no había manual de marca — blanco y
+negro — más los tres colores fijos del semáforo, que quedaban **fuera** de esa
+paleta y nunca se usaban de forma decorativa):
 
 | Uso | Color | Notas |
 |---|---|---|
