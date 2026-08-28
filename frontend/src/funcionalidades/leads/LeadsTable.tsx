@@ -278,37 +278,52 @@ export function LeadsTable({
   const table = useReactTable({ data: leads, columns, getCoreRowModel: getCoreRowModel() });
 
   /**
-   * Ancho total exacto = checkbox (si aplica) + suma de `colWidthsPx` --
-   * `width` explícito en `<table>` (NO `min-width`): con anchos ya 100%
-   * deterministas vía `<colgroup>`, un `width` exacto evita que el navegador
-   * reparta espacio extra entre columnas si el contenedor es más ancho que
-   * la suma de columnas (comportamiento real de `table-layout: fixed`
-   * cuando el ancho de la tabla supera la suma de sus columnas, aunque sea
-   * por poco) -- cero ambigüedad. Por debajo de este ancho, gana el scroll
-   * horizontal del wrapper (`overflow-auto` en `Table`), nunca la
-   * compresión de columnas.
+   * Ancho total = suma de `colWidthsPx` (checkbox incluido, ahora una
+   * columna TanStack más).
+   *
+   * `min-width`, NO `width` exacto (2026-08-28, tercera vuelta sobre este
+   * mismo bug -- ver el historial completo abajo): con `width` exacto
+   * (igual a esta suma), en viewports donde la card queda MÁS ANCHA que la
+   * tabla (sin necesidad de scroll horizontal), la ÚLTIMA columna
+   * ("Fecha de ingreso") colapsa a 0px -- su contenido queda invisible,
+   * aunque el `<thead>` de la MISMA tabla sí respeta el `<colgroup>`
+   * correctamente (confirmado con capturas reales en el navegador, no
+   * `getBoundingClientRect` aislado -- esa API mintió varias veces durante
+   * esta investigación y no es confiable para medir celdas de esta tabla en
+   * este entorno). Con `min-width` en cambio, la tabla crece para llenar el
+   * contenedor y ninguna columna queda invisible -- el costo es que la
+   * columna que absorbe el sobrante (normalmente la última) queda más
+   * ancha que su `colgroup` declarado en viewports muy anchos. Peor visual,
+   * pero NUNCA pérdida de datos.
+   *
+   * Se probaron y descartaron, todos con el mismo resultado o peor:
+   * `width` exacto solo o con buffer fijo (mueve el colapso a otra
+   * columna, no lo elimina), ancho redundante por celda además del
+   * `<colgroup>`, `!important` en la celda de checkbox, `table-layout:
+   * auto`, quitar `position: relative` de las filas, forzar reflow del
+   * `<tbody>` (`display:none`/`display:''`). Ninguno resolvió el bug de
+   * raíz -- parece un defecto real del motor de layout de esta build de
+   * Chromium (`table-layout: fixed` + `<colgroup>` + `<tbody>` renderizado
+   * por React/TanStack) que un `min-width` simplemente evita en vez de
+   * corregir.
    */
   const anchoTotalPx = colWidthsPx.reduce((suma, w) => suma + w, 0);
 
   return (
     /*
-     * `<colgroup>` -- fuente ÚNICA de los anchos de columna: un `<col>` por
+     * `<colgroup>` -- fuente de los anchos de columna: un `<col>` por
      * columna, en el MISMO orden que `columns`/`colWidthsPx`. `<th>`/`<td>`
-     * ya no declaran su propio ancho -- una sola fuente de verdad.
+     * ya no declaran su propio ancho.
      *
      * TODAS las columnas (incluida "seleccion") se recorren con el MISMO
      * `.map()` de abajo, ninguna insertada a mano por fuera del modelo de
      * TanStack -- ver el comentario junto a la columna `seleccion` en el
-     * `useMemo` de arriba para el bug real de corrimiento de columnas que
-     * este cambio corrigió (2026-08-28): con la columna de checkbox
-     * insertada a mano ANTES del `.map()` de `headerGroup.headers`/
-     * `row.getVisibleCells()`, ni declarar el ancho en la celda ni un
-     * `<colgroup>` explícito alcanzaron para evitar el corrimiento --
-     * unificar todo en una sola fuente (una columna TanStack más) fue lo
-     * único que lo resolvió de verdad, confirmado con
-     * `getBoundingClientRect()` en navegador real.
+     * `useMemo` de arriba. Esto NO elimina el bug de la nota de
+     * `anchoTotalPx` de arriba (se pensó que sí en una vuelta anterior,
+     * era incorrecto), pero sigue siendo la forma correcta de declarar
+     * anchos de columna vs. celdas sueltas por fuera del modelo.
      */
-    <Table className="table-fixed" style={{ width: anchoTotalPx }}>
+    <Table className="table-fixed" style={{ minWidth: anchoTotalPx }}>
       <colgroup>
         {colWidthsPx.map((ancho, indice) => (
           // eslint-disable-next-line react/no-array-index-key -- el orden de `colWidthsPx` es estable dentro de un mismo render (deriva de `columns`, memoizado junto con él); no hay reordenamiento que justifique otra key.

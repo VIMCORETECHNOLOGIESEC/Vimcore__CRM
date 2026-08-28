@@ -1,4 +1,4 @@
-import { Bell } from "lucide-react";
+import { Bell, Image as ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LeadsTable } from "@/funcionalidades/leads/LeadsTable";
@@ -24,12 +24,16 @@ function iniciales(nombre: string): string {
 }
 
 /**
- * Shell de la app a viewport completo (sidebar + header índigo), última
- * etapa de `FlujoIntegracionDemo.tsx`. Mismo lenguaje visual que
- * `SidebarIndigoPreview.tsx` (reusa `NAVIGATION_ITEMS`, mismo patrón de pill
- * activo/inactivo, mismo header con campana + avatar) pero SIN la card
- * acotada de 380px del catálogo -- este componente es nuevo, exclusivo de la
- * demo, `SidebarIndigoPreview.tsx` no se toca.
+ * Shell de la app a viewport completo (sidebar + header índigo sólido,
+ * `.chrome-solido`), última etapa de `FlujoIntegracionDemo.tsx`. Pasó por
+ * un gradiente de marca completo (2026-08-28) y se revirtió el mismo día
+ * tras feedback + research (ver `.chrome-gradiente`/`.chrome-solido` en
+ * `tema-empresarial.css`): el gradiente queda reservado a momentos "hero"
+ * (login, splash), el chrome funcional que se escanea todo el tiempo vuelve
+ * a ser sólido y estable. Mismo lenguaje visual que `SidebarIndigoPreview.tsx`
+ * (reusa `NAVIGATION_ITEMS`, mismo patrón de pill activo/inactivo, mismo
+ * header con campana + avatar) pero SIN la card acotada de 380px del
+ * catálogo -- este componente es nuevo, exclusivo de la demo.
  *
  * Única sección con contenido real: "Leads", con la tabla real
  * (`LeadsTable.tsx`) montada dentro de `.leads-table-card` (clase ya
@@ -62,10 +66,30 @@ export function AppShellDemo({ onReiniciar }: AppShellDemoProps) {
   const itemActivo = NAVIGATION_ITEMS.find((item) => item.route === rutaActiva);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden" style={{ background: "var(--indigo)" }}>
-      <aside className="flex w-60 shrink-0 flex-col gap-1 p-3">
-        <div className="mb-3 px-2 pt-1">
-          <p className="headline text-sm font-semibold text-[#F5F3EE]">CRM Embudo de Leads</p>
+    <div className="flex h-screen w-full overflow-hidden">
+      <aside className="chrome-solido chrome-sombra-derecha flex w-60 shrink-0 flex-col gap-1 p-3">
+        {/*
+          Isotipo del holding + nombre de la herramienta, mismo criterio que
+          el panel de marca del login (`LoginScreenDemo.tsx`): el isotipo es
+          lo que cambia por empresa, el nombre de la herramienta es fijo.
+          Acá en miniatura (28px) porque el sidebar es angosto -- mismo
+          patrón visual, escala distinta. Color de texto vía `style` inline
+          a propósito, NUNCA una clase Tailwind (`text-[#F5F3EE]`): `.headline`
+          define `color: var(--indigo)` con más especificidad que cualquier
+          utilidad de una sola clase, así que el texto quedaba renderizando
+          en índigo sobre fondo índigo -- invisible. `style` inline gana
+          siempre, sin importar especificidad de clases.
+        */}
+        <div className="mb-3 flex items-center gap-2 px-2 pt-1">
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-md border border-dashed border-[#F5F3EE]/35"
+            aria-hidden="true"
+          >
+            <ImageIcon className="size-3.5 text-[#F5F3EE]/60" />
+          </span>
+          <p className="headline text-sm font-semibold !text-[var(--papel)]">
+            CRM Embudo de Leads
+          </p>
         </div>
         {NAVIGATION_ITEMS.map((item) => {
           const activo = item.route === rutaActiva;
@@ -90,7 +114,7 @@ export function AppShellDemo({ onReiniciar }: AppShellDemoProps) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-14 shrink-0 items-center justify-between px-6">
+        <div className="chrome-solido chrome-sombra-abajo flex h-14 shrink-0 items-center justify-between px-6">
           <p className="text-sm font-medium text-[#F5F3EE]">{itemActivo?.label ?? ""}</p>
           <div className="flex items-center gap-4">
             <Button
@@ -109,10 +133,16 @@ export function AppShellDemo({ onReiniciar }: AppShellDemoProps) {
           </div>
         </div>
 
-        <div
-          className="scrollbar-themed flex-1 overflow-y-auto p-6"
-          style={{ background: "var(--papel)" }}
-        >
+        {/*
+          `.patron-papel` (tema-empresarial.css): mismo patrón de retícula
+          fina que el panel derecho del login, detrás del form -- antes acá
+          era un `--papel` liso (feedback: "se ve plano y monótono" apenas
+          se entra a la app real, en contraste con el login premium). Las
+          cards de este canvas (`.leads-table-card` de abajo) quedan
+          SOBREPUESTAS sobre este patrón, con su propia sombra ya aprobada
+          -- no se toca esa card, solo el fondo detrás de ella.
+        */}
+        <div className="patron-papel scrollbar-themed flex-1 overflow-y-auto p-6">
           {rutaActiva === "/leads" ? (
             <div className="leads-table-card w-full">
               <LeadsTable

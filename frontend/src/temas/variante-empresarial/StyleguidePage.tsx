@@ -1,8 +1,12 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,18 +27,30 @@ import { WelcomeSplashLoader } from "./WelcomeSplashLoader";
 import "./tema-empresarial.css";
 
 /**
- * Catálogo de referencia (estilo docs de un framework -- Bootstrap/Storybook)
- * de la variante de tema "Propuesta B -- Consejo directivo (empresarial
- * premium)". Código real dentro de `frontend/src/`, no un mock HTML nuevo --
- * demuestra que la dirección visual documentada en
+ * Catálogo de referencia de la variante de tema "Propuesta B -- Consejo
+ * directivo (empresarial premium)". Código real dentro de `frontend/src/`,
+ * no un mock HTML nuevo -- demuestra que la dirección visual documentada en
  * `.interface-design/system.md` es realizable con el stack ya instalado
  * (React 19 + Tailwind 3.4 compilado + shadcn/Radix, sin dependencias de
  * animación JS).
  *
+ * Renombrado de presentación (2026-08-28): puertas afuera esta página se
+ * llama "Directorio" -- doble sentido a propósito ("consejo directivo" +
+ * "catálogo/directorio de componentes"). El nombre interno de la propuesta
+ * ("Consejo directivo") y el scope CSS (`.tema-empresarial`) NO cambian --
+ * ver `tema-empresarial.css`.
+ *
+ * Segunda pasada estructural (2026-08-28): reemplaza las 12 secciones planas
+ * apiladas (título + grilla, una tras otra) por una lectura tipo dossier
+ * corporativo -- portada, sumario y doce fichas numeradas -- reutilizando
+ * exactamente los mismos componentes/tokens ya aprobados de cada sección
+ * (`ElementoCard`, `GrillaCatalogo`, `FRAME_RADIUS_CLASSES`, los tokens de
+ * `tema-empresarial.css`). Ningún elemento del catálogo cambió de contenido
+ * ni de comportamiento -- solo la estructura de la página alrededor de ellos.
+ *
  * Finalidad explícita (no es una app funcional montada): presentar en cards
  * cada elemento del tema -- nombre, muestra visual renderizada de verdad, y
- * una nota corta de su función y dónde se usa/usaría en la app real. Cada
- * `ElementoCard` de abajo es una entrada de ese catálogo.
+ * una nota corta de su función y dónde se usa/usaría en la app real.
  *
  * Ruta dev-only (`/temas/empresarial`, ver `router.tsx`), fuera de
  * `layouts/navigation.ts` a propósito -- no debe aparecer en el sidebar de
@@ -52,100 +68,80 @@ export function StyleguidePage() {
     <>
       <div
         id="tema-empresarial-root"
-        className="tema-empresarial scrollbar-themed h-full space-y-16 overflow-y-auto px-6 py-10"
+        className="tema-empresarial scrollbar-themed h-full overflow-y-auto"
       >
-      {/*
-        `index.css` fija `overflow-hidden` en html/body/#root a propósito --
-        solo `main` de AppLayout tiene su propio scroll interno (ver ese
-        comentario). Esta página no cuelga de AppLayout (es una ruta dev-only
-        fuera del árbol protegido), así que necesita su propio contenedor con
-        scroll -- sin esto, todo lo que no entra en un viewport queda
-        renderizado pero inalcanzable.
-      */}
-      {/*
-        React 19 hoista automáticamente <link>/<meta>/<title> renderizados en
-        cualquier parte del árbol hacia <head> -- no hace falta un efecto
-        manual para cargar las fuentes de Google Fonts de esta variante.
-      */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
-      />
+        {/*
+          `index.css` fija `overflow-hidden` en html/body/#root a propósito --
+          solo `main` de AppLayout tiene su propio scroll interno (ver ese
+          comentario). Esta página no cuelga de AppLayout (es una ruta dev-only
+          fuera del árbol protegido), así que necesita su propio contenedor con
+          scroll -- sin esto, todo lo que no entra en un viewport queda
+          renderizado pero inalcanzable. El scroll suave de los anclas del
+          sumario hacia cada ficha vive en `tema-empresarial.css`, scopeado a
+          este mismo `id` -- respeta `prefers-reduced-motion`.
+        */}
+        {/*
+          React 19 hoista automáticamente <link>/<meta>/<title> renderizados en
+          cualquier parte del árbol hacia <head> -- no hace falta un efecto
+          manual para cargar las fuentes de Google Fonts de esta variante.
+        */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
+        />
 
-      <header className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Catálogo de tema · dev-only
-        </p>
-        <h1 className="headline text-3xl font-semibold">Propuesta B — Consejo directivo</h1>
-        <p className="max-w-2xl text-sm opacity-70">
-          Listado de qué componentes conforman este tema y cómo/dónde se aplican -- no una
-          instancia funcional de la app. Cada tarjeta es un elemento: nombre, muestra visual
-          renderizada de verdad, y una nota de dónde se usa/usaría en la app real. El radio del
-          frame de muestra varía a propósito entre secciones -- controles simples más ajustados,
-          contenido "vivo" embebido (sidebar, tabla de leads) más suelto -- para no leer como el
-          mismo rectángulo repetido de punta a punta.
-        </p>
-      </header>
+        <Portada />
+        <Sumario />
 
-      <Seccion numero={1} titulo="Fundaciones">
-        <SeccionFundaciones />
-      </Seccion>
-
-      <Seccion numero={2} titulo="Fondo del main">
-        <SeccionFondoMain />
-      </Seccion>
-
-      <Seccion numero={3} titulo="Sidebar / Topbar">
-        <SeccionShellReal />
-      </Seccion>
-
-      <Seccion numero={4} titulo="Buscadores">
-        <SeccionBuscadores />
-      </Seccion>
-
-      <Seccion numero={5} titulo="Botones">
-        <SeccionBotones />
-      </Seccion>
-
-      <Seccion numero={6} titulo="Tabs">
-        <SeccionTabs />
-      </Seccion>
-
-      <Seccion numero={7} titulo="Selects">
-        <SeccionSelects />
-      </Seccion>
-
-      <Seccion numero={8} titulo="Chips / Badges">
-        <SeccionBadges />
-      </Seccion>
-
-      <Seccion numero={9} titulo="Tarjetas">
-        <SeccionTarjetas />
-      </Seccion>
-
-      <Seccion numero={10} titulo="Estados de carga / vacío / error">
-        <SeccionEstados />
-      </Seccion>
-
-      <Seccion numero={11} titulo="Loader de bienvenida">
-        <SeccionWelcomeSplash />
-      </Seccion>
-
-      <Seccion numero={12} titulo="Tabla de leads">
-        <SeccionLeadsTable />
-      </Seccion>
+        <main className="patron-papel">
+          <Ficha meta={FICHAS[0]}>
+            <SeccionFundaciones />
+          </Ficha>
+          <Ficha meta={FICHAS[1]}>
+            <SeccionFondoMain />
+          </Ficha>
+          <Ficha meta={FICHAS[2]}>
+            <SeccionShellReal />
+          </Ficha>
+          <Ficha meta={FICHAS[3]}>
+            <SeccionInputs />
+          </Ficha>
+          <Ficha meta={FICHAS[4]}>
+            <SeccionBotones />
+          </Ficha>
+          <Ficha meta={FICHAS[5]}>
+            <SeccionTabs />
+          </Ficha>
+          <Ficha meta={FICHAS[6]}>
+            <SeccionSelects />
+          </Ficha>
+          <Ficha meta={FICHAS[7]}>
+            <SeccionBadges />
+          </Ficha>
+          <Ficha meta={FICHAS[8]}>
+            <SeccionTarjetas />
+          </Ficha>
+          <Ficha meta={FICHAS[9]}>
+            <SeccionEstados />
+          </Ficha>
+          <Ficha meta={FICHAS[10]}>
+            <SeccionWelcomeSplash />
+          </Ficha>
+          <Ficha meta={FICHAS[11]}>
+            <SeccionLeadsTable />
+          </Ficha>
+        </main>
       </div>
       {/*
         Nodo de portal DEDICADO, hermano de `#tema-empresarial-root` -- NUNCA
-        un hijo directo de ese div. `space-y-16` (Tailwind) aplica
-        `margin-top: 4rem` a todo hijo que no sea el primero vía el selector
-        `> :not([hidden]) ~ :not([hidden])`; un portal montado ahí adentro
-        queda atrapado por esa regla y un overlay `fixed inset-0` termina
-        corrido 64px hacia abajo (bug real, encontrado con
-        `CSS.getMatchedStylesForNode` vía CDP -- no una teoría). Este nodo
-        vive fuera de ese flujo pero sigue llevando la clase
+        un hijo directo de ese div (ver la nota histórica sobre `space-y-16`
+        corriendo un overlay `fixed inset-0` 64px hacia abajo, ya no aplica
+        acá porque este div ya no usa esa utilidad, pero el portal se mantiene
+        afuera de todos modos: sigue siendo el contrato más simple y a prueba
+        de que un futuro cambio de spacing interno lo rompa de nuevo). Este
+        nodo vive fuera de ese flujo pero sigue llevando la clase
         `tema-empresarial` para heredar las variables/selectores scopeados
         de esta variante.
       */}
@@ -154,20 +150,199 @@ export function StyleguidePage() {
   );
 }
 
-interface SeccionProps {
-  numero: number;
-  titulo: string;
-  children: ReactNode;
+/**
+ * Portada -- primer golpe de vista del dossier, altura de viewport completa.
+ * Mismo tratamiento "hero" que el panel de marca del login y el welcome
+ * splash: `.chrome-gradiente`/fondo de 3 capas (`.dossier-portada`,
+ * `tema-empresarial.css`, copiado 1:1 del fondo de `.welcome-splash` -- es
+ * exactamente el mismo tipo de momento, una pantalla de un solo golpe sin
+ * navegación que escanear) + wordmark en Fraunces sobre `--papel`.
+ */
+function Portada() {
+  return (
+    <header className="dossier-portada flex flex-col justify-between px-6 py-12 sm:px-12 sm:py-16">
+      <p className="dossier-colofon">Catálogo de referencia · dev-only</p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 py-16 text-center">
+        <h1 className="headline text-6xl font-semibold tracking-wide !text-[var(--papel)] sm:text-7xl md:text-8xl">
+          Directorio
+        </h1>
+        <p className="max-w-xl text-base !text-[var(--papel)] opacity-75 sm:text-lg">
+          Sistema de componentes — CRM Embudo de Leads.
+        </p>
+      </div>
+      <p className="dossier-colofon text-center sm:text-right">
+        28/08/2026 · Propuesta B — Consejo directivo
+      </p>
+    </header>
+  );
 }
 
-function Seccion({ numero, titulo, children }: SeccionProps) {
+interface FichaMeta {
+  numero: number;
+  id: string;
+  titulo: string;
+  rationale: ReactNode;
+}
+
+/**
+ * Metadatos de cada ficha -- fuente única para el Sumario (número + título +
+ * razón de ser) y para el eyebrow/título/razón de ser repetidos arriba de
+ * cada ficha más abajo. La razón de ser de cada entrada está anclada en una
+ * regla real ya documentada en el propio catálogo/CSS (no es texto de
+ * relleno inventado) -- ver la nota de cada `Seccion*` de abajo para la
+ * fuente completa de cada afirmación.
+ */
+const FICHAS: FichaMeta[] = [
+  {
+    numero: 1,
+    id: "ficha-01",
+    titulo: "Fundaciones",
+    rationale:
+      "El semáforo (verde/ámbar/rojo/gris) y la paleta categórica son un contrato de producto fijo, compartido por cualquier variante visual futura. Fraunces separa la identidad de marca (headlines, sellos) de Source Sans 3, la tipografía de trabajo del resto de la interfaz.",
+  },
+  {
+    numero: 2,
+    id: "ficha-02",
+    titulo: "Superficie",
+    rationale:
+      "El contenido nunca se apoya sobre blanco puro: el papel cálido (--papel) es el fondo que reemplazaría al bg-background actual del layout si esta dirección se adopta.",
+  },
+  {
+    numero: 3,
+    id: "ficha-03",
+    titulo: "Navegación",
+    rationale:
+      "El chrome funcional (sidebar, header, tabla) usa índigo sólido, nunca gradiente -- se probó un gradiente completo y se revirtió el mismo día: en una superficie que se escanea todo el tiempo, un gradiente es ruido, no jerarquía.",
+  },
+  {
+    numero: 4,
+    id: "ficha-04",
+    titulo: "Campos",
+    rationale:
+      "Ningún buscador de texto libre existe en el CRM -- el filtrado se resuelve siempre con selects/combos acotados. Esta ficha generaliza el input ya aprobado del login al resto de los formularios, misma familia visual, algo más densa.",
+  },
+  {
+    numero: 5,
+    id: "ficha-05",
+    titulo: "Acciones",
+    rationale:
+      "Cada acción tiene un único peso visual esperado: primaria para cerrar, destructiva para lo irreversible -- siempre con confirmación explícita --, ghost para lo secundario y enlace para navegación en línea con el texto.",
+  },
+  {
+    numero: 6,
+    id: "ficha-06",
+    titulo: "Organización",
+    rationale:
+      "Candidato para separar leads pendientes de leads cerrados dentro de una misma vista, sin duplicar la tabla ni sumar una pantalla nueva.",
+  },
+  {
+    numero: 7,
+    id: "ficha-07",
+    titulo: "Selección",
+    rationale:
+      "Los filtros de red social y campaña -- en el dashboard y en el listado de leads -- se resuelven con este control, nunca con un input de texto libre (ver Ficha 04).",
+  },
+  {
+    numero: 8,
+    id: "ficha-08",
+    titulo: "Estado",
+    rationale:
+      "El semáforo de un lead nunca es solo color: siempre lleva una etiqueta de texto al lado. No es una preferencia estética, es un requisito de accesibilidad fijo del proyecto.",
+  },
+  {
+    numero: 9,
+    id: "ficha-09",
+    titulo: "Contenedores",
+    rationale:
+      "La pestaña de color de cada tarjeta de KPI varía por categoría en vez de repetir un único índigo en las siete del dashboard -- evita que el panel se lea como la misma tarjeta multiplicada por siete.",
+  },
+  {
+    numero: 10,
+    id: "ficha-10",
+    titulo: "Retroalimentación",
+    rationale:
+      "Ninguna vista queda en blanco sin explicación: carga, vacío y error son estados obligatorios, y un error de red siempre se traduce a un mensaje accionable en español, nunca a un código HTTP crudo.",
+  },
+  {
+    numero: 11,
+    id: "ficha-11",
+    titulo: "Bienvenida",
+    rationale:
+      "Overlay a pantalla completa mostrado al entrar a la app, antes de montar el layout -- reemplaza al sello de boot circular/puntos, descartado como propuesta de arranque.",
+  },
+  {
+    numero: 12,
+    id: "ficha-12",
+    titulo: "Datos",
+    rationale:
+      "Componente real de producción, sin reimplementar: ocho leads mock cubren las cinco etapas, los cuatro semáforos y los cuatro estados de SLA posibles, para que la tabla se vea viva y no como una fila repetida ocho veces.",
+  },
+];
+
+/**
+ * Sumario -- tabla de contenidos del dossier, sobre el mismo `.patron-papel`
+ * que el resto del canvas de contenido. Cada entrada es un ancla nativa
+ * (`href="#ficha-XX"`) hacia su ficha correspondiente -- sin librería de
+ * scroll, el `scroll-behavior: smooth` scopeado a esta página
+ * (`tema-empresarial.css`) alcanza.
+ */
+function Sumario() {
   return (
-    <section className="space-y-4 border-t border-[rgba(30,42,94,0.18)] pt-10 first:border-t-0 first:pt-0">
-      <div>
-        <p className="tabular text-xs font-semibold opacity-50">{String(numero).padStart(2, "0")}</p>
-        <h2 className="headline text-xl font-semibold">{titulo}</h2>
+    <nav aria-label="Sumario" className="patron-papel px-6 py-16 sm:px-12 md:py-24">
+      <div className="mx-auto max-w-3xl space-y-10">
+        <div className="space-y-2">
+          <p className="login-label">Sumario</p>
+          <h2 className="headline text-2xl font-semibold">
+            Doce fichas, un componente real detrás de cada una
+          </h2>
+        </div>
+        <ol className="ledger-divider">
+          {FICHAS.map((ficha) => (
+            <li key={ficha.id} className="ledger-divider">
+              <a
+                href={`#${ficha.id}`}
+                className="group flex items-baseline gap-4 py-4 no-underline"
+              >
+                <span className="tabular headline text-3xl font-semibold !text-[var(--indigo)] opacity-40 transition-opacity group-hover:opacity-70">
+                  {String(ficha.numero).padStart(2, "0")}
+                </span>
+                <span className="flex-1">
+                  <span className="headline block text-lg font-semibold !text-[var(--indigo)]">
+                    {ficha.titulo}
+                  </span>
+                  <span className="block text-sm opacity-70">{ficha.rationale}</span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ol>
       </div>
-      {children}
+    </nav>
+  );
+}
+
+/**
+ * Spread de dos columnas de cada ficha (`.dossier-ficha-grid`,
+ * `tema-empresarial.css`): columna angosta con el eyebrow "Ficha 0X" (mismo
+ * tratamiento tipográfico `.login-label` que el resto de la variante) +
+ * título + razón de ser en lenguaje llano; columna flexible con la(s)
+ * muestra(s) viva(s) -- el contenido real de cada `Seccion*` de abajo, sin
+ * cambios de comportamiento. Apilada en mobile, dos columnas desde `md`.
+ */
+function Ficha({ meta, children }: { meta: FichaMeta; children: ReactNode }) {
+  const tituloId = `${meta.id}-titulo`;
+  return (
+    <section id={meta.id} aria-labelledby={tituloId} className="ledger-divider px-6 py-16 sm:px-12 md:py-20">
+      <div className="dossier-ficha-grid mx-auto max-w-6xl">
+        <div className="space-y-3">
+          <p className="login-label">Ficha {String(meta.numero).padStart(2, "0")}</p>
+          <h2 id={tituloId} className="headline text-2xl font-semibold">
+            {meta.titulo}
+          </h2>
+          <p className="max-w-sm text-sm leading-relaxed opacity-70">{meta.rationale}</p>
+        </div>
+        <div className="min-w-0">{children}</div>
+      </div>
     </section>
   );
 }
@@ -175,7 +350,7 @@ function Seccion({ numero, titulo, children }: SeccionProps) {
 /**
  * Entrada individual del catálogo: nombre del elemento + muestra visual
  * renderizada de verdad (no una captura) + nota corta de dónde se usa. Es el
- * bloque repetido en cada sección, al estilo de la documentación de
+ * bloque repetido en cada ficha, al estilo de la documentación de
  * componentes de un framework (Bootstrap/Storybook) -- nunca una app
  * funcional montada.
  */
@@ -210,7 +385,7 @@ function ElementoCard({
   frameClassName?: string;
   /**
    * Radio del frame de muestra -- deliberadamente NO uniforme entre
-   * secciones (evitar "misma card × N", `interface-design`): `"sm"` para
+   * fichas (evitar "misma card × N", `interface-design`): `"sm"` para
    * controles simples (botones, selects), `"md"` para composites
    * (tabs, tarjetas), `"lg"` para contenido "vivo" embebido (sidebar,
    * welcome splash). Ver también `frameBorder`.
@@ -225,7 +400,12 @@ function ElementoCard({
   frameBorder?: boolean;
 }) {
   return (
-    <Card className={cn("flex flex-col gap-3 border-[rgba(30,42,94,0.18)] bg-white p-4", className)}>
+    <Card
+      className={cn(
+        "flex flex-col gap-3 border-[rgba(30,42,94,0.18)] bg-[var(--papel)] p-4 shadow-[0_8px_24px_-8px_rgba(30,42,94,0.18)]",
+        className,
+      )}
+    >
       <p className="headline text-sm font-semibold">{titulo}</p>
       <div
         className={cn(
@@ -302,6 +482,10 @@ function SeccionFundaciones() {
         <div className="grid w-full grid-cols-3 gap-2 sm:grid-cols-4">
           {swatches.map((s) => (
             <div key={s.token} className="space-y-1">
+              {/* `style` real acá, no un desvío de la regla "sin CSS-in-JS": el hex
+                  viene de datos (`s.valor`, un token distinto por swatch), Tailwind
+                  JIT solo genera clases para strings literales presentes en el código
+                  fuente -- no puede extraer un valor calculado en runtime. */}
               <div
                 className="h-10 w-full rounded-sm border border-[rgba(30,42,94,0.18)]"
                 style={{ background: s.valor }}
@@ -348,8 +532,11 @@ function SeccionShellReal() {
       <p className="max-w-2xl text-sm opacity-70">
         El tema neutro F1 (componente real tal cual producción, fondo hueso compartido con el
         canvas) se descartó como alternativa visual para esta dirección -- ya no se muestra acá. La
-        única propuesta de sidebar/topbar de Propuesta B es la de fondo índigo sólido, decisión
-        Fijo. Ver <code>.interface-design/system.md</code>, "Propuesta B -- Fijo".
+        única propuesta de sidebar/topbar de Propuesta B es la de chrome sólido índigo, decisión
+        Fijo. Pasó por una versión con gradiente de marca completo el mismo día (2026-08-28) y se
+        revirtió tras feedback + research: el gradiente queda reservado a momentos "hero" (login,
+        splash), nunca a chrome funcional. Ver <code>.interface-design/system.md</code>,{" "}
+        "Propuesta B -- Fijo".
       </p>
       <GrillaCatalogo columnaUnica>
         <ElementoCard
@@ -357,17 +544,30 @@ function SeccionShellReal() {
           nota={
             <>
               Mockup nuevo (<code>SidebarIndigoPreview.tsx</code>), no el componente real: fondo
-              sólido índigo <code>#1E2A5E</code> para sidebar y header -- ya no comparten el fondo
-              hueso del canvas. Texto hueso <code>#F5F3EE</code> (100% en el ítem activo, ~65% en
-              los inactivos, contraste validado 12.2:1). Ítem activo: pill sólido en el azul de
-              acento <code>#2563EB</code> (ya definido como <code>--cat-2</code> de la paleta
-              categórica, no un color nuevo) con texto blanco (contraste validado 5.17:1) +{" "}
-              <code>ring-1 ring-white/10</code> para distinguirlo del índigo de fondo -- reemplaza
+              sólido índigo <code>#1E2A5E</code> (<code>.chrome-solido</code>,{" "}
+              <code>tema-empresarial.css</code>) para sidebar y header -- ya no comparten el fondo
+              hueso del canvas. Pasó por un gradiente de marca completo (2026-08-28) y se revirtió
+              el mismo día: research real (Stripe/Linear/Vercel, UX Collective) confirma que
+              productos premium usan el color con restricción -- gradiente en navegación que se
+              escanea todo el tiempo es ruido, no jerarquía; además el mismo ángulo diagonal
+              aplicado a formas distintas (panel vertical, barra horizontal, header de tabla) da
+              resultados visuales inconsistentes entre sí. El gradiente queda reservado a{" "}
+              <code>.chrome-gradiente</code> -- SOLO el panel de marca del login y el welcome
+              splash, los momentos "hero" reales de esta variante. Canvas debajo con{" "}
+              <code>.patron-papel</code>{" "}
+              (misma retícula del login) -- eso sí se mantuvo. Texto hueso <code>#F5F3EE</code>{" "}
+              (100% en el ítem activo, ~65% en los inactivos, contraste validado 12.2:1). Ítem
+              activo: pill sólido en el azul de acento <code>#2563EB</code> (ya definido como{" "}
+              <code>--cat-2</code>, no un color nuevo) con texto blanco (contraste validado 5.17:1)
+              + <code>ring-1 ring-white/10</code> para distinguirlo del índigo de fondo -- reemplaza
               el borde-izquierdo, que no se lee bien sobre un fondo ya coloreado. Sin borde
-              divisorio hacia el canvas: el contraste índigo/hueso ya marca el límite. Reutiliza
-              los datos reales de <code>layouts/navigation.ts</code> (mismas etiquetas/rutas/
-              íconos), no la implementación visual del sidebar real. Clickeá un ítem: alterna cuál
-              se ve activo con estado local de React, sin navegar de verdad.
+              divisorio hacia el canvas: el contraste índigo/hueso ya marca el límite; el
+              sidebar/header proyectan sombra propia (<code>.chrome-sombra-derecha</code>/
+              <code>.chrome-sombra-abajo</code>, se mantiene igual con o sin gradiente) para
+              reforzar la separación con profundidad. Reutiliza los datos reales de{" "}
+              <code>layouts/navigation.ts</code> (mismas etiquetas/rutas/íconos), no la
+              implementación visual del sidebar real. Clickeá un ítem: alterna cuál se ve activo
+              con estado local de React, sin navegar de verdad.
             </>
           }
           frameRadius="lg"
@@ -381,52 +581,148 @@ function SeccionShellReal() {
   );
 }
 
-function SeccionBuscadores() {
+function SeccionInputs() {
   return (
-    <GrillaCatalogo>
-      <Card className="flex flex-col gap-2 border-dashed border-[rgba(30,42,94,0.35)] bg-white p-4">
-        <p className="headline text-sm font-semibold">No aplica</p>
-        <p className="text-xs leading-relaxed opacity-70">
-          Regla de producto fija (`.interface-design/system.md`, "Estructura compartida"): ninguna
-          pantalla del CRM tiene buscador libre, en ningún tema. No es un olvido de esta sección --
-          el filtrado se resuelve con selects/combos acotados (<code>LeadsFiltros.tsx</code>,{" "}
-          <code>ResponsableCombobox.tsx</code>), nunca con un input de búsqueda de texto libre.
-        </p>
-      </Card>
-    </GrillaCatalogo>
+    <div className="space-y-4">
+      <p className="max-w-2xl text-sm opacity-70">
+        Ningún buscador de texto libre existe en el CRM, en ningún tema -- regla de producto fija
+        (<code>.interface-design/system.md</code>, "Estructura compartida"): el filtrado se
+        resuelve con selects/combos acotados (<code>LeadsFiltros.tsx</code>,{" "}
+        <code>ResponsableCombobox.tsx</code>), nunca con un input de búsqueda libre. Esta sección
+        generaliza el patrón de input ya aprobado del login (<code>.login-input</code>,{" "}
+        <code>LoginScreenDemo.tsx</code>) a los controles de formulario del resto de la app --
+        misma familia visual (<code>.control-input</code>, <code>tema-empresarial.css</code>),
+        altura más densa (40px vs. los 44px "aireados" del login, pensado para una pantalla de un
+        solo momento).
+      </p>
+      <GrillaCatalogo>
+        <ElementoCard
+          titulo="Texto"
+          nota="`components/ui/input.tsx` (sin reimplementar el control) -- ej. nombre del cliente en un formulario de alta manual."
+        >
+          <div className="flex w-full flex-col gap-2">
+            <Label htmlFor="demo-input-nombre" className="login-label">
+              Nombre del cliente
+            </Label>
+            <Input id="demo-input-nombre" placeholder="Ana Torres" className="control-input" />
+          </div>
+        </ElementoCard>
+        <ElementoCard
+          titulo="Con error"
+          nota={
+            <>
+              <code>aria-invalid</code> -- ya soportado por el primitivo compartido, acá con el
+              anillo en <code>--rojo</code> (el mismo rojo del semáforo, no el rojo default de
+              shadcn): mismo lenguaje de foco de dos capas que el estado normal, en rojo.
+            </>
+          }
+        >
+          <div className="flex w-full flex-col gap-2">
+            <Label htmlFor="demo-input-telefono" className="login-label">
+              Teléfono
+            </Label>
+            <Input
+              id="demo-input-telefono"
+              defaultValue="099123"
+              aria-invalid="true"
+              className="control-input"
+            />
+            <p className="text-xs !text-[var(--rojo)]">
+              Ingresá un teléfono válido.
+            </p>
+          </div>
+        </ElementoCard>
+        <ElementoCard
+          titulo="Deshabilitado"
+          nota="Estado inactivo -- opacidad reducida del primitivo compartido, sin cambios."
+        >
+          <div className="flex w-full flex-col gap-2">
+            <Label htmlFor="demo-input-disabled" className="login-label">
+              Código de referido
+            </Label>
+            <Input id="demo-input-disabled" defaultValue="—" disabled className="control-input" />
+          </div>
+        </ElementoCard>
+        <ElementoCard
+          titulo="Checkbox"
+          nota={
+            <>
+              <code>components/ui/checkbox.tsx</code> -- selección de filas en{" "}
+              <code>LeadsTable.tsx</code>. Acento <code>--cat-2</code> al marcar en vez del azul
+              genérico de esa variante.
+            </>
+          }
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox defaultChecked className="control-checkbox" />
+            Notificar por correo
+          </label>
+        </ElementoCard>
+      </GrillaCatalogo>
+    </div>
   );
 }
 
 function SeccionBotones() {
   return (
-    <GrillaCatalogo className="sm:grid-cols-3 lg:grid-cols-4">
-      <ElementoCard titulo="Primario" nota="Acción principal de una vista (ej. confirmar cierre de venta).">
-        <Button style={{ background: "var(--indigo)" }} className="text-white hover:opacity-90">
-          Primario
-        </Button>
-      </ElementoCard>
-      <ElementoCard titulo="Secundario (outline)" nota="Acción secundaria junto a un primario (ej. «Cancelar»).">
-        <Button variant="outline" className="border-[color:var(--indigo)]/30 text-[color:var(--indigo)]">
-          Secundario
-        </Button>
-      </ElementoCard>
-      <ElementoCard titulo="Destructivo" nota="Acciones irreversibles (ej. cerrar lead, desactivar usuario) -- siempre con confirmación explícita.">
-        <Button variant="destructive">Destructivo</Button>
-      </ElementoCard>
-      <ElementoCard titulo="Ghost" nota="Acciones de bajo énfasis dentro de un panel (ej. íconos del header).">
-        <Button variant="ghost" className="text-[color:var(--indigo)]">
-          Ghost
-        </Button>
-      </ElementoCard>
-      <ElementoCard titulo="Enlace" nota="Navegación en línea con el texto (ej. «Mi perfil» dentro de un párrafo).">
-        <Button variant="link" className="text-[color:var(--indigo)]">
-          Enlace
-        </Button>
-      </ElementoCard>
-      <ElementoCard titulo="Deshabilitado" nota="Estado inactivo mientras una precondición no se cumple (ej. formulario inválido).">
-        <Button disabled>Deshabilitado</Button>
-      </ElementoCard>
-    </GrillaCatalogo>
+    <div className="space-y-4">
+      <GrillaCatalogo columnaUnica>
+        <ElementoCard
+          titulo="Hero (protagonista de la pantalla)"
+          frameBorder={false}
+          frameClassName="hero-spotlight"
+          nota={
+            <>
+              Excepción deliberada y acotada a la regla de "sin gradiente en chrome" (Ficha 03): un
+              botón hero es el único lugar puntual, igual que <code>.login-boton-primario</code>,
+              donde el gradiente de marca (<code>.chrome-gradiente</code>) sí construye jerarquía sin
+              costo de usabilidad. Regla de uso, no solo de estilo: <strong>como máximo uno por
+              pantalla</strong>, reservado a la acción protagonista (ej. «Nueva oportunidad» del
+              dashboard, el submit final de un wizard) -- nunca en una fila de tabla ni en una toolbar
+              donde conviven varias acciones, ahí volvería a ser ruido, no jerarquía. El fondo oscuro
+              tintado de este frame ("spotlight") es a propósito distinto del recuadro punteado plano
+              del resto de variantes de abajo -- que el botón "viva" en otra superficie hace legible la
+              regla de un vistazo, sin depender solo de leer la nota.
+            </>
+          }
+        >
+          <Button className="boton-catalogo boton-hero">Nueva oportunidad</Button>
+        </ElementoCard>
+      </GrillaCatalogo>
+      <GrillaCatalogo className="sm:grid-cols-3 lg:grid-cols-4">
+        <ElementoCard titulo="Primario" nota="Acción principal de una vista (ej. confirmar cierre de venta).">
+          <Button className="boton-catalogo boton-primario">Primario</Button>
+        </ElementoCard>
+        <ElementoCard titulo="Secundario (outline)" nota="Acción secundaria junto a un primario (ej. «Cancelar»).">
+          <Button variant="outline" className="boton-catalogo boton-secundario">
+            Secundario
+          </Button>
+        </ElementoCard>
+        <ElementoCard
+          titulo="Destructivo"
+          nota="Acciones irreversibles (ej. cerrar lead, desactivar usuario) -- siempre con confirmación explícita. Mismo rojo del semáforo (`--rojo`), no el rojo default de shadcn."
+        >
+          <Button variant="destructive" className="boton-catalogo boton-destructivo">
+            Destructivo
+          </Button>
+        </ElementoCard>
+        <ElementoCard titulo="Ghost" nota="Acciones de bajo énfasis dentro de un panel (ej. íconos del header).">
+          <Button variant="ghost" className="boton-catalogo boton-ghost">
+            Ghost
+          </Button>
+        </ElementoCard>
+        <ElementoCard titulo="Enlace" nota="Navegación en línea con el texto (ej. «Mi perfil» dentro de un párrafo).">
+          <Button variant="link" className="boton-enlace">
+            Enlace
+          </Button>
+        </ElementoCard>
+        <ElementoCard titulo="Deshabilitado" nota="Estado inactivo mientras una precondición no se cumple (ej. formulario inválido).">
+          <Button disabled className="boton-catalogo boton-primario">
+            Deshabilitado
+          </Button>
+        </ElementoCard>
+      </GrillaCatalogo>
+    </div>
   );
 }
 
@@ -475,7 +771,7 @@ function SeccionSelects() {
         }
       >
         <Select defaultValue="todas">
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="control-input w-56">
             <SelectValue placeholder="Red social" />
           </SelectTrigger>
           <SelectContent>
@@ -545,11 +841,11 @@ function SeccionBadges() {
 }
 
 function SeccionTarjetas() {
-  const kpis: { titulo: string; valor: string; color: string }[] = [
-    { titulo: "Total de leads ingresados", valor: "248", color: "var(--cat-2)" },
-    { titulo: "Leads en gestión", valor: "96", color: "var(--cat-3)" },
-    { titulo: "Tasa de conversión", valor: "24.6%", color: "var(--cat-1)" },
-    { titulo: "Cumplimiento de SLA", valor: "88%", color: "var(--cat-4)" },
+  const kpis: { titulo: string; valor: string; color: string; delta: number }[] = [
+    { titulo: "Total de leads ingresados", valor: "248", color: "var(--cat-2)", delta: 12.4 },
+    { titulo: "Leads en gestión", valor: "96", color: "var(--cat-3)", delta: -4.1 },
+    { titulo: "Tasa de conversión", valor: "24.6%", color: "var(--cat-1)", delta: 3.8 },
+    { titulo: "Cumplimiento de SLA", valor: "88%", color: "var(--cat-4)", delta: -1.5 },
   ];
 
   return (
@@ -563,22 +859,46 @@ function SeccionTarjetas() {
             -- KPI cards del dashboard (F5, 7 tarjetas). El color de la pestaña varía por
             categoría vía <code>accentColor</code> (paleta categórica fija) en vez de repetir un
             único índigo en las 7 tarjetas -- riesgo «misma card × 7» ya señalado en{" "}
-            <code>.interface-design/system.md</code>.
+            <code>.interface-design/system.md</code>. El delta bajo el número reutiliza el mismo
+            color categórico de la pestaña de esa tarjeta (nunca un color nuevo tipo
+            verde/rojo genérico de "sube/baja") -- y nunca como relleno de fondo de la card: 7
+            fondos de color repetido lado a lado sería exactamente el mismo riesgo, solo
+            trasladado del fondo al relleno.
           </>
         }
         frameRadius="md"
       >
         <div className="grid w-full grid-cols-2 gap-3">
-          {kpis.map((kpi) => (
-            <Card key={kpi.titulo} variant="accent" accentColor={kpi.color} className="border-[rgba(30,42,94,0.12)] bg-white">
-              <CardContent className="p-3">
-                <p className="text-[10px] opacity-60">{kpi.titulo}</p>
-                <p className="tabular text-xl font-bold" style={{ color: "var(--indigo)" }}>
-                  {kpi.valor}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+          {kpis.map((kpi) => {
+            const positivo = kpi.delta >= 0;
+            const Flecha = positivo ? ArrowUp : ArrowDown;
+            return (
+              <Card
+                key={kpi.titulo}
+                variant="accent"
+                accentColor={kpi.color}
+                className="border-[rgba(30,42,94,0.12)] bg-[var(--papel)] shadow-[0_1px_2px_rgba(30,42,94,0.08)]"
+              >
+                <CardContent className="p-3">
+                  <p className="text-[10px] opacity-60">{kpi.titulo}</p>
+                  <p className="tabular text-3xl font-bold !text-[var(--indigo)]">
+                    {kpi.valor}
+                  </p>
+                  {/* `style` real acá, mismo motivo que el swatch de Fundaciones:
+                      `kpi.color` es un token de la paleta categórica por tarjeta,
+                      calculado en runtime -- no hay clase Tailwind estática posible. */}
+                  <p
+                    className="tabular mt-1 flex items-center gap-1 text-[10px] font-semibold"
+                    style={{ color: kpi.color }}
+                  >
+                    <Flecha className="size-3" aria-hidden="true" />
+                    {positivo ? "+" : ""}
+                    {kpi.delta.toFixed(1)}% vs. mes anterior
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </ElementoCard>
       <ElementoCard
@@ -586,7 +906,7 @@ function SeccionTarjetas() {
         nota="`variant=&quot;default&quot;`, sin pestaña -- paneles de gráficos del dashboard."
         frameRadius="md"
       >
-        <Card className="w-full border-[rgba(30,42,94,0.18)] bg-white">
+        <Card className="w-full border-[rgba(30,42,94,0.18)] bg-[var(--papel)] shadow-[0_1px_2px_rgba(30,42,94,0.08)]">
           <CardHeader>
             <CardTitle>Leads por red social</CardTitle>
             <CardDescription>Panel genérico, sin acento de color.</CardDescription>
@@ -604,9 +924,19 @@ function SeccionEstados() {
       <ElementoCard titulo="Loading" nota="`frontend/src/componentes/states/LoadingState.tsx`, tal cual está.">
         <LoadingState rows={3} className="w-full" />
       </ElementoCard>
-      <ElementoCard titulo="Vacío" nota="`frontend/src/componentes/states/EmptyState.tsx`, tal cual está.">
+      <ElementoCard
+        titulo="Vacío"
+        nota={
+          <>
+            <code>frontend/src/componentes/states/EmptyState.tsx</code>, sin tocar el componente --
+            restyle scoped vía <code>.estado-vacio-tema</code> (<code>tema-empresarial.css</code>),
+            agregada solo acá en el call site. Fuera de esta variante, <code>EmptyState</code> se ve
+            igual que siempre.
+          </>
+        }
+      >
         <EmptyState
-          className="w-full"
+          className="w-full estado-vacio-tema"
           title="Sin leads en esta vista"
           description="Ajustá los filtros para ver resultados."
         />
@@ -685,8 +1015,8 @@ function SeccionWelcomeSplash() {
               <code>--indigo</code>/<code>--papel</code>/<code>--cat-2</code> y las reglas{" "}
               <code>.tema-empresarial .welcome-splash</code> están scopeadas por selector
               descendiente; y NUNCA hijo directo de <code>#tema-empresarial-root</code> tampoco --
-              su <code>space-y-16</code> le suma <code>margin-top: 4rem</code> a cualquier hijo que
-              no sea el primero, corriendo el overlay 64px). Con la posición{" "}
+              su spacing interno podría sumarle un margen extra a cualquier hijo que no sea el
+              primero, corriendo el overlay hacia abajo). Con la posición{" "}
               <code>fixed inset-0</code> por defecto del componente (sin pisarla), tapa el viewport
               completo del navegador de verdad. Se sostiene ~2.2s "cargando" y se
               desvanece sola (mismo fade de 400-580ms de <code>tema-empresarial.css</code>) --
@@ -723,12 +1053,9 @@ function SeccionWelcomeSplash() {
             // `document.body` (pierde `--indigo`/`--papel`/`--cat-2` y
             // `.tema-empresarial .welcome-splash`, selectores/variables
             // descendientes de `.tema-empresarial`) NI hijo directo de
-            // `#tema-empresarial-root` (su `space-y-16` aplica
-            // `margin-top: 4rem` a todo hijo que no sea el primero -- un
-            // overlay `fixed inset-0` ahí queda corrido 64px hacia abajo,
-            // bug real confirmado con `CSS.getMatchedStylesForNode`/CDP).
-            // `position: fixed` sigue cubriendo el viewport completo igual
-            // -- nada acá arriba define un containing block nuevo
+            // `#tema-empresarial-root` (ver la nota de arriba). `position:
+            // fixed` sigue cubriendo el viewport completo igual -- nada acá
+            // arriba define un containing block nuevo
             // (`transform`/`filter`/`will-change`).
             document.getElementById("tema-empresarial-portal-root") ?? document.body,
           )
@@ -743,7 +1070,7 @@ function SeccionWelcomeSplash() {
  * repetida × 8:
  * - `etapa`: cubre las 5 (NUEVO, CONTACTADO, CITA, VENTA, NO_VENTA).
  * - `semaforo`: ROJO/AMARILLO/VERDE + un `null` (lead-1, "sin calificar" --
- *   ver `SemaforoBadge` en la sección 08 de arriba).
+ *   ver `SemaforoBadge` en la Ficha 08 de arriba).
  * - `redSocial`: las 5 variantes de `RED_SOCIAL_ETIQUETAS`.
  * - `origen: "REINGRESO"` en lead-2 (dispara el badge "Reingreso" de la
  *   columna Cliente, ver `LeadsTable.tsx`).
@@ -961,7 +1288,7 @@ function SeccionLeadsTable() {
   return (
     <div className="space-y-4">
       <p className="max-w-2xl text-sm opacity-70">
-        Kanban descartado (ver nota de la sección "Loader de bienvenida" de arriba): el módulo de
+        Kanban descartado (ver nota de la ficha "Bienvenida" de arriba): el módulo de
         leads mantiene <code>LeadsTable.tsx</code> tal cual está en producción, sin cambios de
         columnas ni de estructura. Segunda pasada de diseño (2026-08-27): el recuadro punteado
         genérico del catálogo (mismo <code>--papel</code> del canvas de fondo) hacía que la tabla se
@@ -989,10 +1316,13 @@ function SeccionLeadsTable() {
               real para forzar los 4 estados posibles: A tiempo, En riesgo, Atrasado y Cerrado.
               Card real (<code>.leads-table-card</code>, <code>tema-empresarial.css</code>):
               elevación de una sola capa (Fijo, "sombras suaves de una sola capa"), radio + borde
-              índigo tenue, <code>overflow-hidden</code> para que el header sólido respete las
-              esquinas redondeadas. Header (<code>.tema-empresarial table thead</code>) en{" "}
-              <code>--indigo</code> sólido (mismo índigo del sidebar/header, ningún color nuevo) con
-              texto en <code>--papel</code>. Hover de fila SIN CAMBIOS (tinte índigo sutil + barra
+              índigo tenue, <code>overflow-hidden</code> para que el header respete las esquinas
+              redondeadas. Header (<code>.tema-empresarial table thead</code>) en{" "}
+              <code>--indigo</code> sólido (<code>.chrome-solido</code>, mismo índigo del
+              sidebar/header, ningún color nuevo) con texto en <code>--papel</code> -- pasó por el
+              gradiente de marca (2026-08-28) y se revirtió el mismo día: la tabla es chrome
+              funcional, no un momento "hero", el gradiente ahí quedó reservado solo a
+              login/splash. Hover de fila SIN CAMBIOS (tinte índigo sutil + barra
               de acento en <code>--cat-2</code>, <code>.tema-empresarial .leads-table-row</code>) --
               ya evaluado y aprobado, no se tocó. El hover base compartido (
               <code>src/index.css</code>) tampoco.

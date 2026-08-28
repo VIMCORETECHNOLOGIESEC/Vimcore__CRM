@@ -51,7 +51,28 @@ consola de ingeniería.
 - Fondo de sidebar/header: índigo sólido `#1E2A5E` (el mismo índigo, no un
   color nuevo) — ya no comparten fondo con el canvas papel del contenido;
   decisión explícita del usuario tras rechazar que sidebar/header y canvas
-  compartan el mismo hueso ("se ve monótono").
+  compartan el mismo hueso ("se ve monótono"). Clase: `.chrome-solido`
+  (`tema-empresarial.css`).
+  **Historial 2026-08-28** (mismo día, dos pasadas): se probó un gradiente
+  diagonal de marca (`--marca-color-1` → `--marca-color-2`) extendido a
+  TODO el chrome — sidebar, header/topbar, header de `LeadsTable.tsx` — y
+  se revirtió el mismo día tras feedback del cliente ("no es una propuesta
+  agradable ahí") + investigación real (Stripe/Linear/Vercel, UX Collective,
+  eggradients.com): productos premium usan el color con muchísima
+  restricción, un gradiente sin propósito claro en navegación que se
+  escanea todo el tiempo es ruido visual y elimina jerarquía; además el
+  MISMO ángulo (135deg) aplicado a formas distintas (panel vertical angosto,
+  barra horizontal ancha, header de tabla) da resultados visuales
+  inconsistentes entre sí. **Regla final**: el gradiente (`.chrome-gradiente`)
+  queda RESERVADO a momentos "hero" de una sola pantalla sin navegación que
+  escanear — el panel de marca del login y el welcome splash, los únicos
+  dos lugares donde nació y sigue aprobado. El canvas debajo de sidebar/
+  header SÍ se quedó con `.patron-papel` (misma retícula fina del login) —
+  eso no se revirtió, solo el color de fondo del chrome. Sidebar/header
+  proyectan sombra propia (`.chrome-sombra-derecha`/`.chrome-sombra-abajo`,
+  mismo valor que el panel de marca del login, aplica igual con o sin
+  gradiente) para reforzar la separación con profundidad en vez de un
+  borde duro.
 - Texto sobre ese índigo: hueso `#F5F3EE` — 100% en ítems/labels activos o
   principales, ~65% en inactivos/secundarios (contraste validado 12.2:1,
   sobra margen).
@@ -67,9 +88,10 @@ consola de ingeniería.
   actualiza para reflejar esta excepción o si Propuesta B queda documentada
   como la única divergencia.
 - Sin borde divisorio entre sidebar/header y el canvas — el contraste de
-  color entre hueso (canvas) e índigo (chrome) ya marca el límite; jerarquía
-  por espacio/color antes que por línea (criterio de la skill
-  `interface-design`).
+  color entre hueso (canvas) e índigo (chrome), sumado a la sombra propia
+  del chrome (`.chrome-sombra-derecha`/`.chrome-sombra-abajo`), ya marca el
+  límite; jerarquía por espacio/color/sombra antes que por línea (criterio
+  de la skill `interface-design`).
 
 **Abierto a retoque (evitar monotonía — variar antes de la siguiente pasada):**
 - Tratamiento de la pestaña de color en KPI cards: hoy es uniforme índigo en
@@ -112,6 +134,23 @@ consola de ingeniería.
   (`margin-top: 4rem` vía `> :not([hidden]) ~ :not([hidden])`) → el
   `fixed inset-0` queda corrido 64px. Patrón a reutilizar para cualquier
   otro overlay a pantalla completa que se agregue a este catálogo.
+- Login premium (`LoginScreenDemo.tsx`, 2026-08-28, con investigación de
+  gradientes/formularios premium de por medio): panel de marca con
+  `.chrome-gradiente` (momento "hero" aprobado, ver más arriba) + placeholder
+  de isotipo del holding + nombre de la herramienta debajo (fijo, no cambia
+  por empresa). Fondo compartido `.patron-papel` detrás de ambos bloques,
+  panel de marca con `.chrome-sombra-derecha` para separación por
+  profundidad. Formulario dentro de `.login-card` (papel + sombra suave
+  aligerada -- 0.22/0.05 de opacidad, más liviana que la primera pasada, en
+  línea con el objetivo "artístico y liviano"). Inputs `.login-input`: borde
+  más liviano (0.14 vs. 0.25 de opacidad), más alto (44px vs. 36px default),
+  foco de dos capas (borde a `--cat-2` + ring al 40%, no un anillo duro).
+  Labels `.login-label`: caption tracked (12px/600/uppercase/letter-spacing),
+  jerarquía tipográfica en vez de solo texto genérico. Botón primario
+  `.login-boton-primario`: gradiente de marca tenue (no `--indigo` sólido) --
+  un botón SÍ es el tipo de elemento puntual y acotado donde el research
+  recomienda gradiente, a diferencia de una superficie de navegación
+  completa (ver la regla de "Fondo de sidebar/header" más arriba).
 - Hover de fila de `LeadsTable.tsx` (2026-08-27, `tema-empresarial.css`):
   sobre el hover base compartido (`.leads-table-row:hover`, `src/index.css`,
   no tocado), esta variante agrega tinte de fondo

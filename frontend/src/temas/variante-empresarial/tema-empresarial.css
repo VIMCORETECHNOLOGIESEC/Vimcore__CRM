@@ -60,15 +60,21 @@
 }
 
 /*
- * Login premium (2026-08-27, `LoginScreenDemo.tsx`) -- extiende el motivo
- * "regla de libro contable" (`.ledger-divider`, arriba) a un patrón de fondo
- * de página completa, en vez de inventar una textura sin relación con el
- * resto de la variante: retícula fina en diagonal, mismo tinte
- * `rgba(30, 42, 94, ...)` que ya usan los bordes/divisores de todo este
- * archivo, solo mucho más tenue (.045) para que quede como textura, no
- * como líneas visibles. Fondo base `--papel`.
+ * Patrón de fondo compartido (2026-08-27) -- extiende el motivo "regla de
+ * libro contable" (`.ledger-divider`, arriba) a una textura de página
+ * completa, en vez de inventar algo sin relación con el resto de la
+ * variante: retícula fina en diagonal, mismo tinte `rgba(30, 42, 94, ...)`
+ * que ya usan los bordes/divisores de todo este archivo, solo mucho más
+ * tenue (.045) para que quede como textura, no como líneas visibles.
+ * Fondo base `--papel`.
+ *
+ * Nació en `LoginScreenDemo.tsx` (panel derecho, detrás del form) y se
+ * reutiliza tal cual en `AppShellDemo.tsx` (canvas de contenido del shell,
+ * detrás de `.leads-table-card` y demás) -- mismo criterio en toda la
+ * variante: el "chrome" (sidebar/header) es índigo sólido, el canvas de
+ * contenido es este patrón sobre papel, nunca un plano liso monótono.
  */
-.tema-empresarial .login-patron-fondo {
+.tema-empresarial .patron-papel {
   background-color: var(--papel);
   background-image:
     repeating-linear-gradient(
@@ -88,33 +94,130 @@
 }
 
 /*
- * Panel de marca (gradiente personalizable por holding, `--marca-color-1`/
- * `--marca-color-2` de arriba) -- esquina superior izquierda a inferior
- * derecha (135deg). `box-shadow` solo en X (sin desplazamiento vertical) para
- * que se lea como el panel "flotando" delante del patrón de fondo, no como
- * una sombra de caída genérica -- refuerza la separación de los dos bloques
- * con profundidad en vez de un borde/línea dura entre ellos (criterio de la
- * skill interface-design: "jerarquía por espacio y sombra antes que por
- * líneas").
+ * Chrome premium -- segunda corrección de diseño (2026-08-28, con
+ * investigación de por medio). El gradiente diagonal se había extendido a
+ * TODO el chrome (sidebar/header/tabla) en la pasada anterior; feedback del
+ * cliente: no es una propuesta agradable ahí. Confirmado con research real
+ * (Stripe/Linear/Vercel, UX Collective, eggradients.com -- ver fuentes en
+ * la conversación): productos premium usan el color con muchísima
+ * restricción -- superficies casi monocromáticas + UN acento medido, nunca
+ * gradiente en navegación que se escanea todo el tiempo ("un gradiente sin
+ * un porqué es ruido visual"; "sobreuso elimina jerarquía"). También hay un
+ * problema técnico real: el MISMO ángulo diagonal (135deg) aplicado a un
+ * panel vertical angosto, una barra horizontal ancha y una cabecera de
+ * tabla da tres resultados visuales distintos e inconsistentes entre sí --
+ * "ángulos de gradiente desalineados con la forma del elemento generan
+ * confusión visual".
+ *
+ * Regla final: el gradiente queda RESERVADO a momentos "hero" puntuales,
+ * no a chrome funcional --
+ * - `.chrome-gradiente`: SOLO para el panel de marca del login
+ *   (`LoginScreenDemo.tsx`) y el welcome splash (`WelcomeSplashLoader.tsx`)
+ *   -- son pantallas de un solo momento, sin navegación que escanear, el
+ *   lugar exacto donde la investigación dice que un gradiente sí construye
+ *   percepción de marca sin costo de usabilidad. NO reutilizar en sidebar/
+ *   header/tablas de nuevo sin repensar esta decisión primero.
+ * - `.chrome-solido`: el `--indigo` sólido "Fijo" original, para TODO el
+ *   chrome funcional (sidebar, header del shell, header de
+ *   `.leads-table-card`) -- estable, no compite con la navegación, mismo
+ *   criterio de Stripe/Linear/Vercel ("restricción, no decoración").
+ *
+ * `.chrome-sombra-derecha`/`.chrome-sombra-abajo` (abajo) siguen aplicando
+ * igual a ambas variantes -- la separación chrome/canvas por sombra en vez
+ * de línea dura no tiene nada que ver con el color de fondo, sigue siendo
+ * un criterio válido independientemente de esta corrección.
  */
-.tema-empresarial .login-panel-marca {
+.tema-empresarial .chrome-gradiente {
   background: linear-gradient(135deg, var(--marca-color-1) 0%, var(--marca-color-2) 100%);
+}
+
+.tema-empresarial .chrome-solido {
+  background: var(--indigo);
+}
+
+.tema-empresarial .chrome-sombra-derecha {
   box-shadow: 32px 0 56px -24px rgba(20, 32, 74, 0.5);
   position: relative;
   z-index: 1;
 }
 
-/* Card del formulario, flotando sobre el patrón -- misma familia de sombra
-   de una sola capa que `.leads-table-card` (Fijo, "sombras suaves de una
-   sola capa"), radio y peso ligeramente mayores por ser la pieza central de
-   una pantalla de login en vez de un elemento embebido en un catálogo. */
+.tema-empresarial .chrome-sombra-abajo {
+  box-shadow: 0 24px 48px -28px rgba(20, 32, 74, 0.45);
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * Card del formulario, flotando sobre el patrón -- misma familia de sombra
+ * de una sola capa que `.leads-table-card` (Fijo, "sombras suaves de una
+ * sola capa"), radio mayor por ser la pieza central de una pantalla de
+ * login en vez de un elemento embebido en un catálogo. Sombra aligerada
+ * (2026-08-28, segunda pasada -- research de login premium: "minimalismo
+ * real, mucho espacio en blanco" -- antes 0.32/0.08 de opacidad, más
+ * pesada de lo que pide un objetivo "artístico y liviano").
+ */
 .tema-empresarial .login-card {
   background: var(--papel);
-  border: 1px solid rgba(30, 42, 94, 0.14);
-  border-radius: 16px;
+  border: 1px solid rgba(30, 42, 94, 0.12);
+  border-radius: 20px;
   box-shadow:
-    0 24px 56px -20px rgba(30, 42, 94, 0.32),
-    0 2px 8px rgba(30, 42, 94, 0.08);
+    0 20px 48px -26px rgba(30, 42, 94, 0.22),
+    0 1px 4px rgba(30, 42, 94, 0.05);
+}
+
+/*
+ * Inputs del login (2026-08-28) -- refinamiento sobre los mismos
+ * primitivos reales (`@/components/ui/input`), sin reimplementar el
+ * control: borde más liviano que el original (0.25 -> 0.14 de opacidad,
+ * "borde más liviano" del research), más alto (`h-11` vs. el `h-9` default,
+ * más aire = sensación premium/artística) y un foco de dos capas -- el
+ * borde pasa a `--cat-2` Y el ring queda al 40% en vez de opaco, un
+ * "glow" suave en vez del anillo duro genérico.
+ */
+.tema-empresarial .login-input {
+  height: 44px;
+  border-color: rgba(30, 42, 94, 0.14);
+  background-color: color-mix(in srgb, var(--papel) 70%, transparent);
+}
+
+/*
+ * Anillo de foco de dos capas (2026-08-28, catálogo Inputs/Botones) --
+ * `LoginScreenDemo.tsx` traía el ring como Tailwind
+ * `focus-visible:ring-[color:var(--cat-2)]/40` inline: exactamente el
+ * modificador `/NN` de opacidad sobre un `color:` arbitrario que este mismo
+ * archivo ya documenta como poco confiable sobre una CSS var en hex plano
+ * (ver la nota de `color-mix()` en "Opción A/B" del boot, más abajo) -- acá
+ * se resuelve con `color-mix()`, consistente con el resto del archivo, y
+ * `box-shadow` en vez de `ring` para no competir en especificidad con la
+ * utilidad `focus-visible:ring-1` que ya trae el primitivo compartido
+ * (`components/ui/input.tsx`). `.control-input` (abajo) generaliza este
+ * mismo patrón fuera del login -- misma familia visual, altura más densa.
+ */
+.tema-empresarial .login-input:focus-visible,
+.tema-empresarial .control-input:focus-visible {
+  border-color: var(--cat-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-2) 32%, transparent);
+}
+
+/* Label como caption tracked -- mismo criterio tipográfico de jerarquía
+   "peso/tamaño/color antes que solo tamaño" de la skill interface-design,
+   un detalle tipográfico chico que suma a la lectura "ejecutiva". */
+.tema-empresarial .login-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--indigo-2) 70%, transparent);
+}
+
+/* Botón primario con el gradiente de marca -- a diferencia del chrome
+   funcional (ver nota arriba), un botón SÍ es el lugar puntual y acotado
+   donde el research recomienda un gradiente premium: un solo elemento,
+   con un propósito claro (la acción principal), nunca una superficie de
+   navegación completa. */
+.tema-empresarial .login-boton-primario {
+  background: linear-gradient(135deg, var(--marca-color-1) 0%, var(--marca-color-2) 100%);
+  box-shadow: 0 8px 20px -10px rgba(30, 42, 94, 0.45);
 }
 
 /* Sello/credencial cuadrada (selector de empresa) -- identidad de esta
@@ -331,8 +434,8 @@
  * Fondo del splash (2026-08-27, segunda pasada) -- tres capas, de arriba
  * hacia abajo: (1) viñeta radial sutil (centro transparente, bordes hacia
  * `--indigo-2`) para dar foco central, sensación de profundidad en vez de
- * un plano liso; (2) la misma retícula fina que ya usa el fondo del login
- * (`.login-patron-fondo`), acá en tinte CLARO (`--papel`) porque el fondo
+ * un plano liso; (2) la misma retícula fina que ya usa el fondo compartido
+ * (`.patron-papel`), acá en tinte CLARO (`--papel`) porque el fondo
  * de abajo es oscuro, no papel -- mismo motivo "regla de libro contable",
  * ningún patrón nuevo; (3) el gradiente diagonal de marca
  * `--marca-color-1` → `--marca-color-2` (mismas variables personalizables
@@ -426,12 +529,39 @@
 }
 
 /*
- * Header sólido índigo -- mismo índigo del sidebar/header (Fijo, ningún
- * color nuevo): le da a la tabla la jerarquía interna (header vs. filas)
- * que le faltaba compartiendo un solo `--papel` para todo. Selector por tag
- * (`table thead`), no una clase nueva en `LeadsTable.tsx` -- mismo criterio
- * que el hover de fila de abajo: cero cambios en el componente real, el
- * tratamiento entero vive acá scopeado bajo `.leads-table-card`.
+ * Bug real de desalineación (2026-08-28, reproducido y confirmado con
+ * screenshot real, no una medida de API aislada): las celdas de
+ * `LeadsTable.tsx` no tienen `overflow` propio (`overflow: visible` es el
+ * default de un `<td>`), así que contenido `white-space: nowrap` que no
+ * entra en su columna (la más ajustada es "Fecha de ingreso", 144px) se
+ * desborda VISUALMENTE hacia la derecha, fuera de su propia columna. A
+ * anchos de viewport donde la tarjeta necesita scroll horizontal (la tabla,
+ * 1272px, es más angosta que el viewport disponible) el wrapper
+ * `overflow-auto` de `Table` recorta ese desborde por coincidencia y no se
+ * nota; en viewports anchos, donde la tarjeta queda MÁS ANCHA que la tabla
+ * (sin necesidad de scroll), ya no hay nada que lo recorte y el texto
+ * "sangra" hacia la derecha, fuera de su columna -- exactamente lo
+ * reportado ("las cabeceras no están alineadas a las filas"). Fix acá, sin
+ * tocar `LeadsTable.tsx`: cada celda recorta su propio contenido en su
+ * propio ancho de columna, siempre, sin importar el ancho del contenedor.
+ * No afecta a los `Tooltip` (Radix los renderiza vía portal, fuera del
+ * árbol de la celda) ni a los badges (ya dimensionados a su contenido).
+ */
+.tema-empresarial .leads-table-card th,
+.tema-empresarial .leads-table-card td {
+  overflow: hidden;
+}
+
+/*
+ * Header sólido índigo (revertido 2026-08-28 -- había pasado a gradiente,
+ * corregido de vuelta: ver `.chrome-gradiente`/`.chrome-solido` arriba
+ * para la decisión completa. La tabla es chrome funcional, no un momento
+ * hero, así que el gradiente no correspondía acá). Le da a la tabla la
+ * jerarquía interna (header vs. filas) que le faltaba compartiendo un solo
+ * `--papel` para todo. Selector por tag (`table thead`), no una clase
+ * nueva en `LeadsTable.tsx` -- mismo criterio que el hover de fila de
+ * abajo: cero cambios en el componente real, el tratamiento entero vive
+ * acá scopeado bajo `.leads-table-card`.
  */
 .tema-empresarial .leads-table-card table thead {
   background: var(--indigo);
@@ -471,8 +601,9 @@
  * refinamiento propio de esta variante SOBRE el hover base compartido
  * (`.leads-table-row:hover`, `src/index.css`, no tocado/replicado fuera de
  * acá): en vez del glow gris genérico, un tinte muy sutil de `--indigo` +
- * una barra de acento vertical en `--cat-2` (mismo azul que ya usa el sello
- * de boot y el welcome splash de arriba). El `<tr>` real
+ * una barra de acento vertical en `--indigo` (2026-08-28, antes `--cat-2`
+ * -- corrección: la barra debe usar el azul PRINCIPAL del tema, el mismo
+ * índigo del chrome, no el azul categórico secundario). El `<tr>` real
  * (`LeadsTable.tsx`) ya trae `className="leads-table-row relative"` -- el
  * pseudo-elemento de la barra ancla contra ese `relative` existente, sin
  * tocar el componente.
@@ -497,7 +628,7 @@
   inset-block: 0;
   left: 0;
   width: 3px;
-  background: var(--cat-2);
+  background: var(--indigo);
   transform: scaleX(0);
   transform-origin: left center;
   opacity: 0;
@@ -529,4 +660,290 @@
   .tema-empresarial .leads-table-row::before {
     display: none;
   }
+}
+
+/*
+ * Catálogo Inputs / Botones (2026-08-28) -- decisión de producto: la sección
+ * "Buscadores" pasa a "Inputs" (ningún buscador de texto libre existe en el
+ * CRM, ver la nota de esa sección en `StyleguidePage.tsx`; no había nada real
+ * que mostrar ahí). En vez de generar controles nuevos vía Stitch (descartado
+ * -- la UI generada no respetaba esta línea gráfica), se generaliza el mismo
+ * patrón ya aprobado del login (`.login-input`, arriba) a los controles de
+ * formulario del resto de la app.
+ */
+
+/* `.control-input`: versión "densa" de `.login-input` para uso general fuera
+   de una pantalla de un solo momento -- 40px en vez de los 44px "aireados"
+   del login, mismo criterio de borde liviano y fondo papel. El foco de dos
+   capas se define arriba, junto a `.login-input:focus-visible` (mismo
+   selector combinado, misma declaración -- una sola familia visual). */
+.tema-empresarial .control-input {
+  height: 40px;
+  border-color: rgba(30, 42, 94, 0.14);
+  background-color: var(--papel);
+}
+
+/* Error -- mismo lenguaje de foco de dos capas que el estado normal, en
+   `--rojo` en vez de `--cat-2` (Fijo, "el rojo del semáforo, nunca un rojo
+   nuevo"). `aria-invalid="true"` ya es la convención del primitivo
+   compartido (`components/ui/input.tsx`: `aria-[invalid=true]:border-destructive`
+   por defecto) -- acá se sobreescribe el color exacto sin tocar ese archivo. */
+.tema-empresarial .control-input[aria-invalid="true"] {
+  border-color: var(--rojo);
+}
+
+.tema-empresarial .control-input[aria-invalid="true"]:focus-visible {
+  border-color: var(--rojo);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rojo) 28%, transparent);
+}
+
+/* Checkbox -- mismo primitivo compartido (`components/ui/checkbox.tsx`,
+   `border-primary`/`bg-primary` del tema base sin tocar el archivo), acento
+   `--cat-2` en vez del azul genérico de esa variante cuando está marcado, y
+   el mismo anillo de foco de dos capas que el resto de los controles. */
+.tema-empresarial .control-checkbox {
+  border-color: rgba(30, 42, 94, 0.3);
+}
+
+.tema-empresarial .control-checkbox[data-state="checked"] {
+  background: var(--cat-2);
+  border-color: var(--cat-2);
+}
+
+.tema-empresarial .control-checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-2) 32%, transparent);
+}
+
+/*
+ * Botones del catálogo -- reemplazan los overrides ad-hoc que traía
+ * `SeccionBotones` (`style={{ background: "var(--indigo)" }}`,
+ * `border-[color:var(--indigo)]/30` -- el mismo bug de `/NN` sobre una CSS
+ * var documentado arriba, se repetía acá). Radio propio de 8px: punto medio
+ * entre el `rounded-md` (6px) del primitivo compartido y el 12-20px de las
+ * cards -- una escala propia para controles, no un tercer valor suelto.
+ * `.boton-catalogo` es la base compartida (radio, transición, prensado);
+ * cada variante de color se agrega aparte, mismo criterio que
+ * `.login-input`/`.control-input` arriba.
+ */
+.tema-empresarial .boton-catalogo {
+  border-radius: 8px;
+  transition:
+    box-shadow 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    transform 120ms var(--ease-out);
+}
+
+.tema-empresarial .boton-catalogo:active {
+  transform: scale(0.97);
+}
+
+.tema-empresarial .boton-catalogo:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-2) 32%, transparent);
+}
+
+.tema-empresarial .boton-primario {
+  background: var(--indigo);
+  color: var(--papel);
+  box-shadow: 0 1px 2px rgba(30, 42, 94, 0.08);
+}
+
+.tema-empresarial .boton-primario:hover {
+  background: var(--indigo);
+  box-shadow: 0 4px 10px -4px rgba(30, 42, 94, 0.28);
+  transform: translateY(-1px);
+}
+
+.tema-empresarial .boton-secundario {
+  border-color: rgba(30, 42, 94, 0.25);
+  background: transparent;
+  color: var(--indigo-2);
+}
+
+.tema-empresarial .boton-secundario:hover {
+  background: color-mix(in srgb, var(--indigo) 6%, var(--papel));
+}
+
+/* Mismo `--rojo` del semáforo (Fijo) -- no el rojo default de shadcn
+   (`variant="destructive"` se mantiene por su semántica/comportamiento base,
+   el color se sobreescribe acá). */
+.tema-empresarial .boton-destructivo {
+  background: var(--rojo);
+  box-shadow: 0 1px 2px rgba(220, 38, 38, 0.12);
+}
+
+.tema-empresarial .boton-destructivo:hover {
+  background: var(--rojo);
+  box-shadow: 0 4px 10px -4px rgba(220, 38, 38, 0.32);
+  transform: translateY(-1px);
+}
+
+.tema-empresarial .boton-ghost {
+  color: var(--indigo-2);
+}
+
+.tema-empresarial .boton-ghost:hover {
+  background: color-mix(in srgb, var(--indigo) 5%, transparent);
+}
+
+.tema-empresarial .boton-enlace {
+  color: var(--indigo-2);
+}
+
+/*
+ * `.boton-hero` (2026-08-28, ficha "Acciones") -- excepción deliberada y
+ * acotada a la regla de arriba ("Chrome premium", `.chrome-gradiente`): un
+ * botón hero es exactamente el mismo tipo de elemento puntual que
+ * `.login-boton-primario` (ver esa nota, "un botón SÍ es el lugar puntual y
+ * acotado donde el research recomienda un gradiente premium"), generalizado
+ * acá como variante reutilizable del catálogo en vez de quedar amarrado solo
+ * al login. Mismo gradiente que `.chrome-gradiente`, misma sombra que
+ * `.login-boton-primario` -- ningún valor nuevo.
+ *
+ * Regla de uso, no solo de estilo: como máximo UNO por pantalla, reservado a
+ * la acción protagonista (ej. "Nueva oportunidad" del dashboard, el submit
+ * final de un wizard) -- nunca en una fila de tabla ni en una toolbar donde
+ * conviven varias acciones, porque ahí el gradiente vuelve a ser ruido en
+ * vez de jerarquía, el mismo problema que ya se documentó y revirtió para el
+ * chrome funcional (sidebar/header/tabla, 2026-08-28).
+ */
+.tema-empresarial .boton-hero {
+  background: linear-gradient(135deg, var(--marca-color-1) 0%, var(--marca-color-2) 100%);
+  color: var(--papel);
+  box-shadow: 0 8px 20px -10px rgba(30, 42, 94, 0.45);
+}
+
+.tema-empresarial .boton-hero:hover {
+  box-shadow: 0 10px 24px -10px rgba(30, 42, 94, 0.55);
+  transform: translateY(-1px);
+}
+
+/* Backdrop "spotlight" del hero (ficha "Acciones") -- a diferencia del frame
+   punteado/papel plano que comparten el resto de las variantes de botón, el
+   hero vive sobre una superficie oscura tintada con el mismo gradiente de
+   marca (a baja opacidad, sin repetir el gradiente completo detrás del
+   propio botón) para que el "uno por pantalla" se lea de un vistazo, no solo
+   se explique en la nota. */
+.tema-empresarial .hero-spotlight {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--marca-color-1) 92%, transparent) 0%, color-mix(in srgb, var(--marca-color-2) 92%, transparent) 100%);
+  border-radius: 8px;
+}
+
+/*
+ * Layout del "Directorio" (StyleguidePage.tsx, 2026-08-28) -- restructuración
+ * de presentación del catálogo (antes: 12 secciones planas apiladas) a una
+ * lectura tipo dossier corporativo (portada, sumario, fichas numeradas).
+ * Mismo tema `.tema-empresarial` aprobado, ningún token/color/sombra nuevo --
+ * solo composición estructural (grid, scroll, tipografía sobre un fondo
+ * oscuro) reutilizando las variables/valores que este archivo ya define.
+ */
+
+/* Scroll suave SOLO para los anclas del sumario hacia cada ficha -- `id`
+   scopeado a esta página (el único lugar donde existe
+   `#tema-empresarial-root`), respeta `prefers-reduced-motion` igual que el
+   resto de esta variante. */
+.tema-empresarial #tema-empresarial-root {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tema-empresarial #tema-empresarial-root {
+    scroll-behavior: auto;
+  }
+}
+
+/*
+ * Portada -- mismo fondo de 3 capas que `.welcome-splash` (viñeta radial +
+ * retícula clara + gradiente diagonal de marca), copiado 1:1 porque es
+ * exactamente el mismo tipo de momento "hero" (pantalla de un solo golpe,
+ * sin navegación que escanear) donde `.chrome-gradiente` ya está aprobado --
+ * mismos `rgba`/opacidades que ya usa ese componente, ningún valor nuevo.
+ */
+.tema-empresarial .dossier-portada {
+  min-height: 100vh;
+  background-color: var(--marca-color-1);
+  background-image:
+    radial-gradient(ellipse at center, transparent 40%, rgba(20, 32, 74, 0.38) 100%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(246, 241, 231, 0.045) 0,
+      rgba(246, 241, 231, 0.045) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(246, 241, 231, 0.045) 0,
+      rgba(246, 241, 231, 0.045) 1px,
+      transparent 1px,
+      transparent 26px
+    ),
+    linear-gradient(135deg, var(--marca-color-1) 0%, var(--marca-color-2) 100%);
+}
+
+/* Colofón de portada -- mismo tratamiento tipográfico que `.login-label`
+   (caption tracked, mayúsculas), sobre fondo oscuro: color en `--papel` en
+   vez de `--indigo-2`, mismo criterio de contraste que `.welcome-splash-marca`. */
+.tema-empresarial .dossier-colofon {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--papel) 70%, transparent);
+}
+
+/* Grilla de dos columnas de cada ficha -- columna angosta (eyebrow + título +
+   razón de ser) y columna flexible (la muestra viva). Apilada en mobile, dos
+   columnas desde `md`. */
+.tema-empresarial .dossier-ficha-grid {
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .tema-empresarial .dossier-ficha-grid {
+    grid-template-columns: minmax(220px, 320px) 1fr;
+    align-items: start;
+  }
+}
+
+/*
+ * Estado "Vacío" (ficha "Retroalimentación", 2026-08-28) -- `EmptyState.tsx`
+ * (`frontend/src/componentes/states/`) es compartido por la app real fuera de
+ * este catálogo, así que no se edita el componente: acá se lo restyla scoped
+ * bajo `.tema-empresarial .estado-vacio-tema` (clase agregada solo en el call
+ * site de `StyleguidePage.tsx`), vía selectores estructurales
+ * (svg/p:first-of-type/p:last-of-type) en vez de las clases Tailwind exactas
+ * del componente -- esas podrían cambiar sin aviso, la estructura del markup
+ * (ícono + título + descripción) es más estable como contrato. Fuera de
+ * `.tema-empresarial` (cualquier otro uso real de `EmptyState`) esta regla no
+ * aplica -- no toca nada.
+ *
+ * Borde: mismo `rgba(30, 42, 94, 0.18)` que ya usa `.leads-table-card` --
+ * ningún tono nuevo. Radio: 12px, el mismo que `.leads-table-card` (no los
+ * 20px de `.login-card`, reservados a la pieza central de una pantalla de un
+ * solo momento) -- el estado vacío reemplaza el contenido de una card de
+ * listado/tabla, es la misma familia de superficie, no un momento "hero".
+ */
+.tema-empresarial .estado-vacio-tema {
+  border-color: rgba(30, 42, 94, 0.18);
+  background: var(--papel);
+  border-radius: 12px;
+}
+
+.tema-empresarial .estado-vacio-tema svg {
+  color: var(--indigo);
+  opacity: 0.5;
+}
+
+.tema-empresarial .estado-vacio-tema p:first-of-type {
+  color: var(--indigo-2);
+}
+
+.tema-empresarial .estado-vacio-tema p:last-of-type {
+  color: var(--indigo-2);
+  opacity: 0.7;
 }
