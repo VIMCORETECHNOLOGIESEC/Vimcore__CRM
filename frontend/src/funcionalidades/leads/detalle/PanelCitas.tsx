@@ -86,7 +86,6 @@ function CitaDateTimeField({
               selected={selectedDate}
               onSelect={setDate}
               disabled={{ before: new Date() }}
-              initialFocus
             />
           </PopoverContent>
         </Popover>
