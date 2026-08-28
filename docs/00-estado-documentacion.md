@@ -6,9 +6,11 @@ fundación técnica multi-tenant (`Empresa`/`Membresia`, RLS de Postgres
 forzado, contexto de tenant por `AsyncLocalStorage`, CAS optimista) ya está
 implementada y en producción — Bloques A, B y C cerrados (`052e811`, 894/894
 tests). Lo que sigue siendo equivalente a single-company es el
-**comportamiento funcional** visible: routing por empresa, autoridad de
-cierre por membresía y dashboards jerárquicos dependen de Bloque D0/D/E, que
-siguen diferidos hasta después del despliegue (ver
+**comportamiento funcional**: routing por empresa, autoridad de cierre por
+membresía y dashboards jerárquicos. D0 es el único slice multi-tenant
+**previo al despliegue** y solo hace visible el aislamiento empresarial ya
+existente; Bloques D y E se ejecutan **después del despliegue**, y F queda
+al final, sujeto además a su dependencia dura de secuencia (ver
 `docs/blocks/d0-visualizacion-multitenant.md` y
 `docs/blocks/d-routing-oportunidad.md`).
 
@@ -17,7 +19,10 @@ siguen diferidos hasta después del despliegue (ver
 > **Autoridad:** mapa de confianza documental; no sustituye al código ni a las
 > reglas de negocio aprobadas.
 >
-> **Verificado contra:** rama `test/gpt`, commit `052e811`, 2026-08-28.
+> **Baseline documental reconciliado:** rama `test/gpt`, HEAD `3e8c70a`,
+> 2026-08-28.
+>
+> **Evidencia técnica de cierre A-C:** commit `052e811`, 894/894 tests.
 
 ## Ruta rápida de revisión
 
@@ -53,8 +58,8 @@ siguen diferidos hasta después del despliegue (ver
 | Documento | Estado | Autoridad | Verificación y uso actual |
 |---|---|---|---|
 | `README.md` | Vigente | Entrada al repositorio y flujo Docker | Ruta operativa soportada y mapa de documentación. |
-| `AGENTS.md` | Vigente | Políticas obligatorias para agentes | Define el baseline single-company actual y separa la evolución multi-tenant aún no aprobada. |
-| `docs/01-alcance-mvp.md` | Vigente con reservas | Baseline funcional del MVP v1 | Mezcla alcance comprometido con elementos todavía parciales: LinkedIn, X y atribución normalizada de campaña/cuenta. No representa el target multi-tenant. |
+| `AGENTS.md` | Vigente | Políticas obligatorias para agentes | Define el AS-IS con fundación multi-tenant implementada y comportamiento funcional todavía equivalente a single-company; separa D0 pre-despliegue de D/E/F post-despliegue. |
+| `docs/01-alcance-mvp.md` | Vigente con reservas | Baseline funcional del MVP v1 | Mezcla alcance comprometido con elementos todavía parciales como LinkedIn y X; la atribución normalizada de campaña/cuenta ya fue resuelta por Bloque A. No representa el target multi-tenant. |
 | `docs/02-reglas-negocio.md` | Vigente con reservas | Reglas del embudo v1 | El AS-IS de traspaso en `NUEVO` y SLA fue reconciliado; autoridad de cierre, rol dual y reglas TO-BE siguen pendientes. |
 | `docs/03-modelo-datos.md` | Vigente con reservas | Lectura resumida del modelo AS-IS | Regenerado desde `schema.prisma` hasta Bloque B (`Empresa`/`Membresia`); **no refleja los cambios de esquema de Bloque C** (columna `version` para CAS, políticas RLS, roles `crm_app`/`crm_bypass_jobs`, `empresaId` denormalizado en `Cita`/`LeadEvento`/`Notificacion`). `schema.prisma` y las migraciones mandan mientras esto no se regenere. |
 | `docs/04-formularios-semaforo.md` | Vigente con reservas | Formularios y rúbrica fija v1 | Los formularios calificables y la rúbrica están alineados. El cierre no: la API fija `cerradoEn`, no acepta una fecha enviada por el cliente y Venta no admite `observaciones`; solo No Venta acepta `observacionCierre`. |
@@ -67,14 +72,18 @@ siguen diferidos hasta después del despliegue (ver
 | `docs/11-plan-integracion.md` | Vigente | Snapshot de integración AS-IS | Resumen conciso verificado contra rutas, servicios y clientes HTTP actuales. El plan cronológico anterior queda en Git. |
 | `docs/12-pruebas-manuales-qa.md` | No confiable | Catálogo histórico de escenarios QA | Sus fixtures no coinciden con los seeds actuales; no permite certificar QA hasta reconstruirse. |
 | `docs/13-configuracion-bridges.md` | Vigente con reservas | Guía operativa de Meta y Google Forms | Es utilizable con verificación puntual de variables, modelo Facebook/Instagram y creación de cuentas. |
-| `docs/14-evolucion-multitenant.md` | Borrador TO-BE | Arquitectura candidata para discusión | No describe el producto actual ni autoriza migraciones. Holding como tenant es la decisión ya resuelta (D1, `docs/16` §8); el documento conserva valor como referencia de arquitectura y plan de migración. |
+| `docs/14-evolucion-multitenant.md` | Mixto | Referencia TO-BE histórica con corte AS-IS explícito | Conserva alternativas y dirección de arquitectura, pero su corte AS-IS actualizado reconoce A-C como implementados. Holding como tenant es una decisión resuelta (D1, `docs/16` §8); no autoriza por sí solo los bloques pendientes. |
 | `docs/15-benchmark-crm-y-roadmap.md` | Borrador TO-BE | Referencias de mercado y priorización futura | Compara capacidades con fuentes oficiales; sus recomendaciones no son requisitos aprobados ni prueba de implementación. |
 | `docs/16-hallazgos-y-preguntas.md` | Vigente | Síntesis ejecutiva entre equipos de hallazgos y orden de decisiones | Es la entrada para revisión cruzada en el corte declarado. No reemplaza los contratos funcionales/técnicos ni autoriza implementación. Los fragmentos de esquema/diseño de D1-D14 viven en `docs/blocks/`. |
 | `docs/17-seguridad-y-ciberseguridad.md` | Vigente | Política operativa para cambios sensibles | Separa controles AS-IS y gates TO-BE; consultar `docs/19` para evidencia auditada, riesgos y plan de pruebas. |
 | `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
 | `docs/19-auditoria-ciberseguridad.md` | Vigente con reservas | Informe consolidado de seguridad | Describe beneficios, hallazgos P0–P2, límites de la evidencia y pruebas pendientes; no autoriza cambios ni sustituye un pentest. |
 | `docs/21-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
-| `docs/blocks/{a..f}-*.md` | Mixto | Carve-out por bloque de la migración multi-tenant (D1-D14) | Bloques A, B y C: ✅ cerrados e implementados (ver su `Estado` individual en cada archivo; Bloque C cerró al 100% en `052e811`, 894/894 tests). Bloque D0 (`docs/blocks/d0-visualizacion-multitenant.md`, nuevo 2026-08-28): slice mínimo previo al despliegue — expone al frontend la separación por empresa que el backend ya resuelve, sin tocar archivos de alto riesgo. Bloque D completo (`docs/blocks/d-routing-oportunidad.md`): diferido a después del despliegue (2026-08-28) — su ciclo SDD ya corrió y quedó en Engram para retomarlo. Bloque E: Borrador TO-BE, depende de `Oportunidad`/`Producto` (diferidos junto con Bloque D). Bloque F: Borrador TO-BE con una **dependencia de secuencia dura, no solo de arquitectura** — solo puede ejecutarse después de que el trabajo de `dev-back`/`dev-front` sobre el `Usuario.rol` legacy esté congelado o mergeado, nunca en paralelo (17 archivos backend todavía referencian `RolUsuario` hoy). Ninguno de los tres autoriza implementación por sí solo. |
+| `docs/blocks/{a,b,c}-*.md` | Vigente | Bloques cerrados de la migración multi-tenant | A, B y C están implementados. Bloque C cerró en `052e811`, 894/894 tests. |
+| `docs/blocks/d0-visualizacion-multitenant.md` | Vigente | Contrato del único slice multi-tenant pre-despliegue | Expone al frontend la separación por empresa que el backend ya resuelve, sin routing, autoridad, dashboards ni cambios Prisma. |
+| `docs/blocks/d-routing-oportunidad.md` | Borrador TO-BE | Contrato post-despliegue de routing, autoridad y Oportunidad | Su ciclo SDD ya corrió y deberá ajustarse al calendario vigente antes de `apply`, no rehacerse. |
+| `docs/blocks/e-dashboards.md` | Borrador TO-BE | Contrato post-despliegue de dashboards | No puede cerrar antes de D porque depende de `Oportunidad`/`Producto`. |
+| `docs/blocks/f-retiro-legacy.md` | Borrador TO-BE | Retiro final de compatibilidad legacy | Último bloque post-despliegue; solo después de congelar o mergear el trabajo de `dev-back`/`dev-front` sobre `Usuario.rol`, nunca en paralelo. |
 
 ## Brechas abiertas confirmadas
 

@@ -6,9 +6,9 @@
 
 ## Alcance
 
-Cerrar la migración multi-tenant: convertir a `NOT NULL` el ownership por
-empresa que Bloque B introdujo como nullable, retirar la compatibilidad
-legacy (`Usuario.rol`), y fijar la regla de credenciales por bridge cuando
+Cerrar la migración multi-tenant: retirar la compatibilidad legacy que aún
+queda, especialmente `Usuario.rol`/`RolUsuario` y sus referencias asociadas,
+y fijar la regla de credenciales por bridge cuando
 una misma cuenta publicitaria de Meta se comparte entre empresas del mismo
 holding.
 
@@ -16,6 +16,27 @@ holding.
 
 - **Bloques B, C, D y E** — este bloque retira la compatibilidad temporal
   que esos bloques dejaron activa; retirarla antes rompería el rollback.
+
+## Precondición bloqueante — autoridad holding-wide sustituta (sin resolver)
+
+`Usuario.rol` legacy es hoy la **única** autoridad holding-wide implementada
+(super admin de holding, administrador de holding, supervisor de holding —
+D5/D6, `docs/16` §8). `Membresia.empresaId` es `NOT NULL` desde Bloque B/C:
+no existe una membresía holding-wide, y esa restricción **no cubre** el caso
+de autoridad a nivel holding — cubre solo el scope por empresa.
+
+Retirar `Usuario.rol` sin haber implementado antes un reemplazo funcional
+para ese scope holding-wide dejaría sin autoridad implementada a super
+admin/administrador/supervisor de holding. Esta nota **no propone** ese
+reemplazo — sería una decisión de producto/esquema que nadie tomó todavía
+(D5/D6 registran el rol de negocio, no el mecanismo de autoridad que lo
+reemplace).
+
+**Bloque F no puede ejecutarse hasta que exista una autoridad holding-wide
+sustituta diseñada, aprobada, implementada y verificada** (tests incluidos).
+Esta precondición es adicional a la dependencia de secuencia de "Enfoque de
+implementación" más abajo (congelar/mergear `dev-back`/`dev-front`); ambas
+deben cumplirse antes de iniciar este bloque.
 
 ## Decisión que implementa (ver rationale completo en `docs/16` §8 — no se repite acá)
 
@@ -28,8 +49,8 @@ holding.
 
 No hace falta ningún cambio de esquema adicional a lo ya introducido en
 Bloque B: `CuentaPublicitaria` ya tiene `@@unique([bridgeId, idExterno])`
-— único por bridge, no globalmente por `idExterno`. Una vez que `Bridge`
-tenga `empresaId` NOT NULL (cierre de este bloque), el mismo `idExterno` de
+— único por bridge, no globalmente por `idExterno`. Como `Bridge.empresaId`
+ya es `NOT NULL` desde Bloque C, el mismo `idExterno` de
 Meta puede registrarse en más de una fila (una por empresa) sin conflicto.
 Cada empresa configura su propio `tokenCifrado` para "su copia" de esa
 cuenta; si el token se renueva, hay que actualizarlo en cada fila por
@@ -39,8 +60,9 @@ empresas, mismo criterio que las credenciales de login por empresa
 
 ## Migración (de `docs/14` §13, Fase 7)
 
-- Convertir `Bridge.empresaId`, `Lead.empresaId` y el resto del ownership
-  aditivo de Bloque B a `NOT NULL`.
+- Inventariar las referencias legacy todavía existentes al iniciar el bloque;
+  no volver a incluir `Bridge.empresaId` ni `Lead.empresaId`, ambos ya
+  `NOT NULL` desde Bloque C.
 - Retirar `Usuario.rol`, el `enum RolUsuario` y cualquier relación de
   responsabilidad no scopeada por empresa que haya quedado como
   compatibilidad temporal.
@@ -53,9 +75,11 @@ empresas, mismo criterio que las credenciales de login por empresa
 
 ## Criterios de salida
 
-- Ninguna columna de ownership multi-empresa queda nullable por
-  compatibilidad.
+- La precondición bloqueante de arriba está cumplida: existe autoridad
+  holding-wide sustituta diseñada, aprobada, implementada y verificada.
 - `Usuario.rol` no existe más en el esquema ni en el código de autorización.
+- No quedan referencias de código, tipos, fixtures o contratos HTTP que
+  dependan de `RolUsuario` como autoridad legacy.
 - Backup, rollback y migración de producción verificados con evidencia, no
   solo planificados.
 - `docs/00-estado-documentacion.md` refleja el esquema multi-tenant como
@@ -93,8 +117,9 @@ deja explícito como bloqueante de proceso, no solo de arquitectura.
   (no crear una capa de compatibilidad nueva ni un archivo puente) —
   reemplazo directo por `Membresia.rol`/`habilitadoParaVenta`, ya cutover
   funcionalmente por Bloque D en `leads.access.ts` y el pool de asignación.
-- `backend/prisma/schema.prisma` — `Bridge.empresaId`/`Lead.empresaId` pasan
-  a `NOT NULL`; se retira `enum RolUsuario` y la columna `Usuario.rol`.
+- `backend/prisma/schema.prisma` — se retira `enum RolUsuario` y la columna
+  `Usuario.rol`; `Bridge.empresaId`/`Lead.empresaId` no cambian porque ya son
+  `NOT NULL` desde Bloque C.
   Mismo archivo único ya extendido por A/B/C/D/E.
 - `backend/src/lib/jwt.ts` + middlewares de rol — listado como alto riesgo
   en `docs/06` por ser transversal a toda ruta protegida; acá no es

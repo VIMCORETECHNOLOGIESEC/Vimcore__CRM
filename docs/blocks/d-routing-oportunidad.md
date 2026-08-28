@@ -11,7 +11,9 @@
 > (proposal/spec/design/tasks) ya corrió y quedó persistido en Engram
 > (`sdd/bloque-d-routing-oportunidad/{proposal,spec,design,tasks}`,
 > observations #83-#86) — al retomarlo, leer esos artefactos antes de
-> replanificar desde cero.
+> replanificar desde cero. Antes de `apply` se actualizarán únicamente el
+> calendario, las dependencias y cualquier supuesto que haya cambiado; los
+> artefactos no se rehacen.
 
 > Fase 5 de `docs/16-hallazgos-y-preguntas.md` §7 ("Routing y handoff").
 > Cubre Fase 5 de `docs/14-evolucion-multitenant.md` §13 ("Routing y
@@ -19,10 +21,11 @@
 
 ## Alcance
 
-Activar el pool de asignación scopeado por empresa, la matriz de
-competencia asesor/venta, el canal de ingreso manual de leads, y separar
-`Lead` (contacto) de `Oportunidad` (negociación) para permitir varias
-negociaciones paralelas del mismo cliente en la misma empresa.
+Después del despliegue, activar el pool de asignación scopeado por empresa,
+la matriz esencial de competencia asesor/venta y separar `Lead` (contacto)
+de `Oportunidad` (negociación) para permitir varias negociaciones paralelas
+del mismo cliente en la misma empresa. El canal manual y las excepciones D9
+permanecen como entregables diferidos independientes.
 
 ### Esencial vs. diferido
 
@@ -33,12 +36,11 @@ sola vez:
   de asignación scopeado por empresa (D3/D4), autoridad de cierre (D7),
   split `Lead`/`Oportunidad` (D13), y la decisión registrada del riesgo de
   invariante `asesorId` (abajo).
-- **Diferido** (módulo de catálogo, con mock — ver "Contratos mock para
-  módulos dependientes" más abajo): el canal de ingreso manual
-  (`CanalManual`, más abajo) y las excepciones auditadas de
-  Administrador/Supervisor (D9). Ninguno de los dos bloquea que el
-  aislamiento y el routing esencial funcionen; se integran cuando este
-  bloque cierre, contra el shape ya especificado acá.
+- **Diferido** (no bloquea el cierre esencial): el canal de ingreso manual
+  (`CanalManual`) y las excepciones auditadas de Administrador/Supervisor
+  (D9). Sus contratos mock pueden prepararse de forma independiente, pero su
+  integración real tendrá criterios de cierre propios; no se presume incluida
+  en el cierre esencial de D.
 
 ## Requiere cerrado
 
@@ -66,15 +68,15 @@ sola vez:
 - **D14 — Efecto cascada de D13 sobre D2/D3/D7/D8/D9**: catálogo `Producto`
   por empresa, reglas de dedup/pool/SLA de Oportunidad.
 
-## Riesgo de diseño a resolver en este bloque (movido desde `docs/16` §8.1)
+## Decisión de invariante `asesorId` (artefactos Engram #83-#86)
 
-**Invariante de `Lead.asesorId`/`Oportunidad.asesorId` en riesgo.** D3 asume
-que los candidatos del pool son usuarios con rol Asesor. Si Administrador se
-autoasigna vía la excepción de D9 usando el mismo campo `asesorId`, cualquier
-cálculo de carga (D3) o de rendimiento de asesor (Bloque E, D10) que asuma
-esa invariante se corrompe en silencio. Decidir antes de implementar si
-Administrador puede ocupar `asesorId` directamente o si necesita un marcador
-separado (ej. `gestionadoPorAdmin`) para excluirse de esos cálculos.
+Quien ocupe `Lead.asesorId`, `Oportunidad.asesorId` o
+`Oportunidad.vendedorId` debe tener una `Membresia` real con rol `ASESOR` en
+la empresa del lead. No se agrega un marcador `gestionadoPorAdmin`: una
+persona con excepción D9 deberá tener también la membresía ASESOR
+correspondiente. La validación específica del camino D9 y el join de
+`metricas.repository.ts::getPorAsesorConSla` se implementan cuando aterrice
+D9; no bloquean el núcleo esencial.
 
 ## Esquema Prisma — Oportunidad y Producto (movido desde `docs/16` §8, D13/D14)
 
@@ -82,7 +84,9 @@ separado (ej. `gestionadoPorAdmin`) para excluirse de esos cálculos.
 model Oportunidad {
   id                String     @id @default(uuid()) @db.Uuid
   leadId            String     @map("lead_id") @db.Uuid
+  empresaId         String     @map("empresa_id") @db.Uuid
   productoId        String?    @map("producto_id") @db.Uuid
+  version           Int        @default(0)
   etapa             EtapaLead  @default(NUEVO)
   semaforo          Semaforo?
   puntuacion        Int?
@@ -96,10 +100,12 @@ model Oportunidad {
   creadaEn          DateTime   @default(now()) @map("creada_en") @db.Timestamptz(6)
 
   lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   producto Producto? @relation(fields: [productoId], references: [id])
   asesor   Usuario? @relation("OportunidadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
   vendedor Usuario? @relation("OportunidadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
 
+  @@index([empresaId])
   @@map("oportunidades")
 }
 
@@ -137,6 +143,26 @@ la Oportunidad ya está habilitado para venta, se autoasigna al instante
 (`backend/src/services/sla.calculator.ts`), con `Empresa.slaOportunidadHoras`
 como configuración por empresa. D7 no cambia: la autoridad de cierre está
 anclada al responsable vigente, sin importar cómo llegó a serlo.
+
+### Momento de apertura de la Oportunidad (reformulado — `etapa` ya no vive en `Lead`)
+
+`docs/16` §8 (D14) describe el momento de apertura como "en cualquier etapa
+del Lead". Con el esquema de arriba, `etapa` deja de existir en `Lead` (pasa
+a `Oportunidad` desde su creación), así que esa frase ya no puede leerse
+literal. Reformulación compatible con D13/D14: la apertura de una Oportunidad
+ocurre desde el contacto/detalle del Lead **en cualquier momento** de su
+gestión — no depende de un campo `etapa` del Lead, porque ese campo ya no
+existe ahí. `Oportunidad.etapa` arranca en `NUEVO` al crearse,
+independientemente de cuánto avanzó la gestión del Lead que la originó.
+
+> **Precondición de diseño pendiente (no resuelta acá):** una vez que `etapa`
+> vive solo en `Oportunidad`, falta definir cómo preservar o representar el
+> estado de gestión previo del Lead mientras **todavía no existe ninguna
+> Oportunidad** para él (por ejemplo, un Lead contactado pero sin negociación
+> abierta todavía). Este documento no inventa un campo o mecanismo nuevo para
+> cubrir ese hueco — queda señalado como diseño abierto a resolver antes de
+> implementar el split `Lead`/`Oportunidad`, no como parte del cierre esencial
+> ya descrito arriba.
 
 ## Canal de ingreso manual y catálogo dinámico (movido desde `docs/16` §8.4)
 
@@ -223,7 +249,8 @@ real cuando se agregue el endpoint.
 
 ## Migración (de `docs/14` §13, Fase 5)
 
-- Activar elegibilidad por fuente (D4).
+- Activar elegibilidad por membresía de empresa completa (D4), sin sub-filtro
+  por red social.
 - Migrar `ultimaAsignacionEn` al scope de membresía/pool empresarial.
 - Implementar precedencia de routing y fallback.
 - Persistir primer contacto y estado de handoff.
@@ -232,12 +259,30 @@ real cuando se agregue el endpoint.
 
 ## Criterios de salida
 
-- El pool de asignación y el catálogo de canal manual operan scopeados por
-  empresa, verificado con datos de al menos dos empresas.
-- `Oportunidad`/`Producto` existen en el esquema y las dashboards de Bloque E
-  ya pueden consumirlos.
-- El riesgo de invariante de `asesorId` (arriba) tiene decisión registrada,
-  no solo señalada.
+### Cierre esencial de Bloque D
+
+- El pool de asignación opera scopeado por empresa, verificado con datos de
+  al menos dos empresas del mismo tenant holding.
+- La autoridad de cierre usa `Membresia` y `habilitadoParaVenta` según D7;
+  no depende de `Usuario.rol` para esa decisión.
+- `Oportunidad`/`Producto` existen en el esquema y Bloque E puede consumirlos.
+- El split Lead→Oportunidad, el handoff D8 y las reglas D13/D14 esenciales
+  tienen pruebas observables.
+- El riesgo de invariante de `asesorId` tiene decisión registrada, no solo
+  señalada.
+- La precondición de diseño pendiente sobre el estado previo del Lead sin
+  Oportunidad (ver "Momento de apertura de la Oportunidad" arriba) tiene
+  decisión registrada antes de implementar el split `Lead`/`Oportunidad`.
+
+### Criterios diferidos, no bloqueantes
+
+- `CanalManual` y los orígenes manual/recomendación tienen implementación y
+  pruebas cuando se active ese módulo.
+- Las excepciones auditadas de Administrador/Supervisor (D9) se implementan
+  con motivo, auditoría y el guard de membresía acordado.
+
+La ausencia de estos dos entregables diferidos no impide cerrar el núcleo
+post-despliegue de D ni habilitar la dependencia técnica de Bloque E.
 
 ## Enfoque de implementación — capas existentes, sin reestructuración
 
@@ -251,9 +296,11 @@ archivos ya existentes es un costo de coordinación aceptado.
 **Archivos existentes que se editan (inevitable, no se puede evitar tocarlos
 para D3/D7/D13):**
 
-- `backend/src/services/leads.access.ts` — cutover de `canClose`/`canEdit`/
-  `canTransfer` de `Usuario.rol` a `Membresia.rol`/`habilitadoParaVenta`
-  (D7). Ya señalado en `docs/06-modulos-backend.md` como archivo de alto
+- `backend/src/services/leads.access.ts` — cutover esencial de `canClose`/
+  `canReassign`/`canTransfer` de `Usuario.rol` a
+  `Membresia.rol`/`habilitadoParaVenta`; `canRead`/`canEdit` quedan fuera de
+  los artefactos #83-#86 y deberán resolverse antes de F. Ya señalado en
+  `docs/06-modulos-backend.md` como archivo de alto
   riesgo "reescrito tanto por Bloque C como por Bloque D" — bajo esta
   directiva pasa de "evitar" a "coordinar antes de editar": avisar al equipo
   antes del PR, no diferirlo a un archivo nuevo paralelo (dividiría la
