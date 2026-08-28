@@ -1,6 +1,6 @@
 import { NavLink } from "react-router";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { hasRoleAccess } from "@/funcionalidades/autenticacion/permissions";
 import { NAVIGATION_ITEMS } from "./navigation";
 

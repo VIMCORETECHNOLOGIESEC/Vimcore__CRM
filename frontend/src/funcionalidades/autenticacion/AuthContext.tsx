@@ -1,37 +1,10 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getRefreshToken, restoreSession, setOnSessionExpired, setTokens } from "@/api/httpClient";
 import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
 import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
-
-export interface AuthContextValue {
-  user: AuthenticatedUser | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (correo: string, password: string) => Promise<AuthenticatedUser>;
-  logout: () => Promise<void>;
-  hasRole: (allowedRoles?: readonly RolUsuario[]) => boolean;
-}
-
-/**
- * Exportado a propósito (además de `AuthProvider`/`useAuth`): permite
- * componer un `<AuthContext.Provider value={...}>` stub con un usuario mock
- * fijo, sin pasar por la lógica real de `AuthProvider` (restauración de
- * sesión, `useQuery` de perfil). Único consumidor hoy:
- * `frontend/src/temas/variante-empresarial/StyleguidePage.tsx`, para previsualizar
- * `Sidebar`/`Header` de forma aislada sin wiring de red. No cambia el
- * comportamiento de `AuthProvider`/`useAuth` para el resto de la app.
- */
-export const AuthContext = createContext<AuthContextValue | null>(null);
+import { AuthContext, type AuthContextValue } from "./authContext";
 
 /**
  * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver
@@ -188,12 +161,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth debe usarse dentro de <AuthProvider>");
-  }
-  return context;
 }

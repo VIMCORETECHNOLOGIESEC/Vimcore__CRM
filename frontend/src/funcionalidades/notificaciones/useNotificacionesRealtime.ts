@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import type { Notificacion } from "@/tipos/notificacion";
 import {
   connectNotificacionesSse,

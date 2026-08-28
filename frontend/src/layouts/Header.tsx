@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { CampanaNotificaciones } from "@/funcionalidades/notificaciones/CampanaNotificaciones";
 import { usePageHeaderValue } from "./PageHeaderContext";
 import { Sidebar } from "./Sidebar";

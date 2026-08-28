@@ -3,7 +3,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AccionesResponsable } from "./AccionesResponsable";
 import { LeadDatosContacto } from "./LeadDatosContacto";
