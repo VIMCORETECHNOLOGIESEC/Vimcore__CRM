@@ -13,10 +13,62 @@
    identifica su scope y solo muestra sus propios datos.
 4. Confirmar que no hay cambios Prisma, routing, autoridad ni dashboards.
 
-## Estado (2026-08-28)
+## Estado (2026-08-29, actualizado)
 
-Aún no implementado. Este contrato reemplaza, para efectos de qué se ejecuta
-antes del despliegue, la entrada directa a Bloque D completo.
+Backend implementado y probado: `a5d7c4f` (`feat(bloque-d0): resolver
+empresaNombre server-side en GET /auth/perfil`) agrega
+`empresa.repository.ts::findById` y extiende `auth.controller.ts::getPerfil`
+para incluir `empresaNombre`; falla cerrada si una sesión company no puede
+resolver su `Empresa`. 5 tests nuevos, suite completa 899/899.
+
+Frontend pendiente — no es solo el indicador visual, hay dos pasos:
+
+1. **Tipado**: `AuthContext.tsx` tipa hoy la respuesta de `GET /auth/perfil`
+   como `AuthenticatedUser`, y `empresaNombre` vive en `PerfilResponse`
+   (backend), un tipo más ancho que `AuthenticatedUser` a propósito — el
+   campo llega en el JSON pero el frontend lo descarta en silencio hasta que
+   se amplíe el tipo del lado cliente.
+2. **UI**: construir el indicador persistente de scope de sesión en el shell
+   autenticado (`Header`/`Sidebar`), como exige "Contrato frontend" abajo.
+
+Este contrato reemplaza, para efectos de qué se ejecuta antes del despliegue,
+la entrada directa a Bloque D completo.
+
+## Riesgo de colisión conceptual con `configuracion-empresa` (anotado 2026-08-29)
+
+La rama `feature/tema-empresarial-integracion` ya tiene un módulo
+`configuracion-empresa` (`backend/src/{controllers,repositories,routes,
+schemas,services}/configuracion-empresa.*`,
+`frontend/src/funcionalidades/configuracion-empresa/configuracion-empresa.api.ts`)
+con un modelo **singleton sin `empresaId`** — una sola fila para toda la
+instancia, con un campo `nombre` (string, ≤80 chars) pensado como nombre de
+marca de la instancia/pantalla de bienvenida post-login, junto a
+`colorPrimario`/`colorSecundario`.
+
+No hay relación de datos entre ambos: `ConfiguracionEmpresa.nombre` es texto
+de marca global de la instancia; `empresaNombre` (este bloque) es el nombre
+real de la empresa-tenant, resuelto por fila desde `Empresa`. No es una
+violación de alcance de D0 — ninguno de los dos objetivos se pisa a nivel de
+dato o de autoridad — pero ambos van a convivir en el mismo terreno visual
+(`LoginPage`/`Header`) y comparten vocabulario ("empresa", "nombre"), lo que
+se presta a confusión de usuario si no se etiqueta explícitamente en la UI
+cuál es cuál (p. ej. "Empresa: <empresaNombre>" vs. el nombre de marca de la
+instancia en la pantalla de bienvenida). Dejar esto resuelto en el diseño del
+indicador antes de integrarlo, no como ajuste posterior.
+
+**Verificado en código (2026-08-29):** `configuracion-empresa.api.ts` y
+`ConfiguracionEmpresaPage.tsx` documentan explícitamente "App single-tenant
+(AGENTS.md §1): esta es la ÚNICA configuración para todo el despliegue... a
+propósito NO se agrega lógica multi-tenant acá". El commit `78635db` en
+`feature/tema-empresarial-integracion` ya mergeó el backend de D0
+(`sessionScope`/`empresaId` multi-tenant) en la misma rama donde vive ese
+módulo deliberadamente single-tenant — no es solo un choque de UI, es una
+premisa de diseño escrita que convive con código multi-tenant real en el
+mismo árbol. No bloquea D0 (el indicador va en el shell autenticado
+post-login, `configuracion-empresa` solo se lee en el splash de login), pero
+alguien debería dejar registrada la decisión de que `configuracion-empresa`
+sigue siendo instancia-global a propósito y no se reconvierte a per-tenant
+como parte de D0.
 
 ## Objetivo
 
