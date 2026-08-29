@@ -68,6 +68,74 @@ sola vez:
 - **D14 — Efecto cascada de D13 sobre D2/D3/D7/D8/D9**: catálogo `Producto`
   por empresa, reglas de dedup/pool/SLA de Oportunidad.
 
+## Hallazgo: `/usuarios` sin aislamiento por empresa (agregado 2026-08-29)
+
+Verificado en código, no es una hipótesis: `usuarios.service.ts::buildWhere`
+(consumido por `GET /usuarios`) no filtra por `empresaId` ni consulta
+`Membresia` en ningún punto — solo `busqueda`/`rol`/`activo`. Cualquier
+usuario con `Usuario.rol = ADMINISTRADOR` ve el listado completo de usuarios
+de **toda la instancia**, cruzando empresas. `usuarios` tampoco está en el
+inventario RLS de Bloque C (`leads`/`bridges`/`citas`/`lead_eventos`/
+`notificaciones`), así que no hay red de contención a nivel Postgres.
+
+Más grave que la lectura: `usuarios.service.ts::updateUsuario(id, input)`
+tampoco valida que el usuario objetivo pertenezca a la empresa del actor —
+solo opera por `id`. Un Administrador de Empresa A que obtiene el `id` de un
+usuario de Empresa B (vía el mismo listado sin aislar) puede cambiarle
+`nombre`/`correo`/`rol`/`activo` y **resetear su contraseña**
+(`input.password` → `passwordHash` directo). No es solo fuga de datos, es
+control de cuenta cruzando la frontera de empresa.
+
+Esto contradice directamente D5 (`docs/16` §8, resuelto 2026-08-25):
+"Administrador de empresa: ... Sin acceso a otras empresas del holding." El
+gate de acceso real (`requireRole` backend, `hasRoleAccess` frontend) compara
+contra `Usuario.rol` legacy, no `Membresia.rol` — el módulo de usuarios nunca
+tuvo el cutover a membresía que sí tuvieron login (D0) y parte de leads
+(Bloque C). Existe `shadowAuthorizationService.compareRequireRole` corriendo
+en sombra sobre este mismo middleware (mismo patrón que B/C) — la decisión
+correcta ya se calcula en paralelo, solo falta aplicarla.
+
+No estaba cubierto por el alcance original de este documento (`leads.access.ts`/
+`asignacion.service.ts`, ver "Enfoque de implementación" abajo) — se agrega acá
+como gap nuevo. **Sin clasificar todavía** si es esencial o diferido; queda
+pendiente esa decisión, igual que la precondición de diseño de "Momento de
+apertura de la Oportunidad" más abajo en este documento.
+
+## Estructura de usuarios para el holding — membresía por empresa, incluidas futuras (agregado 2026-08-29)
+
+Confirmado en `docs/16` §8, D5/D6 (resuelto 2026-08-25): el modelo de dos
+niveles ya está documentado, no es una decisión nueva —
+
+- **Administrador/Supervisor de holding**: pueden "ingresar a cada empresa
+  individualmente para revisar" (D5) — dashboards y CRM de cada empresa del
+  holding.
+- **Administrador/Supervisor de empresa**: acceso únicamente a la empresa
+  bajo la que fueron creados/registrados.
+
+Lo que **sí es nuevo** (no documentado en ningún lugar del árbol `docs/`,
+confirmado por barrido completo): el mecanismo de implementación. La premisa
+es que un usuario holding-scoped debe tener una `Membresia` real en **cada**
+empresa del holding — incluidas las que se creen después, no solo las
+existentes al momento de su alta. `docs/16` §8.2 ya confirma que el schema lo
+permite ("un usuario sí puede tener varias membresías activas en distintas
+empresas"); lo que falta es el auto-provisioning: crear la fila `Membresia`
+correspondiente cada vez que (a) se da de alta un usuario holding-scoped, y
+(b) se crea una `Empresa` nueva bajo un holding que ya tiene usuarios
+holding-scoped.
+
+`c-aislamiento.md` (líneas 84-90) ya había señalado este hueco como "diseño
+futuro de D6, no implementado por Bloque C" — sin nombrar el mecanismo. Esta
+nota lo completa, pero no lo implementa todavía.
+
+**Hueco sin resolver, no cubierto por este mecanismo:** crear la *primera*
+empresa de un holding. El super-admin de holding no puede tener una
+`Membresia` en una `Empresa` que todavía no existe — ese bootstrap necesita
+quedar como una excepción real a nivel holding (flag o mecanismo aparte), no
+derivable de membresía. Ver referencia cruzada en
+`docs/blocks/f-retiro-legacy.md` — este mecanismo es candidato a resolver la
+precondición bloqueante de Bloque F para todo lo que ya se evalúa por
+membresía, pero el caso de bootstrap queda fuera de esa resolución.
+
 ## Decisión de invariante `asesorId` (artefactos Engram #83-#86)
 
 Quien ocupe `Lead.asesorId`, `Oportunidad.asesorId` o
