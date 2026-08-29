@@ -179,3 +179,71 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
     expect(preview.style.background).toContain("rgb(171, 205, 239)");
   });
 });
+
+describe("ConfiguracionEmpresaPage — restaurar valores predeterminados", () => {
+  it("no llama a la mutación hasta confirmar en el diálogo", async () => {
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(
+      configuracionFake({ nombre: "Arcano Motos", colorPrimario: "#7c2d12", colorSecundario: "#f97316" }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByLabelText("Nombre de la empresa");
+    await user.click(screen.getByRole("button", { name: "Restaurar valores predeterminados" }));
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(updateConfiguracionEmpresaApiMock).not.toHaveBeenCalled();
+  });
+
+  it("cancelar el diálogo no envía ningún cambio", async () => {
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(
+      configuracionFake({ nombre: "Arcano Motos", colorPrimario: "#7c2d12", colorSecundario: "#f97316" }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByLabelText("Nombre de la empresa");
+    await user.click(screen.getByRole("button", { name: "Restaurar valores predeterminados" }));
+    await screen.findByRole("alertdialog");
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+    );
+    expect(updateConfiguracionEmpresaApiMock).not.toHaveBeenCalled();
+  });
+
+  it("confirmar el diálogo envía el default de fábrica completo, sin importar lo editado", async () => {
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(
+      configuracionFake({ nombre: "Arcano Motos", colorPrimario: "#7c2d12", colorSecundario: "#f97316" }),
+    );
+    updateConfiguracionEmpresaApiMock.mockResolvedValue(configuracionEmpresaApi.CONFIGURACION_EMPRESA_DEFAULT);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByLabelText("Nombre de la empresa");
+    await user.click(screen.getByRole("button", { name: "Restaurar valores predeterminados" }));
+    await screen.findByRole("alertdialog");
+    await user.click(screen.getByRole("button", { name: "Restaurar" }));
+
+    await waitFor(() =>
+      expect(updateConfiguracionEmpresaApiMock).toHaveBeenCalledWith(
+        configuracionEmpresaApi.CONFIGURACION_EMPRESA_DEFAULT,
+      ),
+    );
+    expect(toastSuccessMock).toHaveBeenCalledWith("Configuración de la empresa actualizada correctamente.");
+  });
+
+  it("el texto del diálogo advierte la pérdida de cambios y la necesidad de recargar", async () => {
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(configuracionFake());
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByLabelText("Nombre de la empresa");
+    await user.click(screen.getByRole("button", { name: "Restaurar valores predeterminados" }));
+
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(dialogo).toHaveTextContent(/perder/i);
+    expect(dialogo).toHaveTextContent(/recarg/i);
+  });
+});

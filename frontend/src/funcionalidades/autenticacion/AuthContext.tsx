@@ -11,8 +11,14 @@ import { AuthContext, type AuthContextValue } from "./authContext";
  * `autenticacion.api.ts#getPerfilApi` y `backend/src/controllers/auth.controller.ts`).
  * Si el backend cambia la forma de esa respuesta, hay que mantener
  * sincronizado el tipo `AuthenticatedUser` en `@/tipos/usuario`.
+ *
+ * Exportada (tema-empresarial-integracion, Tarea 3): `useUpdateEmpresaApariencia`
+ * (`funcionalidades/empresa-apariencia/useEmpresaApariencia.ts`) invalida esta
+ * misma query tras restaurar el color propio de la empresa, para que el
+ * cambio se refleje sin esperar un login nuevo -- sin duplicar el literal
+ * `["auth", "perfil"]` en dos módulos.
  */
-const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
+export const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
 
 /**
  * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, tabla de estados

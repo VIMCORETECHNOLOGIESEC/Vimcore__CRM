@@ -45,9 +45,11 @@ describe("foregroundForContrast", () => {
   });
 });
 
+const holdingPersonalizado = { colorPrimario: "#134e4a", colorSecundario: "#10b981" };
+
 describe("estilosDeMarcaPorEmpresa", () => {
-  it("sesion company con ambos colores seteados devuelve las 8 variables de acento", () => {
-    const estilos = estilosDeMarcaPorEmpresa(usuarioBase);
+  it("nivel 1 -- sesion company con ambos colores propios seteados devuelve las 8 variables de acento (ignora el holding)", () => {
+    const estilos = estilosDeMarcaPorEmpresa(usuarioBase, holdingPersonalizado);
     expect(estilos).toEqual({
       "--primary": "249 115 22",
       "--primary-foreground": "30 42 94",
@@ -59,30 +61,64 @@ describe("estilosDeMarcaPorEmpresa", () => {
     });
   });
 
-  it("sesion holding no devuelve overrides -- usa la paleta global sin cambios", () => {
-    expect(
-      estilosDeMarcaPorEmpresa({
-        ...usuarioBase,
-        sessionScope: "holding",
-        empresaId: null,
-        empresaNombre: null,
-        empresaColorPrimario: null,
-        empresaColorSecundario: null,
-      }),
-    ).toBeUndefined();
+  it("nivel 2 -- sesion holding usa el color EN VIVO de configuracion-empresa cuando llegó", () => {
+    const estilos = estilosDeMarcaPorEmpresa(
+      { ...usuarioBase, sessionScope: "holding", empresaId: null, empresaNombre: null, empresaColorPrimario: null, empresaColorSecundario: null },
+      holdingPersonalizado,
+    );
+    expect(estilos).toEqual({
+      "--primary": "16 185 129",
+      "--primary-foreground": "30 42 94",
+      "--ring": "16 185 129",
+      "--sidebar-primary": "16 185 129",
+      "--sidebar-primary-foreground": "30 42 94",
+      "--sidebar-accent": "16 185 129",
+      "--sidebar-accent-foreground": "30 42 94",
+    });
   });
 
-  it("empresa sin color propio (nulls) no devuelve overrides", () => {
-    expect(
-      estilosDeMarcaPorEmpresa({
-        ...usuarioBase,
-        empresaColorPrimario: null,
-        empresaColorSecundario: null,
-      }),
-    ).toBeUndefined();
+  it("nivel 2 -- empresa sin color propio (nulls) usa el color EN VIVO de configuracion-empresa cuando llegó", () => {
+    const estilos = estilosDeMarcaPorEmpresa(
+      { ...usuarioBase, empresaColorPrimario: null, empresaColorSecundario: null },
+      holdingPersonalizado,
+    );
+    expect(estilos).toEqual({
+      "--primary": "16 185 129",
+      "--primary-foreground": "30 42 94",
+      "--ring": "16 185 129",
+      "--sidebar-primary": "16 185 129",
+      "--sidebar-primary-foreground": "30 42 94",
+      "--sidebar-accent": "16 185 129",
+      "--sidebar-accent-foreground": "30 42 94",
+    });
   });
 
-  it("usuario null no devuelve overrides", () => {
-    expect(estilosDeMarcaPorEmpresa(null)).toBeUndefined();
+  it("nivel 3 -- sesion holding sin config de holding (carga/error de la query) cae al default de fábrica", () => {
+    const estilos = estilosDeMarcaPorEmpresa(
+      { ...usuarioBase, sessionScope: "holding", empresaId: null, empresaNombre: null, empresaColorPrimario: null, empresaColorSecundario: null },
+      undefined,
+    );
+    expect(estilos).toEqual({
+      "--primary": "37 99 235",
+      "--primary-foreground": "255 255 255",
+      "--ring": "37 99 235",
+      "--sidebar-primary": "37 99 235",
+      "--sidebar-primary-foreground": "255 255 255",
+      "--sidebar-accent": "37 99 235",
+      "--sidebar-accent-foreground": "255 255 255",
+    });
+  });
+
+  it("nivel 3 -- empresa sin color propio y sin config de holding cae al default de fábrica", () => {
+    const estilos = estilosDeMarcaPorEmpresa(
+      { ...usuarioBase, empresaColorPrimario: null, empresaColorSecundario: null },
+      undefined,
+    );
+    expect(estilos?.["--primary"]).toBe("37 99 235");
+  });
+
+  it("usuario null no devuelve overrides (sesion sin resolver todavia)", () => {
+    expect(estilosDeMarcaPorEmpresa(null, holdingPersonalizado)).toBeUndefined();
+    expect(estilosDeMarcaPorEmpresa(null, undefined)).toBeUndefined();
   });
 });

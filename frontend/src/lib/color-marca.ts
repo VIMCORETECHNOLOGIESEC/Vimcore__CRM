@@ -1,3 +1,5 @@
+import type { ConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 
 /**
@@ -88,23 +90,37 @@ export function foregroundForContrast(backgroundTriplet: string): string {
  * que los colores del seed de demostración (naranja/verde) NO cumplen AA
  * 4.5:1 con blanco fijo.
  *
- * Sesión `holding` o empresa sin color propio (`null`): sin overrides,
- * mismo comportamiento que hoy (paleta `--vimcore` global). Mismo criterio
- * de fallback que `LoginPage.tsx::resolverColorDeMarca`.
+ * Jerarquía de 3 niveles (tema-empresarial-integracion, cierre del gap de
+ * nivel intermedio): 1) color propio de la `Empresa` de la sesión `company`
+ * (ambos campos seteados) -- sin cambios respecto a la versión anterior de
+ * esta función; 2) si no, el color EN VIVO de `configuracion-empresa`
+ * (holding, `useConfiguracionEmpresa()` en `AppLayout.tsx`, segundo
+ * parámetro acá) -- cubre tanto sesión `holding` como una `Empresa` sin
+ * color propio; 3) si esa config de holding todavía no llegó (carga o
+ * error de la query), `CONFIGURACION_EMPRESA_DEFAULT` -- mismo criterio de
+ * resiliencia que `LoginPage.tsx::obtenerConfiguracionEmpresaConFallback`,
+ * el shell autenticado nunca debe demorar ni romperse por esto. Con esta
+ * jerarquía SIEMPRE hay un color activo -- la función ya no devuelve
+ * `undefined` salvo que `usuario` sea `null` (sesión sin resolver todavía).
  */
 export function estilosDeMarcaPorEmpresa(
   usuario: AuthenticatedUser | null,
+  configuracionHolding: Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> | undefined,
 ): Record<string, string> | undefined {
-  if (
-    !usuario ||
-    usuario.sessionScope !== "company" ||
-    usuario.empresaColorPrimario === null ||
-    usuario.empresaColorSecundario === null
-  ) {
+  if (!usuario) {
     return undefined;
   }
 
-  const acento = hexToRgbTriplet(usuario.empresaColorSecundario);
+  const tieneColorPropio =
+    usuario.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null;
+
+  const colorSecundario = tieneColorPropio
+    ? (usuario.empresaColorSecundario as string)
+    : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
+
+  const acento = hexToRgbTriplet(colorSecundario);
   const acentoForeground = foregroundForContrast(acento);
 
   return {

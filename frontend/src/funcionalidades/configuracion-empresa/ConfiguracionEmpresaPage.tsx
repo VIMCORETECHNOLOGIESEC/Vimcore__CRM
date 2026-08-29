@@ -1,7 +1,18 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { Controller, useForm, type Control, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { getErrorMessage } from "@/api/httpClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +74,7 @@ export function ConfiguracionEmpresaPage() {
 
   const { data, isLoading, isError, error, refetch } = useConfiguracionEmpresa();
   const actualizar = useUpdateConfiguracionEmpresa();
+  const [confirmandoRestauracion, setConfirmandoRestauracion] = useState(false);
 
   if (isLoading) {
     return <LoadingState rows={3} rowHeight="h-12" />;
@@ -85,6 +97,42 @@ export function ConfiguracionEmpresaPage() {
         enviando={actualizar.isPending}
         onSubmit={(valores) => actualizar.mutate(valores)}
       />
+
+      <div className="flex flex-col gap-1.5 border-t border-border pt-5">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit"
+          disabled={actualizar.isPending}
+          onClick={() => setConfirmandoRestauracion(true)}
+        >
+          Restaurar valores predeterminados
+        </Button>
+      </div>
+
+      <AlertDialog open={confirmandoRestauracion} onOpenChange={setConfirmandoRestauracion}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Restaurar los valores predeterminados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a perder el nombre y los colores de marca configurados actualmente para
+              todo el holding -- se reemplazan por los valores de fábrica ({CONFIGURACION_EMPRESA_DEFAULT.nombre}
+              , {CONFIGURACION_EMPRESA_DEFAULT.colorPrimario} y {CONFIGURACION_EMPRESA_DEFAULT.colorSecundario}).
+              Esta acción no se puede deshacer, y cada persona con la app abierta necesita
+              recargar la página (F5) para ver el cambio reflejado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actualizar.isPending}
+              onClick={() => actualizar.mutate(CONFIGURACION_EMPRESA_DEFAULT)}
+            >
+              Restaurar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

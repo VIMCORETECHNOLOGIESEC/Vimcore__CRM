@@ -3,6 +3,7 @@ import { Outlet } from "react-router";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 import { estilosDeMarcaPorEmpresa } from "@/lib/color-marca";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
@@ -20,13 +21,19 @@ import { PageHeaderProvider } from "./PageHeaderContext";
 export function AppLayout() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
+  // Jerarquía de 3 niveles (tema-empresarial-integracion, cierre de gap
+  // nivel intermedio): color propio de la empresa -> color EN VIVO del
+  // holding (`useConfiguracionEmpresa()`, misma query que
+  // `ConfiguracionEmpresaPage.tsx`) -> default de fábrica. `data` es
+  // `undefined` mientras carga o si la query falla -- `color-marca.ts` cae
+  // al default de fábrica en ese caso, nunca bloquea ni rompe el shell.
+  const { data: configuracionHolding } = useConfiguracionEmpresa();
   // tema-empresarial-integracion (Parte 3): acentos por empresa
   // (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`) en el
-  // root de `SidebarProvider`, para que cubran sidebar Y contenido. `null`
-  // (holding o empresa sin color propio) -> sin `style`, misma paleta
-  // `--vimcore` de siempre. Ver `lib/color-marca.ts` para el alcance
-  // exacto y por qué `--sidebar` (fondo sólido) queda afuera.
-  const estilosMarca = estilosDeMarcaPorEmpresa(user);
+  // root de `SidebarProvider`, para que cubran sidebar Y contenido. Ver
+  // `lib/color-marca.ts` para el alcance exacto y por qué `--sidebar`
+  // (fondo sólido) queda afuera.
+  const estilosMarca = estilosDeMarcaPorEmpresa(user, configuracionHolding);
 
   useEffect(() => {
     const el = scrollRef.current;

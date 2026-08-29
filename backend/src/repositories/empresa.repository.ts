@@ -19,3 +19,24 @@ export async function findById(
 ): Promise<Empresa | null> {
   return client.empresa.findUnique({ where: { id } });
 }
+
+export interface UpdateEmpresaAparienciaData {
+  colorPrimario: string | null;
+  colorSecundario: string | null;
+}
+
+/**
+ * tema-empresarial-integracion (Tarea 3): única escritura de
+ * `colorPrimario`/`colorSecundario` -- antes de este cambio ningún endpoint
+ * modificaba estos campos (solo lectura vía `findById` y siembra vía
+ * `seed.ts`). `id` siempre es el `empresaId` YA resuelto por
+ * `requireAuthentication` (nunca un valor del cliente) -- ver
+ * `services/empresa-apariencia.service.ts`.
+ */
+export async function updateApariencia(
+  id: string,
+  data: UpdateEmpresaAparienciaData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Empresa> {
+  return client.empresa.update({ where: { id }, data });
+}

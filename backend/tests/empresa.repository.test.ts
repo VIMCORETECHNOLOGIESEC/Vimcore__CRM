@@ -47,3 +47,35 @@ describe("empresa.repository::findById", () => {
     expect(encontrada?.colorSecundario).toBeNull();
   });
 });
+
+describe("empresa.repository::updateApariencia", () => {
+  it("actualiza colorPrimario/colorSecundario de la Empresa indicada", async () => {
+    const nombre = `Empresa repo apariencia ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({
+      data: { nombre, colorPrimario: "#111111", colorSecundario: "#222222" },
+    });
+
+    const actualizada = await empresaRepository.updateApariencia(empresa.id, {
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+    });
+
+    expect(actualizada.colorPrimario).toBe("#7c2d12");
+    expect(actualizada.colorSecundario).toBe("#f97316");
+  });
+
+  it("restaura ambos colores a null", async () => {
+    const nombre = `Empresa repo apariencia null ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({
+      data: { nombre, colorPrimario: "#7c2d12", colorSecundario: "#f97316" },
+    });
+
+    const actualizada = await empresaRepository.updateApariencia(empresa.id, {
+      colorPrimario: null,
+      colorSecundario: null,
+    });
+
+    expect(actualizada.colorPrimario).toBeNull();
+    expect(actualizada.colorSecundario).toBeNull();
+  });
+});
