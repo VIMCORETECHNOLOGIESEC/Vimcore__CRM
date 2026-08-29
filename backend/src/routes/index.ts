@@ -6,6 +6,7 @@ import { eventsRouter } from "./eventos.routes.js";
 import { formulariosRouter } from "./formularios.routes.js";
 import { ingestaRouter } from "./ingesta.routes.js";
 import { leadsRouter } from "./leads.routes.js";
+import { whatsappRouter } from "./whatsappMessages/whatsapp.routes.js";
 import { metricasRouter } from "./metricas.routes.js";
 import { notificationsRouter } from "./notificaciones.routes.js";
 import { healthRouter } from "./salud.routes.js";
@@ -24,3 +25,7 @@ apiRouter.use(citasRouter);
 apiRouter.use(metricasRouter);
 apiRouter.use(notificationsRouter);
 apiRouter.use(eventsRouter);
+// whatsappMessages: mensajería WhatsApp Business Platform (Cloud API) —
+// deliberadamente separada del router genérico de bridges (WhatsApp no
+// extiende `Bridge`, ver el comentario del schema).
+apiRouter.use(whatsappRouter);

@@ -5,7 +5,13 @@ export type EventType =
   | "lead.asignado"
   | "lead.etapa-cambiada"
   | "sincronizacion.requerida"
-  | "metricas.actualizadas";
+  | "metricas.actualizadas"
+  // whatsappMessages: mensaje entrante o saliente nuevo sobre una
+  // conversación con asesor asignado.
+  | "whatsapp.mensaje-nuevo"
+  // whatsappMessages: `Conversacion.asesorId` cambió (primera asignación,
+  // ruteo hacia un Lead ya asignado, o reasignación por SLA vencido).
+  | "whatsapp.conversacion-reasignada";
 
 export interface BrokerEvent {
   id: string;

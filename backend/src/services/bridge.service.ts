@@ -226,6 +226,18 @@ const RED_SOCIAL_IMPLEMENTACION: Record<
   // (jobs/bridgeApi/poll.job.ts) -- implementado de verdad, no un enum
   // reservado para después.
   API_EXTERNA: { implementado: true, mecanismo: "polling-api-generica" },
+  // whatsappMessages: fix mecánico requerido por el nuevo valor de enum del
+  // schema aprobado (`RedSocial.WHATSAPP`) -- sin esta entrada,
+  // `RED_SOCIAL_IMPLEMENTACION` deja de ser un `Record<RedSocial, ...>`
+  // válido y el build entero falla. `implementado: false`: WhatsApp
+  // deliberadamente NUNCA es un tipo de Bridge creable vía `POST /bridges`
+  // (ver el comentario del schema, "WhatsApp NUNCA tiene un Bridge propio")
+  // -- se conecta por su propio flujo OAuth (`GET /whatsapp/conectar`) y
+  // webhook dedicado (`POST /webhooks/whatsapp`), nunca por este catálogo.
+  // `mecanismo: "webhook-meta"` solo describe el transporte subyacente
+  // (mismo criterio que INSTAGRAM arriba, también `implementado: false`),
+  // no una promesa de que se pueda crear un Bridge de este tipo.
+  WHATSAPP: { implementado: false, mecanismo: "webhook-meta" },
 };
 
 /**

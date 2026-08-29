@@ -97,6 +97,13 @@ model Usuario {
   // alcance de empresa sigue viniendo del `Bridge.empresaId` vigente.
   conexionesLinkedInAutorizadas LinkedInConexion[]
   oauthStatesLinkedIn            LinkedInOAuthState[]
+  // whatsappMessages: `conversacionesAsignadas` es el puntero ACTUAL
+  // (`Conversacion.asesorId`), `conversacionEventos`/`mensajesEnviados` son
+  // historial -- mismo criterio de nombrado que `leadsComoAsesor`/`leadEventos`.
+  conversacionesAsignadas Conversacion[]
+  conversacionEventos     ConversacionEvento[]
+  mensajesEnviados        Mensaje[]
+  oauthStatesWhatsApp     WhatsAppOAuthState[]
 
   @@map("usuarios")
 }
@@ -121,6 +128,17 @@ model Empresa {
   leadEventos    LeadEvento[]
   notificaciones Notificacion[]
   bridgeLogs     BridgeLog[]
+  // whatsappMessages: un solo número de WhatsApp por empresa (D-mensajería,
+  // "un solo número por empresa"), por eso es opcional y no un arreglo.
+  whatsappConexion       WhatsAppConexion?
+  conversacionesWhatsapp Conversacion[]
+  conversacionesWhatsappEventos ConversacionEvento[]
+  // Fix de sintaxis Prisma (batch whatsappMessages): `WhatsAppOAuthState.empresa`
+  // ya declaraba su lado de la relación pero le faltaba esta relación opuesta
+  // — sin ella `prisma generate` falla con P1012 ("missing an opposite
+  // relation field"). Mismo nombre que ya usa `Usuario.oauthStatesWhatsApp`
+  // para la relación análoga por `usuarioId`.
+  oauthStatesWhatsApp WhatsAppOAuthState[]
 
   @@map("empresas")
 }
@@ -249,6 +267,10 @@ model Cliente {
   // `LeadAbiertoRevisionPendiente` abajo. Vacía en producción hasta que el
   // comparador en sombra detecte la primera colisión cross-empresa.
   revisionesPendientes LeadAbiertoRevisionPendiente[]
+  // whatsappMessages: un Cliente puede tener conversaciones de WhatsApp sin
+  // nunca haber tenido un Lead -- por eso cuelga de Cliente, no de Lead
+  // (decisión de la exploración: mensajes ≠ leads).
+  conversacionesWhatsapp Conversacion[]
 
   @@map("clientes")
 }
@@ -555,6 +577,10 @@ enum RedSocial {
   // configurable por bridge (`Bridge.configuracionJson`) en vez de un
   // adaptador nuevo por proveedor.
   API_EXTERNA
+  // whatsappMessages: solo para clasificar el ORIGEN de un `Lead` auto-creado
+  // desde una `Conversacion` (ver `Lead.redSocial`) -- WhatsApp NUNCA tiene un
+  // `Bridge` propio (mensajes ≠ leads, ver `WhatsAppConexion` más abajo).
+  WHATSAPP
 
   @@map("red_social")
 }
@@ -846,6 +872,159 @@ model LinkedInFormulario {
 
   @@unique([fuenteId, versionedFormUrn], map: "linkedin_formularios_fuente_versioned_form_key")
   @@map("linkedin_formularios")
+}
+
+// ---------------------------------------------------------------------------
+// whatsappMessages: mensajería WhatsApp Business Platform (Cloud API).
+// Deliberadamente NO extiende Bridge/RedSocial -- un mensaje no es un lead
+// (decisión de la exploración de diseño: Bridge está modelado 1:1 con "fuente
+// de leads", forzar WhatsApp ahí cambiaría esa semántica para todo el resto
+// del código que ya la asume). `RedSocial.WHATSAPP` solo clasifica el origen
+// de un `Lead` auto-creado desde una `Conversacion`, nunca un `Bridge.redSocial`.
+// ---------------------------------------------------------------------------
+
+enum EstadoConexionWhatsApp {
+  ACTIVA
+  TOKEN_EXPIRADO
+  ERROR
+  INACTIVA
+
+  @@map("estado_conexion_whatsapp")
+}
+
+// Un solo número de WhatsApp Business por empresa (decisión de producto) --
+// `empresaId` es @unique, no una FK cualquiera. Solo un rol con acceso
+// holding-wide (empresaId: null, mismo criterio que ADMINISTRADOR/SUPERVISOR
+// en el resto del sistema) puede ver los números de más de una empresa.
+model WhatsAppConexion {
+  id               String                 @id @default(uuid()) @db.Uuid
+  empresaId        String                 @unique @map("empresa_id") @db.Uuid
+  numeroTelefonoId String                 @unique @map("numero_telefono_id") @db.Text
+  numeroDisplay    String                 @map("numero_display") @db.Text
+  wabaId           String                 @map("waba_id") @db.Text
+  // AES-256-GCM vía lib/cifrado-token.ts -- mismo mecanismo que
+  // CuentaPublicitaria.tokenCifrado y LinkedInConexion, nunca en claro.
+  tokenCifrado     String?                @map("token_cifrado") @db.Text
+  tokenExpiraEn    DateTime?              @map("token_expira_en") @db.Timestamptz(6)
+  estado           EstadoConexionWhatsApp @default(INACTIVA)
+  creadoEn         DateTime               @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa        Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  conversaciones Conversacion[]
+
+  @@map("whatsapp_conexiones")
+}
+
+// State efímero anti-CSRF para el OAuth de WhatsApp -- mismo patrón que
+// LinkedInOAuthState (solo el hash del state, nunca en claro). A diferencia
+// de LinkedIn, no cuelga de un Bridge -- todavía no existe ninguna fila de
+// conexión en el momento en que se genera el state (se descubre el
+// número/WABA recién en el callback), así que cuelga directo de empresa+usuario.
+model WhatsAppOAuthState {
+  id        String    @id @default(uuid()) @db.Uuid
+  stateHash String    @unique @map("state_hash") @db.Text
+  empresaId String    @map("empresa_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([expiraEn], map: "idx_whatsapp_oauth_states_expira")
+  @@index([empresaId, usuarioId], map: "idx_whatsapp_oauth_states_empresa_usuario")
+  @@map("whatsapp_oauth_states")
+}
+
+// Un hilo por (cliente, conexión) -- @@unique evita duplicar la conversación
+// si llegan mensajes del mismo cliente en distintos webhooks. `asesorId` es
+// el puntero de ruteo ACTUAL (a quién le llega el próximo mensaje), igual
+// que `Lead.asesorId` -- el historial de cómo llegó a ser ese vive en
+// `ConversacionEvento`, nunca acá.
+model Conversacion {
+  id              String    @id @default(uuid()) @db.Uuid
+  clienteId       String    @map("cliente_id") @db.Uuid
+  conexionId      String    @map("conexion_id") @db.Uuid
+  // Denormalizado desde WhatsAppConexion.empresaId (mismo patrón RLS que
+  // Cita/LeadEvento/Notificacion) para que la política compare empresa_id
+  // directo, sin join.
+  empresaId       String    @map("empresa_id") @db.Uuid
+  asesorId        String?   @map("asesor_id") @db.Uuid
+  ultimoMensajeEn DateTime? @map("ultimo_mensaje_en") @db.Timestamptz(6)
+  creadaEn        DateTime  @default(now()) @map("creada_en") @db.Timestamptz(6)
+
+  cliente  Cliente          @relation(fields: [clienteId], references: [id])
+  conexion WhatsAppConexion @relation(fields: [conexionId], references: [id])
+  empresa  Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  asesor   Usuario?         @relation(fields: [asesorId], references: [id], onDelete: SetNull)
+  mensajes Mensaje[]
+  eventos  ConversacionEvento[]
+
+  @@unique([clienteId, conexionId])
+  @@index([empresaId], map: "idx_conversaciones_whatsapp_empresa")
+  @@index([asesorId], map: "idx_conversaciones_whatsapp_asesor")
+  @@map("conversaciones_whatsapp")
+}
+
+enum TipoEventoConversacion {
+  ASIGNADA
+  REASIGNADA_TRASPASO_LEAD
+  REASIGNADA_SLA_VENCIDO
+
+  @@map("tipo_evento_conversacion")
+}
+
+// Mirror exacto de LeadEvento: log de eventos append-only, nunca una tabla de
+// vigencias con fecha desde/hasta. "Quién estaba a cargo cuando llegó el
+// mensaje X" se resuelve con el último evento anterior a `mensaje.enviadoEn`,
+// no con una columna en `Mensaje`.
+model ConversacionEvento {
+  id             String                  @id @default(uuid()) @db.Uuid
+  conversacionId String                  @map("conversacion_id") @db.Uuid
+  // El asesor asignado A PARTIR de este evento; null si se libera sin reasignar.
+  usuarioId      String?                 @map("usuario_id") @db.Uuid
+  tipo           TipoEventoConversacion
+  ocurridoEn     DateTime                @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  empresaId      String                  @map("empresa_id") @db.Uuid
+
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  usuario      Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  empresa      Empresa      @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@index([conversacionId, ocurridoEn], map: "idx_conversaciones_whatsapp_eventos_conversacion")
+  @@index([empresaId], map: "idx_conversaciones_whatsapp_eventos_empresa")
+  @@map("conversaciones_whatsapp_eventos")
+}
+
+enum DireccionMensaje {
+  ENTRANTE
+  SALIENTE
+
+  @@map("direccion_mensaje")
+}
+
+// `idExternoMensaje` (wamid de Meta) + @@unique es la idempotencia contra
+// reintentos de webhook -- mismo idioma que
+// LeadRecibido.@@unique([bridgeId, idExternoLead]). `usuarioId` acá es quién
+// ESCRIBIÓ este mensaje (solo aplica a SALIENTE) -- no confundir con
+// ConversacionEvento.usuarioId (quién estaba a cargo, historial de ruteo).
+model Mensaje {
+  id               String           @id @default(uuid()) @db.Uuid
+  conversacionId   String           @map("conversacion_id") @db.Uuid
+  direccion        DireccionMensaje
+  idExternoMensaje String           @map("id_externo_mensaje") @db.Text
+  texto            String?          @db.Text
+  payloadOriginal  Json?            @map("payload_original") @db.JsonB
+  usuarioId        String?          @map("usuario_id") @db.Uuid
+  enviadoEn        DateTime         @map("enviado_en") @db.Timestamptz(6)
+
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  usuario      Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@unique([conversacionId, idExternoMensaje])
+  @@index([conversacionId, enviadoEn], map: "idx_mensajes_whatsapp_conversacion")
+  @@map("mensajes_whatsapp")
 }
 
 // Bitácora de errores/eventos por bridge (docs/05-bridges.md §8). Se escribe

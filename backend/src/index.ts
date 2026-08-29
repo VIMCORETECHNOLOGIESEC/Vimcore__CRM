@@ -6,6 +6,7 @@ import { startCitasRecordatorioJob } from "./jobs/citas-recordatorio.job.js";
 import { startIngestionWorker } from "./jobs/ingesta-inbox.job.js";
 import { startSlaAtrasadoJob } from "./jobs/sla-atrasado.job.js";
 import { startVerificacionTokenJob } from "./jobs/verificacion-token.job.js";
+import { startWhatsAppSlaJob } from "./jobs/whatsappMessages/whatsapp-sla.job.js";
 import { prisma } from "./lib/prisma.js";
 import { shutdownBackend } from "./server-lifecycle.js";
 
@@ -27,6 +28,8 @@ const bridgeMudoTimer = startBridgeMudoJob();
 const verificacionTokenTimer = startVerificacionTokenJob();
 // bridgeApi (RedSocial.API_EXTERNA): mismo patrón que sla/citas/bridge-mudo.
 const bridgeApiPollTimer = startBridgeApiPollJob();
+// whatsappMessages (rule 3): reasignación por SLA vencido de Conversacion, mismo patrón que sla/citas/bridge-mudo.
+const whatsappSlaTimer = startWhatsAppSlaJob();
 const ingestionWorker = startIngestionWorker();
 
 let shuttingDown = false;
@@ -41,6 +44,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         clearInterval(bridgeMudoTimer);
         clearInterval(verificacionTokenTimer);
         clearInterval(bridgeApiPollTimer);
+        clearInterval(whatsappSlaTimer);
       },
       closeHttp: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
       stopAndDrain: () => ingestionWorker.stopAndDrain(),
