@@ -1,7 +1,36 @@
+import type { Membresia, Usuario } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
+import { logger } from "../lib/logger.js";
+import { runWithTenantContext, withBootstrapUsuarioGuc } from "../lib/prisma.js";
 import { verifyAccessToken } from "../lib/jwt.js";
+import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
+import { rolEquivalente } from "../services/shadow-authorization.service.js";
+
+/**
+ * Bloque C (D2, spec "Request-scoped tenant context"): mismos dos roles que
+ * `leads.access.ts::ROLES_ACCESO_TOTAL` — duplicado deliberado (esa
+ * constante no se exporta, y ese archivo queda fuera del alcance de Fase 1 /
+ * Stage 1). Resuelven `empresaId: null` (holding-wide) INCONDICIONALMENTE:
+ * preserva su comportamiento actual sin restricción exacto (D2) — no es una
+ * capacidad nueva.
+ */
+function membresiaCoincide(
+  membresia: Membresia | null,
+  usuario: Usuario,
+  payload: { membresiaId?: string; empresaId?: string; rol: string },
+): membresia is Membresia {
+  return Boolean(
+    membresia &&
+      membresia.activa &&
+      membresia.id === payload.membresiaId &&
+      membresia.usuarioId === usuario.id &&
+      membresia.empresaId === payload.empresaId &&
+      payload.rol === usuario.rol &&
+      rolEquivalente(membresia) === usuario.rol,
+  );
+}
 
 /**
  * D-F: recarga el usuario en cada petición y verifica `activo`. Confiar solo
@@ -36,12 +65,63 @@ export async function requireAuthentication(
     return;
   }
 
+  let empresaId: string | null | undefined;
+  let membresiaId: string | undefined;
+  if (payload.sessionScope === "holding") {
+    if (
+      payload.membresiaId !== undefined ||
+      payload.empresaId !== undefined ||
+      payload.rol !== user.rol
+    ) {
+      empresaId = undefined;
+    } else {
+      empresaId = null;
+    }
+  } else if (
+    payload.sessionScope === "company" &&
+    typeof payload.membresiaId === "string" &&
+    typeof payload.empresaId === "string"
+  ) {
+    const membresia = await withBootstrapUsuarioGuc(user.id, (tx) =>
+      membresiaRepository.findById(payload.membresiaId as string, tx),
+    );
+    if (membresiaCoincide(membresia, user, payload)) {
+      empresaId = membresia.empresaId;
+      membresiaId = membresia.id;
+    }
+  }
+
+  if (empresaId === undefined) {
+    logger.warn(
+      { event: "tenant_context_rejected", usuarioId: user.id, rol: user.rol },
+      "Sesión rechazada porque su membresía exacta ya no coincide con el contexto autenticado",
+    );
+    next(
+      new AppError(
+        "no_autenticado",
+        401,
+        "Token de acceso inválido o expirado",
+      ),
+    );
+    return;
+  }
+
   // El claim `rol` del token es una pista; la BD es la verdad (D-F).
   req.user = {
     id: user.id,
     nombre: user.nombre,
     correo: user.correo,
     rol: user.rol,
+    sessionScope: payload.sessionScope,
+    ...(membresiaId ? { membresiaId } : {}),
+    empresaId,
   };
-  next();
+  // Bloque C (Etapa 3, D2/D3): puebla el carrier de `AsyncLocalStorage` de
+  // `lib/prisma.ts` alrededor de `next()` — todo el resto del ciclo de vida
+  // de esta request (controllers, services, repositorios, hasta que la
+  // response termine) corre dentro de este contexto. `empresaId` ya viene
+  // resuelto arriba con el mismo criterio D2/D3 (`null` = holding-wide vía
+  // el ROL DE APLICACIÓN, nunca `crm_bypass_jobs` — spec §2 "HTTP request
+  // always uses application role").
+  runWithTenantContext({ empresaId }, next);
 }

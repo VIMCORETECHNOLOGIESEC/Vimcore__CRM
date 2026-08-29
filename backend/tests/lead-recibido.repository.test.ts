@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
 /** Bridge de prueba con clave de API unica — evita colision del UNIQUE. */
 async function crearBridge(): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: `Bridge de prueba ${contador}`,
       claveApiHash: hashClaveBridge(`clave-lead-recibido-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -29,8 +32,8 @@ async function crearLead(): Promise<{ id: string }> {
       telefonoValido: true,
     },
   });
-  const lead = await prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", ingresadoEn: new Date() },
+  const lead = await testAdminPrisma.lead.create({
+    data: { clienteId: cliente.id, origen: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { id: lead.id };
 }
@@ -40,20 +43,26 @@ describe("repositories/lead-recibido — upsertLeadRecibido (M4, PR2)", () => {
     const { id: bridgeId } = await crearBridge();
     const idExternoLead = `externo-${++contador}`;
 
-    const primera = await leadRecibidoRepository.upsertLeadRecibido({
-      bridgeId,
-      idExternoLead,
-      payload: { idExternoCampania: "camp-1" },
-      datosIncompletos: false,
-    });
+    const primera = await leadRecibidoRepository.upsertLeadRecibido(
+      {
+        bridgeId,
+        idExternoLead,
+        payload: { idExternoCampania: "camp-1" },
+        datosIncompletos: false,
+      },
+      testAdminPrisma,
+    );
     expect(primera.recepcionCreada).toBe(true);
 
-    const reintento = await leadRecibidoRepository.upsertLeadRecibido({
-      bridgeId,
-      idExternoLead,
-      payload: { idExternoCampania: "camp-1" },
-      datosIncompletos: false,
-    });
+    const reintento = await leadRecibidoRepository.upsertLeadRecibido(
+      {
+        bridgeId,
+        idExternoLead,
+        payload: { idExternoCampania: "camp-1" },
+        datosIncompletos: false,
+      },
+      testAdminPrisma,
+    );
     expect(reintento.recepcionCreada).toBe(false);
     expect(reintento.id).toBe(primera.id); // DO UPDATE garantiza la misma fila
   });
@@ -62,12 +71,15 @@ describe("repositories/lead-recibido — upsertLeadRecibido (M4, PR2)", () => {
     const { id: bridgeId } = await crearBridge();
     const idExternoLead = `externo-${++contador}`;
 
-    const fila = await leadRecibidoRepository.upsertLeadRecibido({
-      bridgeId,
-      idExternoLead,
-      payload: { idExternoCampania: "camp-9", nombreCampania: "Invierno", idExternoCuenta: "cta-3" },
-      datosIncompletos: true,
-    });
+    const fila = await leadRecibidoRepository.upsertLeadRecibido(
+      {
+        bridgeId,
+        idExternoLead,
+        payload: { idExternoCampania: "camp-9", nombreCampania: "Invierno", idExternoCuenta: "cta-3" },
+        datosIncompletos: true,
+      },
+      testAdminPrisma,
+    );
 
     expect(fila.payload).toMatchObject({
       idExternoCampania: "camp-9",
@@ -83,17 +95,20 @@ describe("repositories/lead-recibido — marcarProcesado (M4, PR2)", () => {
   it("ancla la recepcion al lead resultante de la deduplicacion", async () => {
     const { id: bridgeId } = await crearBridge();
     const { id: leadId } = await crearLead();
-    const recepcion = await leadRecibidoRepository.upsertLeadRecibido({
-      bridgeId,
-      idExternoLead: `externo-${++contador}`,
-      payload: {},
-      datosIncompletos: false,
-    });
+    const recepcion = await leadRecibidoRepository.upsertLeadRecibido(
+      {
+        bridgeId,
+        idExternoLead: `externo-${++contador}`,
+        payload: {},
+        datosIncompletos: false,
+      },
+      testAdminPrisma,
+    );
     expect(recepcion.leadId).toBeNull();
 
-    await leadRecibidoRepository.marcarProcesado(recepcion.id, leadId);
+    await leadRecibidoRepository.marcarProcesado(recepcion.id, leadId, testAdminPrisma);
 
-    const actualizada = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: recepcion.id } });
+    const actualizada = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: recepcion.id } });
     expect(actualizada.leadId).toBe(leadId);
   });
 });

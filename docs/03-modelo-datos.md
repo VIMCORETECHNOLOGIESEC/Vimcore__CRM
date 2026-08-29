@@ -7,11 +7,14 @@
 > documento es una lectura resumida para orientarse sin abrir el schema
 > completo; ante cualquier discrepancia, gana el schema.
 >
-> **Verificado contra:** rama `test/gpt`, commit `e70b3a4`, 2026-08-25.
+> **Verificado contra:** rama `test/gpt`, commit `2526af7`, 2026-08-26.
 
-PostgreSQL con Prisma (code-first). Sin columna `tenant_id`: la instancia es de
-una sola empresa (ver `docs/16-hallazgos-y-preguntas.md` §8 para el diseño
-multi-tenant TO-BE, aún no implementado).
+PostgreSQL con Prisma (code-first). Bloque B (`docs/blocks/b-tenant-prisma-foundation.md`,
+✅ cerrado) agregó `Empresa`/`Membresia` y columnas `empresa_id` en modo
+aditivo y en sombra: la autorización activa en producción sigue siendo
+`Usuario.rol` sin scoping por tenant (ver `docs/16-hallazgos-y-preguntas.md`
+§8 para el diseño multi-tenant TO-BE restante, aún no implementado en los
+bloques C-F).
 
 ---
 
@@ -24,10 +27,18 @@ usuarios ──┬──< leads.asesor_id (SetNull)
            ├──< respuestas_formulario.usuario_id (Restrict)
            ├──< citas.usuario_id (Restrict)
            ├──< notificaciones.usuario_id (Cascade)
-           └──< refresh_tokens.usuario_id (Cascade)
+           ├──< refresh_tokens.usuario_id (Cascade)
+           └──< membresias.usuario_id (Cascade)
+
+empresas ──┬──< membresias.empresa_id (Cascade)
+           ├──< bridges.empresa_id (SetNull, nullable)
+           └──< leads.empresa_id (SetNull, nullable)
+
+membresias ──< refresh_tokens.membresia_id (SetNull, nullable)
 
 clientes ──┬──< correos_cliente (Cascade)
-           └──< leads (Restrict)
+           ├──< leads (Restrict)
+           └──< leads_abiertos_revision_pendiente.cliente_id (Cascade)
 
 bridges ──┬──< cuentas_publicitarias (Cascade)
           ├──< bridge_logs (SetNull)
@@ -39,13 +50,18 @@ leads ──┬──< lead_eventos (Cascade)
         ├──< respuestas_formulario (Cascade)
         ├──< citas (Cascade)
         ├──< notificaciones (SetNull)
-        └──< leads_recibidos (SetNull)
+        ├──< leads_recibidos (SetNull)
+        └──< leads_abiertos_revision_pendiente.lead_abierto_id (Cascade)
 ```
 
-`campanias` **no** tiene relación con `leads`: `Lead` no tiene columna
-`campania_id`. La atribución de campaña vive sin resolver dentro de
-`leads_recibidos.payload` (`idExternoCampania`, `nombreCampania`,
-`idExternoCuenta`) — ver brecha en `docs/00-estado-documentacion.md`.
+`campanias` **sí** tiene relación con `leads` desde Bloque A (WU4,
+`docs/blocks/a-hardening-single-company.md`): `Lead.campaniaId` y
+`Lead.cuentaPublicitariaId` son FKs nullable resueltas en ingesta por
+`atribucion.service.ts` (lookup de dos pasos: cuenta primero, campaña
+después), degradando a `null` en silencio si no hay match — nunca fallan la
+ingesta. Los escalares crudos (`idExternoCuenta`, `idExternoCampania`,
+`nombreCampania`) se siguen persistiendo siempre en `leads`, con o sin match
+canónico. Ver columnas en la tabla `leads` abajo.
 
 ---
 
@@ -76,8 +92,51 @@ PK es `jti` (uuid), no un id sustituto — el 100% de los accesos es por `jti`.
 | `expira_en` | timestamptz | |
 | `revocado_en` | timestamptz NULL | |
 | `creado_en` | timestamptz | |
+| `membresia_id` | uuid FK NULL → `membresias`, SetNull | Bloque B (dual-login-routing): nulo para toda sesión emitida antes del cambio o vía `Usuario.correo` (camino holding-wide) |
 
 Índice `(usuario_id, revocado_en)`.
+
+### `empresas` (`Empresa`)
+
+Bloque B (`docs/blocks/b-tenant-prisma-foundation.md`, ✅ cerrado): unidad de
+tenant. Nace con una fila bootstrap de id fijo por migración (backfill Fase
+1) — ninguna `Empresa` real se crea todavía por código de aplicación.
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | uuid PK | |
+| `nombre` | text | |
+| `creado_en` | timestamptz | |
+
+No tiene `activa` ni `sla_horas` — no se incluyeron en esta implementación.
+
+### `membresias` (`Membresia`)
+
+Bloque B: pertenencia de un `Usuario` a una `Empresa` con un `RolMembresia`
+propio. `empresa_id` es **NOT NULL** — el concepto de membresía
+holding-wide (`empresa_id = null`) del diseño original TO-BE no se
+implementó; el acceso holding-wide sigue siendo puramente `Usuario.rol`.
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | uuid PK | |
+| `usuario_id` | uuid FK → `usuarios`, Cascade | |
+| `empresa_id` | uuid FK → `empresas`, Cascade | NOT NULL |
+| `rol` | enum `RolMembresia` | `ADMINISTRADOR`, `SUPERVISOR`, `ASESOR` — distinto de `RolUsuario` (holding-wide, sin cambios) |
+| `habilitado_para_venta` | boolean, default `false` | Backfill: `true` solo para `VENDEDOR` legado (mapeado a `ASESOR`) |
+| `correo` | citext NULL UNIQUE | Segundo camino de login por empresa; NULL en todo backfill |
+| `password_hash` | text NULL | Credencial independiente por empresa; NULL en todo backfill |
+| `activa` | boolean, default `true` | Baja lógica — nunca `DELETE` |
+| `creado_en` / `actualizado_en` | timestamptz | |
+
+UNIQUE (`usuario_id`, `empresa_id`, `rol`). Índices `(usuario_id, activa)` y
+`(empresa_id, rol)`.
+
+> **Estado de autorización:** `Usuario.rol` y `enum RolUsuario` siguen
+> siendo la única fuente de autorización activa en producción.
+> `Membresia` opera en modo sombra (Fase 2 de Bloque B: compara y loguea
+> divergencias contra el autorizador legacy, nunca bloquea) hasta que un
+> bloque posterior corte el switch.
 
 ### `clientes` (`Cliente`)
 
@@ -127,12 +186,20 @@ UNIQUE (`cliente_id`, `correo_normalizado`); índice en `correo_normalizado`.
 | `observacion_cierre` | text NULL | |
 | `producto_servicio` | text NULL | |
 | `forma_pago` | enum `FormaPago` NULL | `CONTADO`, `CREDITO`, `FINANCIAMIENTO` |
+| `cuenta_publicitaria_id` | uuid FK NULL → `cuentas_publicitarias` | Bloque A (WU4): resuelto por `atribucion.service.ts`, degrada a `null` sin match |
+| `campania_id` | uuid FK NULL → `campanias` | Bloque A (WU4): idem, lookup posterior a cuenta |
+| `id_externo_cuenta` / `id_externo_campania` / `nombre_campania` | text NULL | Escalares crudos, persistidos siempre, con o sin match canónico |
+| `empresa_id` | uuid FK NULL → `empresas`, SetNull | Bloque B (Fase 3, sombra): derivado de `Bridge.empresaId` en ingesta, nullable passthrough — no reemplaza `asesor_id`/`vendedor_id` |
 
 Índices: `(cliente_id, etapa)`, `(cliente_id, cerrado_en DESC)`,
 `(asesor_id, etapa)`, `(vendedor_id, etapa)`, `(etapa, ingresado_en DESC)`,
-`(red_social)`, más un índice parcial agregado a mano en la migración —
-`idx_leads_sla` `(sla_inicio_en) WHERE cerrado_en IS NULL` — no expresable en
-el DSL de Prisma.
+`(red_social)`, `(empresa_id)`, más un índice parcial agregado a mano en la
+migración — `idx_leads_sla` `(sla_inicio_en) WHERE cerrado_en IS NULL` — no
+expresable en el DSL de Prisma.
+
+No hay unique compuesto de "lead abierto" por cliente+empresa: la
+comparación (cliente, empresa) es puramente en sombra vía la tabla nueva
+`leads_abiertos_revision_pendiente` (ver abajo).
 
 ### `lead_eventos` (`LeadEvento`)
 
@@ -221,6 +288,7 @@ en `lead_id`.
 | `estado` | enum `EstadoBridge`, default `INACTIVO` | `ACTIVO`, `TOKEN_EXPIRADO`, `ERROR`, `INACTIVO` |
 | `ultimo_lead_en` | timestamptz NULL | |
 | `advertencia_muda_enviada` | boolean, default `false` | Anti-spam del job "bridge sin actividad 72h" |
+| `empresa_id` | uuid FK NULL → `empresas`, SetNull | Bloque B (Fase 3): resuelto por `atribucion.service.ts::resolverEmpresaIdDesdeBridge`; nullable — un bridge sin empresa nunca falla la ingesta |
 
 ### `cuentas_publicitarias` (`CuentaPublicitaria`)
 
@@ -297,6 +365,28 @@ resuelve.
 
 UNIQUE (`bridge_id`, `id_externo_lead`) — idempotencia de webhook. Índice
 `(estado, disponible_en)` para el claim `FOR UPDATE SKIP LOCKED`.
+
+### `leads_abiertos_revision_pendiente` (`LeadAbiertoRevisionPendiente`)
+
+Bloque B (Fase 3, dedup en sombra): cola de revisión no invasiva. Registra
+una colisión detectada cuando el comparador en sombra encuentra un lead
+abierto para el mismo cliente en una empresa distinta a la de ingesta —
+nunca bloquea ni modifica el lead existente. Vacía en producción hasta que
+el comparador detecte la primera colisión cross-empresa.
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `id` | uuid PK | |
+| `cliente_id` | uuid FK → `clientes`, Cascade | |
+| `lead_abierto_id` | uuid FK → `leads`, Cascade | |
+| `empresa_lead_id` | uuid | Empresa del lead abierto existente |
+| `empresa_ingesta_id` | uuid | Empresa del bridge que ingirió el nuevo lead |
+| `detectado_en` | timestamptz | |
+| `resuelto` | boolean, default `false` | |
+| `resuelto_en` | timestamptz NULL | |
+
+UNIQUE (`cliente_id`, `lead_abierto_id`, `empresa_ingesta_id`). Índice
+`(resuelto)`.
 
 ---
 

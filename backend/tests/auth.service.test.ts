@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { RefreshToken, RolUsuario, Usuario } from "@prisma/client";
+import type { Membresia, RefreshToken, RolMembresia, RolUsuario, Usuario } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/repositories/usuario.repository.js", () => ({
@@ -11,7 +11,12 @@ vi.mock("../src/repositories/refresh-token.repository.js", () => ({
   findByJti: vi.fn(),
   revoke: vi.fn(),
   revokeAllForUser: vi.fn(),
+  revokeAllForMembership: vi.fn(),
   rotate: vi.fn(),
+}));
+vi.mock("../src/repositories/membresia.repository.js", () => ({
+  findByEmail: vi.fn(),
+  findById: vi.fn(),
 }));
 vi.mock("../src/lib/password.js", () => ({
   verifyPassword: vi.fn(),
@@ -34,6 +39,7 @@ const usuarioRepository = await import("../src/repositories/usuario.repository.j
 const refreshTokenRepository = await import(
   "../src/repositories/refresh-token.repository.js"
 );
+const membresiaRepository = await import("../src/repositories/membresia.repository.js");
 const passwordLib = await import("../src/lib/password.js");
 const jwtLib = await import("../src/lib/jwt.js");
 const { logger } = await import("../src/lib/logger.js");
@@ -70,6 +76,8 @@ function filaRefreshFalsa(
     expiraEn: new Date(Date.now() + 1000 * 60 * 60),
     revocadoEn: null,
     creadoEn: new Date(),
+    sessionScope: "HOLDING",
+    membresiaId: null,
     ...overrides,
   };
 }
@@ -101,6 +109,11 @@ describe("auth.service.login", () => {
     expect(refreshTokenRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ jti: expect.any(String), usuarioId: "usuario-1" }),
     );
+    expect(jwtLib.signAccessToken).toHaveBeenCalledWith({
+      id: "usuario-1",
+      rol: "VENDEDOR",
+      sessionScope: "holding",
+    });
   });
 
   it("rechaza con credenciales_invalidas cuando el usuario no existe", async () => {
@@ -137,6 +150,103 @@ describe("auth.service.login", () => {
   });
 });
 
+/** Bloque B (Fase 2, spec dual-login-routing). */
+function membresiaFalsa(overrides: Partial<Membresia> = {}): Membresia {
+  return {
+    id: "membresia-1",
+    usuarioId: "usuario-1",
+    empresaId: "empresa-1",
+    rol: "ASESOR" as RolMembresia,
+    habilitadoParaVenta: false,
+    correo: "ana@empresa.local",
+    passwordHash: "hash-membresia",
+    activa: true,
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+    ...overrides,
+  };
+}
+
+describe("auth.service.login — dual-login-routing (Bloque B, Fase 2)", () => {
+  it("resuelve por Membresia.correo cuando Usuario.correo no matchea, y emite membresiaId/empresaId en el access token", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(membresiaFalsa());
+    vi.mocked(passwordLib.verifyPassword).mockResolvedValue(true);
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(
+      usuarioFalso({ id: "usuario-1", rol: "ASESOR" }),
+    );
+
+    const resultado = await login("ana@empresa.local", "clave-correcta");
+
+    expect(resultado.accessToken).toBe("access.jwt.fake");
+    expect(resultado.user).toEqual({
+      id: "usuario-1",
+      nombre: "Ana",
+      correo: "ana@crm.local",
+      rol: "ASESOR",
+    });
+    expect(jwtLib.signAccessToken).toHaveBeenCalledWith(
+      {
+        id: "usuario-1",
+        rol: "ASESOR",
+        sessionScope: "company",
+        membresiaId: "membresia-1",
+        empresaId: "empresa-1",
+      },
+    );
+    expect(refreshTokenRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usuario-1", membresiaId: "membresia-1" }),
+    );
+  });
+
+  it("rechaza con credenciales_invalidas (mismo mensaje) cuando ninguna tabla tiene ese correo", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(null);
+
+    await expect(login("nadie@empresa.local", "clave")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+      statusHttp: 401,
+    });
+    expect(passwordLib.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con credenciales_invalidas cuando la contraseña de la Membresia es incorrecta", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(membresiaFalsa());
+    vi.mocked(passwordLib.verifyPassword).mockResolvedValue(false);
+
+    await expect(login("ana@empresa.local", "clave-mala")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+      statusHttp: 401,
+    });
+  });
+
+  it("rechaza con credenciales_invalidas cuando la Membresia no tiene passwordHash (backfill Fase 1, nunca autentica)", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(
+      membresiaFalsa({ passwordHash: null }),
+    );
+
+    await expect(login("ana@empresa.local", "cualquier-clave")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+    });
+    expect(passwordLib.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con credenciales_invalidas cuando el Usuario dueño de la Membresia ya no está activo", async () => {
+    vi.mocked(usuarioRepository.findByEmail).mockResolvedValue(null);
+    vi.mocked(membresiaRepository.findByEmail).mockResolvedValue(membresiaFalsa());
+    vi.mocked(passwordLib.verifyPassword).mockResolvedValue(true);
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(
+      usuarioFalso({ id: "usuario-1", activo: false }),
+    );
+
+    await expect(login("ana@empresa.local", "clave-correcta")).rejects.toMatchObject({
+      code: "credenciales_invalidas",
+    });
+  });
+});
+
 describe("auth.service.refresh", () => {
   it("rota el par cuando el refresh token es válido y vigente", async () => {
     const token = "refresh-vigente";
@@ -161,6 +271,73 @@ describe("auth.service.refresh", () => {
       previousJti: "jti-anterior",
       newToken: expect.objectContaining({ jti: expect.any(String), usuarioId: "usuario-1" }),
     });
+  });
+
+  it("revalida la membresía exacta y conserva el scope de empresa al rotar", async () => {
+    const token = "refresh-empresa";
+    vi.mocked(jwtLib.verifyRefreshToken).mockResolvedValue({
+      sub: "usuario-1",
+      jti: "jti-anterior",
+      type: "refresh",
+    } as never);
+    vi.mocked(refreshTokenRepository.findByJti).mockResolvedValue(
+      filaRefreshFalsa(token, { membresiaId: "membresia-1", sessionScope: "COMPANY" }),
+    );
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(
+      usuarioFalso({ rol: "ASESOR" }),
+    );
+    vi.mocked(membresiaRepository.findById).mockResolvedValue(membresiaFalsa());
+    vi.mocked(refreshTokenRepository.rotate).mockResolvedValue(
+      filaRefreshFalsa("refresh.jwt.fake", {
+        jti: "nuevo-jti",
+        membresiaId: "membresia-1",
+        sessionScope: "COMPANY",
+      }),
+    );
+
+    await refresh(token);
+
+    expect(jwtLib.signAccessToken).toHaveBeenCalledWith({
+      id: "usuario-1",
+      rol: "ASESOR",
+      sessionScope: "company",
+      membresiaId: "membresia-1",
+      empresaId: "empresa-1",
+    });
+    expect(refreshTokenRepository.rotate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousJti: "jti-anterior",
+        newToken: expect.objectContaining({ membresiaId: "membresia-1" }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    ["inexistente", null],
+    ["ajena", membresiaFalsa({ usuarioId: "usuario-2" })],
+    ["revocada", membresiaFalsa({ activa: false })],
+    ["rol inconsistente", membresiaFalsa({ rol: "SUPERVISOR" })],
+  ])("rechaza una membresía %s durante refresh y no rota", async (_caso, membresia) => {
+    const token = "refresh-invalido-por-membresia";
+    vi.mocked(jwtLib.verifyRefreshToken).mockResolvedValue({
+      sub: "usuario-1",
+      jti: "jti-anterior",
+      type: "refresh",
+    } as never);
+    vi.mocked(refreshTokenRepository.findByJti).mockResolvedValue(
+      filaRefreshFalsa(token, { membresiaId: "membresia-1", sessionScope: "COMPANY" }),
+    );
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(
+      usuarioFalso({ rol: "ASESOR" }),
+    );
+    vi.mocked(membresiaRepository.findById).mockResolvedValue(membresia);
+
+    await expect(refresh(token)).rejects.toMatchObject({
+      code: "token_invalido",
+      statusHttp: 401,
+    });
+    expect(refreshTokenRepository.rotate).not.toHaveBeenCalled();
   });
 
   it("D-D: revoca toda la familia del usuario si el jti ya estaba revocado (reutilización)", async () => {

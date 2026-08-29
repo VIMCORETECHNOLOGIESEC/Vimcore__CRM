@@ -2,6 +2,7 @@
 .atl/
 .claude/settings.local.json
 .codegraph/
+graphify-out/
 
 # Node / pnpm
 node_modules/

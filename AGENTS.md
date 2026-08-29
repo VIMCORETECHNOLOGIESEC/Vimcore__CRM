@@ -11,11 +11,39 @@ CRM comercial de gestión de leads captados desde campañas publicitarias en red
 sociales. Recibe leads por webhook, los deduplica, los asigna a personal comercial
 y sigue su avance por un embudo de 5 etapas hasta la venta o el cierre negativo.
 
-**Modelo de despliegue: instancia única por empresa. NO es multi-tenant.**
-No existe tabla `tenant_id`, no existe scoping por empresa, no existe
-super-administrador. Cada cliente recibe su propio despliegue aislado con su
-propia base de datos. Si una tarea parece requerir aislamiento por empresa,
-está mal entendida — detente y pregunta.
+**Baseline vigente (AS-IS, actualizado 2026-08-28): fundación multi-tenant
+implementada, comportamiento funcional aún equivalente a single-company.**
+Bloques A, B y C de la migración multi-tenant (`docs/blocks/`) ya están
+**cerrados e implementados en producción** (`052e811`, 894/894 tests):
+existen `Empresa`/`Membresia` en el esquema, Row-Level Security de Postgres
+forzado (rol `crm_app` sin `BYPASSRLS`), contexto de tenant obligatorio por
+request (`AsyncLocalStorage`) y CAS optimista en asignación. Esto **no** es
+"un despliegue aislado con su propia base de datos por cliente" — es un
+esquema compartido con aislamiento real por fila. Lo que sigue siendo
+equivalente a single-company es el **comportamiento funcional visible**: el
+pool de asignación sigue global (sin scope por empresa), la autoridad de
+cierre sigue leyendo `Usuario.rol` legacy, y no hay superadministrador de
+holding operativo. Todo mantenimiento del producto debe preservar el
+comportamiento funcional actual (no introducir routing o autorización por
+empresa fuera de un bloque aprobado) sin asumir que el esquema físico
+tampoco cambió — sí cambió.
+
+**Evolución pendiente: routing, autoridad de cierre y dashboards por
+empresa.** Las decisiones D1-D14 (frontera tenant, membresías, roles,
+routing, Oportunidad, dashboards, integraciones compartidas) ya están
+**resueltas** en `docs/16-hallazgos-y-preguntas.md` §8 y desglosadas por
+bloque de implementación en `docs/blocks/`. Bloque D0 (visualización mínima
+de la separación por empresa en frontend) se ejecuta antes del despliegue;
+Bloque D completo (routing, autoridad de cierre, Oportunidad) y Bloque E
+(dashboards) quedan diferidos a después del despliegue; Bloque F (retiro de
+`Usuario.rol`) tiene además una dependencia de secuencia dura — solo después
+de congelar o mergear el trabajo de `dev-back`/`dev-front` sobre ese mismo
+enum, nunca en paralelo. No crear entidades de tenant, membresías, roles
+globales ni cambios de autorización fuera de la SDD change del bloque
+correspondiente (`docs/blocks/{a..f}-*.md`). Nunca documentar el TO-BE como
+si describiera el comportamiento actual, y nunca documentar el AS-IS como si
+la infraestructura multi-tenant no existiera — ambos errores ya ocurrieron
+en este documento.
 
 **Alcance MVP: formato fijo, no personalizable.** Los formularios de seguimiento,
 las reglas de puntuación del semáforo, las etapas y los tiempos de SLA están
@@ -102,7 +130,6 @@ backend y frontend, `.dockerignore` y `.env.example` con las claves sin valores.
 ├── backend/          APIs, lógica de bridges, jobs
 ├── frontend/         GUI web
 ├── docs/             Documentación funcional (fuente de verdad del negocio)
-├── openspec/         Artefactos SDD generados por fase
 ├── AGENTS.md
 ├── docker-compose.yml
 ├── .env.example
@@ -110,14 +137,24 @@ backend y frontend, `.dockerignore` y `.env.example` con las claves sin valores.
 └── pnpm-lock.yaml    Versionado. No debe existir package-lock.json ni yarn.lock
 ```
 
+No hay directorio `openspec/` en este repo: los artefactos SDD (proposal,
+spec, design, tasks, apply-progress, verify) se persisten en Engram, no en
+archivos versionados — ver `sdd-init/crm_comercial` y el ejemplo de
+`docs/blocks/c-aislamiento.md`.
+
 ---
 
 ## 3. Reglas para el orquestador y sub-agentes
 
-1. **`docs/` es la fuente de verdad funcional.** Antes de proponer o diseñar,
-   lee el documento correspondiente. Si tu propuesta contradice `docs/`, la
-   contradicción es un hallazgo que debes reportar, no una licencia para
-   improvisar.
+1. **Comienza por `docs/00-estado-documentacion.md`.** `docs/` es la fuente de
+   verdad funcional dentro de la autoridad declarada para cada archivo. Cuando
+   el mapa marque un documento como mixto o no confiable, el código, Prisma y
+   las migraciones son la autoridad para describir el AS-IS. Toda contradicción
+   debe reportarse y resolverse; no es una licencia para improvisar.
+   Para una revisión cruzada entre equipos, usa
+   `docs/16-hallazgos-y-preguntas.md` como entrada ejecutiva: sus hallazgos y
+   decisiones pendientes están vigentes para revisión, pero no constituyen un
+   contrato ni autorizan cambios de implementación.
 2. **No inventes requisitos.** Si un detalle no está en `docs/` ni en el
    `proposal.md` de la fase, decláralo como pregunta abierta en el artefacto,
    no lo resuelvas con un supuesto silencioso.
@@ -204,19 +241,27 @@ Cobertura mínima exigida por módulo:
 
 ---
 
-## 7. Fuera de alcance — no lo implementes
+## 7. Fuera de alcance del baseline — no lo implementes sin aprobación
 
-Estos elementos fueron excluidos deliberadamente. Si una tarea parece pedirlos,
-verifica antes de construir:
+Estos elementos no forman parte del producto single-company vigente. Pueden
+analizarse como evolución, pero requieren alcance y aprobación explícitos antes
+de modificar código, datos o despliegue:
 
-- Multi-tenant, super-administrador, panel matriz entre empresas
+- Routing por empresa, autoridad de cierre por membresía, Oportunidad,
+  dashboards jerárquicos y superadministrador de holding operativo — D1-D14
+  resueltas en `docs/16` §8; la fundación (`Empresa`/`Membresia`/RLS/contexto
+  de tenant) ya está implementada por Bloques A-C, pero este comportamiento
+  funcional sigue diferido a Bloques D0/D/E/F (ver `docs/blocks/`). No crear
+  routing, autorización o dashboards por empresa fuera de la SDD change del
+  bloque correspondiente
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado)
 - Integración con calendarios externos (Google Calendar, Outlook)
 - Notificaciones por correo, SMS o WhatsApp (solo in-app)
 - App móvil nativa
-- Bridges de TikTok y sitio web propio (arquitectura preparada, no implementados)
+- Bridges de TikTok y sitio web propio (no implementados ni modelados como
+  canales; el endpoint genérico actual registra el origen como `GOOGLE_FORMS`)
 - Timeline cronológico de interacciones en la vista de detalle del lead
 - SSO / OAuth corporativo (se expone la API para integrarlo después)
 
@@ -224,19 +269,10 @@ verifica antes de construir:
 
 ## 8. Documentos de referencia
 
-| Documento | Contenido |
-|---|---|
-| `docs/01-alcance-mvp.md` | Qué entra y qué no, con justificación |
-| `docs/02-reglas-negocio.md` | Deduplicación, asignación, SLA, traspaso, reingreso |
-| `docs/03-modelo-datos.md` | Entidades, relaciones, invariantes |
-| `docs/04-formularios-semaforo.md` | Formularios por etapa y rúbrica de puntuación |
-| `docs/05-bridges.md` | Contrato de ingesta y particularidades por red |
-| `docs/06-modulos-backend.md` | Módulos backend con checklist de avance |
-| `docs/07-modulos-frontend.md` | Módulos frontend con checklist de avance |
-| `docs/08-dashboard-kpis.md` | Definición exacta de cada KPI |
-| `docs/09-skills-agentes-backend.md` | Skills de IA habilitadas para backend: fuente, instalación y caso de uso |
-| `docs/09-linea-grafica-frontend.md` | Línea gráfica del frontend: paleta, tipografía, librerías de UI candidatas y flujo de mockups con Stitch AI |
-| `docs/10-skills-agente-frontend.md` | Skills de Claude Code Skills para el frontend: lista, comando de instalación por skill y en qué caso debe usarla el agente |
+El índice completo de documentos, su estado de confianza y su autoridad
+declarada vive en un único lugar: `docs/00-estado-documentacion.md`. Para
+variables de entorno, comandos y estructura de carpetas, ver
+`docs/18-desarrollo-local.md`. No se duplica esa tabla acá.
 
 ---
 
@@ -248,7 +284,7 @@ de npm (§2.1 — cadena de suministro): procedencia verificable (vendor oficial
 o repo de GitHub inspeccionable con autor y licencia identificables), nunca un
 agregador que liste variaciones duplicadas del mismo tema sin mantenedor
 claro. El detalle por skill — fuente, comando de instalación y en qué caso
-concreto debe usarla el agente — vive en `docs/09-skills-agentes-backend.md`
+concreto debe usarla el agente — vive en `docs/21-skills-agentes-backend.md`
 (backend) y `docs/10-skills-agente-frontend.md` (frontend); esos documentos
 también registran las skills evaluadas y descartadas, para no repetir la
 evaluación.

@@ -1,24 +1,32 @@
 # 16 — Hallazgos y decisiones para revisión cruzada
 
-> **Estado:** artefacto autónomo de revisión estática; no es contrato funcional ni autoriza implementación.
+> **Estado:** síntesis histórica de hallazgos y decisiones D1-D15, reconciliada
+> con el avance A-C. No es contrato funcional ni autoriza implementación.
 >
 > **Rama / upstream:** `test/gpt` / `origin/test/gpt`
 >
-> **Commit base:** `e70b3a45402d8f258016a218ca87825ffd78af7f`
-> (`e70b3a4`) · **Corte:** 2026-08-25
+> **Snapshot histórico de origen:** `e70b3a45402d8f258016a218ca87825ffd78af7f`
+> (`e70b3a4`) · 2026-08-25
 >
-> **Base probatoria:** archivos de `origin/test/gpt` en el commit indicado y fuentes oficiales directas de la sección 6.
+> **Baseline documental reconciliado:** `test/gpt` en `3e8c70a` · 2026-08-28.
 >
-> **Evidencia:** sin cambios de código ni pruebas runtime; no acredita tests, build ni QA.
+> **Evidencia técnica vigente:** Bloques A-C cerrados en `052e811`, 894/894
+> tests. Esta reconciliación documental no volvió a ejecutar tests.
 
-Este documento concentra los hallazgos para corregir el MVP o diseñar la evolución
-multiempresa. No depende de otros borradores y puede publicarse como único artefacto.
+**Ruta de estado actual:** consultar primero
+[`00-estado-documentacion.md`](00-estado-documentacion.md) y después el bloque
+correspondiente en [`docs/blocks/`](blocks/). Este documento conserva el
+rationale y las decisiones de producto; no sustituye esos contratos de bloque.
+
+Este documento concentra el rationale histórico y las decisiones para la
+evolución multiempresa. Para conocer estado o ejecutar un bloque debe leerse
+junto con `docs/00` y `docs/blocks/`.
 
 ## 1. Fuentes locales de evidencia
 
 | Fuente presente en `origin/test/gpt` | Uso en esta revisión |
 |---|---|
-| [`AGENTS.md`](../AGENTS.md) y [`01-alcance-mvp.md`](01-alcance-mvp.md) | Baseline single-company, alcance y exclusiones |
+| [`AGENTS.md`](../AGENTS.md) y [`01-alcance-mvp.md`](01-alcance-mvp.md) | Baseline funcional, fundación multi-tenant AS-IS, alcance y exclusiones |
 | [`02-reglas-negocio.md`](02-reglas-negocio.md) a [`05-bridges.md`](05-bridges.md) | Reglas, datos, cierre, semáforo e ingesta documentados |
 | [`06-modulos-backend.md`](06-modulos-backend.md) a [`08-dashboard-kpis.md`](08-dashboard-kpis.md) | Checklists técnicos y definición de métricas |
 | [`11-plan-integracion.md`](11-plan-integracion.md) a [`13-configuracion-bridges.md`](13-configuracion-bridges.md) | Integración histórica, QA y operación de bridges |
@@ -27,27 +35,29 @@ multiempresa. No depende de otros borradores y puede publicarse como único arte
 
 ## 2. Resumen ejecutivo
 
-- El producto implementado es un CRM **single-company**, desplegado con una base
-  aislada por empresa. No modela tenant, holding ni scope empresarial.
-- El MVP ya cubre captación, deduplicación, asignación, embudo, SLA, citas,
-  notificaciones y métricas, pero M4–M6 conservan brechas de atribución,
-  autorización y exactitud de datos.
-- La separación asesor→vendedor no está garantizada por el backend: el asesor
-  puede cerrar mientras sea responsable y el traspaso no exige evidencia
-  explícita de primer contacto.
-- La evolución hacia holdings requiere decidir primero la frontera tenant. Sin
-  esa decisión no existe una clave de aislamiento ni una migración segura.
-- La prioridad no es replicar HubSpot: primero se estabilizan embudo, ownership,
-  atribución y aislamiento; marketing, servicio, revenue e IA pueden diferirse.
+- La fundación multi-tenant ya está implementada sobre esquema compartido:
+  `Empresa`/`Membresia`, login por membresía, `Bridge.empresaId` y
+  `Lead.empresaId` obligatorios, RLS forzado, TenantContext y CAS optimista.
+- `Membresia.empresaId` es `NOT NULL`: no existe una membresía holding-wide
+  implementada. La sesión y autoridad holding AS-IS siguen usando
+  `Usuario.rol` legacy hasta los cortes de D/F.
+- Bloque A cerró la atribución canónica `Lead.campaniaId` y el productor
+  `TOKEN_POR_EXPIRAR`; no son pendientes de Bloque E.
+- El comportamiento aún pendiente incluye pool empresarial, autoridad de
+  cierre por membresía, `Oportunidad`/`Producto`, `CanalManual` y dashboards.
+- Calendario vigente: D0 es el único slice pre-despliegue; D y E son
+  post-despliegue; F es el último bloque y respeta su dependencia de secuencia.
 
 ## 3. Alcance y método
 
-La revisión fue estática. Ante una contradicción prevalecen Prisma, migraciones y
-código. No se instalaron dependencias ni se ejecutaron contenedores, tests o QA.
+La revisión original fue estática. Ante una contradicción prevalecen Prisma,
+migraciones y código. La reconciliación de 2026-08-28 incorpora el cierre
+verificado de A-C (`052e811`, 894/894 tests) sin ejecutar nuevamente
+contenedores, tests o QA.
 
 ## 4. Hallazgos verificados
 
-### 4.1 Documentación y confianza
+### 4.1 Documentación y confianza — snapshot histórico
 
 | Hallazgo | Estado verificado | Tratamiento |
 |---|---|---|
@@ -60,99 +70,102 @@ código. No se instalaron dependencias ni se ejecutaron contenedores, tests o QA
 | README de backend y frontend proponen ejecución en host | Contradicen la política container-only | Alinear con la ruta Docker del README raíz |
 | `AGENTS.md` y `docs/01` llaman preparado al sitio web | `RedSocial` no incluye `SITIO_WEB`; el genérico fija Google Forms | Tratarlo como expansión, no como capacidad lista |
 
-Hay correcciones propuestas en el worktree, pero **no forman parte de este commit
-aislado**. Las divergencias siguen abiertas hasta publicarse por separado.
+En el snapshot original había correcciones fuera de su commit aislado. La
+tabla anterior se conserva como registro histórico; `docs/00` mantiene el
+estado documental vigente.
+
+**Seguimiento de resolución (auditoría de documentación, 2026-08-27 — no
+altera los hallazgos originales de arriba, que quedan como registro
+histórico de la revisión estática):**
+
+- ✅ Resuelto: `docs/03-modelo-datos.md` fue regenerado desde Prisma y
+  migraciones; ya no tiene banner de no confiable y está marcado Vigente
+  con reservas en `docs/00`.
+- ✅ Resuelto: `docs/06-modulos-backend.md` y `docs/07-modulos-frontend.md`
+  ya redujeron el diario histórico y quedaron como checklists lean del
+  estado consolidado (Lote 3 de `docs/00`).
+- ⏳ Sigue abierto: `docs/04`, `docs/05`, `docs/08`, `docs/12`, los README
+  de backend/frontend y la mención de sitio web preparado en `AGENTS.md`/
+  `docs/01` — ver `docs/00-estado-documentacion.md` para el estado
+  vigente de cada uno.
 
 ### 4.2 Roles y autorización actual
 
 | Área | AS-IS verificado | Brecha |
 |---|---|---|
-| Roles | `ADMINISTRADOR`, `SUPERVISOR`, `ASESOR` y `VENDEDOR`; un rol global por usuario | No representa membresías ni roles distintos por empresa |
-| Visibilidad | Admin y supervisor ven todo; asesor y vendedor ven su cartera | El acceso total no tiene scope empresarial |
+| Roles | `Membresia` empresarial existe con `empresaId NOT NULL`; `Usuario.rol` legacy sigue activo | La autoridad holding y el cierre aún no completaron el cutover a membresías |
+| Visibilidad | Sesiones company quedan scopeadas por membresía, TenantContext y RLS | Las sesiones holding todavía se resuelven por `Usuario.rol` legacy |
 | Edición | Admin, supervisor o responsable operativo actual | El asesor puede ejecutar cierres mientras siga siendo responsable |
 | Traspaso | Bloqueado en `NUEVO`; permitido desde etapas posteriores | La etapa no prueba primer contacto |
 | Divergencia | `docs/02` habilita intervención administrativa en cualquier momento | `canTransfer` bloquea `NUEVO` para todos los roles |
 | Excepciones | Admin y supervisor pueden traspasar sin asesor previo | El vendedor puede recibir trabajo sin intervención verificable del asesor |
-| Segundo traspaso | El asesor original puede volver a cambiar al vendedor | Ownership, auditoría y SLA pueden quedar ambiguos |
+| Segundo traspaso | Bloque A impide que el asesor original vuelva a transferir tras el primer traspaso | Cerrado para el AS-IS |
 | Elegibilidad | No existe permiso dinámico por Fuente | El pool global no limita redes, páginas, sitios o formularios |
 
-El TO-BE candidato combina capacidad, membresía, scope, propiedad, elegibilidad
-y flujo. No está aprobado ni equivale a reemplazar el enum de roles.
+El TO-BE aprobado combina capacidad, membresía, scope, propiedad, elegibilidad
+y flujo. Su fundación existe, pero el reemplazo funcional de `Usuario.rol`
+permanece distribuido entre D y F.
 
 ### 4.3 M4 — Ingesta, bridges y atribución
 
 | Prioridad | Hallazgo verificado | Consecuencia |
 |---|---|---|
-| P1 | El endpoint genérico usa el adaptador de Google Forms y fija `GOOGLE_FORMS` | X o sitio web quedarían registrados con un canal incorrecto |
-| P1 | `LeadRecibido.bridgeId -> leadId` conserva linaje histórico indirecto | No existe atribución singular y canónica de Fuente, cuenta o campaña en `Lead` |
-| P1 | `Campania` existe, pero la ingesta no la materializa ni la enlaza al lead | Filtros y métricas dependen de JSON o catálogos sintéticos |
-| P1 | `tokenExpiraEn` existe, pero `TOKEN_POR_EXPIRAR` no tiene productor idempotente | Falta la alerta preventiva prometida |
-| P2 | Un ingreso sin teléfono ni correo genera advertencia, no notificación | El supervisor no recibe el workflow operacional esperado |
+| Cerrado A | El adaptador genérico recibe la red real del bridge | Ya no fija `GOOGLE_FORMS` para todos los ingresos |
+| Cerrado A | `Lead` materializa atribución canónica de cuenta y campaña | `Lead.campaniaId`/`cuentaPublicitariaId` ya existen |
+| Cerrado A | La ingesta resuelve `Lead.campaniaId` desde la campaña externa | E debe consumir esa FK, no volver a agregarla |
+| Cerrado A | `TOKEN_POR_EXPIRAR` tiene productor idempotente | La sincronización Meta futura lo complementa, no lo inaugura |
+| Cerrado A/C | El ingreso incompleto notifica a supervisores y C scopea destinatarios | Ya no es una brecha pendiente |
 | P2 | LinkedIn y X siguen pendientes | Ampliarlos ahora repetiría el defecto de atribución |
 
-SITIO_WEB es una expansión futura. Antes de sumar canales se debe estabilizar
-Fuente, Bridge, cuenta, campaña y procedencia de cada captación.
+SITIO_WEB es una expansión futura. Cuenta/campaña ya están estabilizadas por
+A; Fuente y routing permanecen en la evolución posterior.
 
 ### 4.4 M5/M6 — Gestión, asignación y handoff
 
 | Prioridad | Hallazgo verificado | Consecuencia |
 |---|---|---|
-| P0 | El responsable operativo puede cerrar desde etapas no terminales | Un asesor puede registrar `VENTA` o `NO_VENTA` |
+| Cerrado AS-IS / pendiente D7 | Bloque A introdujo `canClose`; la autoridad sigue leyendo `Usuario.rol` | D hará el cutover a membresía y `habilitadoParaVenta` |
 | P0 | El traspaso no consulta un evento o dato explícito de primer contacto | Cambiar de etapa no acredita gestión previa |
 | P0 | Admin y supervisor pueden entregar a vendedor un lead sin asesor | Se omite la intervención inicial solicitada |
-| P0 | El asesor original puede ejecutar un segundo traspaso | El contrato de ownership no es estable |
-| P1 | `hasta=YYYY-MM-DD` termina a medianoche y no valida el orden del rango | Se excluye casi todo el último día y se aceptan rangos invertidos |
-| P2 | Falta `vista=activos|cerrados` | El listado no soporta esas vistas en servidor |
-| P3 | `limite` no aplica la whitelist 10/25/50/100 | Frontend y backend aceptan contratos distintos |
+| Cerrado A | El segundo traspaso del asesor original se rechaza | El contrato AS-IS quedó estabilizado |
+| Cerrado A | `hasta` cubre el fin del día y valida el orden del rango | Ya no es brecha |
+| Cerrado A | `vista=activos|cerrados` existe | Ya no es brecha |
+| Cerrado A | `limite` aplica 10/25/50/100 | Contrato alineado |
 
-La asignación vigente usa pool global por rol, menor carga y desempate FIFO. La
-elegibilidad por Fuente es una propuesta, no el algoritmo actual.
+La asignación vigente usa pool global por rol, menor carga y desempate FIFO,
+sin scope empresarial todavía. D4 (§8) ya resolvió que el TO-BE filtra por
+membresía de empresa completa, sin sub-filtro por Fuente — Fuente queda como
+dato de atribución/reporte, nunca como filtro automático de routing.
 
 ### 4.5 Evolución tenant y holding
 
-- La frontera puede ser **Holding como tenant** con empresas internas, o
-  **Empresa como tenant** con coordinación federada del holding.
-- Empresa debe ser el scope funcional inequívoco del lead, pero la clave física
-  depende de la frontera elegida.
+- D1 resolvió **Holding como tenant** con empresas internas; A-C ya
+  materializaron Empresa/Membresia, claves obligatorias y aislamiento.
+- Empresa es el scope funcional inequívoco del lead.
 - Fuente es la unidad candidata de routing; Bridge es la conexión configurada y
   Activo de captación es solo el concepto paraguas.
-- Membresías, capacidades, deduplicación, secretos, SSE, jobs, logs, caché y
-  métricas deben respetar la misma frontera.
-- La separación Lead→Oportunidad es la dirección semántica candidata. Su
-  representación física sigue pendiente y no justifica imitar otro CRM.
+- Membresías, SSE, jobs, logs y datos críticos ya tienen aislamiento
+  empresarial en C; routing, autoridad y dashboards completan el
+  comportamiento en D/E/F.
+- D13/D14 resolvieron la separación `Lead`→`Oportunidad` y `Producto`; su
+  implementación sigue pendiente en D post-despliegue.
 - El reporting consolidado requiere distinguir empresa, Fuente, asesor y
   vendedor sin borrar la contribución previa al handoff.
 
-## 5. Clasificación de acciones
+## 5. Estado actual de ejecución
 
-### Corregir ahora
+| Tramo | Estado vigente |
+|---|---|
+| A-C | Cerrados en `052e811`, 894/894 tests: fundación, login por membresía, ownership obligatorio, RLS, TenantContext y CAS. |
+| D0 | Único slice multi-tenant pre-despliegue; hace visible el scope empresarial existente. |
+| D | Post-despliegue: pool empresarial, autoridad por membresía, `Oportunidad`/`Producto`; `CanalManual` y D9 siguen diferidos dentro de su alcance. |
+| E | Post-despliegue y dependiente de D para cerrar dashboards de Oportunidad/producto. |
+| F | Último bloque: retiro de `Usuario.rol`/`RolUsuario`, sujeto además a su dependencia dura de secuencia. |
+| D15 | Decisión preservada como trabajo futuro sin bloque asignado; no bloquea D0 ni D/E/F. |
 
-1. Reconciliar `docs/03`, `docs/04`, `docs/05`, `docs/08` y `docs/12` con las
-   fuentes técnicas o marcarlas sin ambigüedad hasta su reescritura.
-2. Reducir la cronología de `docs/06` y `docs/07` y alinear los README de paquete
-   con el entorno Docker obligatorio.
-3. Corregir el rango de fechas, las vistas y la whitelist de paginación de M5.
-4. Corregir el origen genérico y completar las alertas M4/M8 ya comprometidas.
-5. Retirar el filtro sintético de campaña o presentarlo como no disponible hasta
-   contar con atribución real.
-
-### Decidir antes de implementar
-
-1. Frontera tenant, topología física y alcance del administrador del holding.
-2. Identidad, deduplicación y reingreso entre empresas.
-3. Membresías, roles múltiples, scope de supervisión y excepciones auditadas.
-4. Competencia sobre Venta y No Venta, primer contacto y modalidad del handoff.
-5. Fuente efectiva de routing, herencia de permisos y bridges compartidos.
-6. Significado de rendimiento de canal y representación Lead→Oportunidad.
-
-### Diferir
-
-1. LinkedIn y X dentro del backlog MVP hasta estabilizar el contrato de origen.
-2. Sitio web como expansión TO-BE no aprobada, posterior al contrato de Fuente.
-3. Pipelines, formularios y scoring totalmente configurables.
-4. Marketing email, publicación social, CMS, Service Desk y Customer Success.
-5. Productos, cotizaciones, pagos, suscripciones y marketplace público.
-6. IA predictiva y aplicación móvil nativa sin evidencia operativa suficiente.
+LinkedIn, X, sitio web, personalización total, marketing, servicio, revenue
+ampliado, IA y app nativa conservan su clasificación diferida original. Para
+el backlog documental vigente, usar `docs/00-estado-documentacion.md`.
 
 ## 6. Referencias oficiales para el contraste CRM
 
@@ -169,12 +182,13 @@ Consultadas el 2026-08-25: orientan separación semántica, no copia de objetos.
 |---|---|---|
 | 0 — Autoridad documental | AS-IS verificable y QA reproducible | Fuentes mixtas corregidas o claramente bloqueadas |
 | 1 — Contrato de producto | Decisiones comerciales y D1 registradas | Matriz de capacidades, scope y handoff aprobada |
-| 2 — Endurecimiento single-company | Defectos deterministas de M4/M5 corregidos | Atribución de origen y rangos confiables |
-| 3 — Fundación tenant aditiva | Empresas, membresías y ownership nullable | Backfill y rollback demostrables |
-| 4 — Aislamiento efectivo | Scoping en consultas, jobs, SSE, logs y secretos | Pruebas adversariales entre empresas y tenants |
-| 5 — Routing y handoff | Fuente, elegibilidad, primer contacto y pools separados | Vendedor solo recibe trabajo habilitado |
-| 6 — Reporting jerárquico | Consolidado de holding y drill-down autorizado | KPIs separados por empresa, asesor y vendedor |
-| 7 — Retiro legacy | Restricciones obligatorias y compatibilidad retirada | Migración, backup y recuperación verificados |
+| 2 — Endurecimiento single-company | ✅ Bloque A cerrado | Atribución, alertas y exactitud verificadas |
+| 3 — Fundación tenant aditiva | ✅ Bloque B cerrado | Empresa/Membresia, login por membresía y backfill implementados |
+| 4 — Aislamiento efectivo | ✅ Bloque C cerrado | Ownership obligatorio, RLS/TenantContext/CAS y pruebas adversariales |
+| D0 — Visualización mínima | Pre-despliegue | Scope empresarial visible sin routing ni cambios Prisma |
+| 5 — Routing y handoff | Post-despliegue, pendiente | Pool empresarial, autoridad y `Oportunidad`/`Producto` |
+| 6 — Reporting jerárquico | Post-despliegue, pendiente de D | KPIs separados por empresa, asesor y vendedor |
+| 7 — Retiro legacy | Último bloque, pendiente | Retiro de `Usuario.rol` y compatibilidad restante |
 
 Todo cambio funcional o de esquema mantiene, cuando aplique, código, migración,
 documentación y pruebas en el mismo work unit. El orden no autoriza trabajo.
@@ -206,11 +220,11 @@ internas como scope funcional del lead.
   empresas únicas sin holding. La generalización no debe anteponerse a la
   satisfacción de este cliente piloto.
 
-Verificado contra `backend/prisma/schema.prisma`: no existe hoy modelo
-`Empresa`, `Holding` ni `Tenant`; el esquema es single-company, consistente
-con el hallazgo del §2. D1 resuelto no autoriza por sí solo el cambio de
-esquema — activa D2, D3, D6, D11 y D13, que siguen pendientes y deben
-registrarse en orden antes de tocar Prisma, autorización o contratos.
+**Estado implementado A-C:** `Empresa`/`Membresia` ya existen; el holding no
+tiene tabla propia y opera como frontera lógica sobre un esquema compartido.
+`Bridge.empresaId` y `Lead.empresaId` son obligatorios, y Bloque C aplica RLS
+y TenantContext. D1 conserva su valor de producto, pero ya no describe una
+fundación pendiente.
 → ver `docs/blocks/b-tenant-prisma-foundation.md`.
 
 **D2 — Frontera de identidad y deduplicación — Resuelto (2026-08-25):**
@@ -232,10 +246,11 @@ registrarse en orden antes de tocar Prisma, autorización o contratos.
   nivel holding, y deja de ser la constante fija `VENTANA_REINGRESO_DIAS` de
   `config/negocio.ts` — pasa a ser configurable por administrador.
 
-Implicación de esquema pendiente de diseño (no autorizada por esta nota):
-`Lead` necesita clave de empresa y la unicidad de "lead abierto" pasa a ser
-compuesta; la ventana de reingreso pasa de constante de código a dato de
-configuración. → ver `docs/blocks/b-tenant-prisma-foundation.md`.
+**Estado de implementación:** `Lead.empresaId` ya existe y es `NOT NULL`
+desde A-C. La mecánica funcional de apertura/deduplicación y la configuración
+de reingreso se completa con D13/D14 en Bloque D; esta nota no autoriza ese
+trabajo. → ver `docs/blocks/b-tenant-prisma-foundation.md` y
+`docs/blocks/d-routing-oportunidad.md`.
 
 **Nota para D3/D4/D5/D6/D9 (propuesta de flujo, no aprobada):** surgió el caso
 de un cliente promocionado o recomendado de una empresa a otra dentro del
@@ -252,18 +267,17 @@ Propuesta de flujo evaluada:
    asesor que recomienda, motivo, estado PENDIENTE/ACEPTADA/RECHAZADA). No
    crea Lead en la empresa destino todavía.
 3. Se notifica al **supervisor de la empresa destino** vía `Notificacion`
-   (tipo nuevo). **Bloqueante verificado:** hoy `Usuario.rol` es un enum
-   global (`backend/prisma/schema.prisma:45`), sin membresía por empresa —
-   no existe forma de resolver "quién es supervisor de la Empresa B". Este
-   paso depende primero de D5 (roles múltiples) y D6 (scope de supervisión),
-   no solo de D4.
+   (tipo nuevo). **Historia del bloqueo:** en el snapshot original solo
+   existía `Usuario.rol`; A-C ya incorporaron membresías empresariales y
+   scoping de notificaciones. La entidad `RecomendacionCruzada` continúa sin
+   implementarse.
 4. El supervisor acepta o rechaza. Solo al aceptar se crea el `Lead` real en
    la empresa destino (`empresaId`, mismo `clienteId`, mismo cliente). Al
    rechazar, la recomendación queda auditada sin generar lead — cumple el
    pedido de dejar registro de movimientos sin forzar el ingreso.
-5. **Cambio de Bridge confirmado:** hoy `Bridge` (schema.prisma:426) no tiene
-   `empresaId` — no existe vínculo a empresa en absoluto. D1 exige agregarlo
-   (1 Bridge = 1 Empresa). Además, todo `Lead` nace hoy de un `LeadRecibido`
+5. **Cambio de Bridge confirmado e implementado:** `Bridge.empresaId` ya es
+   `NOT NULL` (1 Bridge = 1 Empresa). El diseño de recomendación sigue
+   necesitando un origen interno porque el flujo normal nace de `LeadRecibido`
    con `bridgeId` obligatorio; un lead recomendado nace de un evento interno,
    sin Bridge. `Lead.origen` (enum `OrigenLead`) necesita un valor nuevo para
    este camino de entrada que no pasa por ningún Bridge.
@@ -342,13 +356,11 @@ auditarse (quién, cuándo, motivo, individual o masiva), como excepción sobre
 el flujo automático de D8, no como reemplazo de él. → ver
 `docs/blocks/d-routing-oportunidad.md`.
 
-Implicación de esquema pendiente de diseño (no autorizada por esta nota):
-`enum RolUsuario` (`schema.prisma:12`) pierde `VENDEDOR` y pasa a vivir en una
-membresía usuario↔empresa con un flag `habilitadoParaVenta`, más un nivel
-holding-wide separado para super admin/administrador de holding que no está
-atado a una sola empresa. `Lead.asesorId`/`vendedorId` (`schema.prisma:204-205`)
-podrían reinterpretarse sin campos nuevos — falta decidir si `vendedorId` se
-duplica siempre o solo cuando hay reasignación real a otro asesor.
+**Estado de implementación:** `Membresia` y `habilitadoParaVenta` ya existen,
+pero toda membresía es empresarial (`empresaId NOT NULL`). No se implementó
+un nivel de membresía holding-wide: la autoridad holding AS-IS permanece en
+`Usuario.rol` legacy hasta D/F. La reinterpretación funcional de responsables
+y cierre corresponde a D13/D14.
 → ver `docs/blocks/d-routing-oportunidad.md`.
 
 **D7 — Competencia sobre `NO_VENTA` — Resuelto (2026-08-25):** solo el asesor
@@ -382,98 +394,72 @@ empresas asignadas a mano").
 
 → ver `docs/blocks/c-aislamiento.md`.
 
-**8.1 — Riesgos de diseño detectados en D3/D5/D8/D9 (QA, no bloquean, deben
-resolverse antes de implementar).** Detalle completo, evidencia y resolución
-por bloque en `docs/blocks/`:
+**8.1 — Riesgos de diseño detectados en D3/D5/D8/D9 (estado distribuido por
+bloque).** Detalle completo, evidencia y resolución en `docs/blocks/`:
 
-1. Invariante de `Lead.asesorId` en riesgo si Administrador se autoasigna vía
-   la excepción de D9 — ver `docs/blocks/d-routing-oportunidad.md`.
+1. Invariante de `Lead.asesorId` ante D9: decisión registrada en Bloque D;
+   implementación pendiente junto con D9.
 2. Corrección de tecnología: el sistema usa SSE, no websockets
    (`backend/src/lib/event-broker.ts:79`).
-3. El SSE es UX, nunca el mecanismo de autorización — ver
-   `docs/blocks/c-aislamiento.md`.
-4. Condición de carrera D8 (auto-asignación) vs. D9 (excepción manual) — ver
-   `docs/blocks/c-aislamiento.md`.
-5. `Notificacion` no tiene destinatario por grupo; se resuelve con
-   `Membresia` (§8.2) — ver `docs/blocks/c-aislamiento.md`.
+3. El SSE es UX, nunca el mecanismo de autorización — resuelto en Bloque C.
+4. Condición de carrera de asignación — CAS implementado en Bloque C; la
+   semántica D8/D9 se completa en D.
+5. Destinatarios de notificación por empresa — resuelto en Bloque C mediante
+   membresías empresariales, sin `empresaId = null`.
 
-**8.2 — Propuesta de fundación: membresía usuario↔empresa↔rol (no aplicada al
-esquema todavía; requiere confirmación de los dos supuestos marcados abajo
-antes de migrar).**
+**8.2 — Fundación implementada: membresía usuario↔empresa↔rol.**
 
-Alcance deliberado: se modela `Empresa` sola, sin tabla `Holding` todavía. Hoy
-hay un solo holding (Arcano); crear `Holding` como entidad recién tiene
-sentido cuando D11 (topología física) decida si el holding es una fila de
-base de datos compartida o un control plane separado. Agregarla ahora sería
-diseñar para un requisito de D11 que todavía no está resuelto.
+Bloques B/C implementaron `Empresa`, `RolMembresia` y `Membresia` sin tabla
+`Holding`. El desvío respecto del diseño inicial es deliberado y vigente:
 
-Esquema Prisma (`Empresa`, `enum RolMembresia`, `Membresia`), los cambios
-sobre `Bridge`/`Lead`/`Usuario.rol` que cierran D1/D2, y el razonamiento de
-`empresaId: null` para admins de holding: movidos a
-`docs/blocks/b-tenant-prisma-foundation.md`. El riesgo QA #5 de §8.1
-(destinatario de notificación por grupo) queda cerrado por este mismo
-modelo de `Membresia`.
+- `Membresia.empresaId` es `NOT NULL`; toda membresía pertenece a una Empresa.
+- No existe una membresía holding-wide implementada. La idea histórica de
+  `empresaId = null` fue descartada por la implementación y no debe usarse
+  para consultas ni autorización.
+- La sesión y autoridad holding AS-IS se resuelven mediante `Usuario.rol`
+  legacy. Cuando una consulta holding necesita membresías, agrega las filas
+  empresariales concretas del usuario.
+- Un usuario sí puede tener varias membresías activas en distintas empresas
+  del holding y con roles distintos, según las restricciones del modelo.
 
-**Supuestos confirmados (2026-08-25):**
+**Ciclo de vida implementado:** quitar a alguien de una empresa usa
+`Membresia.activa = false`, nunca `DELETE`. `Usuario.activo` se recalcula al
+perder o recuperar su última membresía empresarial; la excepción holding se
+evalúa mediante la autoridad legacy de `Usuario.rol`, no mediante una
+membresía con `empresaId = null`.
 
-1. Super admin y administrador de holding son el **mismo** nivel de
-   membresía — es el mismo usuario, no dos roles distintos. `ADMINISTRADOR`
-   con `empresaId = null` cubre el caso sin necesitar un rol adicional.
-2. Un mismo usuario **sí puede tener varias membresías activas** en
-   distintas empresas del holding a la vez, **para cualquier rol** (Asesor,
-   Supervisor, Administrador de empresa) — no es exclusivo de Asesor. Aplica
-   sobre todo cuando el volumen de leads de una empresa todavía no justifica
-   personal dedicado y una misma persona atiende varias empresas.
+El esquema y sus desvíos están documentados en
+`docs/blocks/b-tenant-prisma-foundation.md`; el aislamiento efectivo y las
+consultas holding/empresa, en `docs/blocks/c-aislamiento.md`.
 
-**Ciclo de vida de la membresía (2026-08-25):**
+**8.3 — Ruteo de login sin selector: correo por membresía (implementado en
+Bloque B).**
 
-- Quitar a alguien de una empresa es `Membresia.activa = false` en esa fila,
-  nunca un `DELETE` — conserva el historial de auditoría de qué membresía
-  autorizó qué acción sobre qué lead.
-- `Usuario.activo` (`schema.prisma:46`, ya existente) pasa a recalcularse
-  como efecto derivado: se pone en `false` automáticamente cuando el usuario
-  se queda sin **ninguna** `Membresia` de empresa activa, y vuelve a `true`
-  automáticamente en cuanto se le (re)activa una membresía de empresa —
-  la reactivación es literalmente reasignarlo a una empresa, sin recrear el
-  usuario ni perder su historial previo.
-- Excepción a esa regla: una membresía **holding-wide** (`empresaId = null`,
-  ADMINISTRADOR o SUPERVISOR) no depende de tener empresas asignadas — si
-  esa membresía sigue activa, el usuario sigue activo aunque pierda todas
-  sus membresías de empresa.
-- Esto es lógica de aplicación (recalcular `Usuario.activo` al
-  activar/desactivar una `Membresia`), no un trigger de base de datos —
-  consistente con que el resto de las reglas de negocio del backend ya
-  viven en la capa de servicios, no en Postgres.
-
-**8.3 — Ruteo de login sin selector: correo por membresía (propuesta, no
-aplicada al esquema).**
-
-Verificado contra el código real: hoy el login
-(`backend/src/services/auth.service.ts:63-84`) resuelve un único `Usuario`
-por `correo` global — no alcanza para una persona reutilizada en varias
-empresas. **Confirmado (2026-08-25): credenciales completamente
-independientes por empresa** (comprometer una empresa no expone a las
-otras); la identidad de negocio sigue siendo una sola (`Usuario.id`). Diseño
-completo (`Membresia.correo`/`passwordHash`, resolución en login,
-`RefreshToken.membresiaId`, riesgo de unicidad entre tablas) movido a
-`docs/blocks/b-tenant-prisma-foundation.md`. Sin preguntas abiertas en §8.3.
+El login por `Membresia.correo`/`passwordHash`, la resolución de sesión
+company y `RefreshToken.membresiaId` ya están implementados. Las credenciales
+son independientes por empresa y la identidad de negocio sigue siendo
+`Usuario.id`. Esto no completó el cutover de autoridad: las sesiones holding
+y las decisiones funcionales todavía dependientes del rol plano continúan
+usando `Usuario.rol` legacy hasta D/F. Contrato técnico en
+`docs/blocks/b-tenant-prisma-foundation.md`.
 
 **D10 — Rendimiento de canal — Resuelto (2026-08-25):** métricas
 publicitarias reales (Meta Ads primero), cruzadas con la conversión real del
 CRM — no solo conteos propios de `Lead`. → ver `docs/blocks/e-dashboards.md`.
 
-**8.4 — Plan de implementación: gestión de campañas + ingreso manual
-(propuesta, no aplicada al esquema).**
+**8.4 — Estado de campañas e ingreso manual.**
 
-Dos líneas de trabajo distintas, movidas a los bloques que las implementan:
+**Cerrado en Bloque A:** `Lead.campaniaId`/`cuentaPublicitariaId` ya existen y
+se resuelven durante la ingesta; `TOKEN_POR_EXPIRAR` ya tiene productor
+idempotente. No pertenecen al backlog pendiente de E.
 
-- **Sincronización de campañas Meta** (job de `Campania`, `Lead.campaniaId`,
-  `CampaniaMetricaDiaria`, cálculo de CPC/CPL/CAC, cierre de
-  `TOKEN_POR_EXPIRAR`): `docs/blocks/e-dashboards.md`.
-- **Ingreso manual de leads y catálogo de canal manual** (`OrigenLead.MANUAL`,
-  modelo `CanalManual`, autorización confirmada para Administrador/
-  Supervisor/Asesor, unión de `Bridge.redSocial` + `CanalManual.nombre` como
-  una sola dimensión de reporte): `docs/blocks/d-routing-oportunidad.md`.
+**Pendiente post-despliegue:**
+
+- Bloque E conserva la sincronización del catálogo y métricas reales de Meta
+  (`CampaniaMetricaDiaria`, CPC/CPL/CAC) y debe consumir `Lead.campaniaId` ya
+  existente.
+- Bloque D conserva el ingreso manual (`OrigenLead.MANUAL`, `CanalManual`) como
+  alcance diferido no bloqueante del núcleo de routing/Oportunidad.
 
 **Confirmado (2026-08-25), se conserva acá por ser decisión de producto, no
 diseño de esquema:** en el selector de Bridges, `X` y `LINKEDIN` (3 de 5
@@ -481,8 +467,8 @@ valores de `enum RedSocial` desarrollados hoy: Facebook/Instagram/Google
 Forms) se restringen por allowlist de aplicación y van comentados en el
 código del selector de frontend, no eliminados — sin tocar el schema.
 
-**8.5 — Plan de implementación: exportación de reportes (PDF/XLSX)
-(propuesta, no aplicada).**
+**8.5 — Plan de implementación: exportación de reportes (PDF/XLSX;
+decisión resuelta, implementación pendiente en E).**
 
 Reutiliza las mismas consultas de agregación ya expuestas por
 `backend/src/controllers/metricas.controller.ts` — exportar es una capa de
@@ -505,10 +491,10 @@ empresa.
   necesita, porque agregar entre empresas es un `GROUP BY` normal.
 - **Riesgo a mitigar (no descarta la decisión):** con esquema compartido, un
   bug que olvide filtrar por `empresaId` puede filtrar datos entre
-  empresas. Mitigación: centralizar el filtro de empresa en una sola capa
-  (servicio/middleware), y considerar Row-Level Security de Postgres como
-  defensa adicional — no confiar en que cada consulta lo recuerde por su
-  cuenta.
+  empresas. **Mitigación ya implementada en Bloque C:** scoping obligatorio,
+  TenantContext por `AsyncLocalStorage`, RLS forzado de Postgres, partición de
+  jobs y pruebas adversariales. RLS es defensa adicional, no sustituto de la
+  autorización de aplicación.
 - **Casos donde SÍ se justificaría una base separada por empresa** (ninguno
   aplica hoy a Arcano, quedan como criterio para el futuro SaaS):
   1. Requisito regulatorio de residencia de datos (la ley exige que los
@@ -543,8 +529,12 @@ Esquema Prisma de `Oportunidad` (campos que se mueven desde `Lead`: `etapa`,
 `observacionCierre`, `formaPago`, `cerradoEn`) y el criterio de qué queda en
 `Lead` como contacto: movidos a `docs/blocks/d-routing-oportunidad.md`.
 
-**Efecto cascada sobre decisiones ya cerradas — señalado, no resuelto
-todavía:** este cambio reabre mecánica (no la decisión de fondo) de D2, D3,
+**Estado de implementación:** decisión preservada; `Oportunidad`/`Producto`
+siguen pendientes en Bloque D post-despliegue. D0 no los implementa.
+
+**Historia de decisión — efecto cascada señalado y resuelto inmediatamente en
+D14:** en este punto de la revisión el cambio reabría mecánica (no la decisión
+de fondo) de D2, D3,
 D7, D8 y D9, porque "lead abierto", el pool de asignación, la autoridad de
 cierre y la reasignación manual pasarían a operar sobre `Oportunidad`, no
 sobre `Lead`. Por disciplina del documento (§9: los temas se registran
@@ -557,6 +547,9 @@ resuelto en **D14**, inmediatamente debajo.
 
 **D14 — Efecto cascada de D13 sobre D2/D3/D7/D8/D9 (Oportunidad y
 Producto) — Resuelto (2026-08-25):**
+
+> **Estado de implementación:** pendiente en Bloque D post-despliegue. Las
+> reglas siguientes están decididas, no desplegadas.
 
 - **Catálogo `Producto` por empresa, no texto libre.** Se reemplaza
   `Oportunidad.productoServicio: String?` de la propuesta de esquema de D13
@@ -618,8 +611,8 @@ Producto) — Resuelto (2026-08-25):**
   Admin/Supervisor no cambia de titularidad, solo suma este filtro. Detalle
   de estructura de UI en `docs/blocks/d-routing-oportunidad.md`.
 
-**8.6 — Plan de implementación: dashboards de rendimiento (propuesta, no
-aplicada).**
+**8.6 — Plan de implementación: dashboards de rendimiento (decisión resuelta;
+implementación pendiente post-despliegue).**
 
 Nuevas vistas propuestas sobre `metricas.service.ts` ya existente: embudo
 por Oportunidad, rendimiento por producto, cascada Lead→Oportunidad→Venta,
@@ -634,10 +627,38 @@ resultado debe registrarse antes de cambiar esquema, autorización o
 contratos. El efecto cascada de D13 sobre D2/D3/D7/D8/D9, señalado como
 pendiente en su momento, quedó resuelto en D14.
 
+**D15 — Importación de datos históricos por empresa — Pendiente, diferido
+(2026-08-27): no bloquea Bloque C.**
+
+Contexto verificado: la **fundación A-C** se desarrolló antes de la primera
+puesta en producción y dejó `Bridge.empresaId`/`Lead.empresaId` obligatorios;
+no quedaron filas legacy con ese ownership nulo. Esto no significa que todo
+D1-D14 esté desarrollado: routing, autoridad, `Oportunidad`/`Producto`,
+`CanalManual`, dashboards y retiro legacy permanecen pendientes en D/E/F.
+
+Sí queda una necesidad de producto real, distinta de la anterior: cuando una
+empresa se suma al sistema, puede traer datos históricos propios (leads de
+un CRM anterior, planillas, etc.) que hay que cargar ya asignados a esa
+empresa. Propuesta de diseño evaluada, no aprobada ni asignada a un bloque
+todavía:
+
+- Handler de importación que recibe un lote de leads y una empresa destino
+  explícita (selector, no inferencia) — los datos importados quedan scoping
+  por esa empresa desde el alta.
+- Paso de análisis de duplicados sobre el lote importado antes de persistir
+  (mismo criterio de deduplicación por `telefonoNormalizado` de D2, evaluado
+  contra los `Cliente`/`Lead` ya existentes de esa empresa) con una forma de
+  resolver el conflicto (fusionar, omitir, o marcar para revisión manual —
+  sin decidir todavía cuál).
+- No es parte del alcance de Bloque C (aislamiento) ni del resto de bloques
+  ya definidos (D, E, F). Queda como candidato a bloque propio o extensión
+  de Bloque D/F cuando se priorice — a decidir en su momento, no ahora.
+
 ## 9. Criterio de entrega a otro equipo
 
 - El equipo receptor distingue hechos AS-IS de propuestas TO-BE.
-- D1 tiene una respuesta explícita antes de diseñar aislamiento.
+- D1 tiene respuesta explícita y A-C ya materializaron la fundación y el
+  aislamiento.
 - Los temas D2–D14 se resuelven en orden y se registran de forma explícita.
 - Toda afirmación técnica se contrasta con código y migraciones.
 - Los tests runtime futuros se ejecutan únicamente en el entorno Docker aprobado.

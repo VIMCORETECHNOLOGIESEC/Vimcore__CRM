@@ -99,6 +99,10 @@ export interface CreateBridgeData {
   redSocial: RedSocial;
   nombre: string;
   claveApiHash: string;
+  // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): obligatorio desde
+  // que `Bridge.empresaId` es NOT NULL — `bridge.service.ts::createBridge`
+  // ya lo exige en `CreateBridgeInput`.
+  empresaId: string;
 }
 
 /**

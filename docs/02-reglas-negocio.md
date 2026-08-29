@@ -119,8 +119,9 @@ La reasignación **reinicia el reloj SLA** del lead y notifica al nuevo responsa
 > roles con traspaso, pero no definió el momento exacto en su momento. M6 ya
 > implementó la regla AS-IS de esta sección sobre ese supuesto no confirmado;
 > la autoridad de cierre (D7), el handoff automático (D8) y las excepciones de
-> reasignación (D9) ya están decididos. Pendiente: migrar código y esquema a
-> lo ya resuelto antes de producción.
+> reasignación (D9) ya están decididos. D0 no cambia este contrato: el cutover
+> funcional ocurre en Bloque D post-despliegue y, hasta entonces, manda la regla
+> AS-IS documentada en esta sección.
 
 - El traspaso es una **acción explícita** del asesor, no un efecto automático
   del cambio de etapa
@@ -147,8 +148,10 @@ por separado.
 > globales y no resuelve el alcance multiempresa. El modelo aprobado es la
 > jerarquía de membresías usuario↔empresa↔rol de
 > [`16-hallazgos-y-preguntas.md`](16-hallazgos-y-preguntas.md) §8.2 — incluye
-> autoasignación (D8), conflicto de interés y auditoría (D9). Pendiente:
-> implementarlo en Prisma y en la capa de autorización.
+> autoasignación (D8), conflicto de interés y auditoría (D9). `Empresa` y
+> `Membresia` ya existen en Prisma desde Bloque B/C; pendiente el cutover
+> funcional en la capa de autorización (routing y autoridad de cierre por
+> membresía en vez de `Usuario.rol`), que corresponde a Bloque D.
 
 ---
 
@@ -262,19 +265,28 @@ que se rearma automáticamente al renovar el token. Registrado en `scheduledNoti
 
 ## 10. Evolución multiempresa y multitenant — TO-BE no aprobado
 
-Las secciones 1 a 9 describen el comportamiento **AS-IS** del despliegue
-single-tenant actual. No deben interpretarse como el contrato definitivo para
-la evolución hacia holdings con varias empresas.
+**Corte vigente (2026-08-28):** Bloques A-C ya cerraron la fundación
+multi-tenant en producción (`052e811`, 894/894 tests) — `Empresa`/`Membresia`,
+`Bridge.empresaId`/`Lead.empresaId` obligatorios, RLS forzado, `TenantContext`
+y CAS optimista. La infraestructura **ya no es single-tenant**. Lo que las
+secciones 1 a 9 describen es el **comportamiento funcional** todavía no
+scopeado por empresa: asignación por pool global (no por membresía), autoridad
+de cierre por `Usuario.rol` legacy (no por membresía/`habilitadoParaVenta`) y
+un único `Lead` sin `Oportunidad` separada. Ese cutover funcional queda para
+Bloques D (post-despliegue) y F (retiro final de `Usuario.rol`). No deben
+interpretarse las secciones 1 a 9 como el contrato definitivo para la
+evolución hacia holdings con varias empresas.
 
 Las decisiones D1–D14 (límite de seguridad entre tenant, holding y empresa;
-membresías y capacidades por empresa; elegibilidad de asesores por Fuente;
-responsabilidad de primer contacto, traspaso y cierre entre asesor y
-Oportunidad) ya están **resueltas** en
-[`16-hallazgos-y-preguntas.md`](16-hallazgos-y-preguntas.md) §8. La
-arquitectura candidata completa, con las propuestas de esquema, sigue en
-[`14-evolucion-multitenant.md`](14-evolucion-multitenant.md).
+membresías y capacidades por empresa; elegibilidad por membresía de empresa
+completa sin sub-filtro por Fuente — D4, `docs/16` §8; responsabilidad de
+primer contacto, traspaso y cierre entre asesor y Oportunidad) ya están
+**resueltas** en [`16-hallazgos-y-preguntas.md`](16-hallazgos-y-preguntas.md)
+§8. La arquitectura candidata completa, con las propuestas de esquema, sigue
+en [`14-evolucion-multitenant.md`](14-evolucion-multitenant.md).
 
 Esta referencia **no aprueba ni incorpora** esas reglas al comportamiento
-actual: las decisiones están tomadas, pero la migración de esquema, código y
-autorización sigue pendiente de implementarse antes de modificar este
-contrato AS-IS.
+funcional actual: las decisiones están tomadas y la fundación de esquema/
+aislamiento (A-C) ya está implementada, pero el cutover de routing, autoridad
+y `Oportunidad` sigue pendiente de implementarse en Bloque D antes de
+modificar este contrato AS-IS.

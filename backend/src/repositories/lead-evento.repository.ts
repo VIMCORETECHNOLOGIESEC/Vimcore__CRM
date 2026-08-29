@@ -3,6 +3,13 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface CreateEventoData {
   leadId: string;
+  /**
+   * Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId`,
+   * requerido desde esta migración (`lead_eventos.empresa_id` NOT NULL). El
+   * llamador ya tiene el `Lead` releído en la misma transacción en todos los
+   * call sites existentes — nunca amerita una consulta extra.
+   */
+  empresaId: string;
   tipo: LeadEvento["tipo"];
   /**
    * M6 (diseño, DD5): `LeadEvento.usuarioId` existe desde M3 pero ningún

@@ -28,7 +28,7 @@ export type { ResultadoRecordatorioCitas } from "../services/citas-recordatorio.
 export function startCitasRecordatorioJob(
   intervaloMs: number = INTERVALO_RECORDATORIO_CITA_MS,
   enviar: (ahora?: Date) => Promise<ResultadoRecordatorioCitas> =
-    scheduledNotificationProducers.appointments,
+    scheduledNotificationProducers.citas,
 ): NodeJS.Timeout {
   let enCurso = false;
   const timer = setInterval(() => {

@@ -1,14 +1,15 @@
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
-import { INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { INGESTA_ACCEPT_TRANSACTION_BOUNDS, INGESTA_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as leadRecibidoRepository from "../repositories/lead-recibido.repository.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
 import { assignAfterCommit } from "./asignacion.service.js";
-import { publishCommittedEvents } from "./committed-events.service.js";
+import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
+import { createForActiveRoles } from "./notificaciones.service.js";
 import { resolverLeadgenMeta } from "./meta-webhook.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
@@ -26,9 +27,25 @@ export interface IngestaResultado {
  * `procesarRecepcion` (mismo archivo), invocada por el worker durable
  * (`runIngestionOnce`/`startIngestionWorker` en `jobs/ingesta-inbox.job.ts`)
  * que reclama filas pendientes del buzón.
+ *
+ * Bloque C (Etapa 3, D2 gap closure): `aceptarLeadRecibido` hace un
+ * `$queryRaw` suelto: `lib/prisma.ts::$allOperations` NUNCA aplica las GUCs
+ * de tenant a una operacion raw fuera de una transaccion explicita, sin
+ * importar que este call site corra dentro del `runWithTenantContext` que
+ * `requireBridgeKey` ya dejo activo alrededor de `next()`. Envolver la
+ * llamada en `runInTransaction` (que abre `prisma.$transaction`, cuyo
+ * override SI aplica `applyTenantGucs` como primer statement) es lo unico
+ * que hace que la politica RLS de `leads_recibidos` vea
+ * `app.tenant_empresa_id` del bridge autenticado: sin esto, todo
+ * `POST /api/v1/ingesta/generico` fallaba con 42501 en cuanto
+ * `leads_recibidos` paso a tener RLS.
  */
 export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResultado> {
-  return leadRecibidoRepository.aceptarLeadRecibido(entrada);
+  return runInTransaction(
+    undefined,
+    (tx) => leadRecibidoRepository.aceptarLeadRecibido(entrada, new Date(), tx),
+    INGESTA_ACCEPT_TRANSACTION_BOUNDS,
+  );
 }
 
 /**
@@ -86,7 +103,33 @@ export async function procesarRecepcion(
         tx,
       );
       if (!completed) throw new AppError("lease_ingesta_perdido", 409, "El lease de ingesta venció");
-      return { entrada, dedup, datosIncompletos };
+
+      // M-hardening Bloque A (WU7, spec bridge-log-notifications, D5): vive
+      // ACÁ (no en `bridge-log.service.ts::registrarBridgeLog`), porque
+      // `bridge-mudo.service.ts` también emite ADVERTENCIA para un evento no
+      // relacionado (bridge mudo) — una rama genérica por nivel notificaría
+      // "datos incompletos" para ese caso también. Solo `procesarRecepcion`
+      // tiene `dedup.leadId` para poblar `NotificationInput.leadId`. Una
+      // notificación individual por lead, sin agregación (spec).
+      // Bloque C (D5, Fase 2/Stage 2 — cutover bloqueante): `dedup.empresaId`
+      // es el `empresaId` real resuelto por `deduplicateLead`
+      // (`deduplicacion.service.ts` falla cerrado si no puede resolverlo) —
+      // ya no hay ningún seguimiento pendiente para este call site.
+      const notificacionesDatoIncompleto = datosIncompletos
+        ? await createForActiveRoles(
+            ["SUPERVISOR"],
+            {
+              tipo: "LEAD_DATO_INCOMPLETO",
+              titulo: "Lead con datos incompletos",
+              mensaje: "Un lead ingresó sin teléfono ni correo — requiere seguimiento manual",
+              leadId: dedup.leadId,
+            },
+            dedup.empresaId,
+            tx,
+          )
+        : [];
+
+      return { entrada, dedup, datosIncompletos, notificacionesDatoIncompleto };
     },
     INGESTA_TRANSACTION_BOUNDS,
   );
@@ -94,7 +137,9 @@ export async function procesarRecepcion(
     logger.warn({ recepcionId: claim.recepcionId }, "ingesta: lease obsoleto rechazado");
     return false;
   }
-  publishCommittedEvents(resultado.dedup.events);
+  const eventosDatoIncompleto: CommittedEvent[] =
+    resultado.notificacionesDatoIncompleto.flatMap(notificationEvents);
+  publishCommittedEvents([...resultado.dedup.events, ...eventosDatoIncompleto]);
   if (resultado.dedup.leadCreado) {
     await assignAfterCommit(resultado.dedup.leadId, new Date(claim.entradaProcesamiento.recibidoEn));
   }

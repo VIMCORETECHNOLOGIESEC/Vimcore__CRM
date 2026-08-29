@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as respuestaFormularioRepository from "../src/repositories/respuesta-formulario.repository.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
@@ -25,8 +27,8 @@ async function crearClienteYLead(): Promise<{ leadId: string }> {
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente RF ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
-    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+  const lead = await testAdminPrisma.lead.create({
+    data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
   });
   return { leadId: lead.id };
 }
@@ -40,15 +42,18 @@ describe("repositories/respuesta-formulario — createRespuesta (D8, insert-only
     const { id: usuarioId } = await crearUsuario();
     const { leadId } = await crearClienteYLead();
 
-    const fila = await respuestaFormularioRepository.createRespuesta({
-      leadId,
-      usuarioId,
-      etapa: "NUEVO",
-      respuestas: { p1: "alto" },
-      puntuacion: 87,
-      semaforo: "VERDE",
-      versionRubrica: "v1",
-    });
+    const fila = await respuestaFormularioRepository.createRespuesta(
+      {
+        leadId,
+        usuarioId,
+        etapa: "NUEVO",
+        respuestas: { p1: "alto" },
+        puntuacion: 87,
+        semaforo: "VERDE",
+        versionRubrica: "v1",
+      },
+      testAdminPrisma,
+    );
 
     expect(fila.leadId).toBe(leadId);
     expect(fila.usuarioId).toBe(usuarioId);
@@ -62,30 +67,36 @@ describe("repositories/respuesta-formulario — createRespuesta (D8, insert-only
     const { id: usuarioId } = await crearUsuario();
     const { leadId } = await crearClienteYLead();
 
-    const primera = await respuestaFormularioRepository.createRespuesta({
-      leadId,
-      usuarioId,
-      etapa: "NUEVO",
-      respuestas: { p1: "bajo" },
-      puntuacion: 10,
-      semaforo: "ROJO",
-      versionRubrica: "v1",
-    });
-    const segunda = await respuestaFormularioRepository.createRespuesta({
-      leadId,
-      usuarioId,
-      etapa: "CONTACTADO",
-      respuestas: { p1: "alto" },
-      puntuacion: 90,
-      semaforo: "VERDE",
-      versionRubrica: "v1",
-    });
+    const primera = await respuestaFormularioRepository.createRespuesta(
+      {
+        leadId,
+        usuarioId,
+        etapa: "NUEVO",
+        respuestas: { p1: "bajo" },
+        puntuacion: 10,
+        semaforo: "ROJO",
+        versionRubrica: "v1",
+      },
+      testAdminPrisma,
+    );
+    const segunda = await respuestaFormularioRepository.createRespuesta(
+      {
+        leadId,
+        usuarioId,
+        etapa: "CONTACTADO",
+        respuestas: { p1: "alto" },
+        puntuacion: 90,
+        semaforo: "VERDE",
+        versionRubrica: "v1",
+      },
+      testAdminPrisma,
+    );
 
     expect(primera.id).not.toBe(segunda.id);
-    const total = await prisma.respuestaFormulario.count({ where: { leadId } });
+    const total = await testAdminPrisma.respuestaFormulario.count({ where: { leadId } });
     expect(total).toBe(2);
 
-    const filaOriginal = await prisma.respuestaFormulario.findUniqueOrThrow({
+    const filaOriginal = await testAdminPrisma.respuestaFormulario.findUniqueOrThrow({
       where: { id: primera.id },
     });
     expect(filaOriginal.puntuacion).toBe(10); // no fue sobrescrita por la segunda inserción

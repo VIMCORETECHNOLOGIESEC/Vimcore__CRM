@@ -1,6 +1,6 @@
 import type { Prisma, RolUsuario } from "@prisma/client";
 import type { MetricasQuery } from "../schemas/metricas.schema.js";
-import type { UsuarioAcceso } from "./leads.access.js";
+import { aplicarFiltroEmpresa, type UsuarioAcceso } from "./leads.access.js";
 
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 
@@ -34,7 +34,19 @@ export function resolveResponsableIds(usuario: UsuarioAcceso, query: MetricasQue
  * filtran por `cerradoEn`.
  */
 export function resolveAlcanceBase(usuario: UsuarioAcceso, query: MetricasQuery): Prisma.LeadWhereInput {
-  const where: Prisma.LeadWhereInput = {};
+  // Bloque C (Fase 2/Stage 2, D6 ya resuelto: "supervisor de holding ve
+  // métricas de todo el holding, incluye agregados multi-empresa, sin
+  // permiso de escritura"): `empresaId === null` (holding-wide, D2) no
+  // restringe — el supervisor/administrador ve el agregado de TODAS las
+  // empresas del holding, ninguna de otro holding. Un `empresaId` concreto
+  // (futuro supervisor de empresa, D5/D6 cutover de autoridad, fuera de
+  // Bloque C) queda acotado a esa única empresa. `metricas.routes.ts` no
+  // expone ningún endpoint de escritura — "sin permiso de escritura" se
+  // satisface por construcción (módulo 100% GET), no requiere un chequeo
+  // adicional acá. Filtro vía `leads.access.ts::aplicarFiltroEmpresa` (task
+  // 2.12 REFACTOR: mismo helper que `leads.service.ts::buildWhere`, antes
+  // duplicado idéntico en ambos archivos).
+  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario);
 
   const responsableIds = resolveResponsableIds(usuario, query);
   if (responsableIds) {
@@ -81,6 +93,10 @@ export function aplicarRangoFecha(
  */
 export interface FiltroLeadsSql {
   responsableIds: string[] | null;
+  // Bloque C (Fase 2/Stage 2, D6): mismo criterio que `resolveAlcanceBase` —
+  // `null` = holding-wide (sin restricción), cualquier otro valor acota la
+  // consulta cruda a esa empresa.
+  empresaId: string | null;
   redSocial: string | null;
   campania: string | null;
   campoFecha: "ingresado_en" | "cerrado_en";
@@ -97,6 +113,7 @@ export function resolveFiltroSql(
 ): FiltroLeadsSql {
   return {
     responsableIds: resolveResponsableIds(usuario, query),
+    empresaId: usuario.empresaId,
     redSocial: query.redSocial ?? null,
     campania: query.campania ?? null,
     campoFecha,

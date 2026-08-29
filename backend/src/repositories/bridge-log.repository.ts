@@ -3,10 +3,16 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface RegistrarLogData {
   bridgeId: string | null;
+  empresaId?: string;
+  holdingWide?: true;
   nivel: NivelBridgeLog;
   mensaje: string;
   payload?: unknown;
 }
+
+export type RegistrarLogPersistidoData = Omit<RegistrarLogData, "empresaId"> & {
+  empresaId: string | null;
+};
 
 /**
  * DD5 (diseño M4): único repositorio del proyecto que NO acepta
@@ -21,12 +27,13 @@ export interface RegistrarLogData {
  * debe enmascarar el error original que se intentaba registrar.
  */
 export async function registrarLog(
-  data: RegistrarLogData,
+  data: RegistrarLogPersistidoData,
   client: PrismaClientOrTransaction = prisma,
 ) {
   return client.bridgeLog.create({
     data: {
       bridgeId: data.bridgeId,
+      empresaId: data.empresaId,
       nivel: data.nivel,
       mensaje: data.mensaje,
       payload:

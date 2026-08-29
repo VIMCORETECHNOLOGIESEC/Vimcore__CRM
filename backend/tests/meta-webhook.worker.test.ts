@@ -1,10 +1,23 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as inbox from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 import { META_DETALLE_MAX_INTENTOS } from "../src/services/meta-webhook.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `procesarRecepcion`
+ * corre en producción dentro de `runWithTenantContext({ empresaId: null },
+ * ...)` (ver `jobs/ingesta-inbox.job.ts`) porque el worker no tiene ciclo de
+ * request HTTP — este archivo la ejercita directo, así que replica ese mismo
+ * contexto.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: null }, fn);
+}
 
 /**
  * Cubre el tramo que se movió del controller síncrono al worker durable
@@ -29,16 +42,17 @@ async function crearBridgeConCuenta(
   overrides: { estadoToken?: "VALIDO" | "TOKEN_EXPIRADO" | "ERROR"; tokenCifrado?: string | null } = {},
 ): Promise<CuentaFixture> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge Meta Worker ${contador}`,
       claveApiHash: hashClaveBridge(`clave-meta-worker-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   const pageId = `page-meta-worker-${contador}`;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId: bridge.id,
       idExterno: pageId,
@@ -65,8 +79,9 @@ async function encolarYReclamar(
   const receipt = await inbox.aceptarLeadgenMetaPendiente(
     { bridgeId: cuenta.bridgeId, leadgenId, pageId: cuenta.pageId },
     recibidoEn,
+    testAdminPrisma,
   );
-  const row = await prisma.leadRecibido.update({
+  const row = await testAdminPrisma.leadRecibido.update({
     where: { id: receipt.recepcionId },
     data: { estado: "PROCESANDO", intentos: 1, leaseOwner: owner, leaseHasta: new Date(Date.now() + 60_000) },
   });
@@ -95,16 +110,16 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     vi.stubGlobal("fetch", fetchMock);
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-transitorio");
 
-    await expect(procesarRecepcion(claim)).rejects.toThrow();
+    await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
     expect(fetchMock).toHaveBeenCalledTimes(META_DETALLE_MAX_INTENTOS);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log?.mensaje).toContain(`tras ${META_DETALLE_MAX_INTENTOS} intentos`);
     expect(JSON.stringify(log?.payload)).toContain(leadgenId);
-    const recepcion = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
+    const recepcion = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
     expect(recepcion.leadId).toBeNull();
   }, 10_000);
 
@@ -115,10 +130,10 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     vi.stubGlobal("fetch", fetchMock);
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-token-expirado");
 
-    await expect(procesarRecepcion(claim)).rejects.toThrow();
+    await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
     expect(fetchMock).not.toHaveBeenCalled();
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -134,12 +149,12 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     vi.stubGlobal("fetch", fetchMock);
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-token-invalido");
 
-    await expect(procesarRecepcion(claim)).rejects.toThrow();
+    await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const cuentaActualizada = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.cuentaId } });
+    const cuentaActualizada = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.cuentaId } });
     expect(cuentaActualizada.estadoToken).toBe("TOKEN_EXPIRADO");
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -150,11 +165,11 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     const cuenta = await crearBridgeConCuenta();
     const leadgenId = `leadgen-worker-cuenta-eliminada-${contador}`;
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-cuenta-eliminada");
-    await prisma.cuentaPublicitaria.delete({ where: { id: cuenta.cuentaId } });
+    await testAdminPrisma.cuentaPublicitaria.delete({ where: { id: cuenta.cuentaId } });
 
-    await expect(procesarRecepcion(claim)).rejects.toThrow();
+    await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow();
 
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: null, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -177,12 +192,12 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     vi.stubGlobal("fetch", fetchMock);
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-sin-contacto");
 
-    expect(await procesarRecepcion(claim)).toBe(true);
+    expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
-    const recepcion = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
+    const recepcion = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
     expect(recepcion.datosIncompletos).toBe(true);
     expect(recepcion.leadId).not.toBeNull();
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -209,11 +224,11 @@ describe("worker de ingesta — sobre META_PENDIENTE_DETALLE (docs/05-bridges.md
     vi.stubGlobal("fetch", fetchMock);
     const claim = await encolarYReclamar(cuenta, leadgenId, "worker-con-contacto");
 
-    expect(await procesarRecepcion(claim)).toBe(true);
+    expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
-    const recepcion = await prisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
+    const recepcion = await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: claim.recepcionId } });
     expect(recepcion.datosIncompletos).toBe(false);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: cuenta.bridgeId, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "desc" },
     });

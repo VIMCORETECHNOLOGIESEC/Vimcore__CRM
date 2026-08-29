@@ -3,12 +3,20 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
 const VEINTICINCO_HORAS_MS = 25 * 60 * 60 * 1000;
 
 let contador = 0;
+
+// Bloque C follow-up (D2 gap closure): ASESOR/VENDEDOR sin Membresia activa
+// ya no pueden autenticarse (TenantContext irresoluble se rechaza, D2) — solo
+// esos dos roles la necesitan (ADMINISTRADOR/SUPERVISOR resuelven
+// holding-wide incondicionalmente, sin leer Membresia).
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+const ROLES_CON_MEMBRESIA = new Set(["ASESOR", "VENDEDOR"]);
 
 async function crearUsuarioConToken(
   rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR",
@@ -24,6 +32,17 @@ async function crearUsuarioConToken(
       activo,
     },
   });
+  if (ROLES_CON_MEMBRESIA.has(rol)) {
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: true,
+      },
+    });
+  }
   const login = await request(app)
     .post("/api/v1/auth/login")
     .send({ correo: usuario.correo, password: PASSWORD });
@@ -43,7 +62,7 @@ async function crearLead(
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente AR ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -53,6 +72,7 @@ async function crearLead(
       vendedorId: overrides.vendedorId ?? null,
       slaInicioEn: overrides.slaInicioEn === undefined ? null : overrides.slaInicioEn,
       ingresadoEn: new Date(),
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
   return { id: lead.id };
@@ -120,7 +140,7 @@ describe("POST /api/v1/leads/:id/reasignar — prueba obligatoria 3 (D8/DD6): se
       .send({});
 
     expect(respuesta.status).toBe(403);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.asesorId).toBe(asesor.id);
   });
 
@@ -172,7 +192,7 @@ describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 10 (D9): compu
       .send({});
 
     expect(respuesta.status).toBe(409);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.vendedorId).toBeNull();
   });
 
@@ -240,7 +260,7 @@ describe("POST /api/v1/leads/asignar-lote — asignación masiva (design D-A1)",
     expect(codigos).toEqual(["lead_cerrado", "lead_no_encontrado"]);
     expect(respuesta.body.resumen).toEqual({ solicitados: 3, exitosos: 1, fallidos: 2 });
 
-    const leadValidoActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadValido.id } });
+    const leadValidoActualizado = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: leadValido.id } });
     expect(leadValidoActualizado.asesorId).toBe(asesorDestino.id);
   });
 
@@ -264,7 +284,7 @@ describe("POST /api/v1/leads/asignar-lote — asignación masiva (design D-A1)",
     expect(respuesta.body.fallidos).toHaveLength(1);
     expect(respuesta.body.fallidos[0].leadId).toBe(leadCerrado.id);
 
-    const asignados = await prisma.lead.count({
+    const asignados = await testAdminPrisma.lead.count({
       where: { id: { in: leadsValidos.map((l) => l.id) }, asesorId: asesorDestino.id },
     });
     expect(asignados).toBe(19);

@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { RolUsuario, Usuario } from "@prisma/client";
+import type { Membresia, RolUsuario, Usuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jwt.js";
 import { logger } from "../lib/logger.js";
 import { verifyPassword } from "../lib/password.js";
+import { withBootstrapCorreoGuc, withBootstrapUsuarioGuc } from "../lib/prisma.js";
+import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
+import { rolEquivalente } from "./shadow-authorization.service.js";
 
 export interface TokenPair {
   accessToken: string;
@@ -44,8 +47,26 @@ function toPublicUser(user: Usuario): PublicUser {
   };
 }
 
-async function issueTokenPair(user: Usuario): Promise<TokenPair> {
-  const accessToken = await signAccessToken({ id: user.id, rol: user.rol });
+/**
+ * Bloque B (dual-login-routing): `membresia` es `undefined` para toda sesión
+ * holding-wide (`Usuario.correo`) — mismo comportamiento exacto que antes de
+ * este cambio. Cuando se provee (camino `Membresia.correo`), su
+ * `id`/`empresaId` viajan como claims additivos del access token y quedan
+ * atados al `refresh_tokens.membresia_id` de esta sesión (spec, "session
+ * carries that membership context").
+ */
+async function issueTokenPair(
+  user: Usuario,
+  membresia?: Pick<Membresia, "id" | "empresaId">,
+): Promise<TokenPair> {
+  const accessToken = await signAccessToken({
+    id: user.id,
+    rol: user.rol,
+    sessionScope: membresia ? "company" : "holding",
+    ...(membresia
+      ? { membresiaId: membresia.id, empresaId: membresia.empresaId }
+      : {}),
+  });
   const jti = randomUUID();
   const refreshToken = await signRefreshToken({ id: user.id, jti });
 
@@ -54,33 +75,69 @@ async function issueTokenPair(user: Usuario): Promise<TokenPair> {
     usuarioId: user.id,
     hash: hashRefreshToken(refreshToken.token),
     expiraEn: refreshToken.expiraEn,
+    sessionScope: membresia ? "COMPANY" : "HOLDING",
+    membresiaId: membresia?.id,
   });
 
   return { accessToken, refreshToken: refreshToken.token };
 }
 
-/** D1, D2, D5: emite un par de tokens si el usuario está activo. */
+/**
+ * D1, D2, D5: emite un par de tokens si el usuario está activo.
+ *
+ * Bloque B (dual-login-routing, spec "Login resolves both credential
+ * types"): resuelve `Usuario.correo` PRIMERO — sin cambio de comportamiento
+ * en ese camino. Solo ante un miss (ningún `Usuario` con ese correo) cae al
+ * segundo camino, `Membresia.correo` (solo `activa=true`, filtrado por el
+ * repositorio). Ambos caminos fallidos devuelven el MISMO error genérico —
+ * sin oráculo de cuentas que revele por cuál tabla se intentó.
+ */
 export async function login(
   correo: string,
   password: string,
 ): Promise<TokenPair & { user: PublicUser }> {
   const user = await usuarioRepository.findByEmail(correo);
-  if (!user) {
+  if (user) {
+    const isPasswordValid = await verifyPassword(user.passwordHash, password);
+    if (!isPasswordValid) {
+      throw invalidCredentials();
+    }
+    // Mismo código/mensaje que una contraseña incorrecta: sin oráculo de cuentas.
+    if (!user.activo) {
+      throw invalidCredentials();
+    }
+
+    const pair = await issueTokenPair(user);
+    return { ...pair, user: toPublicUser(user) };
+  }
+
+  // Bloque C (Etapa 3, D2 gap closure, batch 3 discovery): ver
+  // `lib/prisma.ts::withBootstrapCorreoGuc` — esta lectura ocurre ANTES de
+  // que exista un TenantContext (login es el paso que lo origina).
+  const membresia = await withBootstrapCorreoGuc(correo, (tx) =>
+    membresiaRepository.findByEmail(correo, tx),
+  );
+  // `passwordHash` es NULL en toda Membresia backfillada (Fase 1) — nunca
+  // puede autenticar; mismo mensaje genérico, sin revelar la causa exacta.
+  if (!membresia || membresia.passwordHash === null) {
     throw invalidCredentials();
   }
 
-  const isPasswordValid = await verifyPassword(user.passwordHash, password);
-  if (!isPasswordValid) {
+  const isMembresiaPasswordValid = await verifyPassword(membresia.passwordHash, password);
+  if (!isMembresiaPasswordValid) {
     throw invalidCredentials();
   }
 
-  // Mismo código/mensaje que una contraseña incorrecta: sin oráculo de cuentas.
-  if (!user.activo) {
+  const usuarioDeMembresia = await usuarioRepository.findById(membresia.usuarioId);
+  if (!usuarioDeMembresia || !usuarioDeMembresia.activo) {
+    throw invalidCredentials();
+  }
+  if (rolEquivalente(membresia) !== usuarioDeMembresia.rol) {
     throw invalidCredentials();
   }
 
-  const pair = await issueTokenPair(user);
-  return { ...pair, user: toPublicUser(user) };
+  const pair = await issueTokenPair(usuarioDeMembresia, membresia);
+  return { ...pair, user: toPublicUser(usuarioDeMembresia) };
 }
 
 /**
@@ -120,11 +177,66 @@ export async function refresh(token: string): Promise<TokenPair> {
   }
 
   const user = await usuarioRepository.findById(row.usuarioId);
-  if (!user || !user.activo) {
+  if (!user || !user.activo || payload.sub !== row.usuarioId) {
     throw invalidToken();
   }
 
-  const accessToken = await signAccessToken({ id: user.id, rol: user.rol });
+  if (row.sessionScope === "COMPANY") {
+    if (!row.membresiaId) throw invalidToken();
+    const rotated = await withBootstrapUsuarioGuc(user.id, async (tx) => {
+      const membresia = await membresiaRepository.findById(row.membresiaId as string, tx);
+      if (
+        !membresia ||
+        !membresia.activa ||
+        membresia.usuarioId !== user.id ||
+        rolEquivalente(membresia) !== user.rol
+      ) {
+        await refreshTokenRepository.revokeAllForMembership(row.membresiaId as string, tx);
+        return null;
+      }
+
+      const accessToken = await signAccessToken({
+        id: user.id,
+        rol: user.rol,
+        sessionScope: "company",
+        membresiaId: membresia.id,
+        empresaId: membresia.empresaId,
+      });
+      const newJti = randomUUID();
+      const newRefreshToken = await signRefreshToken({ id: user.id, jti: newJti });
+      await refreshTokenRepository.rotate(
+        {
+          previousJti: row.jti,
+          newToken: {
+            jti: newJti,
+            usuarioId: user.id,
+            hash: hashRefreshToken(newRefreshToken.token),
+            expiraEn: newRefreshToken.expiraEn,
+            sessionScope: "COMPANY",
+            membresiaId: membresia.id,
+          },
+        },
+        tx,
+      );
+      return { accessToken, refreshToken: newRefreshToken.token };
+    });
+    if (!rotated) throw invalidToken();
+    return rotated;
+  }
+
+  if (row.sessionScope !== "HOLDING" || row.membresiaId !== null) {
+    throw invalidToken();
+  }
+
+  // Bloque B (dual-login-routing): `membresiaId` se transporta tal cual de
+  // la fila anterior — la rotación nunca "pierde" el contexto de membresía
+  // de la sesión original. `undefined` para toda sesión holding-wide previa
+  // a este cambio (fila con `membresiaId` null), sin cambio de comportamiento.
+  const accessToken = await signAccessToken({
+    id: user.id,
+    rol: user.rol,
+    sessionScope: "holding",
+  });
   const newJti = randomUUID();
   const newRefreshToken = await signRefreshToken({ id: user.id, jti: newJti });
 
@@ -135,6 +247,7 @@ export async function refresh(token: string): Promise<TokenPair> {
       usuarioId: user.id,
       hash: hashRefreshToken(newRefreshToken.token),
       expiraEn: newRefreshToken.expiraEn,
+      sessionScope: "HOLDING",
     },
   });
 

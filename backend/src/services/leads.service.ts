@@ -6,7 +6,8 @@ import * as leadRepository from "../repositories/lead.repository.js";
 import type { LeadConRelaciones } from "../repositories/lead.repository.js";
 import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js";
 import { applyFormulario } from "./formularios.service.js";
-import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import { aplicarFiltroEmpresa, canClose, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import * as shadowAuthorizationService from "./shadow-authorization.service.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
@@ -54,9 +55,16 @@ function withEstadoSla<T extends Lead>(lead: T, ahora: Date): T & { estadoSla: E
  * DD5 (diseño M5): el `where` de rol se construye aquí a partir de
  * `req.user`, nunca desde el query string — spec "Query param no sobrescribe
  * el filtro de rol".
+ *
+ * Bloque C (Fase 2/Stage 2, D4/spec "Blocking empresa scoping on lead
+ * paths"): `usuario.empresaId === null` (holding-wide, D2) no agrega
+ * restricción; cualquier otro valor filtra por esa empresa exacta,
+ * independiente del rol — vía `leads.access.ts::aplicarFiltroEmpresa`
+ * (task 2.12 REFACTOR: mismo helper que `metricas.access.ts::resolveAlcanceBase`,
+ * antes duplicado).
  */
 function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date): Prisma.LeadWhereInput {
-  const where: Prisma.LeadWhereInput = {};
+  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario);
 
   if (!ROLES_ACCESO_TOTAL.includes(usuario.rol)) {
     where.OR = [{ asesorId: usuario.id }, { vendedorId: usuario.id }];
@@ -89,6 +97,18 @@ function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date):
       ...(query.desde ? { gte: query.desde } : {}),
       ...(query.hasta ? { lte: query.hasta } : {}),
     };
+  }
+
+  // M-hardening Bloque A (WU8, spec lead-listing): aplicado ANTES del bloque
+  // `estadoSla` de abajo — ese bloque también escribe `cerradoEn` (siempre
+  // `null` para cualquier valor de `estadoSla`, D6 de M6), así que el orden
+  // determina cuál gana si ambos coexistieran. El schema (`D7`,
+  // `leads.schema.ts`) ya rechaza `vista=cerrados` + `estadoSla` antes de
+  // llegar acá, así que en la práctica nunca compiten por la misma escritura.
+  if (query.vista === "activos") {
+    where.cerradoEn = null;
+  } else if (query.vista === "cerrados") {
+    where.cerradoEn = { not: null };
   }
 
   // DD6: fronteras precomputadas, comparadas contra `sla_inicio_en`, nunca
@@ -215,12 +235,31 @@ export async function transitionEtapa(
       const datosEtapa: Parameters<typeof leadRepository.updateEtapa>[1] = { etapa: body.etapa };
 
       if (body.etapa === "VENTA" || body.etapa === "NO_VENTA") {
+        // M-hardening Bloque A (D1-D3, memoria #82): canClose es la única
+        // autoridad para cerrar — NUEVO deniega a todos los roles (409,
+        // etapa_no_cerrable); fuera de NUEVO, rol/titularidad (403).
+        const motivoCierre = canClose(usuario, lead);
+        // Bloque B (Fase 2, "Shadow authorizer call sites"): fire-and-forget,
+        // corre para ambos desenlaces, nunca bloquea ni demora esta transacción.
+        void shadowAuthorizationService.compareCanClose(usuario.id, lead, motivoCierre);
+        if (motivoCierre === "etapa_no_cerrable") {
+          throw new AppError(
+            "etapa_no_cerrable",
+            409,
+            "Un lead en NUEVO debe registrar su primer contacto antes de cerrarse",
+          );
+        }
+        if (motivoCierre) {
+          throw new AppError("permiso_denegado", 403, "No tienes permiso para cerrar este lead");
+        }
+
         const semaforoNuevo = body.etapa === "VENTA" ? "VERDE" : "ROJO";
         await leadRepository.updateSemaforo(id, { semaforo: semaforoNuevo }, tx);
         if (lead.semaforo !== semaforoNuevo) {
           await leadEventoRepository.createEvento(
             {
               leadId: id,
+              empresaId: lead.empresaId,
               tipo: "CAMBIO_SEMAFORO",
               semaforoAnterior: lead.semaforo,
               semaforoNuevo,
@@ -247,6 +286,7 @@ export async function transitionEtapa(
       await leadEventoRepository.createEvento(
         {
           leadId: id,
+          empresaId: lead.empresaId,
           tipo: "CAMBIO_ETAPA",
           etapaAnterior: lead.etapa,
           etapaNueva: body.etapa,
@@ -255,7 +295,15 @@ export async function transitionEtapa(
       );
 
       const recipients = [...new Set([leadActualizado.asesorId, leadActualizado.vendedorId].filter((id): id is string => id !== null))];
-      return { lead: leadActualizado, events: recipients.map((userId) => ({ userId, type: "lead.etapa-cambiada" as const, data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa } })) };
+      return {
+        lead: leadActualizado,
+        events: recipients.map((userId) => ({
+          userId,
+          empresaId: lead.empresaId,
+          type: "lead.etapa-cambiada" as const,
+          data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa },
+        })),
+      };
     },
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );

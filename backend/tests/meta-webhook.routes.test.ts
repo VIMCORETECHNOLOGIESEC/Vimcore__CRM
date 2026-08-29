@@ -5,9 +5,21 @@ import { createApp } from "../src/app.js";
 import { env } from "../src/config/env.js";
 import { encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadRecibidoRepository from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `procesarRecepcion`
+ * corre en producción dentro de `runWithTenantContext({ empresaId: null },
+ * ...)` (ver `jobs/ingesta-inbox.job.ts`), mismo criterio que
+ * `meta-webhook.worker.test.ts`.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: null }, fn);
+}
 
 const app = createApp();
 let contador = 0;
@@ -52,16 +64,17 @@ async function crearBridgeConCuenta(
   overrides: { estadoToken?: "VALIDO" | "TOKEN_EXPIRADO" | "ERROR"; tokenCifrado?: string | null } = {},
 ): Promise<CuentaFixture> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge Meta ${contador}`,
       claveApiHash: hashClaveBridge(`clave-meta-webhook-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   const pageId = `page-meta-${contador}`;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId: bridge.id,
       idExterno: pageId,
@@ -110,7 +123,7 @@ describe("POST /api/v1/ingesta/meta — verificación de firma X-Hub-Signature-2
     const respuesta = await postMeta(rawBody);
 
     expect(respuesta.status).toBe(401);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: {
         bridgeId: null,
         nivel: "ERROR",
@@ -119,7 +132,7 @@ describe("POST /api/v1/ingesta/meta — verificación de firma X-Hub-Signature-2
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log).not.toBeNull();
-    expect(await prisma.leadRecibido.findFirst({ where: { idExternoLead: "leadgen-sin-firma" } })).toBeNull();
+    expect(await testAdminPrisma.leadRecibido.findFirst({ where: { idExternoLead: "leadgen-sin-firma" } })).toBeNull();
   });
 
   it("401 con firma calculada sobre un cuerpo distinto (Scenario: Invalid signature rejected): registra ERROR y no encola nada", async () => {
@@ -129,7 +142,7 @@ describe("POST /api/v1/ingesta/meta — verificación de firma X-Hub-Signature-2
     const respuesta = await postMeta(rawBody, firmaDeOtroCuerpo);
 
     expect(respuesta.status).toBe(401);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: {
         bridgeId: null,
         nivel: "ERROR",
@@ -139,7 +152,7 @@ describe("POST /api/v1/ingesta/meta — verificación de firma X-Hub-Signature-2
     });
     expect(log).not.toBeNull();
     expect(
-      await prisma.leadRecibido.findFirst({ where: { idExternoLead: "leadgen-firma-invalida" } }),
+      await testAdminPrisma.leadRecibido.findFirst({ where: { idExternoLead: "leadgen-firma-invalida" } }),
     ).toBeNull();
   });
 });
@@ -153,7 +166,7 @@ describe("POST /api/v1/ingesta/meta — encolado durable (docs/05-bridges.md §2
     const respuesta = await postMeta(rawBody, firma);
 
     expect(respuesta.status).toBe(200);
-    const recepcion = await prisma.leadRecibido.findFirst({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirst({
       where: { bridgeId: cuenta.bridgeId, idExternoLead: leadgenId },
     });
     expect(recepcion).not.toBeNull();
@@ -178,7 +191,7 @@ describe("POST /api/v1/ingesta/meta — encolado durable (docs/05-bridges.md §2
     expect(primera.status).toBe(200);
     expect(segunda.status).toBe(200);
     expect(
-      await prisma.leadRecibido.count({ where: { bridgeId: cuenta.bridgeId, idExternoLead: leadgenId } }),
+      await testAdminPrisma.leadRecibido.count({ where: { bridgeId: cuenta.bridgeId, idExternoLead: leadgenId } }),
     ).toBe(1);
   });
 
@@ -190,12 +203,12 @@ describe("POST /api/v1/ingesta/meta — encolado durable (docs/05-bridges.md §2
     const respuesta = await postMeta(rawBody, firma);
 
     expect(respuesta.status).toBe(200);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: null, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log?.mensaje).toContain(pageId);
-    expect(await prisma.leadRecibido.findFirst({ where: { idExternoLead: leadgenId } })).toBeNull();
+    expect(await testAdminPrisma.leadRecibido.findFirst({ where: { idExternoLead: leadgenId } })).toBeNull();
   });
 
   it("encola igual cuando el token de la Página no está vigente: el chequeo se movió al worker, no bloquea la recepción del webhook", async () => {
@@ -206,7 +219,7 @@ describe("POST /api/v1/ingesta/meta — encolado durable (docs/05-bridges.md §2
     const respuesta = await postMeta(rawBody, firma);
 
     expect(respuesta.status).toBe(200);
-    const recepcion = await prisma.leadRecibido.findFirst({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirst({
       where: { bridgeId: cuenta.bridgeId, idExternoLead: leadgenId },
     });
     expect(recepcion).not.toBeNull();
@@ -245,11 +258,11 @@ describe("POST /api/v1/ingesta/meta → worker — pipeline completo (docs/05-br
     // podría tomar una fila `PENDIENTE` distinta dejada por otro `it` de este
     // mismo archivo — mismo motivo por el que `ingesta-inbox.worker.test.ts`
     // construye el `InboxClaim` a mano en vez de encadenar `claimNext`).
-    const encolada = await prisma.leadRecibido.findFirstOrThrow({
+    const encolada = await testAdminPrisma.leadRecibido.findFirstOrThrow({
       where: { bridgeId: cuenta.bridgeId, idExternoLead: leadgenId },
     });
     const owner = "worker-pipeline-exito";
-    const row = await prisma.leadRecibido.update({
+    const row = await testAdminPrisma.leadRecibido.update({
       where: { id: encolada.id },
       data: { estado: "PROCESANDO", intentos: 1, leaseOwner: owner, leaseHasta: new Date(Date.now() + 60_000) },
     });
@@ -260,16 +273,16 @@ describe("POST /api/v1/ingesta/meta → worker — pipeline completo (docs/05-br
       leaseHasta: row.leaseHasta!,
       entradaProcesamiento: row.entradaProcesamiento as unknown as leadRecibidoRepository.PersistedEntradaProcesamiento,
     };
-    const completado = await procesarRecepcion(claim);
+    const completado = await conContexto(() => procesarRecepcion(claim));
 
     expect(completado).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const recepcion = await prisma.leadRecibido.findFirstOrThrow({
+    const recepcion = await testAdminPrisma.leadRecibido.findFirstOrThrow({
       where: { bridgeId: cuenta.bridgeId, idExternoLead: leadgenId },
     });
     expect(recepcion.estado).toBe("PROCESADO");
     expect(recepcion.leadId).not.toBeNull();
-    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: recepcion.leadId! } });
+    const lead = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: recepcion.leadId! } });
     expect(lead.redSocial).toBe("FACEBOOK");
     expect(lead.payloadOriginal).toMatchObject({ id: leadgenId, campaign_id: "campania-1" });
 

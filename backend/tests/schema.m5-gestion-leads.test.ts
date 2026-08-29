@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * D-M5 (diseño, tarea PR1.8): verificación de la migración M5 contra la base
@@ -13,12 +15,13 @@ let contador = 0;
 
 async function crearBridge(): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: `Bridge M5 schema ${contador}`,
       claveApiHash: hashClaveBridge(`clave-m5-schema-${contador}-${randomUUID()}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -82,8 +85,8 @@ describe("schema M5 — columnas nuevas de Lead son nullable (D14/D1/D13)", () =
   it("crea un lead sin ninguna columna nueva de M5: todas quedan NULL", async () => {
     const cliente = await crearCliente();
 
-    const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    const lead = await testAdminPrisma.lead.create({
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
     expect(lead.semaforo).toBeNull();
@@ -102,7 +105,7 @@ describe("schema M5 — columnas nuevas de Lead son nullable (D14/D1/D13)", () =
     const asesor = await crearUsuario();
     const vendedor = await crearUsuario();
 
-    const lead = await prisma.lead.create({
+    const lead = await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
@@ -117,6 +120,7 @@ describe("schema M5 — columnas nuevas de Lead son nullable (D14/D1/D13)", () =
         montoVenta: 1500.5,
         productoServicio: "Plan Premium",
         formaPago: "CREDITO",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -132,13 +136,14 @@ describe("schema M5 — columnas nuevas de Lead son nullable (D14/D1/D13)", () =
 describe("schema M5 — LeadEvento.semaforoAnterior/semaforoNuevo (D17)", () => {
   it("persiste un evento CAMBIO_SEMAFORO con ambos colores", async () => {
     const cliente = await crearCliente();
-    const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    const lead = await testAdminPrisma.lead.create({
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
-    const evento = await prisma.leadEvento.create({
+    const evento = await testAdminPrisma.leadEvento.create({
       data: {
         leadId: lead.id,
+        empresaId: EMPRESA_BOOTSTRAP_ID,
         tipo: "CAMBIO_SEMAFORO",
         semaforoAnterior: "ROJO",
         semaforoNuevo: "AMARILLO",
@@ -154,11 +159,11 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
   it("inserta una respuesta de formulario ligada a lead y usuario, con registradoEn por defecto", async () => {
     const cliente = await crearCliente();
     const usuario = await crearUsuario();
-    const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    const lead = await testAdminPrisma.lead.create({
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
-    const respuesta = await prisma.respuestaFormulario.create({
+    const respuesta = await testAdminPrisma.respuestaFormulario.create({
       data: {
         leadId: lead.id,
         usuarioId: usuario.id,
@@ -178,11 +183,11 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
   it("dos envíos para el mismo lead producen dos filas distintas (D8: historial, sin sobrescritura)", async () => {
     const cliente = await crearCliente();
     const usuario = await crearUsuario();
-    const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    const lead = await testAdminPrisma.lead.create({
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
 
-    await prisma.respuestaFormulario.create({
+    await testAdminPrisma.respuestaFormulario.create({
       data: {
         leadId: lead.id,
         usuarioId: usuario.id,
@@ -193,7 +198,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
         versionRubrica: "v1",
       },
     });
-    await prisma.respuestaFormulario.create({
+    await testAdminPrisma.respuestaFormulario.create({
       data: {
         leadId: lead.id,
         usuarioId: usuario.id,
@@ -205,7 +210,7 @@ describe("schema M5 — respuestas_formulario (D8/D12)", () => {
       },
     });
 
-    const total = await prisma.respuestaFormulario.count({ where: { leadId: lead.id } });
+    const total = await testAdminPrisma.respuestaFormulario.count({ where: { leadId: lead.id } });
     expect(total).toBe(2);
   });
 });
@@ -220,7 +225,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
    * guard NULL-only (D14).
    */
   async function ejecutarBackfill(): Promise<void> {
-    await prisma.$executeRawUnsafe(`
+    await testAdminPrisma.$executeRawUnsafe(`
       UPDATE "leads" AS l
       SET "red_social" = b."red_social",
           "payload_original" = lr."payload"
@@ -235,11 +240,11 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
   it("rellena red_social/payload_original de un lead M4 previo al fix (ambos NULL) desde su recepción", async () => {
     const cliente = await crearCliente();
     const bridge = await crearBridge();
-    const lead = await prisma.lead.create({
-      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
+    const lead = await testAdminPrisma.lead.create({
+      data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
     const payloadCrudo = { idExternoLead: `backfill-${randomUUID()}`, nombre: "Lead pre-fix" };
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: bridge.id,
         idExternoLead: payloadCrudo.idExternoLead,
@@ -251,7 +256,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
 
     await ejecutarBackfill();
 
-    const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const leadActualizado = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(leadActualizado.redSocial).toBe("GOOGLE_FORMS");
     expect(leadActualizado.payloadOriginal).toEqual(payloadCrudo);
   });
@@ -261,7 +266,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
     const bridgeGoogle = await crearBridge();
     // Lead ya calificado con un valor DISTINTO al del bridge de su recepción
     // — si el backfill no fuera NULL-only, este valor se perdería.
-    const lead = await prisma.lead.create({
+    const lead = await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
@@ -269,9 +274,10 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
         ingresadoEn: new Date(),
         redSocial: "FACEBOOK",
         payloadOriginal: { yaPoblado: true },
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: bridgeGoogle.id,
         idExternoLead: `backfill-no-overwrite-${randomUUID()}`,
@@ -283,7 +289,7 @@ describe("schema M5 — DD1 backfill NULL-only en la migración (D14-safe)", () 
 
     await ejecutarBackfill();
 
-    const leadTrasBackfill = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const leadTrasBackfill = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(leadTrasBackfill.redSocial).toBe("FACEBOOK");
     expect(leadTrasBackfill.payloadOriginal).toEqual({ yaPoblado: true });
   });

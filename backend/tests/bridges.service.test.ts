@@ -2,7 +2,8 @@ import { RedSocial } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import * as bridgeLogRepository from "../src/repositories/bridge-log.repository.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import {
   createBridge,
   deleteBridge,
@@ -20,8 +21,23 @@ import {
   listByBridge as listarCuentasPorBridge,
   toggleActiva,
 } from "../src/services/cuenta-publicitaria.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `bridge.service.ts`/
+ * `cuenta-publicitaria.service.ts` no aceptan un `client` swappable (a
+ * diferencia de los repositorios) — llaman siempre al `prisma` real
+ * (`crm_app`) internamente. Estas pruebas invocan esos servicios DIRECTO
+ * (sin HTTP/`requireAuthentication`), así que no hay `TenantContext` real
+ * salvo que esta prueba lo fije explícitamente. `conContexto` envuelve la
+ * llamada bajo prueba en `runWithTenantContext` (empresa bootstrap) — mismo
+ * patrón que un request autenticado normal vería.
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
+}
 
 function claveApiUnica(): string {
   contador += 1;
@@ -33,12 +49,13 @@ async function crearBridgeDirecto(
 ): Promise<{ id: string; claveApi: string }> {
   contador += 1;
   const claveApi = claveApiUnica();
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: overrides.redSocial ?? "GOOGLE_FORMS",
       nombre: `Bridge servicio ${contador}`,
       claveApiHash: hashClaveBridge(claveApi),
       estado: overrides.estado ?? "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id, claveApi };
@@ -50,20 +67,29 @@ afterAll(async () => {
 
 describe("bridge.service — createBridge (Requirement: Bridge creation starts inactive with one-time plaintext key)", () => {
   it("nace INACTIVO sin importar el redSocial y devuelve la clave en claro con el prefijo brg_", async () => {
-    const { bridge, claveApi } = await createBridge({
-      redSocial: "FACEBOOK",
-      nombre: "Bridge Facebook Servicio",
-    });
+    const { bridge, claveApi } = await conContexto(() =>
+      createBridge({
+        redSocial: "FACEBOOK",
+        nombre: "Bridge Facebook Servicio",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
+      }),
+    );
 
     expect(bridge.estado).toBe("INACTIVO");
     expect(claveApi.startsWith("brg_")).toBe(true);
 
-    const filaPersistida = await prisma.bridge.findUniqueOrThrow({ where: { id: bridge.id } });
+    const filaPersistida = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id: bridge.id } });
     expect(filaPersistida.claveApiHash).toBe(hashClaveBridge(claveApi));
   });
 
   it("la respuesta nunca incluye claveApiHash", async () => {
-    const { bridge } = await createBridge({ redSocial: "X", nombre: "Bridge X Servicio" });
+    const { bridge } = await conContexto(() =>
+      createBridge({
+        redSocial: "X",
+        nombre: "Bridge X Servicio",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
+      }),
+    );
 
     expect(bridge).not.toHaveProperty("claveApiHash");
     expect(bridge.tokenExpiraEn).toBeNull();
@@ -74,7 +100,7 @@ describe("bridge.service — findBridges/getBridgeById", () => {
   it("findBridges nunca expone claveApiHash y devuelve total/pagina/limite", async () => {
     await crearBridgeDirecto();
 
-    const resultado = await findBridges({ pagina: 1, limite: 20 });
+    const resultado = await conContexto(() => findBridges({ pagina: 1, limite: 20 }));
 
     expect(resultado.bridges.length).toBeGreaterThan(0);
     expect(typeof resultado.total).toBe("number");
@@ -87,13 +113,15 @@ describe("bridge.service — findBridges/getBridgeById", () => {
 
   it("findBridges filtra por busqueda contra el nombre (insensible a mayúsculas)", async () => {
     const { id } = await crearBridgeDirecto();
-    const nombreUnico = (await prisma.bridge.findUniqueOrThrow({ where: { id } })).nombre;
+    const nombreUnico = (await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } })).nombre;
 
-    const resultado = await findBridges({
-      pagina: 1,
-      limite: 20,
-      busqueda: nombreUnico.toUpperCase(),
-    });
+    const resultado = await conContexto(() =>
+      findBridges({
+        pagina: 1,
+        limite: 20,
+        busqueda: nombreUnico.toUpperCase(),
+      }),
+    );
 
     expect(resultado.bridges.map((b) => b.id)).toContain(id);
   });
@@ -101,7 +129,7 @@ describe("bridge.service — findBridges/getBridgeById", () => {
   it("findBridges filtra por redSocial exacto", async () => {
     const { id } = await crearBridgeDirecto({ redSocial: "FACEBOOK" });
 
-    const resultado = await findBridges({ pagina: 1, limite: 100, redSocial: "FACEBOOK" });
+    const resultado = await conContexto(() => findBridges({ pagina: 1, limite: 100, redSocial: "FACEBOOK" }));
 
     expect(resultado.bridges.map((b) => b.id)).toContain(id);
     for (const bridge of resultado.bridges) {
@@ -112,7 +140,7 @@ describe("bridge.service — findBridges/getBridgeById", () => {
   it("findBridges filtra por estado exacto", async () => {
     const { id } = await crearBridgeDirecto({ estado: "INACTIVO" });
 
-    const resultado = await findBridges({ pagina: 1, limite: 100, estado: "INACTIVO" });
+    const resultado = await conContexto(() => findBridges({ pagina: 1, limite: 100, estado: "INACTIVO" }));
 
     expect(resultado.bridges.map((b) => b.id)).toContain(id);
     for (const bridge of resultado.bridges) {
@@ -124,11 +152,11 @@ describe("bridge.service — findBridges/getBridgeById", () => {
     await crearBridgeDirecto();
     await crearBridgeDirecto();
 
-    const primeraPagina = await findBridges({ pagina: 1, limite: 1 });
+    const primeraPagina = await conContexto(() => findBridges({ pagina: 1, limite: 1 }));
     expect(primeraPagina.bridges).toHaveLength(1);
     expect(primeraPagina.total).toBeGreaterThanOrEqual(2);
 
-    const segundaPagina = await findBridges({ pagina: 2, limite: 1 });
+    const segundaPagina = await conContexto(() => findBridges({ pagina: 2, limite: 1 }));
     expect(segundaPagina.bridges).toHaveLength(1);
     expect(segundaPagina.bridges[0]?.id).not.toBe(primeraPagina.bridges[0]?.id);
   });
@@ -136,7 +164,7 @@ describe("bridge.service — findBridges/getBridgeById", () => {
   it("getBridgeById incluye cuentasPublicitarias embebidas", async () => {
     const { id } = await crearBridgeDirecto();
 
-    const detalle = await getBridgeById(id);
+    const detalle = await conContexto(() => getBridgeById(id));
 
     expect(detalle.id).toBe(id);
     expect(Array.isArray(detalle.cuentasPublicitarias)).toBe(true);
@@ -144,7 +172,7 @@ describe("bridge.service — findBridges/getBridgeById", () => {
 
   it("getBridgeById con un id inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      getBridgeById("00000000-0000-0000-0000-000000000000"),
+      conContexto(() => getBridgeById("00000000-0000-0000-0000-000000000000")),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -153,7 +181,7 @@ describe("bridge.service — updateBridge (Requirement: PATCH /bridges/:id es el
   it("renombrar no cambia el estado", async () => {
     const { id } = await crearBridgeDirecto({ estado: "ACTIVO" });
 
-    const actualizado = await updateBridge(id, { nombre: "Nombre Renombrado" });
+    const actualizado = await conContexto(() => updateBridge(id, { nombre: "Nombre Renombrado" }));
 
     expect(actualizado.nombre).toBe("Nombre Renombrado");
     expect(actualizado.estado).toBe("ACTIVO");
@@ -162,16 +190,16 @@ describe("bridge.service — updateBridge (Requirement: PATCH /bridges/:id es el
   it("cambia estado de ACTIVO a INACTIVO y viceversa por el mismo endpoint", async () => {
     const { id } = await crearBridgeDirecto({ estado: "ACTIVO" });
 
-    const desactivado = await updateBridge(id, { estado: "INACTIVO" });
+    const desactivado = await conContexto(() => updateBridge(id, { estado: "INACTIVO" }));
     expect(desactivado.estado).toBe("INACTIVO");
 
-    const reactivado = await updateBridge(id, { estado: "ACTIVO" });
+    const reactivado = await conContexto(() => updateBridge(id, { estado: "ACTIVO" }));
     expect(reactivado.estado).toBe("ACTIVO");
   });
 
   it("con un id inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      updateBridge("00000000-0000-0000-0000-000000000000", { nombre: "Fantasma" }),
+      conContexto(() => updateBridge("00000000-0000-0000-0000-000000000000", { nombre: "Fantasma" })),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -180,16 +208,16 @@ describe("bridge.service — deleteBridge (Requirement: Delete mode is decided b
   it("con leadsRecibidos.count === 0 hace BAJA_FISICA y elimina la fila", async () => {
     const { id } = await crearBridgeDirecto();
 
-    const resultado = await deleteBridge(id);
+    const resultado = await conContexto(() => deleteBridge(id));
 
     expect(resultado.resultado).toBe("BAJA_FISICA");
-    const filaTrasBorrado = await prisma.bridge.findUnique({ where: { id } });
+    const filaTrasBorrado = await testAdminPrisma.bridge.findUnique({ where: { id } });
     expect(filaTrasBorrado).toBeNull();
   });
 
   it("con leadsRecibidos.count > 0 hace BAJA_LOGICA y la fila permanece INACTIVO", async () => {
     const { id } = await crearBridgeDirecto({ estado: "ACTIVO" });
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: id,
         idExternoLead: `lead-externo-${contador}`,
@@ -198,16 +226,16 @@ describe("bridge.service — deleteBridge (Requirement: Delete mode is decided b
       },
     });
 
-    const resultado = await deleteBridge(id);
+    const resultado = await conContexto(() => deleteBridge(id));
 
     expect(resultado.resultado).toBe("BAJA_LOGICA");
-    const filaTrasBaja = await prisma.bridge.findUniqueOrThrow({ where: { id } });
+    const filaTrasBaja = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } });
     expect(filaTrasBaja.estado).toBe("INACTIVO");
   });
 
   it("con un id inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      deleteBridge("00000000-0000-0000-0000-000000000000"),
+      conContexto(() => deleteBridge("00000000-0000-0000-0000-000000000000")),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -216,7 +244,7 @@ describe("bridge.service — regenerateClave (Requirement: Key regeneration neve
   it("emite una clave nueva distinta de la original y deja estado ACTIVO intacto", async () => {
     const { id, claveApi: claveOriginal } = await crearBridgeDirecto({ estado: "ACTIVO" });
 
-    const { bridge, claveApi: claveNueva } = await regenerateClave(id);
+    const { bridge, claveApi: claveNueva } = await conContexto(() => regenerateClave(id));
 
     expect(claveNueva).not.toBe(claveOriginal);
     expect(bridge.estado).toBe("ACTIVO");
@@ -225,14 +253,14 @@ describe("bridge.service — regenerateClave (Requirement: Key regeneration neve
   it("deja estado INACTIVO intacto", async () => {
     const { id } = await crearBridgeDirecto({ estado: "INACTIVO" });
 
-    const { bridge } = await regenerateClave(id);
+    const { bridge } = await conContexto(() => regenerateClave(id));
 
     expect(bridge.estado).toBe("INACTIVO");
   });
 
   it("con un id inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      regenerateClave("00000000-0000-0000-0000-000000000000"),
+      conContexto(() => regenerateClave("00000000-0000-0000-0000-000000000000")),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -258,7 +286,7 @@ describe("bridge.service — listRedesActivas (Requirement: Network catalogs are
     await crearBridgeDirecto({ redSocial: "X" });
     await crearBridgeDirecto({ redSocial: "X" });
 
-    const redes = await listRedesActivas();
+    const redes = await conContexto(() => listRedesActivas());
 
     expect(redes.filter((r) => r === "X")).toHaveLength(1);
   });
@@ -281,10 +309,16 @@ describe("bridge.service — resolveLimiteLogs (Requirement: Log reads are bound
 describe("bridge.service — listLogs (Requirement: Log reads are bounded by a server-side default cap)", () => {
   it("filtra por bridge y nivel, respetando el límite resuelto", async () => {
     const { id } = await crearBridgeDirecto();
-    await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "INFO", mensaje: "info listarLogs" });
-    await bridgeLogRepository.registrarLog({ bridgeId: id, nivel: "ERROR", mensaje: "error listarLogs" });
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "INFO", mensaje: "info listarLogs" },
+      testAdminPrisma,
+    );
+    await bridgeLogRepository.registrarLog(
+      { bridgeId: id, empresaId: EMPRESA_BOOTSTRAP_ID, nivel: "ERROR", mensaje: "error listarLogs" },
+      testAdminPrisma,
+    );
 
-    const logs = await listLogs(id, { nivel: "ERROR" });
+    const logs = await conContexto(() => listLogs(id, { nivel: "ERROR" }));
 
     expect(logs).toHaveLength(1);
     expect(logs[0]?.nivel).toBe("ERROR");
@@ -292,7 +326,7 @@ describe("bridge.service — listLogs (Requirement: Log reads are bounded by a s
 
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      listLogs("00000000-0000-0000-0000-000000000000", {}),
+      conContexto(() => listLogs("00000000-0000-0000-0000-000000000000", {})),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -301,30 +335,36 @@ describe("cuenta-publicitaria.service — create (Requirement: Admin can manuall
   it("crea la cuenta bajo el bridge indicado con instagramAccountId sin validar (texto libre)", async () => {
     const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "FACEBOOK" });
 
-    const cuenta = await crearCuentaPublicitaria(bridgeId, {
-      idExterno: "page-123",
-      nombre: "Cuenta Meta",
-      instagramAccountId: "ig-cualquier-cosa-no-validada",
-    });
+    const cuenta = await conContexto(() =>
+      crearCuentaPublicitaria(bridgeId, {
+        idExterno: "page-123",
+        nombre: "Cuenta Meta",
+        instagramAccountId: "ig-cualquier-cosa-no-validada",
+      }),
+    );
 
     expect(cuenta.bridgeId).toBe(bridgeId);
     expect(cuenta.instagramAccountId).toBe("ig-cualquier-cosa-no-validada");
 
-    const filaPersistida = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.id } });
+    const filaPersistida = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuenta.id } });
     expect(filaPersistida.idExternoVinculado).toBe("ig-cualquier-cosa-no-validada");
   });
 
   it("instagramAccountId es opcional y persiste null cuando se omite", async () => {
     const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "GOOGLE_FORMS" });
 
-    const cuenta = await crearCuentaPublicitaria(bridgeId, { idExterno: "form-1", nombre: "Cuenta Forms" });
+    const cuenta = await conContexto(() =>
+      crearCuentaPublicitaria(bridgeId, { idExterno: "form-1", nombre: "Cuenta Forms" }),
+    );
 
     expect(cuenta.instagramAccountId).toBeNull();
   });
 
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      crearCuentaPublicitaria("00000000-0000-0000-0000-000000000000", { idExterno: "x", nombre: "y" }),
+      conContexto(() =>
+        crearCuentaPublicitaria("00000000-0000-0000-0000-000000000000", { idExterno: "x", nombre: "y" }),
+      ),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -332,13 +372,15 @@ describe("cuenta-publicitaria.service — create (Requirement: Admin can manuall
 describe("cuenta-publicitaria.service — listByBridge", () => {
   it("mapea instagramAccountId y nunca expone idExternoVinculado", async () => {
     const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "FACEBOOK" });
-    await crearCuentaPublicitaria(bridgeId, {
-      idExterno: "page-list-1",
-      nombre: "Cuenta Lista",
-      instagramAccountId: "ig-list-1",
-    });
+    await conContexto(() =>
+      crearCuentaPublicitaria(bridgeId, {
+        idExterno: "page-list-1",
+        nombre: "Cuenta Lista",
+        instagramAccountId: "ig-list-1",
+      }),
+    );
 
-    const cuentas = await listarCuentasPorBridge(bridgeId);
+    const cuentas = await conContexto(() => listarCuentasPorBridge(bridgeId));
 
     expect(cuentas).toHaveLength(1);
     expect(cuentas[0]?.instagramAccountId).toBe("ig-list-1");
@@ -347,7 +389,7 @@ describe("cuenta-publicitaria.service — listByBridge", () => {
 
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      listarCuentasPorBridge("00000000-0000-0000-0000-000000000000"),
+      conContexto(() => listarCuentasPorBridge("00000000-0000-0000-0000-000000000000")),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -355,9 +397,11 @@ describe("cuenta-publicitaria.service — listByBridge", () => {
 describe("cuenta-publicitaria.service — toggleActiva (Requirement: Bridge detail embeds its accounts; PATCH toggles only activation)", () => {
   it("cambia solo activa, dejando idExterno/nombre intactos", async () => {
     const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "LINKEDIN" });
-    const cuenta = await crearCuentaPublicitaria(bridgeId, { idExterno: "page-toggle", nombre: "Cuenta Toggle" });
+    const cuenta = await conContexto(() =>
+      crearCuentaPublicitaria(bridgeId, { idExterno: "page-toggle", nombre: "Cuenta Toggle" }),
+    );
 
-    const actualizada = await toggleActiva(bridgeId, cuenta.id, false);
+    const actualizada = await conContexto(() => toggleActiva(bridgeId, cuenta.id, false));
 
     expect(actualizada.activa).toBe(false);
     expect(actualizada.idExterno).toBe("page-toggle");
@@ -367,9 +411,11 @@ describe("cuenta-publicitaria.service — toggleActiva (Requirement: Bridge deta
   it("con una cuenta que no pertenece al bridge lanza cuenta_no_encontrada (404)", async () => {
     const { id: bridgeA } = await crearBridgeDirecto({ redSocial: "LINKEDIN" });
     const { id: bridgeB } = await crearBridgeDirecto({ redSocial: "LINKEDIN" });
-    const cuentaDeA = await crearCuentaPublicitaria(bridgeA, { idExterno: "page-cross", nombre: "Cuenta Cruzada" });
+    const cuentaDeA = await conContexto(() =>
+      crearCuentaPublicitaria(bridgeA, { idExterno: "page-cross", nombre: "Cuenta Cruzada" }),
+    );
 
-    await expect(toggleActiva(bridgeB, cuentaDeA.id, false)).rejects.toMatchObject({
+    await expect(conContexto(() => toggleActiva(bridgeB, cuentaDeA.id, false))).rejects.toMatchObject({
       code: "cuenta_publicitaria_no_encontrada",
       statusHttp: 404,
     });
@@ -377,7 +423,9 @@ describe("cuenta-publicitaria.service — toggleActiva (Requirement: Bridge deta
 
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      toggleActiva("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", false),
+      conContexto(() =>
+        toggleActiva("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", false),
+      ),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 });
@@ -385,13 +433,15 @@ describe("cuenta-publicitaria.service — toggleActiva (Requirement: Bridge deta
 describe("bridge.service — getBridgeById embeds cuentasPublicitarias mapped to instagramAccountId (Requirement: Bridge detail embeds its accounts)", () => {
   it("nunca expone idExternoVinculado en las cuentas embebidas", async () => {
     const { id: bridgeId } = await crearBridgeDirecto({ redSocial: "INSTAGRAM" });
-    await crearCuentaPublicitaria(bridgeId, {
-      idExterno: "page-embed",
-      nombre: "Cuenta Embebida",
-      instagramAccountId: "ig-embed",
-    });
+    await conContexto(() =>
+      crearCuentaPublicitaria(bridgeId, {
+        idExterno: "page-embed",
+        nombre: "Cuenta Embebida",
+        instagramAccountId: "ig-embed",
+      }),
+    );
 
-    const detalle = await getBridgeById(bridgeId);
+    const detalle = await conContexto(() => getBridgeById(bridgeId));
 
     expect(detalle.cuentasPublicitarias).toHaveLength(1);
     expect(detalle.cuentasPublicitarias[0]?.instagramAccountId).toBe("ig-embed");

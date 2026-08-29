@@ -1,4 +1,5 @@
-import type { Prisma, RedSocial } from "@prisma/client";
+import type { Lead, Prisma, RedSocial } from "@prisma/client";
+import { AppError } from "../lib/app-error.js";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
 import { DEDUPLICACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
@@ -9,6 +10,8 @@ import * as leadEventoRepository from "../repositories/lead-evento.repository.js
 import * as leadRepository from "../repositories/lead.repository.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { resolverAtribucion, resolverEmpresaIdDesdeBridge, type AtribucionResuelta } from "./atribucion.service.js";
+import { compararLeadAbiertoScope } from "./shadow-lead-scope.service.js";
 import {
   decideAccionDeduplicacion,
   type DeduplicacionAction,
@@ -34,6 +37,17 @@ export interface DeduplicacionInput {
   redSocial?: RedSocial;
   payloadOriginal?: unknown;
   camposDinamicos?: Record<string, unknown>;
+  /**
+   * M-hardening Bloque A (WU4, spec lead-attribution, D6): igual criterio de
+   * opcionalidad que los tres campos de arriba — un `LeadEntrante` completo
+   * (M4) los trae todos juntos; un `DeduplicacionInput` levantado a mano
+   * (pruebas de M3) los deja `undefined` y la atribución degrada a `null`
+   * sin romper.
+   */
+  bridgeId?: string;
+  idExternoCuenta?: string | null;
+  idExternoCampania?: string | null;
+  nombreCampania?: string | null;
 }
 
 export interface DeduplicacionResult {
@@ -45,6 +59,7 @@ export interface DeduplicacionResult {
   correoAdjuntado: boolean;
   /** Lead creado, o lead al que se ancló el evento de interacción repetida. */
   leadId: string;
+  empresaId: string;
   /** M4/M6: solo si es `true` corren asignación y SLA. */
   leadCreado: boolean;
   eventoId: string;
@@ -177,13 +192,71 @@ export async function deduplicateLead(
       // D. DECIDIR.
       const accion = decideAccionDeduplicacion(estado, ahora);
 
+      // Bloque B (Fase 3, spec "Company-scoped open-lead dedupe runs in
+      // shadow beside the global criterion"): SIEMPRE después de `accion` —
+      // puramente observacional, awaited dentro de esta MISMA `tx` (nunca
+      // fire-and-forget, a diferencia del comparador de Fase 2: esta `tx`
+      // interactiva se cierra en cuanto el callback retorna). NUNCA lee
+      // `accion` ni escribe ningún campo que la alimente — `leadAbierto` es
+      // la fila YA leída en el paso C (cero consulta extra).
+      const empresaIdCandidato = entrada.bridgeId
+        ? await resolverEmpresaIdDesdeBridge(entrada.bridgeId, tx)
+        : null;
+      await compararLeadAbiertoScope(leadAbierto, empresaIdCandidato, tx);
+
       // E. ESCRIBIR — siempre un lead_eventos, en la misma transacción.
       let leadId: string;
       let leadCreado: boolean;
       let detalle: DetalleEventoLead;
       let tipoEvento: "INGRESO" | "INTERACCION_REPETIDA";
+      // Bloque C (Etapa 3, D4): empresaId del `lead_eventos` a escribir —
+      // fijado en cada rama de abajo (creación usa el `Lead` recién creado;
+      // interacción repetida reutiliza `leadAbierto`, paso C, misma `tx`).
+      let empresaIdEvento: string;
 
       if (accion.kind === "crear_lead") {
+        // M-hardening Bloque A (WU4, spec lead-attribution, D6): solo se
+        // intenta resolver atribución si la entrada trae `bridgeId` — un
+        // `DeduplicacionInput` levantado a mano (M3, sin M4) nunca lo trae,
+        // y `resolverAtribucion` necesita `bridgeId` para el primer paso del
+        // lookup. Sin `bridgeId`, las 5 columnas quedan `null`/lo que venga
+        // crudo en la entrada, mismo criterio de degradación silenciosa.
+        const atribucion: AtribucionResuelta = entrada.bridgeId
+          ? await resolverAtribucion(
+              {
+                bridgeId: entrada.bridgeId,
+                idExternoCuenta: entrada.idExternoCuenta ?? null,
+                idExternoCampania: entrada.idExternoCampania ?? null,
+                nombreCampania: entrada.nombreCampania ?? null,
+              },
+              tx,
+            )
+          : {
+              cuentaPublicitariaId: null,
+              campaniaId: null,
+              idExternoCuenta: entrada.idExternoCuenta ?? null,
+              idExternoCampania: entrada.idExternoCampania ?? null,
+              nombreCampania: entrada.nombreCampania ?? null,
+              empresaId: null,
+            };
+
+        // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `Lead.empresaId`
+        // es NOT NULL — un `Lead` que no pueda resolver su empresa ya no
+        // degrada en silencio a `null` (comportamiento retirado, era el
+        // camino "compatibilidad M3" documentado arriba). `resolverAtribucion`
+        // solo devuelve `empresaId: null` cuando falta `entrada.bridgeId` o el
+        // bridge referenciado no existe — ambos casos son un dato de entrada
+        // inválido para crear un lead real, nunca un estado normal de
+        // producción (la ingesta real siempre trae `bridgeId`, y
+        // `Bridge.empresaId` es NOT NULL desde esta misma migración).
+        if (atribucion.empresaId === null) {
+          throw new AppError(
+            "empresa_no_resuelta",
+            422,
+            "No se pudo resolver la empresa del lead — falta bridgeId o el bridge no existe",
+          );
+        }
+
         const lead = await leadRepository.createLead(
           {
             clienteId,
@@ -198,11 +271,22 @@ export async function deduplicateLead(
             redSocial: entrada.redSocial,
             payloadOriginal: entrada.payloadOriginal as Prisma.InputJsonValue | undefined,
             camposDinamicos: entrada.camposDinamicos as Prisma.InputJsonValue | undefined,
+            // WU4: atribución canónica + escalares crudos, siempre juntos.
+            cuentaPublicitariaId: atribucion.cuentaPublicitariaId,
+            campaniaId: atribucion.campaniaId,
+            idExternoCuenta: atribucion.idExternoCuenta,
+            idExternoCampania: atribucion.idExternoCampania,
+            nombreCampania: atribucion.nombreCampania,
+            // Bloque B (Fase 3, spec lead-empresa-derivation): dual-write —
+            // los campos legado de arriba quedan intactos, `empresaId` es
+            // puramente aditivo.
+            empresaId: atribucion.empresaId,
           },
           tx,
         );
         leadId = lead.id;
         leadCreado = true;
+        empresaIdEvento = lead.empresaId;
         tipoEvento = "INGRESO";
         detalle = {
           version: 1,
@@ -218,6 +302,12 @@ export async function deduplicateLead(
         // D9: ambas ramas de `interaccion_repetida` marcan requiereNotificacion.
         leadId = accion.leadId;
         leadCreado = false;
+        // Bloque C (Etapa 3, D4): `accion.leadId` puede ser `leadAbierto.id`
+        // (lead abierto repetido) O `ultimoLeadCerrado.id` (motivo
+        // `lead_cerrado_en_ventana`, reingreso dentro de la ventana) — solo
+        // el primero coincide con `leadAbierto`, así que se relee el lead
+        // real por id en vez de asumir cuál de los dos es.
+        empresaIdEvento = (await leadRepository.findById(accion.leadId, tx) as Lead).empresaId;
         tipoEvento = "INTERACCION_REPETIDA";
         detalle = {
           version: 1,
@@ -235,6 +325,7 @@ export async function deduplicateLead(
       const evento = await leadEventoRepository.createEvento(
         {
           leadId,
+          empresaId: empresaIdEvento,
           tipo: tipoEvento,
           detalle: detalle as unknown as Prisma.InputJsonValue,
         },
@@ -246,7 +337,7 @@ export async function deduplicateLead(
         const currentLead = await leadRepository.findById(leadId, tx);
         const recipientId = currentLead?.vendedorId ?? currentLead?.asesorId;
         if (recipientId) {
-          const notification = await notificacionRepository.createNotificacion({ usuarioId: recipientId, tipo: "INTERACCION_REPETIDA", titulo: "Interacción repetida", mensaje: "El lead registró una nueva interacción", leadId }, tx);
+          const notification = await notificacionRepository.createNotificacion({ usuarioId: recipientId, tipo: "INTERACCION_REPETIDA", titulo: "Interacción repetida", mensaje: "El lead registró una nueva interacción", leadId, empresaId: empresaIdEvento }, tx);
           events.push(...notificationEvents(notification));
         }
       }
@@ -257,6 +348,7 @@ export async function deduplicateLead(
         identidadPor,
         correoAdjuntado,
         leadId,
+        empresaId: empresaIdEvento,
         leadCreado,
         eventoId: evento.id,
         accion,

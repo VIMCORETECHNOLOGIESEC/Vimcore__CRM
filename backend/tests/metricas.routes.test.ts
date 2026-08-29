@@ -3,6 +3,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
@@ -96,13 +98,14 @@ describe("routes/metricas — wiring y autenticación", () => {
     const cliente = await prisma.cliente.create({
       data: { nombre: `Cliente MR ${cam}`, telefonoValido: false },
     });
-    await prisma.lead.create({
+    await testAdminPrisma.lead.create({
       data: {
         clienteId: cliente.id,
         origen: "NUEVO",
         etapa: "NUEVO",
         ingresadoEn: new Date(`${dia}T22:00:00.000Z`),
         payloadOriginal: { nombreCampania: cam },
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 

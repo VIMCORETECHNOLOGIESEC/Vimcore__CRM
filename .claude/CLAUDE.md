@@ -301,3 +301,47 @@ Esta regla aplica a cualquier skill futura que se instale con el mismo flag, no 
 **Evaluadas y descartadas 2026-08-26** (pedido explícito del usuario, 3 fuentes externas de dashboard): `kpi-dashboard-design` (`secondsky/claude-skills`, espejo de `mcpmarket.com/.../kpi-dashboard-designer-1`) — genérica, sus KPIs y colores de semáforo de ejemplo (`#22c55e`/`#f59e0b`/`#ef4444`) chocan con los ya fijados acá (`#16A34A`/`#D97706`/`#DC2626`/`#94A3B8`), riesgo de drift sin aportar nada no cubierto ya. `housegarofalo/claude-code-base` → `dashboard-design` (mirror en `lobehub.com`) — repo de origen en GitHub devolvió 404 al verificar (fuente inverificable), y por descripción de terceros es un skill genérico de design-system (Tailwind/cards/forms) ya cubierto por `interface-design` + `baseline-ui` + `better-layout`, no específico de dashboards. No reintentar sin pedido explícito y sin poder verificar el contenido real primero.
 
 `ui-skills.com/skills` no pudo verificarse (bloqueó el acceso, HTTP 403) — no se documenta nada de ese catálogo por no poder confirmarlo de forma independiente.
+
+## Graphify — Architecture-level graph for this project (MANDATORY, project-specific)
+
+Graphify is installed locally (`uv tool install graphifyy`) and indexed for this repo
+(`graphify-out/graph.json`, gitignored, local per-worktree — never committed or merged).
+This is a project-specific tool, separate from the globally mandatory CodeGraph policy —
+they do not compete, they answer different altitudes of question.
+
+**When to use CodeGraph (unchanged, still the hard first stop)**: single-symbol lookups,
+call paths, blast radius on a known function/component — anything CodeGraph's global
+policy already covers.
+
+**When to use Graphify instead/in addition**:
+- Orientation before starting work on a module or bloque you haven't touched yet
+  ("what are the architectural hubs here", "what modules/communities exist",
+  "what connects to X across services") — `graphify query "..."`, `graphify god-nodes`,
+  `graphify explain "X"`.
+- Anything spanning **Prisma SQL migrations/schema** (tables, foreign keys) — SQL support
+  is installed (`tree-sitter-sql`); CodeGraph does not index `.sql` files.
+- The user wants a **visual** exploration — open `graphify-out/graph.html` in a browser
+  (`xdg-open graphify-out/graph.html`) or read `graphify-out/GRAPH_REPORT.md`. This is
+  for humans; CodeGraph has no equivalent.
+
+**Update discipline (token cost)**:
+- Code re-extraction is 100% local/free and safe to run anytime after real code changes:
+  `graphify extract . --code-only` (or `--force` if a previous run left files unparsed,
+  e.g. after adding a new tree-sitter grammar).
+- Never run `graphify extract ./docs` or `cluster-only` **without** `--no-label` unless
+  explicitly asked — those steps call an LLM backend and cost real tokens. Doc/SDD-artifact
+  extraction is reserved for SDD archive checkpoints (per bloque, once specs/design are
+  final), not continuous re-runs on drafts.
+- "Communities" = Leiden-clustered groups of densely-interconnected symbols, computed for
+  free by graph topology alone. Naming them with a human label is a separate, optional,
+  LLM-costing step (`cluster-only` / `label` without `--no-label`) — never do this
+  automatically.
+
+**No auth required for local use**: `graphify-mcp` (stdio transport, what an agent uses
+locally) has no login/API-key requirement. `--api-key` only applies if this project's
+graph is later exposed over `--transport http` for team-wide MCP access — that is an
+opt-in choice, not a default.
+
+**Never run** `graphify install` / `graphify claude install` — those auto-write into
+CLAUDE.md and PreToolUse hooks and would conflict with the gentle-ai-managed blocks above.
+This section is the only sanctioned integration point.
