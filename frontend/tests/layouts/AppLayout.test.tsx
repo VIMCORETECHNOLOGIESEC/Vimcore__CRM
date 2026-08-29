@@ -1,0 +1,115 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+  useAuth: vi.fn(),
+}));
+vi.mock("@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa", () => ({
+  useConfiguracionEmpresa: vi.fn(),
+}));
+// Componentes pesados del shell real -- irrelevantes para lo que este test
+// verifica (el gate del splash), cada uno ya tiene su propia cobertura.
+vi.mock("@/components/app-sidebar", () => ({
+  AppSidebar: () => <div data-testid="app-sidebar" />,
+}));
+vi.mock("../../src/layouts/Header", () => ({
+  Header: () => <div data-testid="app-header" />,
+}));
+vi.mock("@/funcionalidades/leads/tutorial/LeadsNavigationTutorial", () => ({
+  LeadsNavigationTutorialProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useConfiguracionEmpresa } = await import(
+  "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
+);
+const { AppLayout } = await import("@/layouts/AppLayout");
+
+const useAuthMock = vi.mocked(useAuth);
+const useConfiguracionEmpresaMock = vi.mocked(useConfiguracionEmpresa);
+
+const usuarioFake = {
+  id: "u1",
+  nombre: "Ana",
+  correo: "ana@crm.test",
+  rol: "ASESOR" as const,
+  sessionScope: "holding" as const,
+  empresaId: null,
+  empresaNombre: null,
+  empresaColorPrimario: null,
+  empresaColorSecundario: null,
+  empresaLogoUrl: null,
+};
+
+function renderAppLayout() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <AppLayout />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  useAuthMock.mockReturnValue({
+    user: usuarioFake,
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    hasRole: vi.fn(),
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("AppLayout — gate del splash contra el gap de tema por defecto", () => {
+  it("muestra el splash (no el shell real) mientras useConfiguracionEmpresa está cargando", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+
+    expect(screen.getByText("Cargando tu panel…")).toBeInTheDocument();
+    expect(screen.queryByTestId("app-sidebar")).not.toBeInTheDocument();
+  });
+
+  it("no revela el shell antes del piso de 1500ms aunque la config ya haya resuelto", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+
+    expect(screen.getByText("Cargando tu panel…")).toBeInTheDocument();
+    expect(screen.queryByTestId("app-sidebar")).not.toBeInTheDocument();
+  });
+
+  it("revela el shell real al cumplirse el piso de 1500ms, con la config ya resuelta", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
+    expect(screen.queryByText("Cargando tu panel…")).not.toBeInTheDocument();
+  });
+});

@@ -5,9 +5,18 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
-import { resolveEstilosMarca } from "@/lib/color-marca";
+import { useSplashGate } from "@/hooks/useSplashGate";
+import { resolveEstilosMarca, resolveNombreMarca } from "@/lib/color-marca";
+import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
+
+/**
+ * Piso mínimo del splash de arranque del shell (ver `useSplashGate`) -- mismo
+ * valor que `AppBoot.tsx` (1500ms), por consistencia de sensación entre el
+ * boot pre-login y esta pantalla, aunque son gates independientes.
+ */
+const SPLASH_MIN_MS = 1500;
 
 /**
  * Layout principal (docs/07 F1): barra lateral + encabezado + contenido.
@@ -28,13 +37,21 @@ export function AppLayout() {
   // `ConfiguracionEmpresaPage.tsx`) -> default de fábrica. `data` es
   // `undefined` mientras carga o si la query falla -- `color-marca.ts` cae
   // al default de fábrica en ese caso, nunca bloquea ni rompe el shell.
-  const { data: configuracionHolding } = useConfiguracionEmpresa();
+  const { data: configuracionHolding, isLoading: isLoadingHolding } = useConfiguracionEmpresa();
   // tema-empresarial-integracion (Parte 3): acentos por empresa
   // (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`) en el
   // root de `SidebarProvider`, para que cubran sidebar Y contenido. Ver
   // `lib/color-marca.ts` para el alcance exacto y por qué `--sidebar`
   // (fondo sólido) queda afuera.
   const estilosMarca = resolveEstilosMarca(user, configuracionHolding);
+  const nombreMarca = resolveNombreMarca(user, configuracionHolding);
+  // Gap real corregido -- ver `useSplashGate.ts`: en una recarga en frío de
+  // una ruta ya autenticada (F5 con sesión vigente) no hay ninguna precarga
+  // de `useConfiguracionEmpresa()` como sí tiene `LoginPage.tsx`, así que el
+  // shell pintaba con la paleta de fábrica y recién después saltaba al color
+  // real de marca. Mientras el gate esté activo, se muestra el mismo
+  // `WelcomeSplashLoader` del boot en vez de un shell a medio pintar.
+  const showSplash = useSplashGate(isLoadingHolding, SPLASH_MIN_MS);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -51,6 +68,23 @@ export function AppLayout() {
       clearTimeout(timeoutId);
     };
   }, []);
+
+  if (showSplash) {
+    // `.tema-empresarial` es requerido -- `tema-empresarial.css` scopea
+    // `.welcome-splash` bajo ese ancestro (mismo patrón que `AppBoot.tsx`).
+    // La hoja de estilos y las fuentes ya se cargaron con el boot pre-login,
+    // que siempre monta antes que este layout autenticado.
+    return (
+      <div className="tema-empresarial">
+        <WelcomeSplashLoader
+          contexto={nombreMarca}
+          mensaje="Cargando tu panel…"
+          visible
+          style={estilosMarca as CSSProperties}
+        />
+      </div>
+    );
+  }
 
   return (
     <PageHeaderProvider>

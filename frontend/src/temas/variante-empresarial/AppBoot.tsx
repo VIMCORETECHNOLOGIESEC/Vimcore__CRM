@@ -53,7 +53,7 @@ const SPLASH_SOSTENIDO_MS = 700;
  * pero `<App/>` queda montado para siempre.
  */
 export function AppBoot({ children }: { children: ReactNode }) {
-  const [bootActivo, setBootActivo] = useState(true);
+  const [bootActive, setBootActive] = useState(true);
   const [bootVisible, setBootVisible] = useState(false);
   const [marca, setMarca] = useState<ConfiguracionEmpresa>(CONFIGURACION_EMPRESA_DEFAULT);
 
@@ -61,7 +61,7 @@ export function AppBoot({ children }: { children: ReactNode }) {
     const idAparecer = requestAnimationFrame(() => setBootVisible(true));
     const idOcultar = window.setTimeout(() => setBootVisible(false), SPLASH_SOSTENIDO_MS);
     const idDesmontar = window.setTimeout(
-      () => setBootActivo(false),
+      () => setBootActive(false),
       SPLASH_SOSTENIDO_MS + SPLASH_FADE_MS,
     );
 
@@ -92,7 +92,7 @@ export function AppBoot({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      {bootActivo ? (
+      {bootActive ? (
         <div className="tema-empresarial">
           {/*
             React 19 hoista automáticamente <link> renderizados en cualquier
