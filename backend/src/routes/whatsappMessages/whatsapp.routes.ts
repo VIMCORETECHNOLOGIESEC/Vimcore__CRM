@@ -7,6 +7,7 @@ import {
 import {
   getWhatsAppCallback,
   getWhatsAppConectar,
+  getWhatsAppConexionStatus,
   postWhatsAppConexion,
 } from "../../controllers/whatsappMessages/whatsapp-oauth.controller.js";
 import {
@@ -34,6 +35,12 @@ whatsappRouter.post(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   postWhatsAppConexion,
+);
+whatsappRouter.get(
+  "/whatsapp/conexion",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  getWhatsAppConexionStatus,
 );
 
 // Webhook de mensajería entrante — se autentica por firma de la app de Meta

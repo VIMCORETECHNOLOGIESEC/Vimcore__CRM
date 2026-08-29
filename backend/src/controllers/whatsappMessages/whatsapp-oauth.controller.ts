@@ -9,6 +9,7 @@ import {
 import {
   completeWhatsAppOAuthCallback,
   createWhatsAppConexion,
+  getWhatsAppConexion,
   startWhatsAppOAuth,
 } from "../../services/whatsappMessages/whatsapp-oauth.service.js";
 
@@ -58,5 +59,24 @@ export async function postWhatsAppConexion(req: Request, res: Response): Promise
   if (!parsed.success) throw invalidQuery();
 
   const conexion = await createWhatsAppConexion(usuario, parsed.data);
+  res.status(200).json({ conexion });
+}
+
+/**
+ * `GET /whatsapp/conexion` (ADMINISTRADOR): estado actual de la conexión de
+ * la empresa (o `null` si nunca se conectó). Misma resolución de empresa
+ * destino que `getWhatsAppConectar` (rule 4: holding-wide vía `?empresaId=`).
+ */
+export async function getWhatsAppConexionStatus(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  const parsed = whatsappOAuthStartQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw invalidQuery();
+
+  const empresaId = usuario.empresaId ?? parsed.data.empresaId;
+  if (!empresaId) {
+    throw new AppError("whatsapp_empresa_requerida", 400, "Debes indicar la empresa destino");
+  }
+
+  const conexion = await getWhatsAppConexion(empresaId);
   res.status(200).json({ conexion });
 }

@@ -211,6 +211,12 @@ export async function completeWhatsAppOAuthCallback(
   };
 }
 
+/** `GET /whatsapp/conexion` (ADMINISTRADOR) — estado actual de la conexión de la empresa, o `null` si nunca se conectó. */
+export async function getWhatsAppConexion(empresaId: string): Promise<WhatsAppConexionDto | null> {
+  const conexion = await whatsappConexionRepository.findByEmpresaId(empresaId);
+  return conexion ? toDto(conexion) : null;
+}
+
 function toDto(conexion: WhatsAppConexionSafe): WhatsAppConexionDto {
   return {
     id: conexion.id,
