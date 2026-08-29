@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
@@ -8,6 +8,7 @@ import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
+import { useLeadsNavigationTutorial } from "./tutorial/LeadsNavigationTutorial";
 import { AccionesMasivas } from "./AccionesMasivas";
 import { getCatalogoCampanias, getCatalogoResponsables } from "./leads.api";
 import { FILTROS_LEADS_VACIOS, buildLeadsQueryParams, type LeadsFiltrosState } from "./leads.utils";
@@ -32,6 +33,7 @@ export function LeadsPage() {
   usePageHeader({ title: "Gestión de Leads" });
 
   const { hasRole } = useAuth();
+  const { startTour, startTourIfNeeded } = useLeadsNavigationTutorial();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
 
   const [filtros, setFiltros] = useState<LeadsFiltrosState>(FILTROS_LEADS_VACIOS);
@@ -89,6 +91,12 @@ export function LeadsPage() {
   const desde = total === 0 ? 0 : (pagina - 1) * LEADS_POR_PAGINA + 1;
   const hasta = Math.min(pagina * LEADS_POR_PAGINA, total);
 
+  const primerLeadId = data?.datos[0]?.id;
+  const iniciarTutorialPendiente = useEffectEvent((leadId: string) => startTourIfNeeded(leadId));
+  useEffect(() => {
+    if (primerLeadId) iniciarTutorialPendiente(primerLeadId);
+  }, [primerLeadId]);
+
   return (
     <div className="flex flex-col gap-4">
       {/*
@@ -107,6 +115,9 @@ export function LeadsPage() {
         campanias={campanias}
         mostrarFiltroResponsable={esGestorDeCartera}
         responsables={responsables}
+        onStartTutorial={() => {
+          if (primerLeadId) startTour(primerLeadId);
+        }}
       />
 
       {esGestorDeCartera ? (
@@ -146,7 +157,7 @@ export function LeadsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no "
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
                 disabled={pagina <= 1}
                 onClick={() => setPagina(1)}
                 aria-label="Primera página"
@@ -157,7 +168,7 @@ export function LeadsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
                 disabled={pagina <= 1}
                 onClick={() => setPagina((p) => Math.max(1, p - 1))}
                 aria-label="Página anterior"
@@ -171,7 +182,7 @@ export function LeadsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
                 disabled={pagina >= totalPaginas}
                 onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
                 aria-label="Página siguiente"
@@ -182,7 +193,7 @@ export function LeadsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
                 disabled={pagina >= totalPaginas}
                 onClick={() => setPagina(totalPaginas)}
                 aria-label="Última página"

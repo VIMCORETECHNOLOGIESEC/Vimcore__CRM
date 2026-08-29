@@ -1,4 +1,4 @@
-import { Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { CircleHelp, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ interface LeadsFiltrosProps {
   /** Oculto para asesor/vendedor: su cartera ya está implícita en el rol (docs/07 F3). */
   mostrarFiltroResponsable: boolean;
   responsables: { id: string; nombre: string }[];
+  onStartTutorial?: () => void;
 }
 
 const ETAPAS: EtapaLead[] = ["NUEVO", "CONTACTADO", "CITA", "VENTA", "NO_VENTA"];
@@ -49,6 +50,7 @@ export function LeadsFiltros({
   campanias,
   mostrarFiltroResponsable,
   responsables,
+  onStartTutorial = () => undefined,
 }: LeadsFiltrosProps) {
   function update<K extends keyof LeadsFiltrosState>(campo: K, valor: LeadsFiltrosState[K]) {
     onChange({ ...filtros, [campo]: valor });
@@ -103,9 +105,15 @@ export function LeadsFiltros({
   return (
     <div className="flex flex-col gap-3 p-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="shrink-0 text-2xl">Gestión de Leads</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="shrink-0 text-2xl">Gestión de Leads</h2>
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground" onClick={onStartTutorial}>
+            <CircleHelp className="size-4" aria-hidden="true" />
+            Ver tutorial
+          </Button>
+        </div>
         <div className="flex min-w-0 flex-col gap-3 sm:ml-auto sm:w-full sm:max-w-xl sm:flex-row sm:items-center">
-          <div className="relative min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1" data-tour="leads-search">
             <Search
               className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
@@ -124,6 +132,7 @@ export function LeadsFiltros({
               <Button
                 variant="outline"
                 className="h-10 gap-2 rounded-2xl bg-transparent self-start sm:self-auto"
+                data-tour="leads-filters"
               >
                 <SlidersHorizontal className="size-4" aria-hidden="true" />
                 Filtros

@@ -24,10 +24,10 @@ export function LeadOrigenInfo({ lead }: LeadOrigenInfoProps) {
   const camposDinamicos = Object.entries(lead.camposDinamicos ?? {});
 
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
+    <section data-tour="lead-origin-card" className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
       <h2 className="text-sm font-semibold text-foreground">Origen</h2>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+      <dl data-tour="lead-origin-fields" className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted-foreground">Red social</dt>
         <dd className="text-foreground">{RED_SOCIAL_ETIQUETAS[lead.redSocial]}</dd>
 
