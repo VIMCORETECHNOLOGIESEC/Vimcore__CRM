@@ -11,21 +11,39 @@ CRM comercial de gestión de leads captados desde campañas publicitarias en red
 sociales. Recibe leads por webhook, los deduplica, los asigna a personal comercial
 y sigue su avance por un embudo de 5 etapas hasta la venta o el cierre negativo.
 
-**Baseline vigente (AS-IS): instancia única por empresa.** El esquema, la
-autorización y las consultas actuales no son multi-tenant: no existe
-`tenant_id`, scoping por empresa ni super-administrador. Cada cliente usa un
-despliegue aislado con su propia base de datos. Todo mantenimiento del producto
-actual debe preservar este comportamiento salvo que una iniciativa aprobada
-indique expresamente lo contrario.
+**Baseline vigente (AS-IS, actualizado 2026-08-28): fundación multi-tenant
+implementada, comportamiento funcional aún equivalente a single-company.**
+Bloques A, B y C de la migración multi-tenant (`docs/blocks/`) ya están
+**cerrados e implementados en producción** (`052e811`, 894/894 tests):
+existen `Empresa`/`Membresia` en el esquema, Row-Level Security de Postgres
+forzado (rol `crm_app` sin `BYPASSRLS`), contexto de tenant obligatorio por
+request (`AsyncLocalStorage`) y CAS optimista en asignación. Esto **no** es
+"un despliegue aislado con su propia base de datos por cliente" — es un
+esquema compartido con aislamiento real por fila. Lo que sigue siendo
+equivalente a single-company es el **comportamiento funcional visible**: el
+pool de asignación sigue global (sin scope por empresa), la autoridad de
+cierre sigue leyendo `Usuario.rol` legacy, y no hay superadministrador de
+holding operativo. Todo mantenimiento del producto debe preservar el
+comportamiento funcional actual (no introducir routing o autorización por
+empresa fuera de un bloque aprobado) sin asumir que el esquema físico
+tampoco cambió — sí cambió.
 
-**Evolución propuesta (TO-BE): holdings y múltiples empresas.** Las decisiones
-D1-D14 (frontera tenant, membresías, roles, routing, Oportunidad, dashboards,
-integraciones compartidas) ya están **resueltas** en `docs/16-hallazgos-y-preguntas.md`
-§8 y desglosadas por bloque de implementación en `docs/blocks/`; la migración
-y la implementación siguen **pendientes**. No crear entidades de tenant,
-membresías, roles globales ni cambios de autorización fuera de la SDD change
-del bloque correspondiente (`docs/blocks/{a..f}-*.md`). Nunca documentar el
-TO-BE como si describiera el comportamiento actual.
+**Evolución pendiente: routing, autoridad de cierre y dashboards por
+empresa.** Las decisiones D1-D14 (frontera tenant, membresías, roles,
+routing, Oportunidad, dashboards, integraciones compartidas) ya están
+**resueltas** en `docs/16-hallazgos-y-preguntas.md` §8 y desglosadas por
+bloque de implementación en `docs/blocks/`. Bloque D0 (visualización mínima
+de la separación por empresa en frontend) se ejecuta antes del despliegue;
+Bloque D completo (routing, autoridad de cierre, Oportunidad) y Bloque E
+(dashboards) quedan diferidos a después del despliegue; Bloque F (retiro de
+`Usuario.rol`) tiene además una dependencia de secuencia dura — solo después
+de congelar o mergear el trabajo de `dev-back`/`dev-front` sobre ese mismo
+enum, nunca en paralelo. No crear entidades de tenant, membresías, roles
+globales ni cambios de autorización fuera de la SDD change del bloque
+correspondiente (`docs/blocks/{a..f}-*.md`). Nunca documentar el TO-BE como
+si describiera el comportamiento actual, y nunca documentar el AS-IS como si
+la infraestructura multi-tenant no existiera — ambos errores ya ocurrieron
+en este documento.
 
 **Alcance MVP: formato fijo, no personalizable.** Los formularios de seguimiento,
 las reglas de puntuación del semáforo, las etapas y los tiempos de SLA están
@@ -229,10 +247,13 @@ Estos elementos no forman parte del producto single-company vigente. Pueden
 analizarse como evolución, pero requieren alcance y aprobación explícitos antes
 de modificar código, datos o despliegue:
 
-- Multi-tenant, super-administrador y panel matriz entre empresas — D1-D14
-  resueltas en `docs/16` §8; migración e implementación pendientes. No crear
-  entidades de tenant/membresía fuera de la SDD change del bloque
-  correspondiente (`docs/blocks/`)
+- Routing por empresa, autoridad de cierre por membresía, Oportunidad,
+  dashboards jerárquicos y superadministrador de holding operativo — D1-D14
+  resueltas en `docs/16` §8; la fundación (`Empresa`/`Membresia`/RLS/contexto
+  de tenant) ya está implementada por Bloques A-C, pero este comportamiento
+  funcional sigue diferido a Bloques D0/D/E/F (ver `docs/blocks/`). No crear
+  routing, autorización o dashboards por empresa fuera de la SDD change del
+  bloque correspondiente
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado)

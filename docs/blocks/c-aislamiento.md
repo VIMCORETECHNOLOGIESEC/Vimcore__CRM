@@ -14,7 +14,7 @@ Engram (artifact store = `engram`, no `openspec/` — ver
 |---|---|---|---|---|
 | 1 | Autorizador sombra company-aware + chokepoint de notificaciones + alta de Usuario con Membresia (bootstrap) + TenantContext fail-closed | ✅ Completa (12/12 tareas) | `c1807fe` | 812/812 tests, tsc limpio |
 | 2 | Cutover bloqueante (`leads.access`/`leads.service`/`metricas.access`) + `empresaId` NOT NULL + decisión por job | ✅ Completa (13/13 tareas) | `f45923e` | 832/832 tests, tsc limpio |
-| 3 | RLS de Postgres + rol de bypass + suite adversarial + CAS en asignación | ✅ **Completa** — ver detalle abajo | (sin commitear — ver `sdd/bloque-c-aislamiento/apply-progress` en Engram) | 94/94 archivos, 894/894 tests (corrido dos veces), tsc limpio |
+| 3 | RLS de Postgres + rol de bypass + suite adversarial + CAS en asignación | ✅ **Completa** — ver detalle abajo | `052e811` | 94/94 archivos, 894/894 tests (corrido dos veces), tsc limpio |
 
 Etapa 3 se retomó como cambio SDD independiente `bloque-c-etapa3-rls-adversarial`
 (no el `bloque-c-aislamiento/tasks` original de 35 tareas — esos artefactos
@@ -81,9 +81,13 @@ capacidades nuevas — endurece las que ya existen para que no crucen empresa.
 
 ## Decisión que implementa (ver rationale completo en `docs/16` §8 — no se repite acá)
 
-- **D6 — Scope de supervisión**: espejo exacto de la jerarquía admin (D5):
-  supervisor de holding (ve todo, sin permisos de modificación) y supervisor
-  de empresa (solo su propia empresa), sin niveles intermedios arbitrarios.
+- **D6 — Scope de supervisión**: el AS-IS no tiene membresías holding-wide:
+  `Membresia.empresaId` es `NOT NULL` y toda membresía pertenece a una empresa
+  concreta. Las sesiones holding se resuelven todavía mediante
+  `Usuario.rol` legacy; cuando una consulta holding necesita membresías,
+  agrega filas empresariales con `empresaId` concreto, nunca una membresía
+  con `empresaId = null`. El supervisor de holding basado en membresía se
+  conserva solo como diseño futuro de D6, **no implementado** por Bloque C.
 
 ## Riesgos de diseño a resolver en este bloque (movidos desde `docs/16` §8.1)
 
@@ -107,10 +111,10 @@ Bloque D:
    silencio.
 3. **`Notificacion` no tiene destinatario por grupo.** `Notificacion.usuarioId`
    es 1:1 por usuario; "todos los supervisores de la Empresa X" se resuelve
-   ahora como consulta directa sobre `Membresia` (`empresaId = X, rol =
-   SUPERVISOR`, más `empresaId = null, rol IN (ADMINISTRADOR, SUPERVISOR)`
-   para el nivel holding) — sin cambiar el esquema de `Notificacion`, una vez
-   que Bloque B ya dejó `Membresia` disponible.
+   mediante `Membresia` con `empresaId = X` y `rol = SUPERVISOR`. La autoridad
+   de una sesión holding sigue proviniendo de `Usuario.rol` legacy; si ese
+   flujo consulta membresías, agrega las membresías empresariales concretas
+   del usuario. No existe ni se consulta `Membresia.empresaId = null`.
 
 ## Migración (de `docs/14` §13, Fase 4)
 
@@ -118,9 +122,10 @@ Bloque D:
   aceptar el scope nullable de Bloque B).
 - Scopear SQL crudo, jobs programados, notificaciones, SSE y logs por
   empresa.
-- Ejecutar pruebas adversariales entre dos holdings y entre dos empresas del
-  mismo holding — un usuario de la Empresa A nunca debe poder leer ni
-  escribir datos de la Empresa B.
+- Ejecutar pruebas adversariales entre dos empresas (scopes) del mismo
+  holding — no existe una entidad `Holding` en el esquema hoy; la unidad real
+  es la empresa. Un usuario de la Empresa A nunca debe poder leer ni escribir
+  datos de la Empresa B.
 - Activar Row-Level Security de Postgres como defensa adicional, dado que
   D11 (Bloque B) eligió esquema compartido: no confiar en que cada consulta
   recuerde filtrar por `empresaId` por su cuenta.
@@ -137,5 +142,8 @@ Bloque D:
 
 ## Siguiente bloque
 
-Bloque D (`docs/blocks/d-routing-oportunidad.md`) — requiere aislamiento
-verificado antes de activar routing/elegibilidad por empresa.
+Bloque D0 (`docs/blocks/d0-visualizacion-multitenant.md`) antes del
+despliegue; Bloque D completo (`docs/blocks/d-routing-oportunidad.md`)
+después del despliegue — requiere aislamiento verificado antes de activar
+routing/elegibilidad por empresa. Esta secuencia D0 pre-despliegue / D
+post-despliegue quedó fijada en `3e8c70a` y no es un "Bloque D" ambiguo.

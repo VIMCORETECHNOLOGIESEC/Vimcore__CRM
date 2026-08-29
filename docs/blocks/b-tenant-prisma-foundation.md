@@ -96,15 +96,13 @@ descrito en el diseño original NO se implementó en este cambio — el acceso
 holding-wide sigue siendo puramente `Usuario.rol`, sin cambios. Toda
 `Membresia` real está scopeada a una `Empresa` concreta.
 
-Cambios sobre modelos existentes: `Bridge.empresaId` (nuevo, **nullable** —
-**(desvío vs. diseño original)** el diseño original decía "NOT NULL"; en la
-implementación real un bridge sin empresa asignada no falla la ingesta y
-`Lead.empresaId` simplemente queda `null`. Se vuelve NOT NULL recién en
-Bloque F); `Lead.empresaId` (nuevo, nullable, con índice simple — **(desvío
-vs. diseño original)** NO existe un unique compuesto de "lead abierto" por
-cliente+empresa en el esquema; la comparación (cliente, empresa) es
-puramente en sombra vía la tabla nueva `LeadAbiertoRevisionPendiente`, que
-registra colisiones detectadas sin bloquear ni modificar el lead existente).
+Al cierre de Bloque B, `Bridge.empresaId` y `Lead.empresaId` se introdujeron
+como nullable. **Corte AS-IS posterior:** Bloque C ya convirtió ambas columnas
+a `NOT NULL`; esa tarea no pertenece a Bloque F. Se conserva el desvío de no
+tener un unique compuesto de "lead abierto" por cliente+empresa en el esquema:
+la revisión de colisiones nació en sombra mediante
+`LeadAbiertoRevisionPendiente` y el comportamiento vigente debe verificarse
+contra Bloque C, Prisma y sus migraciones.
 `Usuario.rol` y `enum RolUsuario` NO se tocan en este change — siguen siendo
 la única autoridad real de autorización en producción; `Membresia` opera en
 modo sombra (compara y loguea divergencias, nunca bloquea) hasta que Bloque
@@ -112,8 +110,9 @@ C/D corten el switch.
 
 Ciclo de vida: quitar a alguien de una empresa es `Membresia.activa = false`,
 nunca `DELETE`. `Usuario.activo` se recalcula automáticamente cuando pierde
-su última membresía de empresa activa (excepto si conserva una membresía
-holding-wide).
+su última membresía de empresa activa, salvo si conserva autoridad holding
+mediante `Usuario.rol` legacy. No existe una membresía holding-wide
+implementada: toda `Membresia` tiene un `empresaId` concreto y `NOT NULL`.
 
 ## Ruteo de login por membresía (movido desde `docs/16` §8.3)
 
