@@ -314,7 +314,7 @@ export function LeadsTable({
           <col key={indice} style={{ width: ancho }} />
         ))}
       </colgroup>
-      <TableHeader className="sticky top-0 z-20 bg-sidebar">
+      <TableHeader className="sticky top-0 z-20 bg-sidebar" data-tour="leads-table-columns">
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id} className="h-10 hover:bg-transparent">
             {headerGroup.headers.map((header) => (
@@ -333,6 +333,7 @@ export function LeadsTable({
             <TableRow
               key={row.id}
               data-state={estaSeleccionado ? "selected" : undefined}
+              data-tour={row.index === 0 ? "leads-table-row" : undefined}
               // `relative`: ancla la fila estirada del <Link> de Cliente (ver comentario
               // ahí). `.leads-table-row` trae el glow de hover (index.css).
               className="leads-table-row relative h-12"

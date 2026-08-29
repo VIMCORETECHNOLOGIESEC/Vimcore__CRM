@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Outlet } from "react-router";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
 
@@ -36,20 +37,23 @@ export function AppLayout() {
 
   return (
     <PageHeaderProvider>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <Header />
-          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div
-              ref={scrollRef}
-               className="patron-papel scrollbar-themed absolute inset-0 right-1.5 overflow-y-auto overflow-x-hidden overscroll-contain p-4 md:p-6"
-            >
-              <Outlet />
+      <LeadsNavigationTutorialProvider>
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+            <Header />
+            <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div
+                ref={scrollRef}
+                data-tour="app-scroll-container"
+                className="patron-papel scrollbar-themed absolute inset-0 right-1.5 overflow-y-auto overflow-x-hidden overscroll-contain p-4 md:p-6"
+              >
+                <Outlet />
+              </div>
             </div>
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+          </SidebarInset>
+        </SidebarProvider>
+      </LeadsNavigationTutorialProvider>
     </PageHeaderProvider>
   );
 }
