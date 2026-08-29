@@ -104,6 +104,12 @@ model Usuario {
   conversacionEventos     ConversacionEvento[]
   mensajesEnviados        Mensaje[]
   oauthStatesWhatsApp     WhatsAppOAuthState[]
+  // negociacion (Bloque D): mismo criterio de nombrado que
+  // leadsComoAsesor/leadsComoVendedor -- dos relaciones nombradas porque
+  // ambas apuntan a Usuario.
+  oportunidadesComoAsesor   Oportunidad[]       @relation("OportunidadAsesor")
+  oportunidadesComoVendedor Oportunidad[]       @relation("OportunidadVendedor")
+  oportunidadEventos        OportunidadEvento[]
 
   @@map("usuarios")
 }
@@ -139,6 +145,12 @@ model Empresa {
   // relation field"). Mismo nombre que ya usa `Usuario.oauthStatesWhatsApp`
   // para la relación análoga por `usuarioId`.
   oauthStatesWhatsApp WhatsAppOAuthState[]
+  // negociacion (Bloque D): Oportunidad/Producto/OportunidadEvento son
+  // aditivos -- Lead conserva sus columnas de negociación sin tocar (ver
+  // comentario del modelo Oportunidad).
+  productos           Producto[]
+  oportunidades       Oportunidad[]
+  oportunidadEventos  OportunidadEvento[]
 
   @@map("empresas")
 }
@@ -397,6 +409,11 @@ model Lead {
   // Bloque B (Fase 3, dedup shadow): filas de la cola de revisión donde este
   // lead es el "lead abierto" en colisión — ver `LeadAbiertoRevisionPendiente`.
   revisionesPendientes LeadAbiertoRevisionPendiente[]
+  // negociacion (Bloque D, D13): aditivo -- Lead todavía no cede sus campos
+  // de negociación (etapa/semaforo/asesorId/etc, arriba) a Oportunidad en
+  // este cambio. Esa migración de corte es un paso aparte, deliberadamente
+  // no mezclado acá (ver docs/blocks/d-routing-oportunidad.md).
+  oportunidades        Oportunidad[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
@@ -413,6 +430,125 @@ model Lead {
   @@index([campaniaId], map: "idx_leads_campania")
   @@index([cuentaPublicitariaId], map: "idx_leads_cuenta_publicitaria")
   @@map("leads")
+}
+
+// ---------------------------------------------------------------------------
+// negociacion (Bloque D, D13): split Lead (contacto) / Oportunidad
+// (negociación) -- un mismo Cliente puede tener varias negociaciones en
+// paralelo dentro de la misma empresa (docs/16-hallazgos-y-preguntas.md,
+// D13). Aditivo en este cambio: Lead conserva sus columnas de negociación
+// (etapa/semaforo/asesorId/etc) sin tocar -- el corte que se las retira y
+// reescribe cada consumidor (leads.access.ts, asignacion.service.ts) es un
+// paso deliberadamente aparte, ver docs/blocks/d-routing-oportunidad.md.
+// ---------------------------------------------------------------------------
+
+// Catálogo de productos por empresa (D14) -- selector, no texto libre: más
+// simple para un usuario sin experiencia en CRM, y habilita reporting
+// agregado por producto sin normalizar strings a mano.
+model Producto {
+  id        String   @id @default(uuid()) @db.Uuid
+  empresaId String   @map("empresa_id") @db.Uuid
+  nombre    String   @db.Text
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa       Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  oportunidades Oportunidad[]
+
+  @@unique([empresaId, nombre])
+  @@map("productos")
+}
+
+// Una negociación puntual sobre un Lead+Producto. Reusa los enums de
+// negociación ya existentes (EtapaLead/Semaforo/FormaPago) -- misma
+// semántica de embudo, ahora por Oportunidad en vez de por Lead.
+// `empresaId` denormalizado desde `Lead.empresaId` (mismo patrón RLS que
+// Cita/LeadEvento/Notificacion/Conversacion) para que la política compare
+// empresa_id directo, sin join.
+model Oportunidad {
+  id                String     @id @default(uuid()) @db.Uuid
+  leadId            String     @map("lead_id") @db.Uuid
+  empresaId         String     @map("empresa_id") @db.Uuid
+  productoId        String?    @map("producto_id") @db.Uuid
+  etapa             EtapaLead  @default(NUEVO)
+  semaforo          Semaforo?
+  puntuacion        Int?
+  asesorId          String?    @map("asesor_id") @db.Uuid
+  vendedorId        String?    @map("vendedor_id") @db.Uuid
+  montoVenta        Decimal?   @map("monto_venta") @db.Decimal(12, 2)
+  observacionCierre String?    @map("observacion_cierre") @db.Text
+  formaPago         FormaPago? @map("forma_pago")
+  slaInicioEn       DateTime?  @map("sla_inicio_en") @db.Timestamptz(6)
+  cerradaEn         DateTime?  @map("cerrada_en") @db.Timestamptz(6)
+  creadaEn          DateTime   @default(now()) @map("creada_en") @db.Timestamptz(6)
+  // Bloque C (CAS optimista en asignación): mismo mecanismo que ya usa
+  // `Lead.version` -- cualquier escritura de reasignación hace CAS acá.
+  version           Int        @default(0)
+
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  producto Producto? @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  asesor   Usuario?  @relation("OportunidadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
+  vendedor Usuario?  @relation("OportunidadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
+  eventos  OportunidadEvento[]
+
+  // D14: sin ventana de reingreso (a diferencia de Cliente/Lead, 90 días) --
+  // una Oportunidad nueva del mismo producto se bloquea solo si ya existe
+  // una ABIERTA (fuera de VENTA/NO_VENTA) para el mismo (leadId, productoId);
+  // el índice/constraint exacto de esa regla vive en la migración (parcial,
+  // no expresable en el DSL de Prisma), no acá.
+  @@index([leadId])
+  @@index([empresaId], map: "idx_oportunidades_empresa")
+  @@index([asesorId, etapa], map: "idx_oportunidades_asesor_etapa")
+  @@index([productoId], map: "idx_oportunidades_producto")
+  @@map("oportunidades")
+}
+
+enum TipoEventoOportunidad {
+  // Asignación por el algoritmo automático normal (menor carga + FIFO) --
+  // cuenta para el rendimiento del asesor sin excepción, sea quien sea.
+  ASIGNADA_POOL
+  // Excepción D9 puntual (Administrador/Supervisor toma la negociación fuera
+  // del pool). Única etiqueta que el dashboard (Bloque E) segmenta aparte --
+  // la distinción vive en el EVENTO, nunca en la Membresia ni en un campo
+  // fijo de Oportunidad, para no congelar "excepción" en algo que después
+  // se vuelve rutina (ej. admin polifuncional de una empresa chica).
+  ASIGNADA_EXCEPCION_ADMINISTRATIVA
+  // Mismo criterio que TipoEventoLead.SIN_ASIGNAR: no había ningún candidato
+  // en el pool (Membresia rol:ASESOR activa) al crear la Oportunidad --
+  // queda con asesorId null, visible, nunca falla la creación (mismo
+  // razonamiento que Lead: la negociación es real aunque no haya quién la
+  // atienda todavía). La salida es la excepción D9 de arriba, no un
+  // reintento automático.
+  SIN_ASIGNAR
+  REASIGNADA_TRASPASO
+  ETAPA_CAMBIADA
+  CERRADA
+
+  @@map("tipo_evento_oportunidad")
+}
+
+// Mirror exacto de LeadEvento/ConversacionEvento: log de eventos
+// append-only, nunca una tabla de vigencias con fecha desde/hasta.
+model OportunidadEvento {
+  id               String                 @id @default(uuid()) @db.Uuid
+  oportunidadId    String                 @map("oportunidad_id") @db.Uuid
+  usuarioId        String?                @map("usuario_id") @db.Uuid
+  tipo             TipoEventoOportunidad
+  etapaAnterior    EtapaLead?             @map("etapa_anterior")
+  etapaNueva       EtapaLead?             @map("etapa_nueva")
+  detalle          Json?                  @db.JsonB
+  ocurridoEn       DateTime               @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  empresaId        String                 @map("empresa_id") @db.Uuid
+
+  oportunidad Oportunidad @relation(fields: [oportunidadId], references: [id], onDelete: Cascade)
+  usuario     Usuario?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@index([oportunidadId, ocurridoEn], map: "idx_oportunidad_eventos_oportunidad")
+  @@index([tipo, ocurridoEn], map: "idx_oportunidad_eventos_tipo")
+  @@index([empresaId], map: "idx_oportunidad_eventos_empresa")
+  @@map("oportunidad_eventos")
 }
 
 // M5: `semaforo_anterior`/`semaforo_nuevo` (D17 — una fila `CAMBIO_SEMAFORO`

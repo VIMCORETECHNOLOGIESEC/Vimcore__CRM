@@ -8,6 +8,7 @@ import { ingestaRouter } from "./ingesta.routes.js";
 import { leadsRouter } from "./leads.routes.js";
 import { linkedinRouter } from "./linkedin/linkedin.routes.js";
 import { metricasRouter } from "./metricas.routes.js";
+import { negociacionRouter } from "./negociacion/negociacion.routes.js";
 import { notificationsRouter } from "./notificaciones.routes.js";
 import { healthRouter } from "./salud.routes.js";
 import { usuariosRouter } from "./usuarios.routes.js";
@@ -32,3 +33,6 @@ apiRouter.use(eventsRouter);
 // deliberadamente separada del router genérico de bridges (WhatsApp no
 // extiende `Bridge`, ver el comentario del schema).
 apiRouter.use(whatsappRouter);
+// negociacion (Bloque D): split Lead/Oportunidad — 100% aditivo, ver el
+// comentario de cabecera de oportunidad.repository.ts.
+apiRouter.use(negociacionRouter);
