@@ -552,3 +552,21 @@ model LeadRecibido {
   @@index([estado, disponibleEn], map: "idx_leads_recibidos_estado_disponible")
   @@map("leads_recibidos")
 }
+
+// Configuración de instancia (integración tema-empresarial): nombre visible +
+// colores de marca para personalizar la pantalla de bienvenida post-login.
+// Singleton — sin relación con `Usuario` ni ninguna otra tabla; el
+// repositorio siempre opera sobre la primera fila que exista (`findFirst`) y
+// la crea con valores por defecto si no hay ninguna (lazy init en el GET, sin
+// seed obligatorio). NO es un concepto de tenant/empresa-scoping — esta
+// instancia sigue siendo single-tenant (AGENTS.md §1); es la personalización
+// visual de la única empresa dueña del despliegue.
+model ConfiguracionEmpresa {
+  id              String   @id @default(uuid()) @db.Uuid
+  nombre          String   @db.Text
+  colorPrimario   String   @map("color_primario") @db.VarChar(7)
+  colorSecundario String   @map("color_secundario") @db.VarChar(7)
+  actualizadoEn   DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("configuracion_empresa")
+}

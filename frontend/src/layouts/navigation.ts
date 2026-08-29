@@ -1,4 +1,4 @@
-import { LayoutDashboard, Plug, UserCog, Users } from "lucide-react";
+import { LayoutDashboard, Palette, Plug, UserCog, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { RolUsuario } from "@/tipos/usuario";
 
@@ -24,6 +24,12 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     label: "Bridges",
     route: "/bridges",
     icon: Plug,
+    allowedRoles: ["ADMINISTRADOR"],
+  },
+  {
+    label: "Apariencia",
+    route: "/configuracion-empresa",
+    icon: Palette,
     allowedRoles: ["ADMINISTRADOR"],
   },
 ];

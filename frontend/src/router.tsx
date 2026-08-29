@@ -3,6 +3,7 @@ import { NotFoundPage } from "@/componentes/NotFoundPage";
 import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
+import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
 import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
               { path: "usuarios", element: <UsuariosPage /> },
               { path: "bridges", element: <BridgesPage /> },
               { path: "bridges/:id", element: <BridgeDetallePage /> },
+              { path: "configuracion-empresa", element: <ConfiguracionEmpresaPage /> },
             ],
           },
         ],
