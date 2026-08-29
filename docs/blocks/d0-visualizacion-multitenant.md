@@ -21,15 +21,55 @@ empresaNombre server-side en GET /auth/perfil`) agrega
 para incluir `empresaNombre`; falla cerrada si una sesión company no puede
 resolver su `Empresa`. 5 tests nuevos, suite completa 899/899.
 
-Frontend pendiente — no es solo el indicador visual, hay dos pasos:
+Frontend implementado y probado:
 
-1. **Tipado**: `AuthContext.tsx` tipa hoy la respuesta de `GET /auth/perfil`
-   como `AuthenticatedUser`, y `empresaNombre` vive en `PerfilResponse`
-   (backend), un tipo más ancho que `AuthenticatedUser` a propósito — el
-   campo llega en el JSON pero el frontend lo descarta en silencio hasta que
-   se amplíe el tipo del lado cliente.
-2. **UI**: construir el indicador persistente de scope de sesión en el shell
-   autenticado (`Header`/`Sidebar`), como exige "Contrato frontend" abajo.
+1. **Tipado** (`frontend/src/tipos/usuario.ts`): `AuthenticatedUser` ahora
+   extiende un nuevo `PublicUser` (forma exacta de `POST /auth/login`) con
+   `sessionScope`/`empresaId`/`empresaNombre`/`membresiaId?`, calcado del
+   contrato de este doc y verificado contra `PerfilResponse`
+   (`auth.controller.ts`). `autenticacion.api.ts::LoginResponse.user` pasó a
+   `PublicUser` (antes reusaba `AuthenticatedUser`, que ya no es su forma
+   real desde que se amplió).
+2. **`AuthContext.tsx` — auditoría contra la tabla de estados**: el manejo de
+   401 (purga de tokens vía `httpClient.ts::expireSession`,
+   `httpClient.test.ts`) y de fallo transitorio (tokens intactos, `user`
+   pasa a `null`) ya cumplían el contrato sin cambios. Se encontraron y
+   corrigieron dos brechas reales:
+   - `login()` hidrataba el estado autenticado con `response.user` de
+     `POST /auth/login` — que nunca trae `sessionScope`/`empresaId`/
+     `empresaNombre` (decisión explícita de este doc). Se corrigió para que,
+     igual que la rehidratación de arranque, `login()` llame también a
+     `GET /auth/perfil` y construya la sesión ÚNICAMENTE con esa respuesta
+     ("Secuencia obligatoria"). Diseño propio no 100% explicitado en el doc:
+     si el perfil post-login falla o es inconsistente, los tokens ya
+     emitidos por el login válido se conservan (mismo criterio que "fallo
+     transitorio") y se propaga un error para que `LoginPage` lo muestre.
+   - Fila "Perfil incompleto o inconsistente": se agregó
+     `esPerfilConsistente()` como guarda defensiva del lado cliente
+     (independiente del fallo cerrado que ya hace el backend) — una sesión
+     `company` sin `empresaId`/`empresaNombre` resueltos, o una `holding` que
+     sí trae empresa atribuida, resuelve a `user: null` en vez de hidratar un
+     scope ambiguo.
+3. **UI** (`frontend/src/layouts/Header.tsx`): una línea nueva dentro del
+   `DropdownMenuLabel` existente (mismos tokens `text-xs`/
+   `text-muted-foreground` que ya usaba el correo) — `"Empresa:
+   <empresaNombre>"` para sesión `company`, `"Alcance: Holding"` para
+   `holding`. No comparte terreno de datos con `configuracion-empresa` (ver
+   sección de colisión conceptual abajo) ni usa `--marca-color`/
+   `.tema-empresarial` (Header no está envuelto en esa clase).
+4. **Seed** (`backend/prisma/seed.ts`): dos empresas demo (`Empresa A`/
+   `Empresa B (demo D0)`, mismo tenant holding — esta instancia no tiene un
+   modelo `Holding` separado), cada una con una `Membresia.correo`
+   company-scoped propia (dual-login-routing), un bridge `GOOGLE_FORMS`
+   inactivo y un cliente + lead propios y distinguibles por empresa.
+5. **Tests**: `frontend/tests/AuthContext.test.tsx` (7 tests nuevos —
+   hidratando, company listo, holding listo, 401, fallo transitorio, y 2 de
+   perfil inconsistente — más ajustes a los tests preexistentes de login/
+   logout/hasRole para el nuevo paso de `login()`) y
+   `frontend/tests/layouts/Header.test.tsx` (2 tests nuevos del indicador).
+   Suite frontend completa: 479/479. Backend: sin cambios de código de
+   producción en este paso (solo `seed.ts`, no ejercitado por la suite
+   automatizada); `tsc --noEmit` limpio en ambos paquetes.
 
 Este contrato reemplaza, para efectos de qué se ejecuta antes del despliegue,
 la entrada directa a Bloque D completo.

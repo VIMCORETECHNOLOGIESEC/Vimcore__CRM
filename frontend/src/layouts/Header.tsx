@@ -74,6 +74,20 @@ export function Header() {
             <DropdownMenuLabel className="flex flex-col gap-0.5">
               <span className="text-sm font-medium">{user?.nombre}</span>
               <span className="text-xs font-normal text-muted-foreground">{user?.correo}</span>
+              {/* Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md,
+                  "Contrato frontend"): indicador persistente del alcance de
+                  la sesión -- no confundir con `configuracion-empresa`
+                  (marca global de la instancia, sin relación con `Empresa`). */}
+              {user?.sessionScope === "company" ? (
+                <span className="text-xs font-normal text-muted-foreground">
+                  Empresa: {user.empresaNombre}
+                </span>
+              ) : null}
+              {user?.sessionScope === "holding" ? (
+                <span className="text-xs font-normal text-muted-foreground">
+                  Alcance: Holding
+                </span>
+              ) : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>

@@ -15,6 +15,28 @@ import { AuthContext, type AuthContextValue } from "./authContext";
 const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
 
 /**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, tabla de estados
+ * de `AuthContext`, fila "Perfil incompleto o inconsistente"): guarda
+ * defensiva del lado cliente, independiente de que el backend ya falle
+ * cerrado (`auth.controller.ts::resolveEmpresaNombre`) ante una `Empresa`
+ * irresoluble. Cubre el caso en que la respuesta de `GET /auth/perfil` es
+ * un 200 bien formado pero semánticamente inconsistente (p. ej. drift de
+ * contrato entre frontend y backend): una sesión `company` sin
+ * `empresaId`/`empresaNombre` resueltos, o una sesión `holding` que sí trae
+ * una empresa atribuida. No es tolerancia -- ninguna combinación fuera de
+ * estas dos formas válidas hidrata la sesión.
+ */
+function esPerfilConsistente(perfil: AuthenticatedUser): boolean {
+  if (perfil.sessionScope === "company") {
+    return typeof perfil.empresaId === "string" && typeof perfil.empresaNombre === "string";
+  }
+  if (perfil.sessionScope === "holding") {
+    return perfil.empresaId === null && perfil.empresaNombre === null;
+  }
+  return false;
+}
+
+/**
  * Termina el estado de sesión reactivo y purga cualquier otro dato
  * cacheado de la sesión saliente -- se invoca tanto en `logout()` explícito
  * como cuando `httpClient` reporta sesión expirada (un refresco fallido
@@ -94,7 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!restaurada) {
           return null;
         }
-        return await getPerfilApi();
+        const perfil = await getPerfilApi();
+        return esPerfilConsistente(perfil) ? perfil : null;
       } catch {
         return null;
       }
@@ -119,8 +142,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const response = await loginApi(correo, password);
         setTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken });
-        queryClient.setQueryData(PERFIL_QUERY_KEY, response.user);
-        return response.user;
+
+        // Bloque D0 ("Secuencia obligatoria"): `POST /auth/login` no
+        // devuelve `sessionScope`/`empresaId`/`empresaNombre` (decisión
+        // explícita de no ampliarlo) -- el estado autenticado se construye
+        // ÚNICAMENTE con `GET /auth/perfil`, igual que la rehidratación de
+        // arranque de arriba. `response.user` (`PublicUser`) nunca alimenta
+        // la sesión.
+        const perfil = await getPerfilApi();
+        if (!esPerfilConsistente(perfil)) {
+          // Fila "Perfil incompleto o inconsistente": fallo cerrado. Los
+          // tokens del login válido se conservan -- la autenticación en sí
+          // fue correcta, solo la hidratación del scope falló -- para
+          // permitir reintentar el perfil sin forzar un login nuevo.
+          throw new Error("perfil_inconsistente");
+        }
+        queryClient.setQueryData(PERFIL_QUERY_KEY, perfil);
+        return perfil;
       } finally {
         setIsLoginPending(false);
       }

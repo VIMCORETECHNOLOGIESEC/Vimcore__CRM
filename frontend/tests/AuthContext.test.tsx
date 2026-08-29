@@ -33,6 +33,23 @@ const usuarioFake = {
   nombre: "Ana Gómez",
   correo: "ana@crm.test",
   rol: "ASESOR" as const,
+  // Bloque D0: forma holding-wide por defecto para los tests preexistentes
+  // (login/logout/hasRole) que no ejercitan el contrato de scope tenant --
+  // ver describes dedicados "estados de perfil (Bloque D0)" más abajo.
+  sessionScope: "holding" as const,
+  empresaId: null,
+  empresaNombre: null,
+};
+
+const usuarioCompanyFake = {
+  id: "u2",
+  nombre: "Beto Empresa",
+  correo: "beto@crm.test",
+  rol: "ASESOR" as const,
+  sessionScope: "company" as const,
+  empresaId: "empresa-a",
+  empresaNombre: "Empresa A",
+  membresiaId: "membresia-a",
 };
 
 /**
@@ -133,6 +150,134 @@ describe("AuthContext — rehidratación de sesión al arrancar (F2)", () => {
   });
 });
 
+/**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Contrato
+ * frontend", tabla de estados de `AuthContext`): cubre los 6 estados
+ * observables exigidos por el doc. "Perfil company listo"/"holding listo"
+ * también quedan cubiertos por los tests de rehidratación de arriba (usan
+ * `usuarioFake`, forma holding), pero acá quedan nombrados 1:1 con la fila
+ * de la tabla que verifican, incluida la fila nueva de este bloque ("Perfil
+ * incompleto o inconsistente").
+ */
+describe("AuthContext — estados de perfil (Bloque D0)", () => {
+  it("hidratando: mientras GET /auth/perfil está pendiente, isLoading es true y no expone usuario", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    let resolverPerfil: ((value: typeof usuarioFake) => void) | undefined;
+    getPerfilApiMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolverPerfil = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(true));
+    expect(result.current.user).toBeNull();
+
+    await act(async () => {
+      resolverPerfil?.(usuarioFake);
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.user).toEqual(usuarioFake);
+  });
+
+  it("perfil company listo: hidrata sessionScope company con empresaId/empresaNombre/membresiaId", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue(usuarioCompanyFake);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toEqual(usuarioCompanyFake);
+    expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it("perfil holding listo: hidrata sessionScope holding con empresaId/empresaNombre null", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toEqual(usuarioFake);
+    expect(result.current.user?.sessionScope).toBe("holding");
+    expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it("401 de perfil: purga la sesión hidratada (la purga de tokens en sí ya está cubierta en httpClient.test.ts)", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue(usuarioCompanyFake);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user).toEqual(usuarioCompanyFake));
+
+    // `httpClient` real invoca `expireSession()` (purga tokens) ANTES de
+    // notificar acá -- ese contrato lo prueba `httpClient.test.ts` (describe
+    // "reintento automático ante 401"). Lo que corresponde a `AuthContext`
+    // es reaccionar a esa notificación purgando TODO el scope hidratado
+    // (empresaId/empresaNombre/sessionScope/membresiaId viajan dentro del
+    // mismo objeto `user`, así que un único `setQueryData(null)` los purga
+    // a los cuatro juntos).
+    const handlerRegistrado = setOnSessionExpiredMock.mock.calls[0]?.[0] as () => void;
+    act(() => {
+      handlerRegistrado();
+    });
+
+    await waitFor(() => expect(result.current.user).toBeNull());
+    expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  it("fallo transitorio de perfil: no reutiliza scope anterior ni purga tokens, permite reintentar", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockRejectedValue(new Error("error_red"));
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
+    // A diferencia de un 401 (que purga vía `expireSession()` dentro de
+    // `httpClient`), un fallo transitorio nunca debe tocar los tokens -- la
+    // autenticación en sí sigue siendo válida, solo falló esta lectura
+    // puntual del perfil.
+    expect(setTokensMock).not.toHaveBeenCalled();
+  });
+
+  it("perfil incompleto/inconsistente: sessionScope company sin empresaNombre resuelto falla cerrado", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue({ ...usuarioCompanyFake, empresaNombre: null });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
+  });
+
+  it("perfil incompleto/inconsistente: sessionScope holding con empresaId atribuido falla cerrado", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue({ ...usuarioFake, empresaId: "empresa-fantasma" });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user).toBeNull();
+  });
+});
+
 describe("AuthContext — login", () => {
   it("en login exitoso, guarda los tokens y el usuario, y termina con isLoading en false", async () => {
     loginApiMock.mockResolvedValue({
@@ -140,6 +285,10 @@ describe("AuthContext — login", () => {
       refreshToken: "refresh-1",
       user: usuarioFake,
     });
+    // Bloque D0: `login()` ahora hidrata SOLO desde `GET /auth/perfil`
+    // (`POST /auth/login` no trae sessionScope/empresaId/empresaNombre) --
+    // ver "Secuencia obligatoria" en el doc D0 y `AuthContext.tsx::login`.
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     let usuarioDevuelto: typeof usuarioFake | undefined;
@@ -186,6 +335,10 @@ describe("AuthContext — logout", () => {
       refreshToken: "refresh-1",
       user: usuarioFake,
     });
+    // Bloque D0: `login()` ahora hidrata SOLO desde `GET /auth/perfil`
+    // (`POST /auth/login` no trae sessionScope/empresaId/empresaNombre) --
+    // ver "Secuencia obligatoria" en el doc D0 y `AuthContext.tsx::login`.
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await act(async () => {
@@ -247,6 +400,10 @@ describe("AuthContext — logout limpia toda la caché de TanStack Query", () =>
       refreshToken: "refresh-1",
       user: usuarioFake,
     });
+    // Bloque D0: `login()` ahora hidrata SOLO desde `GET /auth/perfil`
+    // (`POST /auth/login` no trae sessionScope/empresaId/empresaNombre) --
+    // ver "Secuencia obligatoria" en el doc D0 y `AuthContext.tsx::login`.
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
 
     const { result } = renderHook(() => useAuth(), { wrapper });
     await act(async () => {
@@ -277,6 +434,10 @@ describe("AuthContext — logout limpia toda la caché de TanStack Query", () =>
       refreshToken: "refresh-1",
       user: usuarioFake,
     });
+    // Bloque D0: `login()` ahora hidrata SOLO desde `GET /auth/perfil`
+    // (`POST /auth/login` no trae sessionScope/empresaId/empresaNombre) --
+    // ver "Secuencia obligatoria" en el doc D0 y `AuthContext.tsx::login`.
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await act(async () => {
@@ -312,6 +473,7 @@ describe("AuthContext — hasRole", () => {
       refreshToken: "refresh-1",
       user: usuarioFake, // rol: ASESOR
     });
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await act(async () => {
@@ -330,6 +492,10 @@ describe("AuthContext — sesión expirada notificada por httpClient", () => {
       refreshToken: "refresh-1",
       user: usuarioFake,
     });
+    // Bloque D0: `login()` ahora hidrata SOLO desde `GET /auth/perfil`
+    // (`POST /auth/login` no trae sessionScope/empresaId/empresaNombre) --
+    // ver "Secuencia obligatoria" en el doc D0 y `AuthContext.tsx::login`.
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await act(async () => {

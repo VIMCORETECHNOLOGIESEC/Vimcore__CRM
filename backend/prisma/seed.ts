@@ -15,6 +15,18 @@ import { seedTenant, type UsuarioParaMembresia } from "./seed-tenant.js";
 const EMPRESA_BOOTSTRAP_ID = "00000000-0000-0000-0000-000000000001";
 
 /**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Datos de
+ * demostración"): dos empresas del mismo tenant holding -- esta instancia no
+ * tiene un modelo `Holding` separado (`schema.prisma::Empresa`), así que
+ * "mismo tenant holding" simplemente significa "dos filas `Empresa` en el
+ * mismo despliegue", sin nada adicional que sembrar para eso. Ids fijos
+ * (mismo patrón que `EMPRESA_BOOTSTRAP_ID` arriba) para que reejecutar el
+ * seed sea idempotente.
+ */
+const EMPRESA_D0_A_ID = "00000000-0000-0000-0000-0000000000a1";
+const EMPRESA_D0_B_ID = "00000000-0000-0000-0000-0000000000b1";
+
+/**
  * D11, D-G: la contraseña de semillas NUNCA está en el código ni en
  * `.env.example` con valor. Validación propia, fuera de `src/config/env.ts`
  * (D-G) — `env.ts` es configuración de runtime del servidor y aborta el
@@ -124,8 +136,124 @@ async function main(): Promise<void> {
       console.log(`Bridge ${bridge.nombre} — X-Bridge-Key: ${claveApi}`);
     }
 
+    // Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Datos de
+    // demostración"): dos empresas del mismo tenant holding, cada una con
+    // una credencial de login company-scoped propia (`Membresia.correo` --
+    // dual-login-routing, Bloque B), y un bridge + un lead propios y
+    // distinguibles -- para poder iniciar sesión por separado como Empresa A
+    // / Empresa B y comprobar visualmente que cada sesión solo ve lo suyo.
+    const empresasDemoD0 = [
+      {
+        empresaId: EMPRESA_D0_A_ID,
+        empresaNombre: "Empresa A (demo D0)",
+        usuarioNombre: "Empresa A Demo",
+        usuarioCorreo: "empresa-a-demo@crm.local",
+        membresiaCorreo: "empresa-a@crm.local",
+        bridgeNombre: "Bridge Empresa A (demo D0)",
+        clienteNombre: "Cliente Empresa A (demo D0)",
+        clienteTelefono: "+10000000001",
+      },
+      {
+        empresaId: EMPRESA_D0_B_ID,
+        empresaNombre: "Empresa B (demo D0)",
+        usuarioNombre: "Empresa B Demo",
+        usuarioCorreo: "empresa-b-demo@crm.local",
+        membresiaCorreo: "empresa-b@crm.local",
+        bridgeNombre: "Bridge Empresa B (demo D0)",
+        clienteNombre: "Cliente Empresa B (demo D0)",
+        clienteTelefono: "+10000000002",
+      },
+    ] as const;
+
+    for (const demo of empresasDemoD0) {
+      await prisma.empresa.upsert({
+        where: { id: demo.empresaId },
+        update: {},
+        create: { id: demo.empresaId, nombre: demo.empresaNombre },
+      });
+
+      // Usuario "portador" de la membresía company-scoped -- su propio
+      // `Usuario.correo` no se usa para iniciar sesión en esta demo (eso
+      // sería un login holding-wide); el login de Empresa A/B real es
+      // `membresiaCorreo`, resuelto por el segundo camino de
+      // `auth.service.ts::login` (`Membresia.correo`, solo si no matchea
+      // ningún `Usuario.correo` primero).
+      const usuarioDemo = await prisma.usuario.upsert({
+        where: { correo: demo.usuarioCorreo },
+        update: {},
+        create: {
+          nombre: demo.usuarioNombre,
+          correo: demo.usuarioCorreo,
+          passwordHash,
+          rol: "ASESOR",
+        },
+      });
+
+      await prisma.membresia.upsert({
+        where: {
+          usuarioId_empresaId_rol: {
+            usuarioId: usuarioDemo.id,
+            empresaId: demo.empresaId,
+            rol: "ASESOR",
+          },
+        },
+        update: { correo: demo.membresiaCorreo, passwordHash, activa: true },
+        create: {
+          usuarioId: usuarioDemo.id,
+          empresaId: demo.empresaId,
+          rol: "ASESOR",
+          correo: demo.membresiaCorreo,
+          passwordHash,
+          activa: true,
+        },
+      });
+
+      const bridgeExistente = await prisma.bridge.findFirst({
+        where: { nombre: demo.bridgeNombre },
+      });
+      if (!bridgeExistente) {
+        const claveApi = generarClaveBridge();
+        await prisma.bridge.create({
+          data: {
+            redSocial: "GOOGLE_FORMS",
+            nombre: demo.bridgeNombre,
+            claveApiHash: hashClaveBridge(claveApi),
+            estado: "INACTIVO",
+            empresaId: demo.empresaId,
+          },
+        });
+        console.log(`Bridge ${demo.bridgeNombre} — X-Bridge-Key: ${claveApi}`);
+      }
+
+      const cliente = await prisma.cliente.upsert({
+        where: { telefonoNormalizado: demo.clienteTelefono },
+        update: {},
+        create: {
+          nombre: demo.clienteNombre,
+          telefonoOriginal: demo.clienteTelefono,
+          telefonoNormalizado: demo.clienteTelefono,
+          telefonoValido: true,
+        },
+      });
+
+      const leadExistente = await prisma.lead.findFirst({
+        where: { clienteId: cliente.id, empresaId: demo.empresaId },
+      });
+      if (!leadExistente) {
+        await prisma.lead.create({
+          data: {
+            clienteId: cliente.id,
+            empresaId: demo.empresaId,
+            origen: "NUEVO",
+            ingresadoEn: new Date(),
+          },
+        });
+      }
+    }
+
     console.log(
-      `Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + ${usuariosParaMembresia.length} membresias (Bloque B) + 3 bridges.`,
+      `Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + ${usuariosParaMembresia.length} membresias (Bloque B) + 3 bridges + ` +
+        `Bloque D0 (${empresasDemoD0.length} empresas demo, ${empresasDemoD0.length} membresías company-scoped, ${empresasDemoD0.length} bridges, ${empresasDemoD0.length} leads).`,
     );
   } finally {
     await prisma.$disconnect();
