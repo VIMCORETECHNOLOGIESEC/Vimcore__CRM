@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
 interface WelcomeSplashLoaderProps {
@@ -16,6 +17,16 @@ interface WelcomeSplashLoaderProps {
    * `fixed`/`absolute` sin dejar ambas clases activas a la vez.
    */
   className?: string;
+  /**
+   * Overrides puntuales de las custom properties de marca
+   * (`--marca-color-1`/`--marca-color-2`, ver `tema-empresarial.css`) --
+   * pensado para la configuración real de la empresa (`configuracion-empresa`,
+   * `LoginPage.tsx`), que llega recién en runtime vía `GET
+   * /configuracion-empresa` y no puede resolverse en CSS estático. Sin esta
+   * prop, el componente sigue pintando con los defaults de la variante
+   * (`--indigo`/`--cat-2`) heredados de `.tema-empresarial`.
+   */
+  style?: CSSProperties;
 }
 
 /**
@@ -45,10 +56,17 @@ interface WelcomeSplashLoaderProps {
  * (transiciones en `tema-empresarial.css`, clase `.welcome-splash`),
  * respeta `prefers-reduced-motion`.
  */
-export function WelcomeSplashLoader({ contexto, mensaje, visible, className }: WelcomeSplashLoaderProps) {
+export function WelcomeSplashLoader({
+  contexto,
+  mensaje,
+  visible,
+  className,
+  style,
+}: WelcomeSplashLoaderProps) {
   return (
     <div
       className={cn("welcome-splash fixed inset-0 z-50", visible && "is-visible", className)}
+      style={style}
       role="status"
       aria-live="polite"
     >
