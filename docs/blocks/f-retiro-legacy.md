@@ -32,6 +32,20 @@ reemplazo — sería una decisión de producto/esquema que nadie tomó todavía
 (D5/D6 registran el rol de negocio, no el mecanismo de autoridad que lo
 reemplace).
 
+**Candidato a reemplazo, sin decidir todavía (agregado 2026-08-29, ver
+`docs/blocks/d-routing-oportunidad.md` §"Estructura de usuarios para el
+holding"):** un usuario holding-scoped con `Membresia` real auto-provisionada
+en cada empresa del holding (incluidas las que se creen después) reduce
+"autoridad holding-wide" a "suma de autoridad por empresa", evaluable sin
+`Usuario.rol` para todo lo que ya se decide por membresía (visibilidad de
+leads, bridges, usuarios dentro de empresa). Plausible resolución de esta
+precondición para esos casos — **no** para todos: crear la primera `Empresa`
+de un holding no puede depender de una `Membresia` en una empresa que
+todavía no existe, ese bootstrap queda como hueco sin cubrir por este
+mecanismo. Sigue sin ser una decisión tomada — necesita diseño, aprobación e
+implementación igual que cualquier otra alternativa, esta nota solo registra
+que existe un candidato concreto donde antes no había ninguno.
+
 **Bloque F no puede ejecutarse hasta que exista una autoridad holding-wide
 sustituta diseñada, aprobada, implementada y verificada** (tests incluidos).
 Esta precondición es adicional a la dependencia de secuencia de "Enfoque de
