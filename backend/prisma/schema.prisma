@@ -104,6 +104,21 @@ model Empresa {
   id       String   @id @default(uuid()) @db.Uuid
   nombre   String   @db.Text
   creadoEn DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  // tema-empresarial-integracion (Parte 2): color de marca REAL por empresa
+  // individual -- decisión explícita del usuario que reemplaza, solo para
+  // este propósito, la restricción previa de D0 de no tocar
+  // `schema.prisma`/migraciones (docs/blocks/d0-visualizacion-multitenant.md,
+  // "Archivos permitidos y límites de riesgo"). `ConfiguracionEmpresa`
+  // (branding global de la instancia) sigue siendo la fuente para el boot
+  // pre-login y para cualquier empresa sin color propio -- NULLABLE a
+  // propósito: toda `Empresa` existente antes de este cambio no tiene esto
+  // seteado y el frontend hace el fallback (`LoginPage.tsx`), nunca el
+  // backend. Mismo formato hex `#RRGGBB` que `ConfiguracionEmpresa`
+  // (`configuracion-empresa.schema.ts::hexColorSchema`); sin validación Zod
+  // propia en este cambio porque ningún endpoint escribe estos campos
+  // todavía (solo seed/lectura).
+  colorPrimario   String? @map("color_primario") @db.VarChar(7)
+  colorSecundario String? @map("color_secundario") @db.VarChar(7)
 
   membresias     Membresia[]
   bridges        Bridge[]

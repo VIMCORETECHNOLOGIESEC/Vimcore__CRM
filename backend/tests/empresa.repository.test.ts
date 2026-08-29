@@ -23,4 +23,27 @@ describe("empresa.repository::findById", () => {
 
     expect(encontrada).toBeNull();
   });
+
+  // tema-empresarial-integracion (Parte 2): color de marca real por empresa.
+  it("resuelve colorPrimario/colorSecundario cuando la Empresa los tiene seteados", async () => {
+    const nombre = `Empresa repo con color ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({
+      data: { nombre, colorPrimario: "#7c2d12", colorSecundario: "#f97316" },
+    });
+
+    const encontrada = await empresaRepository.findById(empresa.id);
+
+    expect(encontrada?.colorPrimario).toBe("#7c2d12");
+    expect(encontrada?.colorSecundario).toBe("#f97316");
+  });
+
+  it("devuelve colorPrimario/colorSecundario null cuando la Empresa nunca los seteó", async () => {
+    const nombre = `Empresa repo sin color ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({ data: { nombre } });
+
+    const encontrada = await empresaRepository.findById(empresa.id);
+
+    expect(encontrada?.colorPrimario).toBeNull();
+    expect(encontrada?.colorSecundario).toBeNull();
+  });
 });

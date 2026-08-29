@@ -152,6 +152,13 @@ async function main(): Promise<void> {
         bridgeNombre: "Bridge Empresa A (demo D0)",
         clienteNombre: "Cliente Empresa A (demo D0)",
         clienteTelefono: "+10000000001",
+        // tema-empresarial-integracion (Parte 2): paleta cálida terracota,
+        // deliberadamente distinta tanto de Empresa B (fría, abajo) como del
+        // default global de la instancia (`CONFIGURACION_EMPRESA_DEFAULT`,
+        // indigo/azul `#1e2a5e`/`#2563eb`) — para poder demostrar el theming
+        // real por empresa al loguearse como cada una.
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
       },
       {
         empresaId: EMPRESA_D0_B_ID,
@@ -162,14 +169,22 @@ async function main(): Promise<void> {
         bridgeNombre: "Bridge Empresa B (demo D0)",
         clienteNombre: "Cliente Empresa B (demo D0)",
         clienteTelefono: "+10000000002",
+        // Paleta fría verde esmeralda -- distinta de Empresa A y del default global.
+        colorPrimario: "#065f46",
+        colorSecundario: "#10b981",
       },
     ] as const;
 
     for (const demo of empresasDemoD0) {
       await prisma.empresa.upsert({
         where: { id: demo.empresaId },
-        update: {},
-        create: { id: demo.empresaId, nombre: demo.empresaNombre },
+        update: { colorPrimario: demo.colorPrimario, colorSecundario: demo.colorSecundario },
+        create: {
+          id: demo.empresaId,
+          nombre: demo.empresaNombre,
+          colorPrimario: demo.colorPrimario,
+          colorSecundario: demo.colorSecundario,
+        },
       });
 
       // Usuario "portador" de la membresía company-scoped -- su propio

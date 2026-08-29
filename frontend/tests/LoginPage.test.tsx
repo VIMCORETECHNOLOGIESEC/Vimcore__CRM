@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -48,7 +49,18 @@ function renderLoginPage(
       ],
     },
   );
-  return render(<RouterProvider router={router} />);
+  // `LoginPage` ahora lee/escribe la caché de `configuracion-empresa` vía
+  // `queryClient.fetchQuery` (en vez de llamar a `fetchConfiguracionEmpresaApi`
+  // crudo) -- necesita un `QueryClientProvider` real en el árbol, mismo
+  // patrón que `AuthContext.test.tsx` (`retry: false`, sin reintentos en tests).
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -209,5 +221,86 @@ describe("LoginPage — configuración de marca real en la cortina de bienvenida
     const splash = await screen.findByRole("status");
     expect(within(splash).getByText("CRM Embudo de Leads")).toBeInTheDocument();
     expect(await screen.findByText("Panel", {}, { timeout: 2000 })).toBeInTheDocument();
+  });
+});
+
+/**
+ * tema-empresarial-integracion (Parte 2, decisión explícita del usuario):
+ * cada empresa tiene su propio color REAL -- prioridad simple sin una
+ * tercera fuente de verdad (`LoginPage.tsx::resolverColorDeMarca`): color de
+ * `Empresa` (sesión `company` con AMBOS colores seteados) antes que la
+ * paleta global de la instancia; si no hay color propio, o la sesión es
+ * `holding`, se usa la paleta global sin cambios.
+ */
+describe("LoginPage — prioridad de color de marca por empresa (tema-empresarial-integracion, Parte 2)", () => {
+  const usuarioCompanyConColorFake = {
+    id: "u2",
+    nombre: "Empresa A Demo",
+    correo: "empresa-a@crm.test",
+    rol: "ASESOR" as const,
+    sessionScope: "company" as const,
+    empresaId: "empresa-a",
+    empresaNombre: "Empresa A",
+    empresaColorPrimario: "#7c2d12",
+    empresaColorSecundario: "#f97316",
+    membresiaId: "membresia-a",
+  };
+
+  it("usa el color propio de la Empresa en vez de la paleta global cuando la sesión company lo tiene seteado", async () => {
+    loginMock.mockResolvedValue(usuarioCompanyConColorFake);
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
+    const user = userEvent.setup();
+    renderLoginPage();
+
+    await user.type(screen.getByLabelText("Correo electrónico"), "empresa-a@crm.test");
+    await user.type(screen.getByLabelText("Contraseña"), "clave-segura");
+    await user.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    const splash = await screen.findByRole("status");
+    expect(splash.style.getPropertyValue("--marca-color-1")).toBe("#7c2d12");
+    expect(splash.style.getPropertyValue("--marca-color-2")).toBe("#f97316");
+    expect(await screen.findByText("Panel", {}, { timeout: 2000 })).toBeInTheDocument();
+  });
+
+  it("usa la paleta global cuando la Empresa (sesión company) no tiene color propio seteado", async () => {
+    loginMock.mockResolvedValue({
+      ...usuarioCompanyConColorFake,
+      empresaColorPrimario: null,
+      empresaColorSecundario: null,
+    });
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
+    const user = userEvent.setup();
+    renderLoginPage();
+
+    await user.type(screen.getByLabelText("Correo electrónico"), "empresa-a@crm.test");
+    await user.type(screen.getByLabelText("Contraseña"), "clave-segura");
+    await user.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    const splash = await screen.findByRole("status");
+    expect(splash.style.getPropertyValue("--marca-color-1")).toBe(
+      CONFIGURACION_EMPRESA_DEFAULT.colorPrimario,
+    );
+    expect(splash.style.getPropertyValue("--marca-color-2")).toBe(
+      CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
+    );
+  });
+
+  it("usa la paleta global para una sesión holding, aunque venga con campos de empresa", async () => {
+    loginMock.mockResolvedValue(usuarioFake);
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
+    const user = userEvent.setup();
+    renderLoginPage();
+
+    await user.type(screen.getByLabelText("Correo electrónico"), "ana@crm.test");
+    await user.type(screen.getByLabelText("Contraseña"), "clave-segura");
+    await user.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    const splash = await screen.findByRole("status");
+    expect(splash.style.getPropertyValue("--marca-color-1")).toBe(
+      CONFIGURACION_EMPRESA_DEFAULT.colorPrimario,
+    );
+    expect(splash.style.getPropertyValue("--marca-color-2")).toBe(
+      CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
+    );
   });
 });

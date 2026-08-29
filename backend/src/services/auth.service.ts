@@ -5,9 +5,11 @@ import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jw
 import { logger } from "../lib/logger.js";
 import { verifyPassword } from "../lib/password.js";
 import { withBootstrapCorreoGuc, withBootstrapUsuarioGuc } from "../lib/prisma.js";
+import * as empresaRepository from "../repositories/empresa.repository.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as refreshTokenRepository from "../repositories/refresh-token.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
+import type { AuthenticatedUser } from "../types/authenticated-user.js";
 import { rolEquivalente } from "./shadow-authorization.service.js";
 
 export interface TokenPair {
@@ -32,6 +34,14 @@ function invalidCredentials(): AppError {
 
 function invalidToken(): AppError {
   return new AppError("token_invalido", 401, "Token de refresco inválido");
+}
+
+function empresaInconsistente(): AppError {
+  return new AppError(
+    "empresa_inconsistente",
+    500,
+    "La empresa asociada a la sesión no pudo resolverse",
+  );
 }
 
 function hashRefreshToken(token: string): string {
@@ -271,4 +281,46 @@ export async function logout(usuarioId: string, token: string): Promise<void> {
   if (row && row.usuarioId === usuarioId) {
     await refreshTokenRepository.revoke(row.jti);
   }
+}
+
+export interface EmpresaMarca {
+  nombre: string | null;
+  colorPrimario: string | null;
+  colorSecundario: string | null;
+}
+
+/**
+ * Bloque D0 + tema-empresarial-integracion (Parte 2): única lectura que
+ * necesita `auth.controller.ts::getPerfil` para resolver nombre y color de
+ * marca de una sesión `company` -- reemplaza al viejo
+ * `resolveEmpresaNombre` (vivía en el controller) con la MISMA consulta
+ * (`empresaRepository.findById`), sin duplicarla, ahora devolviendo también
+ * `colorPrimario`/`colorSecundario`. Sesión `holding`: los tres campos
+ * `null`, sin consultar nada (sin cambio de comportamiento respecto a D0).
+ * `colorPrimario`/`colorSecundario` en `null` para una `Empresa` sin color
+ * propio seteado (columnas nullable) -- el frontend hace el fallback a la
+ * paleta global de `ConfiguracionEmpresa`, nunca este servicio. Fallo
+ * cerrado obligatorio (sin cambio respecto a D0): una sesión `company` cuyo
+ * `empresaId` no resuelve a ninguna `Empresa` real hace fallar la petición
+ * entera -- nunca degrada a un valor nulo ni a un 200 con dato incompleto.
+ */
+export async function resolveEmpresaMarca(user: AuthenticatedUser): Promise<EmpresaMarca> {
+  if (user.sessionScope !== "company") {
+    return { nombre: null, colorPrimario: null, colorSecundario: null };
+  }
+
+  if (user.empresaId === null) {
+    throw empresaInconsistente();
+  }
+
+  const empresa = await empresaRepository.findById(user.empresaId);
+  if (!empresa) {
+    throw empresaInconsistente();
+  }
+
+  return {
+    nombre: empresa.nombre,
+    colorPrimario: empresa.colorPrimario,
+    colorSecundario: empresa.colorSecundario,
+  };
 }

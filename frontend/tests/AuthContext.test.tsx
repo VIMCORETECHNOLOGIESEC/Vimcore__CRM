@@ -39,6 +39,8 @@ const usuarioFake = {
   sessionScope: "holding" as const,
   empresaId: null,
   empresaNombre: null,
+  empresaColorPrimario: null,
+  empresaColorSecundario: null,
 };
 
 const usuarioCompanyFake = {
@@ -49,6 +51,8 @@ const usuarioCompanyFake = {
   sessionScope: "company" as const,
   empresaId: "empresa-a",
   empresaNombre: "Empresa A",
+  empresaColorPrimario: null,
+  empresaColorSecundario: null,
   membresiaId: "membresia-a",
 };
 

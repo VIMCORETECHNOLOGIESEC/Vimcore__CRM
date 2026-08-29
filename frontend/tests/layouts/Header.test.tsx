@@ -31,6 +31,8 @@ const usuarioHoldingDefault = {
   sessionScope: "holding" as const,
   empresaId: null,
   empresaNombre: null,
+  empresaColorPrimario: null,
+  empresaColorSecundario: null,
 };
 
 const defaultAuthValue = {
@@ -112,6 +114,8 @@ describe("Header — indicador de scope de sesión (Bloque D0)", () => {
         sessionScope: "company",
         empresaId: "empresa-a",
         empresaNombre: "Empresa A",
+        empresaColorPrimario: null,
+        empresaColorSecundario: null,
         membresiaId: "membresia-a",
       },
     });
@@ -135,6 +139,8 @@ describe("Header — indicador de scope de sesión (Bloque D0)", () => {
         sessionScope: "holding",
         empresaId: null,
         empresaNombre: null,
+        empresaColorPrimario: null,
+        empresaColorSecundario: null,
       },
     });
 

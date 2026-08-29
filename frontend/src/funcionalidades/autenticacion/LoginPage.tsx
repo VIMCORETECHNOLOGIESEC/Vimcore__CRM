@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Image as ImageIcon } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useForm } from "react-hook-form";
@@ -15,6 +16,7 @@ import {
   fetchConfiguracionEmpresaApi,
   type ConfiguracionEmpresa,
 } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { CONFIGURACION_EMPRESA_QUERY_KEY } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 // Tema visual "Propuesta B -- Consejo directivo" (indigo), aprobado como
 // línea gráfica del login (ver docs/09-linea-grafica-frontend.md). El CSS
 // está scopeado bajo `.tema-empresarial` (ver ese archivo): importarlo acá
@@ -22,6 +24,7 @@ import {
 // esta página que lleva esa clase.
 import "@/temas/variante-empresarial/tema-empresarial.css";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
+import type { AuthenticatedUser } from "@/tipos/usuario";
 import { useAuth } from "./authContext";
 import { getLandingRoute } from "./permissions";
 
@@ -64,8 +67,19 @@ const CONFIGURACION_EMPRESA_TIMEOUT_MS = 1200;
  * usa el backend si nunca se configuró nada) ante cualquier falla de red o
  * demora -- nunca deja sin resolver la promesa ni propaga el error hacia
  * `onSubmit`, que ya completó el login real antes de llamar acá.
+ *
+ * Pasa por `queryClient.fetchQuery` con la MISMA `queryKey` que
+ * `useConfiguracionEmpresa` (en vez de llamar a `fetchConfiguracionEmpresaApi`
+ * crudo) para leer la caché de TanStack Query si esta pantalla no es la
+ * primera de la sesión en pedir esta configuración -- ej. un `ADMINISTRADOR`
+ * que ya visitó `ConfiguracionEmpresaPage.tsx` antes de loguearse en otra
+ * pestaña no repite el round-trip acá. El timeout sigue siendo un
+ * `Promise.race` manual (no `AbortSignal` en la propia query) porque
+ * `httpClient.ts` no expone un parámetro de `signal` en `get()` hoy.
  */
-async function obtenerConfiguracionEmpresaConFallback(): Promise<ConfiguracionEmpresa> {
+async function obtenerConfiguracionEmpresaConFallback(
+  queryClient: QueryClient,
+): Promise<ConfiguracionEmpresa> {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = window.setTimeout(
@@ -74,7 +88,13 @@ async function obtenerConfiguracionEmpresaConFallback(): Promise<ConfiguracionEm
     );
   });
   try {
-    return await Promise.race([fetchConfiguracionEmpresaApi(), timeout]);
+    return await Promise.race([
+      queryClient.fetchQuery({
+        queryKey: [CONFIGURACION_EMPRESA_QUERY_KEY],
+        queryFn: fetchConfiguracionEmpresaApi,
+      }),
+      timeout,
+    ]);
   } catch {
     return CONFIGURACION_EMPRESA_DEFAULT;
   } finally {
@@ -82,11 +102,43 @@ async function obtenerConfiguracionEmpresaConFallback(): Promise<ConfiguracionEm
   }
 }
 
+/**
+ * tema-empresarial-integracion (Parte 2, decisión explícita del usuario):
+ * cada empresa tiene su propio color REAL -- prioridad simple, sin agregar
+ * una tercera fuente de verdad: color propio de la `Empresa` (sesión
+ * `company` con AMBOS colores seteados, `empresaColorPrimario`/
+ * `empresaColorSecundario` de `GET /auth/perfil`) antes que la paleta global
+ * de la instancia (`configuracionGlobal`, ya resuelta con fallback arriba).
+ * Una empresa sin color propio (`null` en cualquiera de los dos) o una
+ * sesión `holding` usan la paleta global sin cambios -- mismo comportamiento
+ * que antes de este cambio.
+ */
+function resolverColorDeMarca(
+  usuario: AuthenticatedUser,
+  configuracionGlobal: ConfiguracionEmpresa,
+): Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> {
+  if (
+    usuario.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null
+  ) {
+    return {
+      colorPrimario: usuario.empresaColorPrimario,
+      colorSecundario: usuario.empresaColorSecundario,
+    };
+  }
+  return {
+    colorPrimario: configuracionGlobal.colorPrimario,
+    colorSecundario: configuracionGlobal.colorSecundario,
+  };
+}
+
 /** Pantalla de inicio de sesión (F2, docs/07). */
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
   const [splashActivo, setSplashActivo] = useState(false);
   const [splashVisible, setSplashVisible] = useState(false);
@@ -132,8 +184,11 @@ export function LoginPage() {
       // fallback a los defaults si el endpoint falla o demora (ver
       // `obtenerConfiguracionEmpresaConFallback`). El login ya se completó
       // arriba: esta llamada es cosmética y nunca lo bloquea ni lo revierte.
-      const configuracion = await obtenerConfiguracionEmpresaConFallback();
-      setConfiguracionMarca(configuracion);
+      const configuracion = await obtenerConfiguracionEmpresaConFallback(queryClient);
+      // Color de marca REAL por empresa (Parte 2) tiene prioridad sobre la
+      // paleta global cuando la sesión `company` lo tiene seteado --
+      // `nombre` no cambia de fuente, sigue viniendo de `configuracion`.
+      setConfiguracionMarca({ ...configuracion, ...resolverColorDeMarca(usuario, configuracion) });
 
       // Cortina de bienvenida (`WelcomeSplashLoader`, tema empresarial):
       // cubre la pantalla -> se sostiene brevemente ya 100% opaca -> recién

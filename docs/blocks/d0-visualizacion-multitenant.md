@@ -259,6 +259,17 @@ archivos de alto riesgo de `docs/06-modulos-backend.md`, en particular
 Si la implementación real exigiera tocar uno de ellos, D0 se detiene y el
 alcance se vuelve a revisar; no se amplía silenciosamente.
 
+> **Excepción explícita (tema-empresarial-integracion, Parte 2, 2026-08-29)**:
+> el usuario decidió que cada `Empresa` tenga su propio color de marca REAL,
+> no un fallback derivado ni un color compartido. Esto agrega
+> `Empresa.colorPrimario`/`colorSecundario` (nullable) al schema y una
+> migración nueva (`20260829050000_empresa_color_marca`) -- la única
+> excepción puntual a la restricción de arriba, acotada a esas dos columnas.
+> `ConfiguracionEmpresa` (branding global de la instancia) sigue intacta y
+> sigue siendo la fuente para el boot pre-login y para cualquier empresa sin
+> color propio -- la restricción original sobre `schema.prisma`/migraciones
+> sigue vigente para todo lo demás.
+
 ## Dependencia satisfecha
 
 - **Bloque C** está cerrado en `052e811` con 894/894 tests. D0 consume el
@@ -269,3 +280,26 @@ alcance se vuelve a revisar; no se amplía silenciosamente.
 Bloque D completo (`docs/blocks/d-routing-oportunidad.md`) se retoma después
 del despliegue. Sus artefactos Engram #83-#86 siguen siendo la base y deben
 ajustarse al calendario vigente antes de `apply`, no rehacerse desde cero.
+
+## Credenciales de demostración
+
+Documento de referencia, no una pantalla real de la app -- exponer
+contraseñas de seed en una UI en vivo (aunque sea de demo) es un
+antipatrón de seguridad, incluso en desarrollo. Datos de `backend/prisma/seed.ts`
+(Bloque D0 + tema-empresarial-integracion, Parte 2). La contraseña es la
+MISMA para todos: el valor de desarrollo de `SEED_PASSWORD` en `.env.example`
+(`dev_local_password_123`), nunca un secreto real.
+
+| Correo | Rol | Contexto | Password (`SEED_PASSWORD`) |
+| --- | --- | --- | --- |
+| `admin@crm.local` | ADMINISTRADOR | Holding (sin empresa atribuida) | `dev_local_password_123` |
+| `supervisor@crm.local` | SUPERVISOR | Holding (sin empresa atribuida) | `dev_local_password_123` |
+| `asesor@crm.local` | ASESOR | Holding (sin empresa atribuida) | `dev_local_password_123` |
+| `vendedor@crm.local` | VENDEDOR | Holding (sin empresa atribuida) | `dev_local_password_123` |
+| `empresa-a@crm.local` | ASESOR (`Membresia`) | Empresa A (demo D0) -- color propio `#7c2d12`/`#f97316` | `dev_local_password_123` |
+| `empresa-b@crm.local` | ASESOR (`Membresia`) | Empresa B (demo D0) -- color propio `#065f46`/`#10b981` | `dev_local_password_123` |
+
+Las dos últimas filas inician sesión por el camino `Membresia.correo`
+(dual-login-routing, Bloque B) -- `empresa-a-demo@crm.local`/
+`empresa-b-demo@crm.local` (`Usuario.correo` "portador" de esa membresía) NO
+son credenciales de login, solo la fila `Usuario` subyacente.

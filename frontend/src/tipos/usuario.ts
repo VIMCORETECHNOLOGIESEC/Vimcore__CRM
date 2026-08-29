@@ -51,11 +51,20 @@ export interface PublicUser {
  * D0 (resuelto server-side desde `empresaId`, nunca aportado por el
  * cliente); `membresiaId` es opcional -- presente únicamente para sesiones
  * `company` (dual-login-routing, Bloque B).
+ *
+ * `empresaColorPrimario`/`empresaColorSecundario` (tema-empresarial-integracion,
+ * Parte 2): color de marca REAL de la `Empresa`, resuelto server-side igual
+ * que `empresaNombre` (`auth.service.ts::resolveEmpresaMarca`). `null` para
+ * sesión `holding` o para una `Empresa` `company` sin color propio seteado
+ * -- en ese caso el consumidor (`LoginPage.tsx`) hace el fallback a la
+ * paleta global de `ConfiguracionEmpresa`, nunca este tipo.
  */
 export interface AuthenticatedUser extends PublicUser {
   sessionScope: SessionScope;
   empresaId: string | null;
   empresaNombre: string | null;
+  empresaColorPrimario: string | null;
+  empresaColorSecundario: string | null;
   membresiaId?: string;
 }
 
