@@ -287,6 +287,7 @@ export interface EmpresaMarca {
   nombre: string | null;
   colorPrimario: string | null;
   colorSecundario: string | null;
+  logoUrl: string | null;
 }
 
 /**
@@ -306,7 +307,7 @@ export interface EmpresaMarca {
  */
 export async function resolveEmpresaMarca(user: AuthenticatedUser): Promise<EmpresaMarca> {
   if (user.sessionScope !== "company") {
-    return { nombre: null, colorPrimario: null, colorSecundario: null };
+    return { nombre: null, colorPrimario: null, colorSecundario: null, logoUrl: null };
   }
 
   if (user.empresaId === null) {
@@ -322,5 +323,6 @@ export async function resolveEmpresaMarca(user: AuthenticatedUser): Promise<Empr
     nombre: empresa.nombre,
     colorPrimario: empresa.colorPrimario,
     colorSecundario: empresa.colorSecundario,
+    logoUrl: empresa.logoUrl,
   };
 }

@@ -65,6 +65,15 @@ export interface AuthenticatedUser extends PublicUser {
   empresaNombre: string | null;
   empresaColorPrimario: string | null;
   empresaColorSecundario: string | null;
+  /**
+   * PASO 6 (tema-empresarial-integracion): isotipo REAL de la `Empresa`,
+   * resuelto server-side igual que `empresaNombre`/`empresaColorPrimario`
+   * (`auth.service.ts::resolveEmpresaMarca`). `null` para sesión `holding` o
+   * una `Empresa` `company` sin isotipo propio -- el consumidor
+   * (`color-marca.ts::resolveLogoMarca`) hace el fallback al isotipo EN
+   * VIVO del holding, nunca este tipo.
+   */
+  empresaLogoUrl: string | null;
   membresiaId?: string;
 }
 

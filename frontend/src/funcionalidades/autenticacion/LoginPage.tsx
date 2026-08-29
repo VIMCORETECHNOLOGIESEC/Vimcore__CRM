@@ -16,6 +16,7 @@ import {
   fetchConfiguracionEmpresaApi,
   type ConfiguracionEmpresa,
 } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { obtenerMarcaPublicaConFallback } from "@/funcionalidades/configuracion-empresa/marca-publica.api";
 import { CONFIGURACION_EMPRESA_QUERY_KEY } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 // Tema visual "Propuesta B -- Consejo directivo" (indigo), aprobado como
 // línea gráfica del login (ver docs/09-linea-grafica-frontend.md). El CSS
@@ -113,7 +114,7 @@ async function obtenerConfiguracionEmpresaConFallback(
  * sesión `holding` usan la paleta global sin cambios -- mismo comportamiento
  * que antes de este cambio.
  */
-function resolverColorDeMarca(
+function resolveColorMarca(
   usuario: AuthenticatedUser,
   configuracionGlobal: ConfiguracionEmpresa,
 ): Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> {
@@ -148,9 +149,26 @@ export function LoginPage() {
   // mostrar la cortina, ver `onSubmit`.
   const [configuracionMarca, setConfiguracionMarca] =
     useState<ConfiguracionEmpresa>(CONFIGURACION_EMPRESA_DEFAULT);
+  // PASO 6 (tema-empresarial-integracion): isotipo del holding para el panel
+  // izquierdo -- `null` mientras no llegó nada (placeholder de diseño ya
+  // existente, ver el JSX de abajo) o directamente no hay ninguno
+  // configurado. Todavía no hay sesión en este punto (pantalla PRE-login),
+  // así que se resuelve vía `GET /marca-publica` (PASO 5), no vía
+  // `GET /configuracion-empresa` (requiere auth).
+  const [logoHolding, setLogoHolding] = useState<string | null>(null);
   // Timeouts de la cortina de bienvenida -- se limpian si el componente se
   // desmonta antes de disparar (navegación externa, cambio de ruta, etc.).
   const timeoutsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    let cancelado = false;
+    obtenerMarcaPublicaConFallback().then((marca) => {
+      if (!cancelado) setLogoHolding(marca.logoUrl);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   // Cancela cualquier timer/rAF de la cortina de bienvenida pendiente si el
   // componente se desmonta antes de que dispare (ej. el usuario navega
@@ -188,7 +206,7 @@ export function LoginPage() {
       // Color de marca REAL por empresa (Parte 2) tiene prioridad sobre la
       // paleta global cuando la sesión `company` lo tiene seteado --
       // `nombre` no cambia de fuente, sigue viniendo de `configuracion`.
-      setConfiguracionMarca({ ...configuracion, ...resolverColorDeMarca(usuario, configuracion) });
+      setConfiguracionMarca({ ...configuracion, ...resolveColorMarca(usuario, configuracion) });
 
       // Cortina de bienvenida (`WelcomeSplashLoader`, tema empresarial):
       // cubre la pantalla -> se sostiene brevemente ya 100% opaca -> recién
@@ -225,14 +243,18 @@ export function LoginPage() {
       />
 
       <div className="chrome-gradiente chrome-sombra-derecha hidden shrink-0 flex-col items-center justify-center gap-6 px-10 py-16 lg:flex lg:w-2/5">
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[#F5F3EE]/35 px-10 py-12">
-          <ImageIcon className="size-9 text-[#F5F3EE]/60" aria-hidden="true" />
-          <p className="max-w-[16rem] text-center text-sm leading-relaxed text-[#F5F3EE]/70">
-            Isotipo del holding
-            <br />
-            <span className="text-xs opacity-80">(personalizable por empresa)</span>
-          </p>
-        </div>
+        {logoHolding ? (
+          <img src={logoHolding} alt="Isotipo del holding" className="h-20 w-20 object-contain" />
+        ) : (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[#F5F3EE]/35 px-10 py-12">
+            <ImageIcon className="size-9 text-[#F5F3EE]/60" aria-hidden="true" />
+            <p className="max-w-[16rem] text-center text-sm leading-relaxed text-[#F5F3EE]/70">
+              Isotipo del holding
+              <br />
+              <span className="text-xs opacity-80">(personalizable por empresa)</span>
+            </p>
+          </div>
+        )}
         <p className="headline text-lg font-semibold tracking-wide !text-[var(--papel)]">
           CRM Embudo de Leads
         </p>

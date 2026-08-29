@@ -21,6 +21,11 @@ export interface ConfiguracionEmpresa {
   colorPrimario: string;
   /** Hex de 6 dígitos con `#`, ej. `"#2563eb"`. */
   colorSecundario: string;
+  /**
+   * PASO 6 (tema-empresarial-integracion): URL del isotipo del holding --
+   * `null` cuando nunca se configuró ninguno (no hay un logo de fábrica).
+   */
+  logoUrl: string | null;
 }
 
 export type UpdateConfiguracionEmpresaInput = Partial<ConfiguracionEmpresa>;
@@ -37,6 +42,7 @@ export const CONFIGURACION_EMPRESA_DEFAULT: ConfiguracionEmpresa = {
   nombre: "CRM Embudo de Leads",
   colorPrimario: "#1e2a5e",
   colorSecundario: "#2563eb",
+  logoUrl: null,
 };
 
 /** `GET /configuracion-empresa` -- cualquier usuario autenticado. */

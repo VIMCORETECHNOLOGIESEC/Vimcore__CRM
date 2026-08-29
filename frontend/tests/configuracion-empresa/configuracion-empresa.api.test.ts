@@ -27,7 +27,12 @@ afterEach(() => {
 
 describe("configuracion-empresa.api", () => {
   it("fetchConfiguracionEmpresaApi llama a GET /configuracion-empresa y devuelve la respuesta", async () => {
-    const respuesta = { nombre: "Arcano Motos", colorPrimario: "#111111", colorSecundario: "#222222" };
+    const respuesta = {
+      nombre: "Arcano Motos",
+      colorPrimario: "#111111",
+      colorSecundario: "#222222",
+      logoUrl: null,
+    };
     getMock.mockResolvedValue(respuesta);
 
     const resultado = await fetchConfiguracionEmpresaApi();
@@ -37,7 +42,12 @@ describe("configuracion-empresa.api", () => {
   });
 
   it("updateConfiguracionEmpresaApi llama a PATCH /configuracion-empresa con el body parcial dado", async () => {
-    const actualizado = { nombre: "Arcano Motos", colorPrimario: "#111111", colorSecundario: "#2563eb" };
+    const actualizado = {
+      nombre: "Arcano Motos",
+      colorPrimario: "#111111",
+      colorSecundario: "#2563eb",
+      logoUrl: null,
+    };
     patchMock.mockResolvedValue(actualizado);
 
     const resultado = await updateConfiguracionEmpresaApi({ nombre: "Arcano Motos", colorPrimario: "#111111" });
@@ -54,6 +64,7 @@ describe("configuracion-empresa.api", () => {
       nombre: "CRM Embudo de Leads",
       colorPrimario: "#1e2a5e",
       colorSecundario: "#2563eb",
+      logoUrl: null,
     });
   });
 });

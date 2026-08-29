@@ -59,7 +59,7 @@ afterAll(async () => {
 });
 
 describe("GET /api/v1/configuracion-empresa", () => {
-  it("200 cualquier usuario autenticado (sin restricción de rol) recibe {nombre,colorPrimario,colorSecundario}", async () => {
+  it("200 cualquier usuario autenticado (sin restricción de rol) recibe {nombre,colorPrimario,colorSecundario,logoUrl}", async () => {
     const respuesta = await request(app)
       .get("/api/v1/configuracion-empresa")
       .set("Authorization", `Bearer ${vendedorAccessToken}`);
@@ -69,6 +69,7 @@ describe("GET /api/v1/configuracion-empresa", () => {
       nombre: expect.any(String),
       colorPrimario: expect.stringMatching(/^#[0-9a-fA-F]{6}$/),
       colorSecundario: expect.stringMatching(/^#[0-9a-fA-F]{6}$/),
+      logoUrl: null,
     });
   });
 
@@ -90,6 +91,7 @@ describe("PATCH /api/v1/configuracion-empresa", () => {
       nombre: "Mi Empresa S.A.",
       colorPrimario: "#ff0000",
       colorSecundario: "#00ff00",
+      logoUrl: null,
     });
 
     const siguienteGet = await request(app)
@@ -99,7 +101,27 @@ describe("PATCH /api/v1/configuracion-empresa", () => {
       nombre: "Mi Empresa S.A.",
       colorPrimario: "#ff0000",
       colorSecundario: "#00ff00",
+      logoUrl: null,
     });
+  });
+
+  it("200 ADMINISTRADOR actualiza el logoUrl", async () => {
+    const respuesta = await request(app)
+      .patch("/api/v1/configuracion-empresa")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ logoUrl: "https://cdn.miempresa.com/logo.svg" });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.logoUrl).toBe("https://cdn.miempresa.com/logo.svg");
+  });
+
+  it("400 con un logoUrl que no es una URL válida", async () => {
+    const respuesta = await request(app)
+      .patch("/api/v1/configuracion-empresa")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ logoUrl: "no-es-una-url" });
+
+    expect(respuesta.status).toBe(400);
   });
 
   it("403 cuando un VENDEDOR intenta editar la configuración", async () => {

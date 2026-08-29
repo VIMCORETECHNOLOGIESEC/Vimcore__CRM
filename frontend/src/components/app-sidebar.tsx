@@ -3,6 +3,8 @@ import * as React from "react"
 import { NavMain } from "@/components/nav-main"
 import { useAuth } from "@/funcionalidades/autenticacion/authContext"
 import { hasRoleAccess } from "@/funcionalidades/autenticacion/permissions"
+import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
+import { resolveLogoMarca, resolveNombreMarca } from "@/lib/color-marca"
 import { NAVIGATION_ITEMS } from "@/layouts/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -37,6 +39,12 @@ const ETIQUETA_ROL: Record<string, string> = {
  */
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth()
+  // PASO 7: nombre configurable -- misma jerarquía de 3 niveles que ya usa
+  // `AppLayout.tsx` para los acentos de color (`resolveEstilosMarca`).
+  // PASO 6: isotipo, mismo criterio, ver `color-marca.ts`.
+  const { data: configuracionHolding } = useConfiguracionEmpresa()
+  const nombreMarca = resolveNombreMarca(user, configuracionHolding)
+  const logoMarca = resolveLogoMarca(user, configuracionHolding)
 
   const items = NAVIGATION_ITEMS.filter((item) =>
     hasRoleAccess(user?.rol, item.allowedRoles),
@@ -49,15 +57,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     >
       <SidebarHeader>
         <div className="flex min-w-0 items-center gap-2 px-2 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0">
-          <span
-            className="flex size-8 shrink-0 items-center justify-center rounded-md border border-dashed border-sidebar-foreground/35 bg-transparent text-sm font-bold text-sidebar-foreground/60"
-            aria-hidden="true"
-          >
-            I
-          </span>
+          {logoMarca ? (
+            <img
+              src={logoMarca}
+              alt=""
+              aria-hidden="true"
+              className="size-8 shrink-0 rounded-md object-contain"
+            />
+          ) : (
+            <span
+              className="flex size-8 shrink-0 items-center justify-center rounded-md border border-dashed border-sidebar-foreground/35 bg-transparent text-sm font-bold text-sidebar-foreground/60"
+              aria-hidden="true"
+            >
+              {nombreMarca[0]?.toUpperCase() ?? "I"}
+            </span>
+          )}
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-sm font-semibold text-sidebar-foreground">
-              IDEC CRM
+              {nombreMarca}
             </p>
             <p className="truncate text-[10px] uppercase tracking-[0.16em] text-sidebar-foreground/60">
               Embudo de leads

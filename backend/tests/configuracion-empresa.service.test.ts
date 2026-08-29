@@ -26,6 +26,7 @@ describe("services/configuracion-empresa — getConfiguracion", () => {
       nombre: "CRM Embudo de Leads",
       colorPrimario: "#1e2a5e",
       colorSecundario: "#2563eb",
+      logoUrl: null,
     });
 
     const total = await prisma.configuracionEmpresa.count();
@@ -43,7 +44,12 @@ describe("services/configuracion-empresa — getConfiguracion", () => {
 
   it("devuelve la fila ya personalizada si existe", async () => {
     await prisma.configuracionEmpresa.create({
-      data: { nombre: "Empresa Personalizada", colorPrimario: "#010203", colorSecundario: "#040506" },
+      data: {
+        nombre: "Empresa Personalizada",
+        colorPrimario: "#010203",
+        colorSecundario: "#040506",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      },
     });
 
     const resultado = await getConfiguracion();
@@ -51,6 +57,7 @@ describe("services/configuracion-empresa — getConfiguracion", () => {
       nombre: "Empresa Personalizada",
       colorPrimario: "#010203",
       colorSecundario: "#040506",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
     });
   });
 });
@@ -72,5 +79,21 @@ describe("services/configuracion-empresa — updateConfiguracion", () => {
     expect(resultado.colorPrimario).toBe("#123456");
     const total = await prisma.configuracionEmpresa.count();
     expect(total).toBe(1);
+  });
+
+  it("actualiza el logoUrl", async () => {
+    await getConfiguracion();
+
+    const resultado = await updateConfiguracion({ logoUrl: "https://cdn.miempresa.com/logo.svg" });
+
+    expect(resultado.logoUrl).toBe("https://cdn.miempresa.com/logo.svg");
+  });
+
+  it("restaura el logoUrl a null", async () => {
+    await updateConfiguracion({ logoUrl: "https://cdn.miempresa.com/logo.svg" });
+
+    const resultado = await updateConfiguracion({ logoUrl: null });
+
+    expect(resultado.logoUrl).toBeNull();
   });
 });

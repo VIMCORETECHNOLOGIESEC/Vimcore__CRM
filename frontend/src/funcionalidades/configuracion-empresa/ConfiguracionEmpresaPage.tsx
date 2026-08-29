@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { Controller, useForm, type Control, type FieldErrors } from "react-hook-form";
+import { hexColorSchema, logoUrlSchema, nombreMarcaSchema } from "schemas";
 import { z } from "zod";
 import { getErrorMessage } from "@/api/httpClient";
 import {
@@ -27,24 +28,32 @@ import {
 import { useConfiguracionEmpresa, useUpdateConfiguracionEmpresa } from "./useConfiguracionEmpresa";
 
 /**
- * Hex de 6 dígitos con `#` -- mismo formato que devuelve/acepta el backend
- * (contrato confirmado, ver `configuracion-empresa.api.ts`).
+ * `nombreMarcaSchema`/`hexColorSchema`/`logoUrlSchema` (paquete compartido
+ * `schemas`, AGENTS.md "Formularios con RHF+Zod, reutilizando los esquemas
+ * del backend"): mismas reglas de largo/formato que
+ * `backend/src/schemas/configuracion-empresa.schema.ts` -- antes de esto
+ * este formulario tenía su propio `.max(120)` para `nombre` (backend: 80) y
+ * sin `.max()` para `logoUrl` (backend: 2048), así que un envío podía pasar
+ * la validación del cliente y romper igual con un 400 del backend.
+ *
+ * PASO 6 (tema-empresarial-integracion): `logoUrl` acepta además cadena
+ * vacía como valor válido acá (significa "sin isotipo") -- el input HTML
+ * siempre maneja `string` (nunca `null`), la conversión "" <-> `null` ocurre
+ * al precargar/enviar el formulario (`defaultValues`/`enviar` en
+ * `ConfiguracionEmpresaForm`).
+ */
+/**
+ * Mismo patrón que `hexColorSchema` (paquete `schemas`) -- acá aparte porque
+ * se usa para un chequeo rápido de vista previa en vivo (abajo), no para
+ * validación de Zod del formulario.
  */
 const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
-const hexColorSchema = z
-  .string()
-  .trim()
-  .regex(HEX_COLOR_REGEX, "Ingresá un color hexadecimal válido (ej. #1e2a5e).");
-
 const configuracionEmpresaSchema = z.object({
-  nombre: z
-    .string()
-    .trim()
-    .min(1, "Ingresá el nombre de la empresa.")
-    .max(120, "El nombre no puede superar los 120 caracteres."),
+  nombre: nombreMarcaSchema,
   colorPrimario: hexColorSchema,
   colorSecundario: hexColorSchema,
+  logoUrl: logoUrlSchema.or(z.literal("")),
 });
 
 type ConfiguracionEmpresaValues = z.infer<typeof configuracionEmpresaSchema>;
@@ -115,9 +124,10 @@ export function ConfiguracionEmpresaPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Restaurar los valores predeterminados?</AlertDialogTitle>
             <AlertDialogDescription>
-              Vas a perder el nombre y los colores de marca configurados actualmente para
-              todo el holding -- se reemplazan por los valores de fábrica ({CONFIGURACION_EMPRESA_DEFAULT.nombre}
-              , {CONFIGURACION_EMPRESA_DEFAULT.colorPrimario} y {CONFIGURACION_EMPRESA_DEFAULT.colorSecundario}).
+              Vas a perder el nombre, los colores de marca y el isotipo configurados
+              actualmente para todo el holding -- se reemplazan por los valores de fábrica
+              ({CONFIGURACION_EMPRESA_DEFAULT.nombre}, {CONFIGURACION_EMPRESA_DEFAULT.colorPrimario}
+              {" "}y {CONFIGURACION_EMPRESA_DEFAULT.colorSecundario}, sin isotipo).
               Esta acción no se puede deshacer, y cada persona con la app abierta necesita
               recargar la página (F5) para ver el cambio reflejado.
             </AlertDialogDescription>
@@ -156,10 +166,14 @@ function ConfiguracionEmpresaForm({
     formState: { errors },
   } = useForm<ConfiguracionEmpresaValues>({
     resolver: zodResolver(configuracionEmpresaSchema),
-    defaultValues: configuracion,
+    // El input de logoUrl siempre maneja `string` -- `null` (sin isotipo
+    // configurado) se precarga como cadena vacía.
+    defaultValues: { ...configuracion, logoUrl: configuracion.logoUrl ?? "" },
   });
 
-  const enviar = handleSubmit((valores) => onSubmit(valores));
+  const enviar = handleSubmit((valores) =>
+    onSubmit({ ...valores, logoUrl: valores.logoUrl === "" ? null : valores.logoUrl }),
+  );
 
   // Vista previa en vivo: mientras el usuario teclea un hex incompleto, se
   // sostiene el último color válido en vez de romper el gradiente con un
@@ -201,6 +215,21 @@ function ConfiguracionEmpresaForm({
           errors={errors}
           enviando={enviando}
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="config-logo-url">URL del isotipo (opcional)</Label>
+        <Input
+          id="config-logo-url"
+          type="url"
+          placeholder="https://cdn.miempresa.com/logo.svg"
+          disabled={enviando}
+          aria-invalid={errors.logoUrl ? "true" : undefined}
+          {...register("logoUrl")}
+        />
+        {errors.logoUrl ? (
+          <p className="text-sm text-destructive">{errors.logoUrl.message}</p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">

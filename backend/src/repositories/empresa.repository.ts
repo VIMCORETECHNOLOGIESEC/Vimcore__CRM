@@ -23,6 +23,11 @@ export async function findById(
 export interface UpdateEmpresaAparienciaData {
   colorPrimario: string | null;
   colorSecundario: string | null;
+  // Opcional (a diferencia de los dos colores arriba): `undefined` (campo no
+  // enviado en el PATCH) deja el isotipo sin tocar -- Prisma omite del
+  // `data` cualquier clave con valor `undefined`. `null` explícito sí
+  // restaura "sin isotipo".
+  logoUrl?: string | null;
 }
 
 /**

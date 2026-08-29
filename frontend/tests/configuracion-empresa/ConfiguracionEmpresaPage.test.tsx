@@ -12,6 +12,7 @@ vi.mock("@/funcionalidades/configuracion-empresa/configuracion-empresa.api", () 
     nombre: "CRM Embudo de Leads",
     colorPrimario: "#1e2a5e",
     colorSecundario: "#2563eb",
+    logoUrl: null,
   },
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -34,6 +35,7 @@ function configuracionFake(overrides: Partial<ConfiguracionEmpresa> = {}): Confi
     nombre: "Arcano Motos",
     colorPrimario: "#1e2a5e",
     colorSecundario: "#2563eb",
+    logoUrl: null,
     ...overrides,
   };
 }
@@ -144,9 +146,47 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
         nombre: "Arcano Motos SA",
         colorPrimario: "#1e2a5e",
         colorSecundario: "#2563eb",
+        logoUrl: null,
       }),
     );
     expect(toastSuccessMock).toHaveBeenCalledWith("Configuración de la empresa actualizada correctamente.");
+  });
+
+  it("envía un logoUrl válido tecleado en el campo", async () => {
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(configuracionFake());
+    updateConfiguracionEmpresaApiMock.mockResolvedValue(
+      configuracionFake({ logoUrl: "https://cdn.miempresa.com/logo.svg" }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    const campoLogo = await screen.findByLabelText("URL del isotipo (opcional)");
+    await user.type(campoLogo, "https://cdn.miempresa.com/logo.svg");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() =>
+      expect(updateConfiguracionEmpresaApiMock).toHaveBeenCalledWith({
+        nombre: "Arcano Motos",
+        colorPrimario: "#1e2a5e",
+        colorSecundario: "#2563eb",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      }),
+    );
+  });
+
+  it("valida que el logoUrl sea una URL válida antes de enviar", async () => {
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue(configuracionFake());
+    const user = userEvent.setup();
+    renderPage();
+
+    const campoLogo = await screen.findByLabelText("URL del isotipo (opcional)");
+    await user.type(campoLogo, "no-es-una-url");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    expect(
+      await screen.findByText("Ingresá una URL válida (ej. https://cdn.miempresa.com/logo.svg)."),
+    ).toBeInTheDocument();
+    expect(updateConfiguracionEmpresaApiMock).not.toHaveBeenCalled();
   });
 
   it("muestra el mensaje accionable del backend si falla el guardado", async () => {

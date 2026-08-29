@@ -6,16 +6,32 @@ export interface ConfiguracionEmpresaView {
   nombre: string;
   colorPrimario: string;
   colorSecundario: string;
+  logoUrl: string | null;
 }
 
-function toView(fila: { nombre: string; colorPrimario: string; colorSecundario: string }): ConfiguracionEmpresaView {
-  return { nombre: fila.nombre, colorPrimario: fila.colorPrimario, colorSecundario: fila.colorSecundario };
+function toView(fila: {
+  nombre: string;
+  colorPrimario: string;
+  colorSecundario: string;
+  logoUrl: string | null;
+}): ConfiguracionEmpresaView {
+  return {
+    nombre: fila.nombre,
+    colorPrimario: fila.colorPrimario,
+    colorSecundario: fila.colorSecundario,
+    logoUrl: fila.logoUrl,
+  };
 }
 
 /**
  * `GET /configuracion-empresa`: cualquier usuario autenticado. Lazy init —
  * si todavía no existe ninguna fila, la crea con los defaults documentados
  * en el repositorio en vez de exigir un seed previo.
+ *
+ * PASO 5 (endpoint público de branding, `marca-publica.controller.ts`):
+ * reusa esta misma función -- la forma que devuelve (`ConfiguracionEmpresaView`)
+ * es exactamente el subconjunto público autorizado (nombre/colores/logo,
+ * nada administrativo), así que no hace falta una segunda query.
  */
 export async function getConfiguracion(): Promise<ConfiguracionEmpresaView> {
   const existente = await configuracionEmpresaRepository.findSingleton();
@@ -37,6 +53,7 @@ export async function updateConfiguracion(
     nombre: input.nombre,
     colorPrimario: input.colorPrimario,
     colorSecundario: input.colorSecundario,
+    logoUrl: input.logoUrl,
   };
   const actualizada = await configuracionEmpresaRepository.upsertSingleton(data);
   return toView(actualizada);

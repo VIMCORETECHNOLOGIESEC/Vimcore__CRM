@@ -1,3 +1,4 @@
+import { hexColorSchema, logoUrlSchema, nombreMarcaSchema } from "schemas";
 import { z } from "zod";
 
 /**
@@ -5,17 +6,19 @@ import { z } from "zod";
  * + colores de marca) para la pantalla de bienvenida post-login. Singleton —
  * sin `id` en el body, el repositorio siempre opera sobre la única fila
  * existente (ver `configuracion-empresa.repository.ts`).
+ *
+ * `nombreMarcaSchema`/`hexColorSchema`/`logoUrlSchema` viven en el paquete
+ * compartido `schemas` (mismo patrón que `loginBodySchema`, AGENTS.md
+ * "Formularios con RHF+Zod, reutilizando los esquemas del backend") -- el
+ * formulario completo de `ConfiguracionEmpresaPage.tsx` reusa las MISMAS
+ * reglas de largo/formato, así que no puede drift respecto a este PATCH.
  */
-const hexColorSchema = z
-  .string()
-  .trim()
-  .regex(/^#[0-9a-fA-F]{6}$/, "El color debe ser un hex de 6 dígitos, p. ej. #1e2a5e");
-
 export const updateConfiguracionEmpresaBodySchema = z
   .object({
-    nombre: z.string().trim().min(1).max(80),
+    nombre: nombreMarcaSchema,
     colorPrimario: hexColorSchema,
     colorSecundario: hexColorSchema,
+    logoUrl: logoUrlSchema.nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Debes enviar al menos un campo");

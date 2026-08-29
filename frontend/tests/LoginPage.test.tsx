@@ -14,17 +14,28 @@ vi.mock("@/funcionalidades/configuracion-empresa/configuracion-empresa.api", () 
     nombre: "CRM Embudo de Leads",
     colorPrimario: "#1e2a5e",
     colorSecundario: "#2563eb",
+    logoUrl: null,
   },
+}));
+// PASO 5/6 (tema-empresarial-integracion): el panel izquierdo (isotipo)
+// ahora resuelve `GET /marca-publica` (sin sesión) al montar -- mockeado acá
+// para no depender de red real y para poder controlar el `logoUrl` devuelto.
+vi.mock("@/funcionalidades/configuracion-empresa/marca-publica.api", () => ({
+  obtenerMarcaPublicaConFallback: vi.fn(),
 }));
 
 const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { fetchConfiguracionEmpresaApi, CONFIGURACION_EMPRESA_DEFAULT } = await import(
   "@/funcionalidades/configuracion-empresa/configuracion-empresa.api"
 );
+const { obtenerMarcaPublicaConFallback } = await import(
+  "@/funcionalidades/configuracion-empresa/marca-publica.api"
+);
 const { LoginPage } = await import("@/funcionalidades/autenticacion/LoginPage");
 
 const useAuthMock = vi.mocked(useAuth);
 const fetchConfiguracionEmpresaApiMock = vi.mocked(fetchConfiguracionEmpresaApi);
+const obtenerMarcaPublicaConFallbackMock = vi.mocked(obtenerMarcaPublicaConFallback);
 const loginMock = vi.fn();
 
 const usuarioFake = {
@@ -75,6 +86,8 @@ beforeEach(() => {
   });
   fetchConfiguracionEmpresaApiMock.mockReset();
   fetchConfiguracionEmpresaApiMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
+  obtenerMarcaPublicaConFallbackMock.mockReset();
+  obtenerMarcaPublicaConFallbackMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
 });
 
 afterEach(() => {
@@ -181,6 +194,28 @@ describe("LoginPage — cortina de bienvenida", () => {
   });
 });
 
+describe("LoginPage — isotipo del holding (PASO 5/6, panel izquierdo pre-login)", () => {
+  it("muestra el placeholder de diseño mientras no hay ningún logoUrl configurado", async () => {
+    obtenerMarcaPublicaConFallbackMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
+    renderLoginPage();
+
+    expect(await screen.findByText("Isotipo del holding")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("muestra el isotipo real en vez del placeholder cuando GET /marca-publica trae un logoUrl", async () => {
+    obtenerMarcaPublicaConFallbackMock.mockResolvedValue({
+      ...CONFIGURACION_EMPRESA_DEFAULT,
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+    renderLoginPage();
+
+    const imagen = await screen.findByRole("img");
+    expect(imagen).toHaveAttribute("src", "https://cdn.miempresa.com/logo.svg");
+    expect(screen.queryByText("Isotipo del holding")).not.toBeInTheDocument();
+  });
+});
+
 describe("LoginPage — configuración de marca real en la cortina de bienvenida", () => {
   it("usa el nombre y los colores reales de la empresa cuando el fetch resuelve a tiempo", async () => {
     loginMock.mockResolvedValue(usuarioFake);
@@ -188,6 +223,7 @@ describe("LoginPage — configuración de marca real en la cortina de bienvenida
       nombre: "Arcano Motos",
       colorPrimario: "#111111",
       colorSecundario: "#222222",
+      logoUrl: null,
     });
     const user = userEvent.setup();
     renderLoginPage();
@@ -227,7 +263,7 @@ describe("LoginPage — configuración de marca real en la cortina de bienvenida
 /**
  * tema-empresarial-integracion (Parte 2, decisión explícita del usuario):
  * cada empresa tiene su propio color REAL -- prioridad simple sin una
- * tercera fuente de verdad (`LoginPage.tsx::resolverColorDeMarca`): color de
+ * tercera fuente de verdad (`LoginPage.tsx::resolveColorMarca`): color de
  * `Empresa` (sesión `company` con AMBOS colores seteados) antes que la
  * paleta global de la instancia; si no hay color propio, o la sesión es
  * `holding`, se usa la paleta global sin cambios.

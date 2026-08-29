@@ -36,7 +36,7 @@ function crearWrapper(queryClient: QueryClient) {
 
 describe("useUpdateEmpresaApariencia", () => {
   it("llama a la API con el input recibido", async () => {
-    updateEmpresaAparienciaApiMock.mockResolvedValue({ colorPrimario: null, colorSecundario: null });
+    updateEmpresaAparienciaApiMock.mockResolvedValue({ colorPrimario: null, colorSecundario: null, logoUrl: null });
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const { result } = renderHook(() => useUpdateEmpresaApariencia(), {
       wrapper: crearWrapper(queryClient),
@@ -55,7 +55,11 @@ describe("useUpdateEmpresaApariencia", () => {
   });
 
   it("invalida la query de perfil (['auth','perfil']) al tener éxito, sin esperar un login nuevo", async () => {
-    updateEmpresaAparienciaApiMock.mockResolvedValue({ colorPrimario: "#123456", colorSecundario: "#abcdef" });
+    updateEmpresaAparienciaApiMock.mockResolvedValue({
+      colorPrimario: "#123456",
+      colorSecundario: "#abcdef",
+      logoUrl: null,
+    });
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useUpdateEmpresaApariencia(), {

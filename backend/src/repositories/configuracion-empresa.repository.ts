@@ -34,6 +34,9 @@ export interface UpdateConfiguracionEmpresaData {
   nombre?: string;
   colorPrimario?: string;
   colorSecundario?: string;
+  // tema-empresarial-integracion (PASO 6): `null` explícito restaura "sin
+  // isotipo" -- distinto de `undefined` (campo no enviado, no se toca).
+  logoUrl?: string | null;
 }
 
 /**
@@ -51,6 +54,10 @@ export async function upsertSingleton(
         nombre: data.nombre ?? DEFAULTS.nombre,
         colorPrimario: data.colorPrimario ?? DEFAULTS.colorPrimario,
         colorSecundario: data.colorSecundario ?? DEFAULTS.colorSecundario,
+        // Sin default de fábrica para el logo (no hay valor en `DEFAULTS`) --
+        // `undefined` (campo no enviado) queda como `null` acá a propósito,
+        // Prisma no acepta `undefined` en un `create`.
+        logoUrl: data.logoUrl ?? null,
       },
     });
   }

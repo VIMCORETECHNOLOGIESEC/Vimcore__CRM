@@ -4,7 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
-import { estilosDeMarcaPorEmpresa } from "@/lib/color-marca";
+import { resolveEstilosMarca } from "@/lib/color-marca";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
 
@@ -33,7 +33,7 @@ export function AppLayout() {
   // root de `SidebarProvider`, para que cubran sidebar Y contenido. Ver
   // `lib/color-marca.ts` para el alcance exacto y por qué `--sidebar`
   // (fondo sólido) queda afuera.
-  const estilosMarca = estilosDeMarcaPorEmpresa(user, configuracionHolding);
+  const estilosMarca = resolveEstilosMarca(user, configuracionHolding);
 
   useEffect(() => {
     const el = scrollRef.current;

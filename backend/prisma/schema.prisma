@@ -119,6 +119,12 @@ model Empresa {
   // todavía (solo seed/lectura).
   colorPrimario   String? @map("color_primario") @db.VarChar(7)
   colorSecundario String? @map("color_secundario") @db.VarChar(7)
+  // tema-empresarial-integracion (PASO 6): isotipo (símbolo, no wordmark) de
+  // marca -- un solo asset por Empresa, URL pegada a mano por el admin (sin
+  // subsistema de upload, decisión explícita del usuario). Nullable, mismo
+  // criterio que colorPrimario/colorSecundario arriba -- ninguna `Empresa`
+  // existente antes de este cambio tiene esto seteado.
+  logoUrl String? @map("logo_url") @db.Text
 
   membresias     Membresia[]
   bridges        Bridge[]
@@ -773,6 +779,11 @@ model ConfiguracionEmpresa {
   nombre          String   @db.Text
   colorPrimario   String   @map("color_primario") @db.VarChar(7)
   colorSecundario String   @map("color_secundario") @db.VarChar(7)
+  // tema-empresarial-integracion (PASO 6): isotipo del holding -- mismo
+  // criterio que `Empresa.logoUrl` (URL pegada a mano, sin subsistema de
+  // upload). Nullable -- a diferencia de nombre/colores de este modelo, no
+  // hay un valor de fábrica para un logo (no existe un isotipo genérico).
+  logoUrl         String?  @map("logo_url") @db.Text
   actualizadoEn   DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
   @@map("configuracion_empresa")

@@ -40,6 +40,7 @@ describe("repositories/configuracion-empresa — createWithDefaults", () => {
     expect(creada.nombre).toBe("CRM Embudo de Leads");
     expect(creada.colorPrimario).toBe("#1e2a5e");
     expect(creada.colorSecundario).toBe("#2563eb");
+    expect(creada.logoUrl).toBeNull();
 
     const total = await prisma.configuracionEmpresa.count();
     expect(total).toBe(1);
@@ -53,9 +54,18 @@ describe("repositories/configuracion-empresa — upsertSingleton", () => {
     expect(resultado.nombre).toBe("Mi Empresa");
     expect(resultado.colorPrimario).toBe("#1e2a5e");
     expect(resultado.colorSecundario).toBe("#2563eb");
+    expect(resultado.logoUrl).toBeNull();
 
     const total = await prisma.configuracionEmpresa.count();
     expect(total).toBe(1);
+  });
+
+  it("crea la fila con el logoUrl provisto cuando no existe ninguna", async () => {
+    const resultado = await configuracionEmpresaRepository.upsertSingleton({
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+
+    expect(resultado.logoUrl).toBe("https://cdn.miempresa.com/logo.svg");
   });
 
   it("actualiza la fila existente en vez de crear una segunda (nunca dos filas)", async () => {

@@ -17,11 +17,14 @@ import { httpClient } from "@/api/httpClient";
 export interface EmpresaAparienciaView {
   colorPrimario: string | null;
   colorSecundario: string | null;
+  logoUrl: string | null;
 }
 
 export interface UpdateEmpresaAparienciaInput {
   colorPrimario: string | null;
   colorSecundario: string | null;
+  /** Opcional -- omitir el campo deja el isotipo sin tocar (backend: `PATCH /empresas/actual/apariencia`). */
+  logoUrl?: string | null;
 }
 
 /** `PATCH /empresas/actual/apariencia` -- solo `ADMINISTRADOR` de una sesión `company`. */

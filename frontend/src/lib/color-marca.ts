@@ -103,7 +103,7 @@ export function foregroundForContrast(backgroundTriplet: string): string {
  * jerarquía SIEMPRE hay un color activo -- la función ya no devuelve
  * `undefined` salvo que `usuario` sea `null` (sesión sin resolver todavía).
  */
-export function estilosDeMarcaPorEmpresa(
+export function resolveEstilosMarca(
   usuario: AuthenticatedUser | null,
   configuracionHolding: Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> | undefined,
 ): Record<string, string> | undefined {
@@ -132,4 +132,50 @@ export function estilosDeMarcaPorEmpresa(
     "--sidebar-accent": acento,
     "--sidebar-accent-foreground": acentoForeground,
   };
+}
+
+/**
+ * PASO 6 (tema-empresarial-integracion): isotipo de marca -- MISMA jerarquía
+ * de 3 niveles que `resolveEstilosMarca` de arriba, pero el logo no es
+ * una variable CSS de color: se devuelve aparte, como una URL (o `null`).
+ * 1) isotipo propio de la `Empresa` de una sesión `company`
+ *    (`usuario.empresaLogoUrl`); 2) si no, el del holding EN VIVO
+ *    (`configuracionHolding.logoUrl`, `useConfiguracionEmpresa()`); 3) si
+ *    ninguno de los dos existe todavía, `null` -- a propósito NUNCA un ícono
+ *    genérico de reemplazo (decisión explícita del PASO 6): es mejor no
+ *    mostrar nada que mostrar un isotipo roto o inventado.
+ */
+export function resolveLogoMarca(
+  usuario: AuthenticatedUser | null,
+  configuracionHolding: Pick<ConfiguracionEmpresa, "logoUrl"> | undefined,
+): string | null {
+  if (!usuario) {
+    return null;
+  }
+
+  if (usuario.sessionScope === "company" && usuario.empresaLogoUrl !== null) {
+    return usuario.empresaLogoUrl;
+  }
+
+  return configuracionHolding?.logoUrl ?? null;
+}
+
+/**
+ * PASO 7 (tema-empresarial-integracion): nombre visible en el shell
+ * autenticado (`app-sidebar.tsx`) -- misma jerarquía de 3 niveles que el
+ * resto de este archivo: 1) nombre de la `Empresa` propia de una sesión
+ * `company`; 2) si no, el del holding EN VIVO; 3) si ninguno de los dos
+ * llegó todavía (carga/error de la query, o sesión `holding` sin config
+ * cargada), `CONFIGURACION_EMPRESA_DEFAULT.nombre` -- SIEMPRE hay un nombre
+ * para mostrar, nunca una cadena vacía.
+ */
+export function resolveNombreMarca(
+  usuario: AuthenticatedUser | null,
+  configuracionHolding: Pick<ConfiguracionEmpresa, "nombre"> | undefined,
+): string {
+  if (usuario?.sessionScope === "company" && usuario.empresaNombre !== null) {
+    return usuario.empresaNombre;
+  }
+
+  return configuracionHolding?.nombre ?? CONFIGURACION_EMPRESA_DEFAULT.nombre;
 }

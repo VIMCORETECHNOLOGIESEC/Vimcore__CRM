@@ -66,6 +66,23 @@ describe("GET /api/v1/auth/perfil — Bloque D0 (empresaNombre)", () => {
     expect(perfil.body.sessionScope).toBe("company");
     expect(perfil.body.empresaId).toBe(empresa.id);
     expect(perfil.body.empresaNombre).toBe(nombreEmpresa);
+    expect(perfil.body.empresaLogoUrl).toBeNull();
+  });
+
+  it("sesión company: resuelve empresaLogoUrl server-side cuando la Empresa tiene isotipo propio", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa D0 logo ${randomUUID()}`, logoUrl: "https://cdn.miempresa.com/logo.svg" },
+    });
+
+    const login = await loginCompanySession(empresa.id);
+    expect(login.status).toBe(200);
+
+    const perfil = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${login.body.accessToken}`);
+
+    expect(perfil.status).toBe(200);
+    expect(perfil.body.empresaLogoUrl).toBe("https://cdn.miempresa.com/logo.svg");
   });
 
   it("sesión holding: empresaNombre es null y no atribuye una empresa concreta", async () => {
@@ -93,6 +110,7 @@ describe("GET /api/v1/auth/perfil — Bloque D0 (empresaNombre)", () => {
     expect(perfil.body.sessionScope).toBe("holding");
     expect(perfil.body.empresaId).toBeNull();
     expect(perfil.body.empresaNombre).toBeNull();
+    expect(perfil.body.empresaLogoUrl).toBeNull();
     expect(perfil.body.membresiaId).toBeUndefined();
   });
 

@@ -1,5 +1,9 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import {
+  CONFIGURACION_EMPRESA_DEFAULT,
+  type ConfiguracionEmpresa,
+} from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { obtenerMarcaPublicaConFallback } from "@/funcionalidades/configuracion-empresa/marca-publica.api";
 import "./tema-empresarial.css";
 import { WelcomeSplashLoader } from "./WelcomeSplashLoader";
 
@@ -30,12 +34,17 @@ const SPLASH_SOSTENIDO_MS = 700;
  * detrás desde el primer render, así que nunca hay un pop cuando la cortina
  * se desvanece: revela algo que ya está asentado, no algo que recién se monta.
  *
- * Contenido de marca: SIEMPRE el default de la instancia
+ * Contenido de marca: arranca con el default de la instancia
  * (`CONFIGURACION_EMPRESA_DEFAULT`, mismos valores que usa `LoginPage.tsx`
- * como fallback) -- todavía no hay sesión en este punto (nadie logueado
- * todavía), así que `GET /configuracion-empresa` (requiere
- * `requireAuthentication`) no aplica acá. Sin ningún fetch nuevo para esta
- * pantalla.
+ * como fallback) y lo reemplaza por el branding real en cuanto resuelve
+ * `GET /marca-publica` (PASO 5, tema-empresarial-integracion) -- el único
+ * endpoint sin sesión que expone nombre/colores/logo, porque todavía no hay
+ * sesión en este punto (`GET /configuracion-empresa`, que sí la requiere, no
+ * aplica acá). `obtenerMarcaPublicaConFallback` (mismo criterio de
+ * resiliencia que `LoginPage.tsx::obtenerConfiguracionEmpresaConFallback`:
+ * timeout corto, fallback silencioso) nunca bloquea ni alarga el boot --
+ * la cortina sigue durando EXACTAMENTE 1500ms tenga o no tenga tiempo de
+ * resolver.
  *
  * El wrapper `.tema-empresarial` envuelve SOLO la cortina, nunca a
  * `children` -- esa clase define `color`/`font-family` heredables
@@ -46,6 +55,7 @@ const SPLASH_SOSTENIDO_MS = 700;
 export function AppBoot({ children }: { children: ReactNode }) {
   const [bootActivo, setBootActivo] = useState(true);
   const [bootVisible, setBootVisible] = useState(false);
+  const [marca, setMarca] = useState<ConfiguracionEmpresa>(CONFIGURACION_EMPRESA_DEFAULT);
 
   useEffect(() => {
     const idAparecer = requestAnimationFrame(() => setBootVisible(true));
@@ -63,6 +73,20 @@ export function AppBoot({ children }: { children: ReactNode }) {
     // Una sola vez al montar -- este boot no reacciona a ningún evento del
     // usuario, a diferencia de la cortina de `FlujoIntegracionDemo.tsx`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Branding real (PASO 5): dispara en paralelo a los timers de arriba, sin
+  // bloquearlos -- si resuelve antes de que la cortina se desmonte, el
+  // splash se actualiza en vivo; si no, se queda con el default desde el
+  // principio. `cancelado` evita un `setState` tras desmontar.
+  useEffect(() => {
+    let cancelado = false;
+    obtenerMarcaPublicaConFallback().then((configuracion) => {
+      if (!cancelado) setMarca(configuracion);
+    });
+    return () => {
+      cancelado = true;
+    };
   }, []);
 
   return (
@@ -83,13 +107,13 @@ export function AppBoot({ children }: { children: ReactNode }) {
             href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
           />
           <WelcomeSplashLoader
-            contexto={CONFIGURACION_EMPRESA_DEFAULT.nombre}
+            contexto={marca.nombre}
             mensaje="Cargando…"
             visible={bootVisible}
             style={
               {
-                "--marca-color-1": CONFIGURACION_EMPRESA_DEFAULT.colorPrimario,
-                "--marca-color-2": CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
+                "--marca-color-1": marca.colorPrimario,
+                "--marca-color-2": marca.colorSecundario,
               } as CSSProperties
             }
           />

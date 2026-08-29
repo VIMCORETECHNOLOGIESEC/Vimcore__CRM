@@ -82,7 +82,7 @@ describe("PATCH /api/v1/empresas/actual/apariencia", () => {
       .send({ colorPrimario: null, colorSecundario: null });
 
     expect(respuesta.status).toBe(200);
-    expect(respuesta.body).toEqual({ colorPrimario: null, colorSecundario: null });
+    expect(respuesta.body).toEqual({ colorPrimario: null, colorSecundario: null, logoUrl: null });
 
     const empresaActualizada = await prisma.empresa.findUnique({ where: { id: empresa.id } });
     expect(empresaActualizada?.colorPrimario).toBeNull();
@@ -101,7 +101,62 @@ describe("PATCH /api/v1/empresas/actual/apariencia", () => {
       .send({ colorPrimario: "#123456", colorSecundario: "#abcdef" });
 
     expect(respuesta.status).toBe(200);
-    expect(respuesta.body).toEqual({ colorPrimario: "#123456", colorSecundario: "#abcdef" });
+    expect(respuesta.body).toEqual({ colorPrimario: "#123456", colorSecundario: "#abcdef", logoUrl: null });
+  });
+
+  it("200 ADMINISTRADOR de empresa setea el logoUrl propio sin tocar los colores", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa apariencia ${randomUUID()}`, colorPrimario: "#111111", colorSecundario: "#222222" },
+    });
+    const token = await loginCompanySession(empresa.id);
+
+    const respuesta = await request(app)
+      .patch("/api/v1/empresas/actual/apariencia")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        colorPrimario: "#111111",
+        colorSecundario: "#222222",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({
+      colorPrimario: "#111111",
+      colorSecundario: "#222222",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+  });
+
+  it("omite el logoUrl del PATCH sin tocar el valor ya guardado (campo opcional)", async () => {
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa apariencia ${randomUUID()}`,
+        colorPrimario: "#111111",
+        colorSecundario: "#222222",
+        logoUrl: "https://cdn.miempresa.com/logo-previo.svg",
+      },
+    });
+    const token = await loginCompanySession(empresa.id);
+
+    const respuesta = await request(app)
+      .patch("/api/v1/empresas/actual/apariencia")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ colorPrimario: "#333333", colorSecundario: "#444444" });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.logoUrl).toBe("https://cdn.miempresa.com/logo-previo.svg");
+  });
+
+  it("400 con un logoUrl que no es una URL válida", async () => {
+    const empresa = await prisma.empresa.create({ data: { nombre: `Empresa apariencia ${randomUUID()}` } });
+    const token = await loginCompanySession(empresa.id);
+
+    const respuesta = await request(app)
+      .patch("/api/v1/empresas/actual/apariencia")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ colorPrimario: null, colorSecundario: null, logoUrl: "no-es-una-url" });
+
+    expect(respuesta.status).toBe(400);
   });
 
   it("ignora por completo un empresaId enviado en el body -- usa siempre el de la sesión", async () => {

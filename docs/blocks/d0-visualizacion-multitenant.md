@@ -270,6 +270,30 @@ alcance se vuelve a revisar; no se amplía silenciosamente.
 > color propio -- la restricción original sobre `schema.prisma`/migraciones
 > sigue vigente para todo lo demás.
 
+> **Excepción explícita (tema-empresarial-integracion, Tarea 3 + Parte 3/PASO
+> 5-7, 2026-08-29)**: sobre la misma base de la excepción anterior, se agregó
+> autoridad de ESCRITURA acotada, siempre scoped a la sesión, nunca a un
+> `empresaId`/id que venga del cliente:
+> - `PATCH /empresas/actual/apariencia` -- self-service, exclusivo
+>   `ADMINISTRADOR` de una sesión `company` sobre SU PROPIA `Empresa`
+>   (`colorPrimario`/`colorSecundario`/`logoUrl`, 403 para sesión `holding`).
+>   Sin UI todavía a propósito (backend + capa de datos frontend,
+>   fundacional para el "gestor de empresas" del holding, tarea aparte).
+> - `logoUrl` (nullable) agregado a `Empresa` y a `ConfiguracionEmpresa`
+>   (migración `20260829060000_marca_logo_url`), mismo patrón que los
+>   colores, misma jerarquía de 3 niveles (empresa propia -> holding en
+>   vivo -> sin logo/default de fábrica).
+> - `GET /marca-publica` (nuevo, SIN `requireAuthentication`, rate-limited):
+>   expone únicamente `nombre`/`colorPrimario`/`colorSecundario`/`logoUrl`
+>   de `ConfiguracionEmpresa` para el boot pre-login y el panel de login,
+>   que todavía no tienen sesión. Verificado y aceptado por el usuario: no
+>   existe modelo `Holding` todavía, cada instancia desplegada es un solo
+>   holding, así que esto no es una fuga entre holdings distintos.
+>
+> Sigue sin tocarse ningún archivo de alto riesgo de la lista de arriba, y
+> la restricción original sobre `schema.prisma`/migraciones sigue vigente
+> para todo lo que no sea branding de marca.
+
 ## Dependencia satisfecha
 
 - **Bloque C** está cerrado en `052e811` con 894/894 tests. D0 consume el

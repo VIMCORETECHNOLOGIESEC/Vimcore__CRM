@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { estilosDeMarcaPorEmpresa, foregroundForContrast, hexToRgbTriplet } from "@/lib/color-marca";
+import {
+  resolveEstilosMarca,
+  foregroundForContrast,
+  hexToRgbTriplet,
+  resolveLogoMarca,
+  resolveNombreMarca,
+} from "@/lib/color-marca";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 
 const usuarioBase: AuthenticatedUser = {
@@ -12,6 +18,7 @@ const usuarioBase: AuthenticatedUser = {
   empresaNombre: "Empresa Test",
   empresaColorPrimario: "#7c2d12",
   empresaColorSecundario: "#f97316",
+  empresaLogoUrl: null,
 };
 
 describe("hexToRgbTriplet", () => {
@@ -47,9 +54,9 @@ describe("foregroundForContrast", () => {
 
 const holdingPersonalizado = { colorPrimario: "#134e4a", colorSecundario: "#10b981" };
 
-describe("estilosDeMarcaPorEmpresa", () => {
+describe("resolveEstilosMarca", () => {
   it("nivel 1 -- sesion company con ambos colores propios seteados devuelve las 8 variables de acento (ignora el holding)", () => {
-    const estilos = estilosDeMarcaPorEmpresa(usuarioBase, holdingPersonalizado);
+    const estilos = resolveEstilosMarca(usuarioBase, holdingPersonalizado);
     expect(estilos).toEqual({
       "--primary": "249 115 22",
       "--primary-foreground": "30 42 94",
@@ -62,7 +69,7 @@ describe("estilosDeMarcaPorEmpresa", () => {
   });
 
   it("nivel 2 -- sesion holding usa el color EN VIVO de configuracion-empresa cuando llegó", () => {
-    const estilos = estilosDeMarcaPorEmpresa(
+    const estilos = resolveEstilosMarca(
       { ...usuarioBase, sessionScope: "holding", empresaId: null, empresaNombre: null, empresaColorPrimario: null, empresaColorSecundario: null },
       holdingPersonalizado,
     );
@@ -78,7 +85,7 @@ describe("estilosDeMarcaPorEmpresa", () => {
   });
 
   it("nivel 2 -- empresa sin color propio (nulls) usa el color EN VIVO de configuracion-empresa cuando llegó", () => {
-    const estilos = estilosDeMarcaPorEmpresa(
+    const estilos = resolveEstilosMarca(
       { ...usuarioBase, empresaColorPrimario: null, empresaColorSecundario: null },
       holdingPersonalizado,
     );
@@ -94,7 +101,7 @@ describe("estilosDeMarcaPorEmpresa", () => {
   });
 
   it("nivel 3 -- sesion holding sin config de holding (carga/error de la query) cae al default de fábrica", () => {
-    const estilos = estilosDeMarcaPorEmpresa(
+    const estilos = resolveEstilosMarca(
       { ...usuarioBase, sessionScope: "holding", empresaId: null, empresaNombre: null, empresaColorPrimario: null, empresaColorSecundario: null },
       undefined,
     );
@@ -110,7 +117,7 @@ describe("estilosDeMarcaPorEmpresa", () => {
   });
 
   it("nivel 3 -- empresa sin color propio y sin config de holding cae al default de fábrica", () => {
-    const estilos = estilosDeMarcaPorEmpresa(
+    const estilos = resolveEstilosMarca(
       { ...usuarioBase, empresaColorPrimario: null, empresaColorSecundario: null },
       undefined,
     );
@@ -118,7 +125,65 @@ describe("estilosDeMarcaPorEmpresa", () => {
   });
 
   it("usuario null no devuelve overrides (sesion sin resolver todavia)", () => {
-    expect(estilosDeMarcaPorEmpresa(null, holdingPersonalizado)).toBeUndefined();
-    expect(estilosDeMarcaPorEmpresa(null, undefined)).toBeUndefined();
+    expect(resolveEstilosMarca(null, holdingPersonalizado)).toBeUndefined();
+    expect(resolveEstilosMarca(null, undefined)).toBeUndefined();
+  });
+});
+
+describe("resolveLogoMarca (PASO 6)", () => {
+  const holdingConLogo = { logoUrl: "https://cdn.holding.com/logo.svg" };
+
+  it("nivel 1 -- sesion company con isotipo propio ignora el del holding", () => {
+    const usuario = { ...usuarioBase, empresaLogoUrl: "https://cdn.empresa-a.com/logo.svg" };
+    expect(resolveLogoMarca(usuario, holdingConLogo)).toBe("https://cdn.empresa-a.com/logo.svg");
+  });
+
+  it("nivel 2 -- empresa sin isotipo propio usa el del holding EN VIVO", () => {
+    expect(resolveLogoMarca(usuarioBase, holdingConLogo)).toBe("https://cdn.holding.com/logo.svg");
+  });
+
+  it("nivel 2 -- sesion holding usa el isotipo EN VIVO de configuracion-empresa", () => {
+    const usuario = {
+      ...usuarioBase,
+      sessionScope: "holding" as const,
+      empresaId: null,
+      empresaNombre: null,
+      empresaColorPrimario: null,
+      empresaColorSecundario: null,
+      empresaLogoUrl: null,
+    };
+    expect(resolveLogoMarca(usuario, holdingConLogo)).toBe("https://cdn.holding.com/logo.svg");
+  });
+
+  it("nivel 3 -- sin isotipo propio y sin isotipo de holding devuelve null (nunca un ícono genérico)", () => {
+    expect(resolveLogoMarca(usuarioBase, { logoUrl: null })).toBeNull();
+    expect(resolveLogoMarca(usuarioBase, undefined)).toBeNull();
+  });
+
+  it("usuario null devuelve null (sesion sin resolver todavia)", () => {
+    expect(resolveLogoMarca(null, holdingConLogo)).toBeNull();
+  });
+});
+
+describe("resolveNombreMarca (PASO 7)", () => {
+  const holdingConNombre = { nombre: "Holding En Vivo" };
+
+  it("nivel 1 -- sesion company usa su propio empresaNombre", () => {
+    expect(resolveNombreMarca(usuarioBase, holdingConNombre)).toBe("Empresa Test");
+  });
+
+  it("nivel 2 -- sesion holding usa el nombre EN VIVO de configuracion-empresa", () => {
+    const usuario = { ...usuarioBase, sessionScope: "holding" as const, empresaNombre: null };
+    expect(resolveNombreMarca(usuario, holdingConNombre)).toBe("Holding En Vivo");
+  });
+
+  it("nivel 3 -- sin nombre de sesion y sin config de holding cae al default de fábrica", () => {
+    const usuario = { ...usuarioBase, sessionScope: "holding" as const, empresaNombre: null };
+    expect(resolveNombreMarca(usuario, undefined)).toBe("CRM Embudo de Leads");
+  });
+
+  it("usuario null cae al default de fábrica", () => {
+    expect(resolveNombreMarca(null, undefined)).toBe("CRM Embudo de Leads");
+    expect(resolveNombreMarca(null, holdingConNombre)).toBe("Holding En Vivo");
   });
 });

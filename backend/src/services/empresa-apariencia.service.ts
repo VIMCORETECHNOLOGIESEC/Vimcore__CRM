@@ -4,10 +4,19 @@ import type { UpdateEmpresaAparienciaBody } from "../schemas/empresa-apariencia.
 export interface EmpresaAparienciaView {
   colorPrimario: string | null;
   colorSecundario: string | null;
+  logoUrl: string | null;
 }
 
-function toView(empresa: { colorPrimario: string | null; colorSecundario: string | null }): EmpresaAparienciaView {
-  return { colorPrimario: empresa.colorPrimario, colorSecundario: empresa.colorSecundario };
+function toView(empresa: {
+  colorPrimario: string | null;
+  colorSecundario: string | null;
+  logoUrl: string | null;
+}): EmpresaAparienciaView {
+  return {
+    colorPrimario: empresa.colorPrimario,
+    colorSecundario: empresa.colorSecundario,
+    logoUrl: empresa.logoUrl,
+  };
 }
 
 /**
@@ -25,6 +34,7 @@ export async function updateApariencia(
   const actualizada = await empresaRepository.updateApariencia(empresaId, {
     colorPrimario: input.colorPrimario,
     colorSecundario: input.colorSecundario,
+    logoUrl: input.logoUrl,
   });
   return toView(actualizada);
 }

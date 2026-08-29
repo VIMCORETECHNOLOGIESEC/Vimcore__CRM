@@ -18,7 +18,7 @@ describe("services/empresa-apariencia — updateApariencia", () => {
       colorSecundario: "#f97316",
     });
 
-    expect(resultado).toEqual({ colorPrimario: "#7c2d12", colorSecundario: "#f97316" });
+    expect(resultado).toEqual({ colorPrimario: "#7c2d12", colorSecundario: "#f97316", logoUrl: null });
   });
 
   it("restaura ambos colores a null", async () => {
@@ -31,6 +31,38 @@ describe("services/empresa-apariencia — updateApariencia", () => {
       colorSecundario: null,
     });
 
-    expect(resultado).toEqual({ colorPrimario: null, colorSecundario: null });
+    expect(resultado).toEqual({ colorPrimario: null, colorSecundario: null, logoUrl: null });
+  });
+
+  it("actualiza el logoUrl cuando se lo envía", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa service apariencia logo ${randomUUID()}`, colorPrimario: "#111111", colorSecundario: "#222222" },
+    });
+
+    const resultado = await updateApariencia(empresa.id, {
+      colorPrimario: "#111111",
+      colorSecundario: "#222222",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+
+    expect(resultado.logoUrl).toBe("https://cdn.miempresa.com/logo.svg");
+  });
+
+  it("no toca el logoUrl cuando no se lo envía (campo opcional)", async () => {
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa service apariencia logo intacto ${randomUUID()}`,
+        colorPrimario: "#111111",
+        colorSecundario: "#222222",
+        logoUrl: "https://cdn.miempresa.com/logo-previo.svg",
+      },
+    });
+
+    const resultado = await updateApariencia(empresa.id, {
+      colorPrimario: "#333333",
+      colorSecundario: "#444444",
+    });
+
+    expect(resultado.logoUrl).toBe("https://cdn.miempresa.com/logo-previo.svg");
   });
 });

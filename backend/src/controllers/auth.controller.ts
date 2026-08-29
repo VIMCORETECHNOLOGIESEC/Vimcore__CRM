@@ -24,6 +24,7 @@ interface PerfilResponse extends AuthenticatedUser {
   empresaNombre: string | null;
   empresaColorPrimario: string | null;
   empresaColorSecundario: string | null;
+  empresaLogoUrl: string | null;
 }
 
 export async function postLogin(req: Request, res: Response): Promise<void> {
@@ -63,6 +64,7 @@ export async function getPerfil(req: Request, res: Response): Promise<void> {
     nombre: empresaNombre,
     colorPrimario: empresaColorPrimario,
     colorSecundario: empresaColorSecundario,
+    logoUrl: empresaLogoUrl,
   } = await resolveEmpresaMarca(user);
 
   // `activo` no viaja en `req.user` (tipo `AuthenticatedUser` del diseño no
@@ -74,6 +76,7 @@ export async function getPerfil(req: Request, res: Response): Promise<void> {
     empresaNombre,
     empresaColorPrimario,
     empresaColorSecundario,
+    empresaLogoUrl,
   };
   res.status(200).json(perfil);
 }
