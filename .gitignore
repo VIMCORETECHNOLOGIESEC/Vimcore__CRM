@@ -4,6 +4,12 @@
 .codegraph/
 graphify-out/
 
+# SDD: este repo no usa openspec/ como artefacto versionado -- los
+# artefactos SDD se persisten en Engram (AGENTS.md). Cualquier archivo que
+# aparezca acá (ej. traído sin querer por un merge de otra rama) queda
+# untracked a propósito, nunca se commitea.
+openspec/
+
 # Node / pnpm
 node_modules/
 dist/
