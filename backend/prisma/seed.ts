@@ -149,6 +149,9 @@ async function main(): Promise<void> {
         usuarioNombre: "Empresa A Demo",
         usuarioCorreo: "empresa-a-demo@crm.local",
         membresiaCorreo: "empresa-a@crm.local",
+        membresiaAdminCorreo: "empresa-a-admin@crm.local",
+        usuarioAdminCorreo: "empresa-a-admin-portador@crm.local",
+        usuarioAdminNombre: "Empresa A Admin",
         bridgeNombre: "Bridge Empresa A (demo D0)",
         clienteNombre: "Cliente Empresa A (demo D0)",
         clienteTelefono: "+10000000001",
@@ -166,6 +169,9 @@ async function main(): Promise<void> {
         usuarioNombre: "Empresa B Demo",
         usuarioCorreo: "empresa-b-demo@crm.local",
         membresiaCorreo: "empresa-b@crm.local",
+        membresiaAdminCorreo: "empresa-b-admin@crm.local",
+        usuarioAdminCorreo: "empresa-b-admin-portador@crm.local",
+        usuarioAdminNombre: "Empresa B Admin",
         bridgeNombre: "Bridge Empresa B (demo D0)",
         clienteNombre: "Cliente Empresa B (demo D0)",
         clienteTelefono: "+10000000002",
@@ -218,6 +224,50 @@ async function main(): Promise<void> {
           empresaId: demo.empresaId,
           rol: "ASESOR",
           correo: demo.membresiaCorreo,
+          passwordHash,
+          activa: true,
+        },
+      });
+
+      // Membresía ADMINISTRADOR por empresa (gap detectado en verificación
+      // cruzada con test/gpt): el bootstrap legacy single-company solo tiene
+      // `admin@crm.local` sin atar a ninguna empresa -- para probar el shell
+      // autenticado (dashboard/leads/usuarios/bridges) bajo un rol con
+      // permisos administrativos REALES pero scoped a una sola empresa.
+      //
+      // Requiere un usuario portador PROPIO con `Usuario.rol: ADMINISTRADOR`
+      // -- NO se puede reusar `usuarioDemo` (rol `ASESOR`): `auth.service.ts
+      // ::login` exige `rolEquivalente(membresia) === usuarioDeMembresia.rol`
+      // (lib/rol-membresia.ts) como guarda de consistencia entre el rol
+      // legado y el rol real de la membresía; una membresía ADMINISTRADOR
+      // colgada de un usuario ASESOR nunca pasaría esa verificación y el
+      // login fallaría en silencio con "credenciales inválidas" (verificado
+      // en runtime contra `integration-theme` antes de esta corrección).
+      const usuarioAdmin = await prisma.usuario.upsert({
+        where: { correo: demo.usuarioAdminCorreo },
+        update: {},
+        create: {
+          nombre: demo.usuarioAdminNombre,
+          correo: demo.usuarioAdminCorreo,
+          passwordHash,
+          rol: "ADMINISTRADOR",
+        },
+      });
+
+      await prisma.membresia.upsert({
+        where: {
+          usuarioId_empresaId_rol: {
+            usuarioId: usuarioAdmin.id,
+            empresaId: demo.empresaId,
+            rol: "ADMINISTRADOR",
+          },
+        },
+        update: { correo: demo.membresiaAdminCorreo, passwordHash, activa: true },
+        create: {
+          usuarioId: usuarioAdmin.id,
+          empresaId: demo.empresaId,
+          rol: "ADMINISTRADOR",
+          correo: demo.membresiaAdminCorreo,
           passwordHash,
           activa: true,
         },
