@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { Outlet } from "react-router";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { estilosDeMarcaPorEmpresa } from "@/lib/color-marca";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
 
@@ -17,6 +19,14 @@ import { PageHeaderProvider } from "./PageHeaderContext";
  */
 export function AppLayout() {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  // tema-empresarial-integracion (Parte 3): acentos por empresa
+  // (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`) en el
+  // root de `SidebarProvider`, para que cubran sidebar Y contenido. `null`
+  // (holding o empresa sin color propio) -> sin `style`, misma paleta
+  // `--vimcore` de siempre. Ver `lib/color-marca.ts` para el alcance
+  // exacto y por qué `--sidebar` (fondo sólido) queda afuera.
+  const estilosMarca = estilosDeMarcaPorEmpresa(user);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -36,7 +46,7 @@ export function AppLayout() {
 
   return (
     <PageHeaderProvider>
-      <SidebarProvider>
+      <SidebarProvider style={estilosMarca as CSSProperties}>
         <AppSidebar />
         <SidebarInset>
           <Header />
