@@ -288,3 +288,45 @@ concreto debe usarla el agente — vive en `docs/21-skills-agentes-backend.md`
 (backend) y `docs/10-skills-agente-frontend.md` (frontend); esos documentos
 también registran las skills evaluadas y descartadas, para no repetir la
 evaluación.
+
+---
+
+## 10. Graphify — grafo arquitectónico del proyecto
+
+Graphify complementa a CodeGraph; no lo reemplaza. El grafo derivado vive en
+`graphify-out/` dentro de cada worktree, está ignorado por Git y nunca se copia,
+commitea ni mergea entre ramas. La instalación, generación y diagnóstico se
+documentan en `docs/20-graphify-context-graph.md`.
+
+### Cuándo usar cada herramienta
+
+- **CodeGraph sigue siendo la primera parada obligatoria** para símbolos
+  puntuales, call paths y blast radius.
+- Usar Graphify para orientación arquitectónica, comunidades y hubs; consultas
+  que atraviesen servicios; migraciones Prisma/SQL; o exploración visual.
+- Para un módulo recién modificado, comprobar primero que el grafo del worktree
+  está actualizado. Un grafo de otro worktree no es evidencia válida.
+
+### Disciplina de actualización
+
+- Después de cambios reales de código, ejecutar desde la raíz del worktree
+  `graphify extract . --code-only`.
+- Usar `--force` solo si quedaron archivos sin indexar o se agregó una gramática.
+- No ejecutar `graphify extract ./docs` ni `cluster-only` sin `--no-label` salvo
+  pedido explícito o checkpoint de archivo SDD: ambos pueden consumir tokens LLM.
+- Las comunidades se calculan localmente; sus nombres legibles son un labeling
+  opcional y costoso.
+
+### Integración con OpenCode
+
+OpenCode carga este `AGENTS.md`; no necesita un archivo de instrucciones
+Graphify adicional. El MCP local se registra manualmente con
+`type: "local"` y `command: ["graphify-mcp"]`, se ejecuta desde la raíz del
+worktree y requiere que el extra `graphifyy[mcp]` esté instalado en el mismo
+entorno aislado. Los cambios de configuración o instrucciones requieren
+reiniciar OpenCode.
+
+Nunca ejecutar `graphify install`, `graphify opencode install`,
+`graphify claude install`, `graphify hook install` ni `graphify uninit`: esos
+comandos sobrescriben instrucciones, instalan hooks o modifican el ciclo de vida
+fuera de la integración manual aprobada.
