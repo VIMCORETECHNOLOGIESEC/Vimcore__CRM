@@ -277,6 +277,15 @@ function groupByRowsToCountMap<K extends string>(
   return mapa;
 }
 
+/**
+ * Bloque D (batch de negociación, punto 2/3): NO se migra en el lugar
+ * (deviation deliberada, ver `countCargaActivaPorResponsableEnEmpresa`
+ * abajo) — firma/comportamiento preservados sin cambios porque
+ * `asignacion.service.ts::selectResponsable` la sigue usando tal cual desde
+ * `whatsappMessages/whatsapp-sla.service.ts` (prohibido tocar) y desde
+ * `usuarios.service.ts::deactivateUsuario` (fuera del alcance nombrado de
+ * este batch); cambiar su contrato rompería ambos call sites.
+ */
 export async function countCargaActivaPorResponsable(
   pool: PoolAsignacion,
   candidatoIds: readonly string[],
@@ -297,6 +306,50 @@ export async function countCargaActivaPorResponsable(
   const filas = await lead.groupBy({
     by: ["vendedorId"],
     where: { vendedorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+    _count: { _all: true },
+  });
+  return groupByRowsToCountMap(filas, "vendedorId");
+}
+
+/**
+ * Bloque D (batch de negociación, punto 2/3 — cutover del pool de `Lead`):
+ * variante NUEVA con `empresaId` OBLIGATORIO, usada exclusivamente por el
+ * pool `Membresia`-based (`usuario.repository.ts::findActivosPorRolMembresia`,
+ * D3/D4) — sin este filtro, la carga de un candidato se contaría GLOBAL
+ * (todas sus empresas), no solo la de la empresa del lead que se está
+ * asignando, dando un desempate incorrecto bajo multi-tenant. Función NUEVA
+ * y separada de `countCargaActivaPorResponsable` (arriba) por la misma razón
+ * documentada ahí (call sites prohibidos/fuera de alcance).
+ */
+export async function countCargaActivaPorResponsableEnEmpresa(
+  pool: PoolAsignacion,
+  candidatoIds: readonly string[],
+  empresaId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, number>> {
+  if (candidatoIds.length === 0) return new Map();
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+
+  if (pool === "ASESOR") {
+    const filas = await lead.groupBy({
+      by: ["asesorId"],
+      where: {
+        asesorId: { in: [...candidatoIds] },
+        etapa: { notIn: [...ETAPAS_CERRADAS] },
+        empresaId,
+      },
+      _count: { _all: true },
+    });
+    return groupByRowsToCountMap(filas, "asesorId");
+  }
+
+  const filas = await lead.groupBy({
+    by: ["vendedorId"],
+    where: {
+      vendedorId: { in: [...candidatoIds] },
+      etapa: { notIn: [...ETAPAS_CERRADAS] },
+      empresaId,
+    },
     _count: { _all: true },
   });
   return groupByRowsToCountMap(filas, "vendedorId");

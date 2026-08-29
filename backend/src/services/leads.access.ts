@@ -21,6 +21,19 @@ export interface LeadAcceso {
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 
 /**
+ * Bloque F (aditivo, decisión cerrada con el usuario): constante LOCAL y
+ * DISTINTA de `ROLES_ACCESO_TOTAL` de arriba a propósito — esa constante la
+ * comparte `canRead` y `canEdit`, y `canEdit` queda explícitamente FUERA de
+ * este batch (el propio diseño original la deja pendiente para antes de F,
+ * ver `docs/blocks/d-routing-oportunidad.md`). Agregar los roles nuevos acá
+ * en vez de a `ROLES_ACCESO_TOTAL` evita cambiar el comportamiento de
+ * `canRead`/`canEdit` como efecto secundario de este cambio. Solo
+ * `canReassign`/`canTransfer`/`canClose` (abajo) la usan — las tres
+ * autoridades que este batch sí reescribe/retoca.
+ */
+const ROLES_HOLDING_TOTAL: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
+
+/**
  * Bloque C (Fase 2/Stage 2, D-cutover): único punto de la compuerta de
  * empresa reutilizado por las 5 funciones de este archivo — `null` en el
  * usuario es holding-wide (sin restricción, D2); cualquier otro valor exige
@@ -119,10 +132,25 @@ export interface LeadTraspaso extends LeadAcceso {
  * nuevo, spec "Direct id access is denied, not leaked": el HTTP mapper de
  * `asignacion.service.ts::throwForMotivoDenegacion` ya colapsa todo motivo
  * que no sea `etapa_no_traspasable` al mismo 403 genérico).
+ *
+ * Bloque D (batch de negociación, decisión documentada): esta función queda
+ * DECLARADA superseded por `oportunidad.access.ts` (D7/D9), pero su único
+ * caller real (`asignacion.service.ts::reassignLead`, `POST
+ * /leads/:id/reasignar`) NO se retira — documentado como GAP, no rewrite: el
+ * equivalente `POST /oportunidades/:id/reasignar` (D9) solo cubre la
+ * excepción ADMINISTRADOR/SUPERVISOR; no existe ningún equivalente para el
+ * auto-servicio de un ASESOR reasignando su propio lead (rama `semaforo_verde`
+ * de abajo), así que retirar el endpoint completo eliminaría una capacidad
+ * real sin reemplazo. Queda vigente hasta que el negocio decida si ese
+ * auto-servicio migra a Oportunidad o permanece como operación de "contacto"
+ * de `Lead`, independiente de la negociación.
  */
 export function canReassign(usuario: UsuarioAcceso, lead: LeadReasignacion): MotivoDenegacion | null {
   if (!empresaCoincide(usuario, lead)) return "no_es_titular";
-  if (ROLES_ACCESO_TOTAL.includes(usuario.rol)) return null;
+  // Bloque F (aditivo): SUPERVISOR_HOLDING/SUPER_ADMIN comparten el mismo
+  // "acceso total" que ADMINISTRADOR/SUPERVISOR acá, pero vía una constante
+  // separada (`ROLES_HOLDING_TOTAL`) para no alterar `canRead`/`canEdit`.
+  if (ROLES_ACCESO_TOTAL.includes(usuario.rol) || ROLES_HOLDING_TOTAL.includes(usuario.rol)) return null;
   if (usuario.rol !== "ASESOR") return "rol";
   if (usuario.id !== lead.asesorId) return "no_es_titular";
   if (lead.semaforo === "VERDE") return "semaforo_verde";
@@ -141,11 +169,22 @@ export function canReassign(usuario: UsuarioAcceso, lead: LeadReasignacion): Mot
  * lead existe y está en NUEVO) de un 403 genérico para un lead que ni
  * siquiera puede ver, filtrando información de un recurso ajeno (spec,
  * "Direct id access is denied, not leaked").
+ *
+ * Bloque D (batch de negociación, decisión documentada): esta función queda
+ * DECLARADA superseded por `oportunidad.access.ts`, pero su único caller real
+ * (`asignacion.service.ts::transferLead`, `POST /leads/:id/traspasar`) NO se
+ * retira — documentado como GAP, no rewrite: `Oportunidad.vendedorId` existe
+ * en el esquema pero, por diseño explícito de este mismo batch, "sin pool ni
+ * endpoint de traspaso" todavía (ver `oportunidad.access.ts`). No hay ningún
+ * equivalente de `/oportunidades/*` a redirigir — retirar este endpoint hoy
+ * eliminaría el handoff asesor→vendedor sin reemplazo.
  */
 export function canTransfer(usuario: UsuarioAcceso, lead: LeadTraspaso): MotivoDenegacion | null {
   if (!empresaCoincide(usuario, lead)) return "no_es_titular";
   if (lead.etapa === "NUEVO") return "etapa_no_traspasable";
-  if (ROLES_ACCESO_TOTAL.includes(usuario.rol)) return null;
+  // Bloque F (aditivo): mismo criterio que `canReassign` — constante separada
+  // para no alterar `canRead`/`canEdit`.
+  if (ROLES_ACCESO_TOTAL.includes(usuario.rol) || ROLES_HOLDING_TOTAL.includes(usuario.rol)) return null;
   if (usuario.rol !== "ASESOR") return "rol";
   if (usuario.id !== lead.asesorId) return "no_es_titular";
   // M-hardening Bloque A (D4, corrige docs/06 P0): el asesor origen agota su
@@ -173,10 +212,29 @@ export interface LeadCierre extends LeadAcceso {
  * Bloque C (Fase 2/Stage 2): compuerta de empresa ANTES de la compuerta de
  * etapa — mismo criterio anti-filtración que `canTransfer` (`etapa_no_cerrable`
  * también es un 409 que revelaría la etapa de un lead ajeno).
+ *
+ * Bloque D (batch de negociación, decisión documentada): esta función queda
+ * SUPERSEDIDA y RETIRADA de producción — su único caller real
+ * (`leads.service.ts::transitionEtapa`, rama VENTA/NO_VENTA de `PATCH
+ * /leads/:id/etapa`) ya no la invoca: el cierre de negociación ahora tiene un
+ * equivalente completo en `POST /oportunidades/:id/cerrar`
+ * (`oportunidad.access.ts::canCerrarOportunidad`, D7), que es exactamente el
+ * criterio de salida esencial de Bloque D ("la autoridad de cierre usa
+ * Membresia... no depende de Usuario.rol"). Se conserva exportada (no se
+ * borra el archivo/función) porque `shadow-authorization.service.ts` y sus
+ * pruebas todavía la referencian — inerte en producción, no dead code sin
+ * dueño.
  */
 export function canClose(usuario: UsuarioAcceso, lead: LeadCierre): MotivoDenegacion | null {
   if (!empresaCoincide(usuario, lead)) return "no_es_titular";
   if (lead.etapa === "NUEVO") return "etapa_no_cerrable";
+  // Bloque F (aditivo): mismo criterio que `canReassign`/`canTransfer` —
+  // constante separada para no alterar `canRead`/`canEdit`. Ningún
+  // ADMINISTRADOR/SUPERVISOR de empresa tiene hoy este bypass (D7): estos dos
+  // roles nuevos sí, porque su alcance es "el máximo posible", igual que
+  // `ADMINISTRADOR` en el resto de los chequeos "acceso total" de este
+  // archivo.
+  if (ROLES_HOLDING_TOTAL.includes(usuario.rol)) return null;
   if (usuario.rol === "SUPERVISOR") return "rol";
   if (usuario.rol === "ADMINISTRADOR") return null;
   const responsable = lead.vendedorId ?? lead.asesorId;

@@ -14,6 +14,16 @@ enum RolUsuario {
   SUPERVISOR
   ASESOR
   VENDEDOR
+  // Bloque F (aditivo, decisión cerrada con el usuario): mismo alcance
+  // máximo entre los dos — acceso total holding-wide, sin restricción de
+  // `empresaId`, con capacidad de asignación manual — tratados como bypass
+  // total en cualquier chequeo de autoridad "acceso total" ya existente
+  // (mismo criterio que ADMINISTRADOR hoy, sin atarse a una empresa). El
+  // retiro del enum legacy (`ADMINISTRADOR`/`SUPERVISOR`/`ASESOR`/`VENDEDOR`)
+  // en los 17-19 archivos que lo usan NO es parte de este batch — bloqueado
+  // por coordinación con otro equipo.
+  SUPERVISOR_HOLDING
+  SUPER_ADMIN
 
   @@map("rol_usuario")
 }

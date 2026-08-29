@@ -31,6 +31,15 @@ const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
 let contador = 0;
 
+// Bloque D (batch de negociación, punto 2/3 — cutover del pool de `Lead`):
+// `resolveReceptor` valida un `destinoId` explícito contra
+// `findActivosPorRolMembresia`, no `Usuario.rol` — un ASESOR/VENDEDOR de
+// este archivo necesita su `Membresia(rol: ASESOR, activa: true)` en la
+// empresa bootstrap para seguir siendo un destinatario válido en
+// /reasignar y /traspasar (mismo criterio ya aplicado en
+// `asignacion.routes.test.ts::crearUsuarioConToken`).
+const ROLES_CON_MEMBRESIA = new Set(["ASESOR", "VENDEDOR"]);
+
 async function crearUsuarioConToken(
   rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR",
 ): Promise<{ id: string; token: string }> {
@@ -44,6 +53,17 @@ async function crearUsuarioConToken(
       activo: true,
     },
   });
+  if (ROLES_CON_MEMBRESIA.has(rol)) {
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: EMPRESA_BOOTSTRAP_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: true,
+      },
+    });
+  }
   const login = await request(app)
     .post("/api/v1/auth/login")
     .send({ correo: usuario.correo, password: PASSWORD });
@@ -125,8 +145,8 @@ describe("Bloque B (Fase 2) — comparador en sombra en canTransfer (POST /leads
   });
 });
 
-describe("Bloque B (Fase 2) — comparador en sombra en canClose (PATCH /leads/:id/etapa -> VENTA/NO_VENTA)", () => {
-  it("invoca compareCanClose con la decisión legada, sin alterar la respuesta 200", async () => {
+describe("Bloque D (batch de negociación) — canClose RETIRADO de PATCH /leads/:id/etapa -> VENTA/NO_VENTA", () => {
+  it("ya NO invoca compareCanClose — el cierre se retiró en favor de POST /oportunidades/:id/cerrar (D7), 409 en vez de 200", async () => {
     const admin = await crearUsuarioConToken("ADMINISTRADOR");
     const lead = await crearLead({ etapa: "CITA" });
 
@@ -135,12 +155,9 @@ describe("Bloque B (Fase 2) — comparador en sombra en canClose (PATCH /leads/:
       .set("Authorization", `Bearer ${admin.token}`)
       .send({ etapa: "VENTA", montoVenta: 100, productoServicio: "x", formaPago: "CONTADO" });
 
-    expect(respuesta.status).toBe(200);
-    expect(shadowAuthorizationService.compareCanClose).toHaveBeenCalledWith(
-      admin.id,
-      expect.objectContaining({ etapa: "CITA" }),
-      null,
-    );
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body).toMatchObject({ code: "cierre_via_oportunidad" });
+    expect(shadowAuthorizationService.compareCanClose).not.toHaveBeenCalled();
   });
 });
 

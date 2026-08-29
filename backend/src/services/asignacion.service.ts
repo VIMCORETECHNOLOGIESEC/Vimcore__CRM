@@ -26,7 +26,17 @@ import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
 
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+/**
+ * Bloque F (aditivo, decisión cerrada con el usuario): constante LOCAL de
+ * este archivo (no compartida con `leads.access.ts`) -- agregar los dos
+ * roles nuevos acá no afecta `canEdit`/`canRead`, fuera de alcance de F.
+ */
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 /**
  * Group 3 (Bloque C, Etapa 3, design D6): señal interna de "perdí el CAS" —
@@ -207,6 +217,11 @@ export function chooseCandidato(
  * nunca es su propio candidato) → `countCargaActivaPorResponsable` →
  * `cargaActiva = mapa.get(id) ?? 0` (DD8) → `chooseCandidato`. Siempre dentro
  * del `tx` del llamador.
+ *
+ * Bloque D (batch de negociación, punto 2/3): NO se migra en el lugar
+ * (deviation deliberada, ver `selectResponsableEnEmpresa` abajo) — firma
+ * preservada sin cambios porque `whatsappMessages/whatsapp-sla.service.ts`
+ * (prohibido tocar en este batch) llama a esta función tal cual.
  */
 export async function selectResponsable(
   pool: PoolAsignacion,
@@ -222,6 +237,43 @@ export async function selectResponsable(
   const cargas = await leadRepository.countCargaActivaPorResponsable(
     pool,
     candidatosElegibles.map((u) => u.id),
+    tx,
+  );
+
+  const candidatos: CandidatoAsignacion[] = candidatosElegibles.map((u) => ({
+    id: u.id,
+    ultimaAsignacionEn: u.ultimaAsignacionEn,
+    cargaActiva: cargas.get(u.id) ?? 0,
+  }));
+
+  return chooseCandidato(candidatos);
+}
+
+/**
+ * Bloque D (batch de negociación, punto 2 — cutover del pool de `Lead`,
+ * D3/D4): variante NUEVA y scopeada por empresa de `selectResponsable`
+ * (arriba), consumida por `assignAutomatically`/`resolveReceptor` — los
+ * caminos que este batch SÍ migra (asignación automática de "primer
+ * contacto" y las tres rutas manuales `asignar`/`reasignar`/`traspasar`).
+ * `whatsappMessages/whatsapp-sla.service.ts` sigue usando la versión vieja,
+ * sin cambios (prohibido tocar ese archivo en este batch).
+ */
+export async function selectResponsableEnEmpresa(
+  pool: PoolAsignacion,
+  empresaId: string,
+  tx: Prisma.TransactionClient,
+  excluirId?: string,
+): Promise<CandidatoAsignacion | null> {
+  const activos = await usuarioRepository.findActivosPorRolMembresia(pool, empresaId, tx);
+  const candidatosElegibles =
+    excluirId === undefined ? activos : activos.filter((u) => u.id !== excluirId);
+
+  if (candidatosElegibles.length === 0) return null;
+
+  const cargas = await leadRepository.countCargaActivaPorResponsableEnEmpresa(
+    pool,
+    candidatosElegibles.map((u) => u.id),
+    empresaId,
     tx,
   );
 
@@ -508,7 +560,10 @@ export async function assignAutomatically(
   const leadActual = await leadRepository.findById(leadId, tx);
   if (leadActual === null || leadActual.asesorId !== null) return [];
 
-  const candidato = await selectResponsable("ASESOR", tx);
+  // Bloque D (batch de negociación, punto 2 -- D3): pool scopeado a la
+  // empresa del lead, ya no global (`selectResponsableEnEmpresa`, no la
+  // `selectResponsable` original -- ver comentario de esa función).
+  const candidato = await selectResponsableEnEmpresa("ASESOR", leadActual.empresaId, tx);
 
   if (candidato === null) {
     const detalle: DetalleEventoAsignacion = {
@@ -767,6 +822,7 @@ function throwForMotivoDenegacion(motivo: MotivoDenegacion): never {
  */
 async function resolveReceptor(
   pool: PoolAsignacion,
+  empresaId: string,
   tx: Prisma.TransactionClient,
   excluirId: string | undefined,
   destinoId: string | undefined,
@@ -779,7 +835,9 @@ async function resolveReceptor(
         "El destinatario no puede ser el responsable actual",
       );
     }
-    const activos = await usuarioRepository.findActivosPorRol(pool, tx);
+    // Bloque D (punto 2): pool/validación de destino scopeados por empresa
+    // (Membresia), no la variante vieja de `usuario.repository.ts`.
+    const activos = await usuarioRepository.findActivosPorRolMembresia(pool, empresaId, tx);
     const esValido = activos.some((candidato) => candidato.id === destinoId);
     if (!esValido) {
       throw new AppError("destinatario_invalido", 409, "El destinatario indicado no es válido");
@@ -787,7 +845,7 @@ async function resolveReceptor(
     return destinoId;
   }
 
-  const candidato = await selectResponsable(pool, tx, excluirId);
+  const candidato = await selectResponsableEnEmpresa(pool, empresaId, tx, excluirId);
   if (candidato === null) {
     throw new AppError("sin_candidatos", 409, "No hay candidatos disponibles para la asignación");
   }
@@ -818,7 +876,13 @@ export async function assignLead(
         assertLeadAbierto(lead);
 
         const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
-        const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
+        const receptorId = await resolveReceptor(
+          "ASESOR",
+          lead.empresaId,
+          tx,
+          lead.asesorId ?? undefined,
+          destino,
+        );
 
         const assigned = await applyAsignacion(
           {
@@ -943,7 +1007,13 @@ export async function reassignLead(
         if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
         const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
-        const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
+        const receptorId = await resolveReceptor(
+          "ASESOR",
+          lead.empresaId,
+          tx,
+          lead.asesorId ?? undefined,
+          destino,
+        );
 
         const assigned = await applyAsignacion(
           {
@@ -1008,7 +1078,13 @@ export async function transferLead(
         if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
         const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
-        const receptorId = await resolveReceptor("VENDEDOR", tx, lead.vendedorId ?? undefined, destino);
+        const receptorId = await resolveReceptor(
+          "VENDEDOR",
+          lead.empresaId,
+          tx,
+          lead.vendedorId ?? undefined,
+          destino,
+        );
 
         const assigned = await applyAsignacion(
           {

@@ -36,7 +36,18 @@ import {
  */
 const NEGOCIACION_TRANSACTION_BOUNDS: TransactionBounds = { maxWait: 10_000, timeout: 20_000 };
 
-const ROLES_ADMIN: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+// Bloque F (aditivo, decisión cerrada con el usuario): mismo alcance máximo
+// que ADMINISTRADOR/SUPERVISOR para la excepción D9 -- el router
+// (`negociacion.routes.ts`) ya deja pasar estos dos roles vía el bypass
+// centralizado de `require-role.middleware.ts`; esta lista es el chequeo
+// DEFENSIVO redundante dentro del servicio (mismo criterio que el resto de
+// este archivo), así que debe coincidir.
+const ROLES_ADMIN: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 const ETAPAS_CERRADAS: readonly EtapaLead[] = oportunidadRepository.ETAPAS_CERRADAS_OPORTUNIDAD;
 
 /**

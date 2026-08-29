@@ -388,7 +388,12 @@ describe("PATCH /api/v1/leads/:id/etapa — validación de cierre en etapas term
     expect(respuesta.status).toBe(400);
   });
 
-  it("200: VENTA completa (monto+producto+formaPago) fija verde y cierra el lead", async () => {
+  it("409 (cierre_via_oportunidad): VENTA completa (monto+producto+formaPago) ya no se gestiona desde /leads/:id/etapa", async () => {
+    // Bloque D (batch de negociación, decisión documentada, RETIRADO):
+    // `transitionEtapa` ya no cierra VENTA/NO_VENTA — la autoridad de cierre
+    // vive exclusivamente en `POST /oportunidades/:id/cerrar` (D7). Mismo
+    // desenlace ya cubierto en `leads.service.test.ts` a nivel de servicio;
+    // este test verifica que la ruta HTTP responde 409 sin tocar el lead.
     const asesor = await crearUsuarioConToken("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CONTACTADO", semaforo: "AMARILLO" });
 
@@ -397,9 +402,11 @@ describe("PATCH /api/v1/leads/:id/etapa — validación de cierre en etapas term
       .set("Authorization", `Bearer ${asesor.token}`)
       .send({ etapa: "VENTA", montoVenta: 3000, productoServicio: "Plan X", formaPago: "CONTADO" });
 
-    expect(respuesta.status).toBe(200);
-    expect(respuesta.body.lead.etapa).toBe("VENTA");
-    expect(respuesta.body.lead.semaforo).toBe("VERDE");
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.code).toBe("cierre_via_oportunidad");
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(sinCambios.etapa).toBe("CONTACTADO");
+    expect(sinCambios.semaforo).toBe("AMARILLO");
   });
 });
 

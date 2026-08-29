@@ -4,6 +4,21 @@ import { AppError } from "../lib/app-error.js";
 import * as shadowAuthorizationService from "../services/shadow-authorization.service.js";
 
 /**
+ * Bloque F (aditivo, decisión cerrada con el usuario): `SUPERVISOR_HOLDING`/
+ * `SUPER_ADMIN` comparten el mismo alcance máximo — acceso total
+ * holding-wide, sin restricción de `empresaId`. En vez de agregar estos dos
+ * roles a cada lista fija de `requireRole(...)` en los ~17-19 call sites
+ * existentes (retiro/expansión del enum legacy, explícitamente NO parte de
+ * este batch — bloqueado por coordinación con otro equipo), el bypass se
+ * conecta UNA sola vez acá: `requireRole` es el único punto por el que pasan
+ * TODAS las rutas gateadas por rol fijo, así que un bypass acá cubre
+ * `/leads/:id/asignar`, `/leads/asignar-lote`, `/oportunidades/:id/reasignar`,
+ * `/productos` (POST), `/usuarios/*`, `/bridges/*`, etc. sin tocar ninguno de
+ * esos archivos de rutas.
+ */
+const ROLES_HOLDING_BYPASS: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
+
+/**
  * Debe montarse después de `requireAuthentication` — asume `req.user` ya
  * poblado. Rechaza con 403 (no 401: el usuario sí está autenticado, solo le
  * falta permiso) cuando su rol no está en la lista permitida (D9, D10).
@@ -21,6 +36,14 @@ export function requireRole(...roles: RolUsuario[]) {
   ): void {
     if (!req.user) {
       next(new AppError("permiso_denegado", 403, "No tienes permiso para esta acción"));
+      return;
+    }
+
+    // Bloque F: bypass total ANTES del comparador en sombra — no tiene
+    // sentido comparar la decisión legada (`Usuario.rol` contra la lista
+    // fija) para un rol que ni siquiera existía cuando esa lista se escribió.
+    if (ROLES_HOLDING_BYPASS.includes(req.user.rol)) {
+      next();
       return;
     }
 

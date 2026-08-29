@@ -22,7 +22,20 @@ export interface OportunidadAcceso {
   empresaId: string;
 }
 
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+// Bloque F (aditivo, decisión cerrada con el usuario): SUPERVISOR_HOLDING/
+// SUPER_ADMIN comparten el mismo alcance máximo que ADMINISTRADOR/SUPERVISOR
+// acá -- acceso total holding-wide, sin restricción de empresaId. A
+// diferencia de `leads.access.ts` (donde esta lista también la usa
+// `canEdit`, fuera de alcance de F), acá `canReadOportunidad`/
+// `canEditOportunidad` son las DOS únicas funciones que la consumen y ambas
+// están en alcance de este batch, así que se agrega directo sin necesitar
+// una constante separada.
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 function empresaCoincide(usuario: AuthenticatedUser, oportunidad: OportunidadAcceso): boolean {
   return usuario.empresaId === null || usuario.empresaId === oportunidad.empresaId;
