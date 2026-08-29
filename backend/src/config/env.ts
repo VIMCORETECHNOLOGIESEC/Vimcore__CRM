@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+const optionalEnvString = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().min(1).optional(),
+);
+
+const optionalEnvUrl = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().url().optional(),
+);
+
+const LINKEDIN_CORE_VARIABLES = [
+  "LINKEDIN_CLIENT_ID",
+  "LINKEDIN_CLIENT_SECRET",
+  "LINKEDIN_API_VERSION",
+  "LINKEDIN_REDIRECT_URI",
+] as const;
+
+const LINKEDIN_VARIABLES = [
+  ...LINKEDIN_CORE_VARIABLES,
+  "LINKEDIN_API_BASE_URL",
+] as const;
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL es obligatoria"),
   // D8 (Bloque C, Etapa 3): conexión de runtime de la aplicación, distinta
@@ -55,6 +77,67 @@ const envSchema = z.object({
   // que en el resto de los entornos `meta-webhook.service.ts` usa la URL real
   // de Meta sin cambio de comportamiento.
   META_GRAPH_API_BASE_URL: z.string().min(1).optional(),
+  // LinkedIn Lead Sync es opcional en runtime. Docker Compose puede entregar
+  // variables no configuradas como cadenas vacías; se normalizan a undefined
+  // para conservar el arranque sin integración. Si aparece cualquier variable
+  // LinkedIn, el conjunto principal se valida completo más abajo.
+  LINKEDIN_CLIENT_ID: optionalEnvString,
+  LINKEDIN_CLIENT_SECRET: optionalEnvString,
+  LINKEDIN_API_VERSION: optionalEnvString,
+  LINKEDIN_REDIRECT_URI: optionalEnvUrl,
+  // Override exclusivo para tests/QA; producción usa el endpoint oficial.
+  LINKEDIN_API_BASE_URL: optionalEnvUrl,
+  // whatsappMessages: OAuth "Facebook Login for Business" reusa `META_APP_ID`/
+  // `META_APP_SECRET` (misma Meta App que ya sirve los webhooks de Ads
+  // leadgen — WhatsApp Business Platform vive en la misma cuenta de
+  // desarrollador) — solo falta la URL de retorno registrada en el dashboard
+  // de la Meta App para este flujo. Opcional, mismo criterio que
+  // `LINKEDIN_REDIRECT_URI`: si no está configurada, `GET /whatsapp/conectar`
+  // responde 503 en vez de impedir el arranque del proceso — la integración
+  // de WhatsApp es opcional en runtime, igual que LinkedIn Lead Sync.
+  WHATSAPP_OAUTH_REDIRECT_URI: optionalEnvUrl,
+}).superRefine((values, context) => {
+  const linkedinConfigured = LINKEDIN_VARIABLES.some(
+    (variable) => values[variable] !== undefined,
+  );
+
+  if (!linkedinConfigured) {
+    return;
+  }
+
+  for (const variable of LINKEDIN_CORE_VARIABLES) {
+    if (values[variable] === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [variable],
+        message: `${variable} es obligatoria cuando LinkedIn está configurado`,
+      });
+    }
+  }
+
+  if (values.LINKEDIN_REDIRECT_URI === undefined) {
+    return;
+  }
+
+  let redirectUri: URL;
+  try {
+    redirectUri = new URL(values.LINKEDIN_REDIRECT_URI);
+  } catch {
+    // El schema de URL ya informa la ruta precisa de este error.
+    return;
+  }
+  const isHttps = redirectUri.protocol === "https:";
+  const isTestLocalhostHttp = values.NODE_ENV === "test"
+    && redirectUri.protocol === "http:"
+    && redirectUri.hostname === "localhost";
+
+  if (!isHttps && !isTestLocalhostHttp) {
+    context.addIssue({
+      code: "custom",
+      path: ["LINKEDIN_REDIRECT_URI"],
+      message: "LINKEDIN_REDIRECT_URI debe usar HTTPS, salvo HTTP localhost en NODE_ENV=test",
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

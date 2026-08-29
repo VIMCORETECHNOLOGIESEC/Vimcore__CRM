@@ -21,6 +21,10 @@ const TABLAS_TENANT_SCOPED = [
   "campanias",
   "bridge_logs",
   "leads_abiertos_revision_pendiente",
+  "linkedin_conexiones",
+  "linkedin_oauth_states",
+  "linkedin_fuentes",
+  "linkedin_formularios",
 ] as const;
 
 afterAll(async () => {

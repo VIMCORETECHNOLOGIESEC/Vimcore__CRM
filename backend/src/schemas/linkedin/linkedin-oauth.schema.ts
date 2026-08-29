@@ -26,6 +26,14 @@ export const linkedinOAuthCallbackQuerySchema = z
         });
       }
 
+      if (!query.state) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["state"],
+          message: "state es obligatorio cuando LinkedIn informa error",
+        });
+      }
+
       return;
     }
 
