@@ -1,12 +1,15 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import {
+  createEmpresaBodySchema,
   empresaIdParamSchema,
   listEmpresasQuerySchema,
   updateEmpresaAparienciaBodySchema,
   updateEmpresaAparienciaHoldingBodySchema,
 } from "../schemas/empresa-apariencia.schema.js";
 import {
+  createEmpresa,
+  getEmpresaHolding,
   listEmpresas,
   updateApariencia,
   updateAparienciaHolding,
@@ -70,7 +73,7 @@ function archivoFaltante(): AppError {
  */
 export async function postEmpresaAparienciaLogo(req: Request, res: Response): Promise<void> {
   if (!req.user || req.user.sessionScope !== "company" || req.user.empresaId === null) {
-    throw soloEmpresaPropia();
+    throw forbiddenCompanyScope();
   }
 
   if (!req.file) {
@@ -148,4 +151,47 @@ export async function getEmpresas(req: Request, res: Response): Promise<void> {
 
   const resultado = await listEmpresas(parsedQuery.data);
   res.status(200).json(resultado);
+}
+
+/**
+ * `GET /empresas/:empresaId` (pedido explícito de frontend: `EmpresaDetallePage
+ * .tsx` traía las 500 filas de `GET /empresas` y buscaba en memoria en vez de
+ * pedir la empresa puntual). Mismo guard que `GET /empresas` -- exclusivo
+ * sessionScope `holding`, reusa `forbiddenSessionScope`. 404 (vía
+ * `getEmpresaHolding`) si el id no corresponde a ninguna `Empresa`.
+ */
+export async function getEmpresa(req: Request, res: Response): Promise<void> {
+  if (!req.user || req.user.sessionScope !== "holding") {
+    throw forbiddenSessionScope();
+  }
+
+  const parsedParams = empresaIdParamSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidIdParam();
+  }
+
+  const empresa = await getEmpresaHolding(parsedParams.data.empresaId);
+  res.status(200).json(empresa);
+}
+
+/**
+ * `POST /empresas` (alta de empresa nueva): mismo guard que `GET /empresas`
+ * -- exclusivo sessionScope `holding`, solo `ADMINISTRADOR` holding-wide (o
+ * el bypass `SUPERVISOR_HOLDING`/`SUPER_ADMIN` de `require-role.middleware
+ * .ts`) puede crear una `Empresa` nueva. Sin auto-provisioning de
+ * `Membresia` -- ver `services/empresa-apariencia.service.ts::createEmpresa`
+ * para la evidencia completa de por qué no hace falta.
+ */
+export async function postEmpresa(req: Request, res: Response): Promise<void> {
+  if (!req.user || req.user.sessionScope !== "holding") {
+    throw forbiddenSessionScope();
+  }
+
+  const parsedBody = createEmpresaBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw zodValidationError();
+  }
+
+  const empresa = await createEmpresa(parsedBody.data);
+  res.status(201).json(empresa);
 }

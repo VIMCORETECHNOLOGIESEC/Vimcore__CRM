@@ -2,6 +2,7 @@ import { AppError } from "../lib/app-error.js";
 import { uploadImage, type UploadImageInput } from "../lib/azure-blob-storage.js";
 import * as empresaRepository from "../repositories/empresa.repository.js";
 import type {
+  CreateEmpresaBody,
   UpdateEmpresaAparienciaBody,
   UpdateEmpresaAparienciaHoldingBody,
 } from "../schemas/empresa-apariencia.schema.js";
@@ -85,6 +86,10 @@ function toHoldingView(empresa: {
   };
 }
 
+function empresaNoEncontrada(): AppError {
+  return new AppError("empresa_no_encontrada", 404, "La empresa indicada no existe");
+}
+
 /**
  * tema-empresarial-integracion (PASO 8): admin cross-empresa, exclusivo
  * sessionScope `holding` (guard en el controller) -- a diferencia de
@@ -100,7 +105,7 @@ export async function updateAparienciaHolding(
 ): Promise<EmpresaAparienciaHoldingView> {
   const existente = await empresaRepository.findById(empresaId);
   if (!existente) {
-    throw new AppError("empresa_no_encontrada", 404, "La empresa indicada no existe");
+    throw empresaNoEncontrada();
   }
 
   const actualizada = await empresaRepository.updateAparienciaHolding(empresaId, {
@@ -110,6 +115,43 @@ export async function updateAparienciaHolding(
     logoUrl: input.logoUrl,
   });
   return toHoldingView(actualizada);
+}
+
+/**
+ * `GET /empresas/:empresaId` (gap reportado por frontend: `EmpresaDetallePage
+ * .tsx` traía las 500 filas de `GET /empresas` y buscaba en memoria).
+ * Exclusivo sessionScope `holding` (guard en el controller), mismo shape
+ * `EmpresaAparienciaHoldingView` que el resto del módulo. 404 si no existe,
+ * mismo criterio que `updateAparienciaHolding`: el id es arbitrario (viene
+ * de la URL), puede apuntar a una `Empresa` que no existe.
+ */
+export async function getEmpresaHolding(empresaId: string): Promise<EmpresaAparienciaHoldingView> {
+  const existente = await empresaRepository.findById(empresaId);
+  if (!existente) {
+    throw empresaNoEncontrada();
+  }
+  return toHoldingView(existente);
+}
+
+/**
+ * `POST /empresas` (alta de empresa nueva): exclusivo sessionScope `holding`
+ * (guard en el controller, mismo criterio que `GET /empresas`). Sin
+ * auto-provisioning de `Membresia` -- ver el comentario de
+ * `empresa.repository.ts::create` para la evidencia completa de por qué no
+ * hace falta (`docs/blocks/f-retiro-legacy.md`, bypass por `Usuario.rol` ya
+ * holding-wide sin depender de ninguna `Membresia`). Devuelve el mismo shape
+ * `EmpresaAparienciaHoldingView` que el resto del módulo.
+ */
+export async function createEmpresa(
+  input: CreateEmpresaBody,
+): Promise<EmpresaAparienciaHoldingView> {
+  const creada = await empresaRepository.create({
+    nombre: input.nombre,
+    colorPrimario: input.colorPrimario,
+    colorSecundario: input.colorSecundario,
+    logoUrl: input.logoUrl,
+  });
+  return toHoldingView(creada);
 }
 
 export interface ListEmpresasResult {

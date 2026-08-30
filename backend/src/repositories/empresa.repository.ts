@@ -97,6 +97,36 @@ export interface EmpresaListItem {
   logoUrl: string | null;
 }
 
+export interface CreateEmpresaData {
+  nombre: string;
+  colorPrimario?: string | null;
+  colorSecundario?: string | null;
+  logoUrl?: string | null;
+}
+
+/**
+ * `POST /empresas` (alta de empresa nueva, exclusivo sessionScope
+ * `holding`, guard en el controller): sin auto-provisioning de `Membresia`
+ * -- ver `docs/blocks/f-retiro-legacy.md` "Estado real": la autoridad
+ * holding-wide ya está resuelta de forma aditiva vía `Usuario.rol`
+ * (`SUPERVISOR_HOLDING`/`SUPER_ADMIN`, bypass en
+ * `require-role.middleware.ts`), que funciona holding-wide sin depender de
+ * ninguna `Membresia`, ni siquiera en una `Empresa` recién creada. La
+ * alternativa "Membresia auto-provisionada" que ese documento menciona como
+ * candidato quedó explícitamente descartada a favor del bypass por rol.
+ * `select` idéntico a `findAll`/`findById` para devolver el mismo shape
+ * `EmpresaListItem` que el resto de este módulo.
+ */
+export async function create(
+  data: CreateEmpresaData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<EmpresaListItem> {
+  return client.empresa.create({
+    data,
+    select: { id: true, nombre: true, colorPrimario: true, colorSecundario: true, logoUrl: true },
+  });
+}
+
 export interface FindAllOptions {
   skip?: number;
   take?: number;

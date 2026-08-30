@@ -88,3 +88,22 @@ export const listEmpresasQuerySchema = z.object({
   search: z.string().trim().min(1).optional(),
 });
 export type ListEmpresasQuery = z.infer<typeof listEmpresasQuerySchema>;
+
+/**
+ * `POST /empresas` (alta de empresa nueva): mismo guard que `GET /empresas`
+ * -- exclusivo sessionScope `holding` (guard en el controller). `nombre` es
+ * el único campo obligatorio del modelo `Empresa` además de `id`/`creadoEn`
+ * (ambos autogenerados) -- ver `schema.prisma::model Empresa`. Los tres
+ * campos de apariencia son opcionales y nullable, mismo `hexColorSchema`/
+ * `logoUrlSchema` compartidos que el resto de este módulo: una `Empresa`
+ * recién creada normalmente no trae apariencia propia todavía (fallback a
+ * `ConfiguracionEmpresa` holding, ver comentario de `schema.prisma`), pero
+ * nada impide setearla en el alta si el admin ya la tiene a mano.
+ */
+export const createEmpresaBodySchema = z.object({
+  nombre: nombreMarcaSchema,
+  colorPrimario: hexColorSchema.nullable().optional(),
+  colorSecundario: hexColorSchema.nullable().optional(),
+  logoUrl: logoUrlSchema.nullable().optional(),
+});
+export type CreateEmpresaBody = z.infer<typeof createEmpresaBodySchema>;

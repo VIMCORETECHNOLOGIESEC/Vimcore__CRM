@@ -196,3 +196,147 @@ describe("GET /api/v1/empresas", () => {
     expect(respuesta.status).toBe(401);
   });
 });
+
+/**
+ * `POST /empresas` (alta de empresa nueva): mismo guard/criterio de
+ * autorización que `GET /empresas` de arriba -- exclusivo sessionScope
+ * holding, `requireRole("ADMINISTRADOR")` + guard de `sessionScope` en el
+ * controller.
+ */
+describe("POST /api/v1/empresas", () => {
+  it("201 sesión holding crea la Empresa con el shape esperado", async () => {
+    const nombre = `Empresa alta ruta ${randomUUID()}`;
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .post("/api/v1/empresas")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ nombre, colorPrimario: "#7c2d12", colorSecundario: "#f97316" });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body).toMatchObject({
+      nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: null,
+    });
+    expect(typeof respuesta.body.id).toBe("string");
+
+    const enBd = await prisma.empresa.findUnique({ where: { id: respuesta.body.id } });
+    expect(enBd?.nombre).toBe(nombre);
+  });
+
+  it("201 crea la Empresa solo con nombre (apariencia opcional)", async () => {
+    const nombre = `Empresa alta minima ${randomUUID()}`;
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .post("/api/v1/empresas")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ nombre });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body).toEqual({
+      id: respuesta.body.id,
+      nombre,
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+  });
+
+  it("400 sin nombre", async () => {
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .post("/api/v1/empresas")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("403 sesión company (aunque el rol sea ADMINISTRADOR)", async () => {
+    const empresaPropia = await prisma.empresa.create({
+      data: { nombre: `Empresa propia empresas-alta-guard ${randomUUID()}` },
+    });
+    const token = await loginCompanySession(empresaPropia.id, "ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .post("/api/v1/empresas")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ nombre: "No debería crearse" });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401 sin token de acceso", async () => {
+    const respuesta = await request(app).post("/api/v1/empresas").send({ nombre: "Sin token" });
+
+    expect(respuesta.status).toBe(401);
+  });
+});
+
+/**
+ * `GET /empresas/:empresaId` (pedido explícito de frontend, `EmpresaDetallePage
+ * .tsx`): mismo guard/criterio de autorización que `GET /empresas`.
+ */
+describe("GET /api/v1/empresas/:empresaId", () => {
+  it("200 sesión holding trae la Empresa puntual con el shape esperado", async () => {
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa detalle ruta ${randomUUID()}`,
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      },
+    });
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/empresas/${empresa.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({
+      id: empresa.id,
+      nombre: empresa.nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+  });
+
+  it("404 empresa inexistente", async () => {
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/empresas/${randomUUID()}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("403 sesión company (aunque el rol sea ADMINISTRADOR)", async () => {
+    const empresaPropia = await prisma.empresa.create({
+      data: { nombre: `Empresa propia empresas-detalle-guard ${randomUUID()}` },
+    });
+    const token = await loginCompanySession(empresaPropia.id, "ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/empresas/${empresaPropia.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401 sin token de acceso", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa detalle sin token ${randomUUID()}` },
+    });
+
+    const respuesta = await request(app).get(`/api/v1/empresas/${empresa.id}`);
+
+    expect(respuesta.status).toBe(401);
+  });
+});
