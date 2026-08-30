@@ -40,9 +40,9 @@
 | 20 | Edición de usuario | ✅ | Usuarios y Membresías |
 | 21 | Baja de usuario (con reasignación de cartera) | ✅ | Usuarios y Membresías |
 | 22 | Restablecimiento de contraseña | ✅ | Usuarios y Membresías |
-| 23 | Alta de administrador de empresa | ⏳ | Usuarios y Membresías |
+| 23 | Alta de administrador de empresa | 🚧 | Usuarios y Membresías |
 | 24 | Membresía por red social (asesor scopeado por canal) | ⏳ | Usuarios y Membresías |
-| 25 | Tab usuarios holding-wide vs. usuarios por empresa | ⏳ | Usuarios y Membresías |
+| 25 | Tab usuarios holding-wide vs. usuarios por empresa | 🚧 | Usuarios y Membresías |
 | 26 | Gestor de empresas (listado) | ✅ | Gestión de Empresas / Holding |
 | 27 | Gestor de empresas (cards con isotipo) | ✅ | Gestión de Empresas / Holding |
 | 28 | Detalle de empresa (usuarios y bridges de esa empresa) | 🚧 | Gestión de Empresas / Holding |
@@ -396,13 +396,13 @@
 
 ### Alta de administrador de empresa
 
-**Estado**: ⏳ Pendiente (bloqueado por backend)
+**Estado**: 🚧 Frontend construido, pendiente de merge de backend
 
 **Descripción funcional esperada**: Permite que el holding designe a una persona como administradora de una empresa específica del grupo, con acceso acotado a esa empresa únicamente.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: pendiente de que el backend habilite esta vía de creación (hoy solo existe como configuración manual de datos, no como una acción disponible desde la aplicación).
+**Notas técnicas**: commit `a63553c` (local, verificado, pendiente de push a `origin/test/gpt`). `CrearAdministradorEmpresaDialog.tsx` (nuevo, sin campo `rol` — implícito `ADMINISTRADOR`), disparado desde una tercera tarjeta ("Nuevo administrador") en `EmpresaDetallePage.tsx`, contra `POST /empresas/:empresaId/administradores`. Ese endpoint todavía no existe en el backend de `test/gpt` (el schema/servicio correspondiente vive en `origin/main`, pendiente del mismo merge main→test/gpt que el ítem 14) — hasta entonces el diálogo no puede completar el alta contra un backend real. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, Bloque F).
 
 ### Membresía por red social
 
@@ -416,11 +416,13 @@
 
 ### Tab usuarios holding-wide vs. usuarios por empresa
 
-**Estado**: ⏳ Pendiente (bloqueado por backend)
+**Estado**: 🚧 Frontend construido, pendiente de merge de backend
 
 **Descripción funcional esperada**: En el listado de usuarios, separa la vista entre "usuarios del holding" (sin empresa asignada) y "usuarios de la empresa X" cuando se está viendo una empresa en particular.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
+
+**Notas técnicas**: commit `a63553c` (local, verificado, pendiente de push a `origin/test/gpt`). Toggle nuevo en `UsuariosFiltros.tsx`, visible solo para sesión `holding`, contra el parámetro `soloHoldingWide` de `GET /usuarios`. Ese parámetro todavía no existe en el backend de `test/gpt` (vive en `origin/main`, mismo merge pendiente que los ítems 14 y 23) — hasta entonces el toggle no filtra de verdad. De paso, `RolUsuario` (frontend) se amplió a `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (ya existentes en el enum de Prisma), visibles en la tabla y en este filtro. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, Bloque F).
 
 ---
 
