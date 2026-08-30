@@ -89,6 +89,26 @@ it("invalida metricas ante metricas.actualizadas sin caer en el catch-all genér
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["lead-detalle"] });
 });
 
+it("invalida la bandeja de reportes por jobId ante los 3 eventos de reporte, sin catch-all", () => {
+  const context = setup();
+  const invalidate = vi.spyOn(context.client, "invalidateQueries");
+  act(() => {
+    context.options.onEvent({ type: "reporte.iniciado", data: { jobId: "job-1", tipo: "pdf" }, id: "e6" });
+    context.options.onEvent({
+      type: "reporte.listo",
+      data: { jobId: "job-1", archivoUrl: "/api/v1/reportes/jobs/job-1/descargar" },
+      id: "e7",
+    });
+    context.options.onEvent({ type: "reporte.error", data: { jobId: "job-2", error: "boom" }, id: "e8" });
+  });
+  expect(invalidate).toHaveBeenCalledTimes(3);
+  expect(invalidate).toHaveBeenNthCalledWith(1, { queryKey: ["reportes", "job-1"] });
+  expect(invalidate).toHaveBeenNthCalledWith(2, { queryKey: ["reportes", "job-1"] });
+  expect(invalidate).toHaveBeenNthCalledWith(3, { queryKey: ["reportes", "job-2"] });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
+});
+
 it("aborta la conexión vieja al cambiar usuario y al desmontar", () => {
   const context = setup();
   const firstAbort = context.aborts[0];

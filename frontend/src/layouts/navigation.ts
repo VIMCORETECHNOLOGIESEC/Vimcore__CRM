@@ -1,4 +1,4 @@
-import { Building2, Handshake, LayoutDashboard, Palette, Plug, UserCog, Users } from "lucide-react";
+import { Building2, FileText, Handshake, LayoutDashboard, Palette, Plug, UserCog, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
@@ -57,6 +57,12 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     route: "/bridges",
     icon: Plug,
     allowedRoles: ["ADMINISTRADOR"],
+  },
+  {
+    label: "Reportes",
+    route: "/reportes",
+    icon: FileText,
+    allowedRoles: ["ADMINISTRADOR", "SUPERVISOR"],
   },
   {
     label: "Apariencia",

@@ -39,6 +39,16 @@ export function useNotificacionesRealtime(onNuevaNotificacion?: (value: Notifica
         void queryClient.invalidateQueries({ queryKey: ["metricas"] });
         return;
       }
+      if (
+        event.type === "reporte.iniciado" ||
+        event.type === "reporte.listo" ||
+        event.type === "reporte.error"
+      ) {
+        // Bandeja de reportes: clave "reportes" en
+        // funcionalidades/reportes/useReportes.ts (REPORTES_QUERY_KEY).
+        void queryClient.invalidateQueries({ queryKey: ["reportes", event.data.jobId] });
+        return;
+      }
       void queryClient.invalidateQueries({ queryKey: ["notificaciones", userId], exact: true });
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
       void queryClient.invalidateQueries({ queryKey: ["lead-detalle"] });

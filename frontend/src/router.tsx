@@ -15,6 +15,7 @@ import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { LinkedInCallbackPage } from "@/funcionalidades/linkedin/LinkedInCallbackPage";
 import { OportunidadDetallePage } from "@/funcionalidades/oportunidades/detalle/OportunidadDetallePage";
 import { OportunidadesPage } from "@/funcionalidades/oportunidades/OportunidadesPage";
+import { ReportesPage } from "@/funcionalidades/reportes/ReportesPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
 import { WhatsAppCallbackPage } from "@/funcionalidades/whatsapp/WhatsAppCallbackPage";
 import { AppLayout } from "@/layouts/AppLayout";
@@ -117,6 +118,16 @@ export const router = createBrowserRouter([
               { path: "bridges/:id", element: <BridgeDetallePage /> },
               { path: "configuracion-empresa", element: <ConfiguracionEmpresaPage /> },
             ],
+          },
+          {
+            // Exportación de reportes (docs/23 item 15): el backend exige
+            // requireRole("ADMINISTRADOR", "SUPERVISOR") en los 4 endpoints
+            // de /reportes/jobs -- combinación de roles distinta del grupo
+            // ADMINISTRADOR-only de arriba, por eso es su propio grupo.
+            element: (
+              <ProtectedRoute allowedRoles={["ADMINISTRADOR", "SUPERVISOR"]} />
+            ),
+            children: [{ path: "reportes", element: <ReportesPage /> }],
           },
           {
             // Self-service de apariencia de la PROPIA empresa (PASO 8):

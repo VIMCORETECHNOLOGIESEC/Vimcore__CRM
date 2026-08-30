@@ -303,7 +303,26 @@ de modificar código, datos o despliegue:
     negociación) — fase separada, sin arrancar.
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
-- Exportación a Excel o PDF (solo se deja el punto de extensión documentado)
+- Exportación a Excel o PDF (solo se deja el punto de extensión documentado).
+  **Excepción documentada (2026-08-30):** por indicación directa del
+  usuario, docs/23 item 15 ("Exportación de reportes PDF/XLSX") entra en el
+  alcance del despliegue vigente, contra los endpoints ya estables
+  `POST /reportes/jobs`, `GET /reportes/jobs/activo`, `GET /reportes/jobs/:id`
+  y `GET /reportes/jobs/:id/descargar` (`requireRole("ADMINISTRADOR",
+  "SUPERVISOR")`). Frontend nuevo: `funcionalidades/reportes/` (`reportes.api.ts`,
+  `useReportes.ts`, `ReportesPage.tsx`, `EstadoReporteJobBadge.tsx`,
+  `DescargarReporteButton.tsx`) + `tipos/reporte.ts`; ruta `reportes` en
+  `router.tsx` bajo `ProtectedRoute allowedRoles={["ADMINISTRADOR",
+  "SUPERVISOR"]}` (grupo nuevo, distinto del `ADMINISTRADOR`-only existente)
+  e ítem de menú "Reportes" en `layouts/navigation.ts`. Progreso en vivo vía
+  los eventos SSE `reporte.iniciado`/`reporte.listo`/`reporte.error`
+  (extensión aditiva de `notificaciones/notificaciones.sse.ts` y
+  `useNotificacionesRealtime.ts`, mismo mecanismo ya usado para
+  `whatsapp.mensaje-nuevo`), nunca polling. Construido contra el mecanismo
+  de descarga ACTUAL de `test/gpt` (stream autenticado desde disco local,
+  `res.download`) — el commit `ad64e8b` (Azure Blob Storage privado) sigue
+  sin mergear a esta rama, no está cubierto por esta excepción hasta que se
+  integre.
 - Integración con calendarios externos (Google Calendar, Outlook)
 - Notificaciones por correo, SMS o WhatsApp (solo in-app). **Excepción
   documentada (2026-08-30):** `LeadDetallePage.tsx` (commit `34e49db`,
