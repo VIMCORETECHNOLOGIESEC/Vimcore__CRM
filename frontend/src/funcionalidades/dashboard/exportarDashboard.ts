@@ -1,8 +1,12 @@
 import type {
+  MetricasCascadaLeadOportunidad,
   MetricasEmbudo,
+  MetricasEmbudoOportunidad,
   MetricasPorAsesor,
   MetricasPorCampania,
+  MetricasPorProducto,
   MetricasPorRedSocial,
+  MetricasRankingProductoPorEmpresa,
   RedSocialPorSemaforo,
   ResumenMetricas,
 } from "@/tipos/metricas";
@@ -19,6 +23,19 @@ export interface DashboardExportData {
   embudo?: MetricasEmbudo;
   redSocialPorSemaforo?: RedSocialPorSemaforo[];
   leads?: Lead[];
+  /**
+   * docs/23 item 13 -- las 4 métricas de `Oportunidad` ya se pasan desde
+   * `DashboardPage.tsx` (mismo criterio que el resto de campos de esta
+   * interfaz: el dato ya está cargado por `useMetricas.ts`, se reenvía tal
+   * cual). GAP DELIBERADO: `construirTablas`/`construirGraficos` de este
+   * archivo todavía NO leen estos 4 campos -- son datos disponibles para
+   * quien complete esa extensión de Excel/PDF más adelante, no una promesa
+   * de que ya aparecen en el archivo exportado hoy.
+   */
+  embudoOportunidad?: MetricasEmbudoOportunidad;
+  porProducto?: MetricasPorProducto[];
+  cascadaLeadOportunidad?: MetricasCascadaLeadOportunidad;
+  rankingProductosPorEmpresa?: MetricasRankingProductoPorEmpresa[];
 }
 
 export interface DashboardExportContext {

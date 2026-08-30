@@ -18,19 +18,27 @@ import {
 import { FiltroRangoFechas } from "./FiltroRangoFechas";
 import { DashboardExportar } from "./DashboardExportar";
 import { formatFechaLocal } from "./rangoFechas";
+import { CascadaLeadOportunidad } from "./CascadaLeadOportunidad";
 import { GraficoCard } from "./GraficoCard";
 import { GraficoDistribucionSemaforo } from "./GraficoDistribucionSemaforo";
 import { GraficoEmbudo } from "./GraficoEmbudo";
+import { GraficoEmbudoOportunidad } from "./GraficoEmbudoOportunidad";
 import { GraficoPorAsesor } from "./GraficoPorAsesor";
 import { GraficoPorCampania } from "./GraficoPorCampania";
+import { GraficoPorProducto } from "./GraficoPorProducto";
 import { GraficoPorRedSocial } from "./GraficoPorRedSocial";
+import { GraficoRankingProductosPorEmpresa } from "./GraficoRankingProductosPorEmpresa";
 import { GraficoRedSocialPorSemaforo } from "./GraficoRedSocialPorSemaforo";
 import { KpiCard } from "./KpiCard";
 import {
+  useMetricasCascadaLeadOportunidad,
   useMetricasEmbudo,
+  useMetricasEmbudoOportunidad,
   useMetricasPorAsesor,
   useMetricasPorCampania,
+  useMetricasPorProducto,
   useMetricasPorRedSocial,
+  useMetricasRankingProductosPorEmpresa,
   useRedSocialPorSemaforo,
   useResumenMetricas,
 } from "./useMetricas";
@@ -70,6 +78,11 @@ export function DashboardPage() {
   const embudo = useMetricasEmbudo(filtros);
   const porCampania = useMetricasPorCampania(filtros);
   const redSocialPorSemaforo = useRedSocialPorSemaforo(filtros);
+  // docs/23 item 13 -- extensión de dashboard con métricas de `Oportunidad`.
+  const embudoOportunidad = useMetricasEmbudoOportunidad(filtros);
+  const porProducto = useMetricasPorProducto(filtros);
+  const cascadaLeadOportunidad = useMetricasCascadaLeadOportunidad(filtros);
+  const rankingProductosPorEmpresa = useMetricasRankingProductosPorEmpresa(filtros);
   const metricasActualizando = [
     resumen.isFetching,
     porRedSocial.isFetching,
@@ -77,6 +90,10 @@ export function DashboardPage() {
     embudo.isFetching,
     porCampania.isFetching,
     redSocialPorSemaforo.isFetching,
+    embudoOportunidad.isFetching,
+    porProducto.isFetching,
+    cascadaLeadOportunidad.isFetching,
+    rankingProductosPorEmpresa.isFetching,
   ].some(Boolean);
 
   const embudoVacio = !embudo.data || (embudo.data.pasos.every((p) => p.total === 0) && embudo.data.noVenta === 0);
@@ -86,6 +103,10 @@ export function DashboardPage() {
       resumen.data.distribucionSemaforo.amarillo === 0 &&
       resumen.data.distribucionSemaforo.verde === 0 &&
       resumen.data.distribucionSemaforo.sinCalificar === 0);
+  const embudoOportunidadVacio =
+    !embudoOportunidad.data ||
+    (embudoOportunidad.data.pasos.every((p) => p.total === 0) && embudoOportunidad.data.noVenta === 0);
+  const cascadaLeadOportunidadVacia = !cascadaLeadOportunidad.data || cascadaLeadOportunidad.data.leads === 0;
 
   return (
     <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-6">
@@ -129,6 +150,10 @@ export function DashboardPage() {
                 porCampania: porCampania.data,
                 embudo: embudo.data,
                 redSocialPorSemaforo: redSocialPorSemaforo.data,
+                embudoOportunidad: embudoOportunidad.data,
+                porProducto: porProducto.data,
+                cascadaLeadOportunidad: cascadaLeadOportunidad.data,
+                rankingProductosPorEmpresa: rankingProductosPorEmpresa.data,
               }}
               contexto={{
                 rango: rango.preset === "personalizado" ? `${rango.desde} a ${rango.hasta}` : rango.preset,
@@ -294,6 +319,81 @@ export function DashboardPage() {
             </GraficoCard>
           ) : null}
 
+        </div>
+      </section>
+
+      <section aria-labelledby="dashboard-negociacion" className="flex flex-col gap-3">
+        <EncabezadoSeccion
+          id="dashboard-negociacion"
+          titulo="Negociación / producto"
+          descripcion="Embudo y rendimiento de Oportunidad, y qué tan bien convierte cada producto (docs/23 item 13)."
+        />
+        {/*
+          NOTA DE ASIMETRÍA DE FILTROS (a propósito, no un bug): `redSocial`/
+          `campania` de `filtros` son ignorados en silencio por el backend
+          para `embudo-oportunidad`/`por-producto`/`ranking-productos-por-
+          empresa` -- son métricas `Oportunidad`-scoped, sin join a `Lead`.
+          Sí aplican para `cascada-lead-oportunidad`, que está `Lead`-scoped.
+          Ver detalle en `metricas.api.ts`.
+        */}
+        <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.85fr)]">
+          <GraficoCard
+            className="min-w-0"
+            destacado
+            titulo="Embudo de Oportunidad"
+            descripcion="Nuevo → Contactado → Cita → Venta, sobre Oportunidad. No Venta se muestra aparte."
+            isLoading={embudoOportunidad.isLoading}
+            isError={embudoOportunidad.isError}
+            error={embudoOportunidad.error}
+            onRetry={() => void embudoOportunidad.refetch()}
+            vacio={embudoOportunidadVacio}
+          >
+            {embudoOportunidad.data ? <GraficoEmbudoOportunidad datos={embudoOportunidad.data} /> : null}
+          </GraficoCard>
+
+          <GraficoCard
+            className="min-w-0"
+            compacto
+            titulo="Cascada Lead → Oportunidad"
+            descripcion="Leads del período que alguna vez llegaron a Oportunidad / Venta"
+            isLoading={cascadaLeadOportunidad.isLoading}
+            isError={cascadaLeadOportunidad.isError}
+            error={cascadaLeadOportunidad.error}
+            onRetry={() => void cascadaLeadOportunidad.refetch()}
+            vacio={cascadaLeadOportunidadVacia}
+          >
+            {cascadaLeadOportunidad.data ? (
+              <CascadaLeadOportunidad datos={cascadaLeadOportunidad.data} />
+            ) : null}
+          </GraficoCard>
+
+          <GraficoCard
+            className="min-w-0"
+            titulo="Rendimiento por producto"
+            descripcion="Ranking global de oportunidades por producto"
+            isLoading={porProducto.isLoading}
+            isError={porProducto.isError}
+            error={porProducto.error}
+            onRetry={() => void porProducto.refetch()}
+            vacio={!porProducto.data || porProducto.data.length === 0}
+          >
+            {porProducto.data ? <GraficoPorProducto datos={porProducto.data} /> : null}
+          </GraficoCard>
+
+          <GraficoCard
+            className="min-w-0"
+            titulo="Ranking de productos por empresa"
+            descripcion="Una fila por cada par empresa · producto"
+            isLoading={rankingProductosPorEmpresa.isLoading}
+            isError={rankingProductosPorEmpresa.isError}
+            error={rankingProductosPorEmpresa.error}
+            onRetry={() => void rankingProductosPorEmpresa.refetch()}
+            vacio={!rankingProductosPorEmpresa.data || rankingProductosPorEmpresa.data.length === 0}
+          >
+            {rankingProductosPorEmpresa.data ? (
+              <GraficoRankingProductosPorEmpresa datos={rankingProductosPorEmpresa.data} />
+            ) : null}
+          </GraficoCard>
         </div>
       </section>
     </div>

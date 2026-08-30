@@ -270,7 +270,37 @@ de modificar código, datos o despliegue:
   de tenant) ya está implementada por Bloques A-C, pero este comportamiento
   funcional sigue diferido a Bloques D0/D/E/F (ver `docs/blocks/`). No crear
   routing, autorización o dashboards por empresa fuera de la SDD change del
-  bloque correspondiente
+  bloque correspondiente.
+  **Excepción documentada (2026-08-30):** por indicación directa del
+  usuario, Bloque E (dashboards) y el frontend de Bloque D (Oportunidad)
+  entran en el alcance del despliegue vigente, como parte del mismo
+  conjunto de funcionalidades recientes del proyecto:
+  - **Bloque E / docs/23 item 13** (`funcionalidades/dashboard/`):
+    extensión del dashboard con métricas de `Oportunidad` — embudo de
+    Oportunidad, ranking global por producto, cascada Lead→Oportunidad y
+    ranking de productos por empresa (`GET /metricas/embudo-oportunidad`,
+    `/por-producto`, `/cascada-lead-oportunidad`,
+    `/ranking-productos-por-empresa`). El ranking por empresa muestra un
+    aviso visible para sesión holding-wide por un gap conocido de backend
+    (E5, ver `docs/blocks/e-dashboards.md`), sin ocultar la sección.
+  - **Bloque D / Oportunidad, frontend** (`funcionalidades/oportunidades/`
+    + `tipos/oportunidad.ts`, 12 slices, 17 archivos de test/110 tests):
+    máquina de etapas (`NUEVO→CONTACTADO→CITA`, sin saltos a
+    `VENTA`/`NO_VENTA`), listado filtrable con paginación
+    (`OportunidadesPage.tsx`), catálogo de productos gated
+    `ADMINISTRADOR` (`ProductosAdminDialog.tsx`), alta de oportunidad
+    desde un lead (`NuevaOportunidadButton.tsx`), detalle con avance de
+    etapa, cierre de VENTA/NO_VENTA (D7 — 403 inline si el asesor no
+    tiene `habilitadoParaVenta`, sin bypass de admin/supervisor salvo
+    excepción D9) y reasignación admin/supervisor con creación lazy de
+    `Membresia` (D9). Rutas `oportunidades`/`oportunidades/:id` en
+    `router.tsx`, ítem de menú "Oportunidades" en `layouts/navigation.ts`,
+    botón "Nueva oportunidad" en `LeadDetallePage.tsx`. Las reglas de
+    negocio D7/D9 ya estaban implementadas en backend — el frontend solo
+    las consume, no agrega autoridad de cierre ni routing por `Membresia`
+    jerárquica más allá de eso. No incluye dashboards jerárquicos (ver
+    punto anterior) ni el "corte" de `Lead` (retirarle columnas de
+    negociación) — fase separada, sin arrancar.
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado)
