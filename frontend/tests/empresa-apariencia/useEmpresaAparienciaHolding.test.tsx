@@ -113,18 +113,32 @@ describe("useUpdateEmpresaAparienciaHolding", () => {
 });
 
 describe("useEmpresasHolding", () => {
-  it("consulta GET /empresas y devuelve el listado", async () => {
-    const empresas = [
-      { id: "e1", nombre: "Empresa A", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
-    ];
-    fetchEmpresasHoldingApiMock.mockResolvedValue(empresas);
+  it("consulta GET /empresas con los params recibidos y devuelve { items, total }", async () => {
+    const respuesta = {
+      items: [
+        { id: "e1", nombre: "Empresa A", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      ],
+      total: 1,
+    };
+    fetchEmpresasHoldingApiMock.mockResolvedValue(respuesta);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useEmpresasHolding({ page: 1, pageSize: 25 }), {
+      wrapper: crearWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchEmpresasHoldingApiMock).toHaveBeenCalledWith({ page: 1, pageSize: 25 });
+    expect(result.current.data).toEqual(respuesta);
+  });
+
+  it("funciona sin params (usa {})", async () => {
+    fetchEmpresasHoldingApiMock.mockResolvedValue({ items: [], total: 0 });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useEmpresasHolding(), {
       wrapper: crearWrapper(queryClient),
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(fetchEmpresasHoldingApiMock).toHaveBeenCalled();
-    expect(result.current.data).toEqual(empresas);
+    expect(fetchEmpresasHoldingApiMock).toHaveBeenCalledWith({});
   });
 });

@@ -17,16 +17,27 @@ const { fetchEmpresasHoldingApi } = await import(
 const getMock = vi.mocked(httpClient.get);
 
 describe("fetchEmpresasHoldingApi", () => {
-  it("llama a GET /empresas y devuelve el listado tal cual", async () => {
-    const empresas = [
+  it("llama a GET /empresas con page/pageSize/search y devuelve { items, total } tal cual", async () => {
+    const items = [
       { id: "e1", nombre: "Empresa A", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
       { id: "e2", nombre: "Empresa B", colorPrimario: null, colorSecundario: null, logoUrl: null },
     ];
-    getMock.mockResolvedValue(empresas);
+    const respuesta = { items, total: 2 };
+    getMock.mockResolvedValue(respuesta);
 
-    const resultado = await fetchEmpresasHoldingApi();
+    const resultado = await fetchEmpresasHoldingApi({ page: 1, pageSize: 25, search: "emp" });
 
-    expect(getMock).toHaveBeenCalledWith("/empresas");
-    expect(resultado).toEqual(empresas);
+    expect(getMock).toHaveBeenCalledWith("/empresas", {
+      params: { page: 1, pageSize: 25, search: "emp" },
+    });
+    expect(resultado).toEqual(respuesta);
+  });
+
+  it("funciona sin params (usa los defaults del backend: page=1, pageSize=25)", async () => {
+    getMock.mockResolvedValue({ items: [], total: 0 });
+
+    await fetchEmpresasHoldingApi();
+
+    expect(getMock).toHaveBeenCalledWith("/empresas", { params: {} });
   });
 });

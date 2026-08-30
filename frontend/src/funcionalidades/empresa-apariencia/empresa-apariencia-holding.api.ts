@@ -1,4 +1,4 @@
-import { httpClient } from "@/api/httpClient";
+import { httpClient, type QueryParamValue } from "@/api/httpClient";
 
 /**
  * Capa de datos del editor cross-empresa de holding
@@ -29,6 +29,24 @@ export interface UpdateEmpresaAparienciaHoldingInput {
   logoUrl?: string | null;
 }
 
+/**
+ * Query params de `GET /empresas` (paginación server-side, contrato fijo
+ * acordado con el backend -- 1-based `page`, default 1; `pageSize` default
+ * 25; `search` filtra por nombre). A diferencia de `UsuariosQueryParams`
+ * (F7, `pagina`/`limite`/`busqueda`), este endpoint usa nombres en inglés --
+ * no lo homogeneizamos porque el contrato ya está fijo del lado del backend.
+ */
+export interface EmpresasHoldingQueryParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+export interface EmpresasHoldingResponse {
+  items: EmpresaAparienciaHoldingView[];
+  total: number;
+}
+
 /** `PATCH /empresas/:empresaId/apariencia` -- solo sessionScope `holding` + rol `ADMINISTRADOR`. */
 export async function updateEmpresaAparienciaHoldingApi(
   empresaId: string,
@@ -39,10 +57,15 @@ export async function updateEmpresaAparienciaHoldingApi(
 
 /**
  * `GET /empresas` -- solo sessionScope `holding` + rol `ADMINISTRADOR`.
- * Listado de solo lectura de todas las `Empresa` de la instancia, sin
- * filtros, ordenado por nombre (ya resuelto server-side). Alimenta
- * `GestorEmpresasPage.tsx`.
+ * Listado paginado y filtrable de todas las `Empresa` de la instancia,
+ * ordenado por nombre (server-side). `page`/`pageSize`/`search` son
+ * opcionales -- omitirlos deja que el backend aplique sus defaults
+ * (`page=1`, `pageSize=25`). Alimenta `GestorEmpresasPage.tsx`.
  */
-export async function fetchEmpresasHoldingApi(): Promise<EmpresaAparienciaHoldingView[]> {
-  return httpClient.get<EmpresaAparienciaHoldingView[]>("/empresas");
+export async function fetchEmpresasHoldingApi(
+  params: EmpresasHoldingQueryParams = {},
+): Promise<EmpresasHoldingResponse> {
+  return httpClient.get<EmpresasHoldingResponse>("/empresas", {
+    params: params as Record<string, QueryParamValue>,
+  });
 }

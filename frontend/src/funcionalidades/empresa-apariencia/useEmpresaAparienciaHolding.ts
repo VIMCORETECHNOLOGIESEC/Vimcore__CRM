@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   fetchEmpresasHoldingApi,
   updateEmpresaAparienciaHoldingApi,
   type EmpresaAparienciaHoldingView,
+  type EmpresasHoldingQueryParams,
   type UpdateEmpresaAparienciaHoldingInput,
 } from "./empresa-apariencia-holding.api";
 
@@ -16,13 +17,18 @@ export interface UpdateEmpresaAparienciaHoldingVariables {
 export const EMPRESAS_HOLDING_QUERY_KEY = "empresas-holding";
 
 /**
- * Listado del gestor de empresas de holding (PASO 8, `GET /empresas`).
- * Consumido por `GestorEmpresasPage.tsx`.
+ * Listado paginado del gestor de empresas de holding (PASO 8,
+ * `GET /empresas`, contrato server-side `page`/`pageSize`/`search` ->
+ * `{ items, total }`). `keepPreviousData` evita el parpadeo a "cargando" al
+ * cambiar de página o de término de búsqueda, mismo criterio que
+ * `usuarios/useUsuarios.ts::useUsuarios`. Consumido por
+ * `GestorEmpresasPage.tsx`.
  */
-export function useEmpresasHolding() {
+export function useEmpresasHolding(params: EmpresasHoldingQueryParams = {}) {
   return useQuery({
-    queryKey: [EMPRESAS_HOLDING_QUERY_KEY],
-    queryFn: fetchEmpresasHoldingApi,
+    queryKey: [EMPRESAS_HOLDING_QUERY_KEY, params],
+    queryFn: () => fetchEmpresasHoldingApi(params),
+    placeholderData: keepPreviousData,
   });
 }
 
