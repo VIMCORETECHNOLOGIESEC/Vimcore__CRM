@@ -87,21 +87,27 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
  * exclusivo sessionScope holding -- shape idéntico a
  * `EmpresaAparienciaHoldingView` (el mismo tipo que ya devuelve
  * `updateAparienciaHolding`), consumido por `GET /empresas`.
+ *
+ * Gap de paginación (478 filas reales sin límite ni filtro en este entorno):
+ * `listEmpresas` ahora exige `page`/`pageSize` y devuelve `{ items, total }`
+ * -- cada test usa `search` para acotar el resultado a la Empresa que crea,
+ * ya que sin filtro la paginación por defecto podría dejarla fuera de página.
  */
 describe("services/empresa-apariencia — listEmpresas", () => {
   it("incluye una Empresa recién creada con el shape de EmpresaAparienciaHoldingView", async () => {
+    const nombre = `Empresa service listado ${randomUUID()}`;
     const empresa = await prisma.empresa.create({
       data: {
-        nombre: `Empresa service listado ${randomUUID()}`,
+        nombre,
         colorPrimario: "#7c2d12",
         colorSecundario: "#f97316",
         logoUrl: "https://cdn.miempresa.com/logo.svg",
       },
     });
 
-    const listado = await listEmpresas();
+    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre });
 
-    expect(listado).toContainEqual({
+    expect(items).toContainEqual({
       id: empresa.id,
       nombre: empresa.nombre,
       colorPrimario: "#7c2d12",
@@ -111,13 +117,12 @@ describe("services/empresa-apariencia — listEmpresas", () => {
   });
 
   it("incluye una Empresa sin apariencia propia (colores/logo null)", async () => {
-    const empresa = await prisma.empresa.create({
-      data: { nombre: `Empresa service listado sin color ${randomUUID()}` },
-    });
+    const nombre = `Empresa service listado sin color ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({ data: { nombre } });
 
-    const listado = await listEmpresas();
+    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre });
 
-    expect(listado).toContainEqual({
+    expect(items).toContainEqual({
       id: empresa.id,
       nombre: empresa.nombre,
       colorPrimario: null,
@@ -126,9 +131,35 @@ describe("services/empresa-apariencia — listEmpresas", () => {
     });
   });
 
-  it("devuelve un array", async () => {
-    const listado = await listEmpresas();
+  it("devuelve un array en items", async () => {
+    const { items } = await listEmpresas({ page: 1, pageSize: 25 });
 
-    expect(Array.isArray(listado)).toBe(true);
+    expect(Array.isArray(items)).toBe(true);
+  });
+
+  it("pagina: pageSize acota items, total refleja el conteo del search", async () => {
+    const nombreBase = `Empresa service paginacion ${randomUUID()}`;
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} A` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} B` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} C` } });
+
+    const { items, total } = await listEmpresas({ page: 1, pageSize: 2, search: nombreBase });
+
+    expect(items).toHaveLength(2);
+    expect(total).toBe(3);
+  });
+
+  it("search es case-insensitive", async () => {
+    const marca = `MarcaServicio${randomUUID().replace(/-/g, "")}`;
+    await prisma.empresa.create({ data: { nombre: `Empresa ${marca} SA` } });
+
+    const { items, total } = await listEmpresas({
+      page: 1,
+      pageSize: 25,
+      search: marca.toLowerCase(),
+    });
+
+    expect(total).toBe(1);
+    expect(items[0]?.nombre).toContain(marca);
   });
 });

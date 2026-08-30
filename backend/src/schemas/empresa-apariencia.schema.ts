@@ -66,3 +66,25 @@ export type UpdateEmpresaAparienciaHoldingBody = z.infer<
  */
 export const empresaIdParamSchema = z.object({ empresaId: z.uuid() });
 export type EmpresaIdParam = z.infer<typeof empresaIdParamSchema>;
+
+/**
+ * `GET /empresas` (gap: gestor de empresas holding sin paginación --
+ * `findAll` devolvía TODAS las filas de `Empresa`, ilegible con el volumen
+ * real de este entorno). Contrato fijo acordado con el frontend, que ya lo
+ * está implementando en paralelo -- `page`/`pageSize`/`search` en inglés,
+ * a propósito distinto de `pagina`/`limite`/`busqueda` que usa
+ * `usuarios.schema.ts` en el resto del backend; no es una convención nueva
+ * de este módulo, es el contrato pactado para este endpoint puntual.
+ *
+ * `pageSize` tope 100: mismo tope que `usuarios.schema.ts::limite` (F7) --
+ * no hay ningún caso de uso legítimo de gestor de empresas que necesite más
+ * de 100 filas por página, y evita que un `pageSize` arbitrario grande
+ * reintroduzca el mismo problema de ilegibilidad/carga que esta paginación
+ * viene a resolver.
+ */
+export const listEmpresasQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  search: z.string().trim().min(1).optional(),
+});
+export type ListEmpresasQuery = z.infer<typeof listEmpresasQuerySchema>;

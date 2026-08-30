@@ -83,6 +83,8 @@ describe("empresa.repository::updateApariencia", () => {
 // tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
 // exclusivo sessionScope holding consumido por `GET /empresas` -- el guard de
 // autorización vive en el controller, acá solo se prueba la lectura cruda.
+// Gap de paginación (478 filas reales sin límite ni filtro en este entorno):
+// `findAll` devuelve `{ items, total }`, no un array plano.
 describe("empresa.repository::findAll", () => {
   it("incluye una Empresa recién creada con su apariencia completa", async () => {
     const empresa = await prisma.empresa.create({
@@ -94,9 +96,9 @@ describe("empresa.repository::findAll", () => {
       },
     });
 
-    const listado = await empresaRepository.findAll();
+    const { items } = await empresaRepository.findAll();
 
-    expect(listado).toContainEqual(
+    expect(items).toContainEqual(
       expect.objectContaining({
         id: empresa.id,
         nombre: empresa.nombre,
@@ -112,9 +114,9 @@ describe("empresa.repository::findAll", () => {
       data: { nombre: `Empresa repo listado sin color ${randomUUID()}` },
     });
 
-    const listado = await empresaRepository.findAll();
+    const { items } = await empresaRepository.findAll();
 
-    expect(listado).toContainEqual(
+    expect(items).toContainEqual(
       expect.objectContaining({
         id: empresa.id,
         nombre: empresa.nombre,
@@ -125,9 +127,53 @@ describe("empresa.repository::findAll", () => {
     );
   });
 
-  it("devuelve un array (independiente de cuántas Empresa existan)", async () => {
-    const listado = await empresaRepository.findAll();
+  it("devuelve un array en items (independiente de cuántas Empresa existan)", async () => {
+    const { items } = await empresaRepository.findAll();
 
-    expect(Array.isArray(listado)).toBe(true);
+    expect(Array.isArray(items)).toBe(true);
+  });
+
+  it("respeta skip/take para paginar", async () => {
+    const nombreBase = `Empresa repo paginacion ${randomUUID()}`;
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} A` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} B` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} C` } });
+
+    const { items } = await empresaRepository.findAll({
+      where: { nombre: { contains: nombreBase, mode: "insensitive" } },
+      skip: 1,
+      take: 1,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.nombre).toBe(`${nombreBase} B`);
+  });
+
+  it("total refleja el conteo del where, no el tamaño de la página", async () => {
+    const nombreBase = `Empresa repo total ${randomUUID()}`;
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} A` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} B` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} C` } });
+
+    const { items, total } = await empresaRepository.findAll({
+      where: { nombre: { contains: nombreBase, mode: "insensitive" } },
+      skip: 0,
+      take: 1,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(total).toBe(3);
+  });
+
+  it("filtra por where (contains case-insensitive sobre nombre)", async () => {
+    const marca = `MarcaUnica${randomUUID().replace(/-/g, "")}`;
+    await prisma.empresa.create({ data: { nombre: `Empresa ${marca} SA` } });
+
+    const { items, total } = await empresaRepository.findAll({
+      where: { nombre: { contains: marca.toLowerCase(), mode: "insensitive" } },
+    });
+
+    expect(total).toBe(1);
+    expect(items[0]?.nombre).toContain(marca);
   });
 });

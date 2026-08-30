@@ -112,6 +112,11 @@ export async function updateAparienciaHolding(
   return toHoldingView(actualizada);
 }
 
+export interface ListEmpresasResult {
+  items: EmpresaAparienciaHoldingView[];
+  total: number;
+}
+
 /**
  * tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
  * exclusivo sessionScope `holding` (guard en el controller) que alimenta la
@@ -119,7 +124,31 @@ export async function updateAparienciaHolding(
  * porque `empresa.repository.ts::findAll` ya selecciona exactamente esos
  * campos (`toHoldingView` no hace falta acá: no hay transformación de datos,
  * solo lectura acotada).
+ *
+ * Paginación + búsqueda (gap: 478 filas reales sin límite ni filtro, listado
+ * ilegible) -- contrato fijo `{ items, total }` acordado con el frontend.
+ * `search` sobre `nombre` con `mode: "insensitive"` explícito: `Empresa.nombre`
+ * es `@db.Text` (NO `@db.Citext` -- verificado contra `schema.prisma`, citext
+ * en este proyecto solo se usa en columnas `correo`), y de todas formas
+ * `usuarios.service.ts::buildWhere` ya documenta que el `contains` de Prisma
+ * sin `mode` no activa insensibilidad ni siquiera en columnas citext, así que
+ * el `mode` explícito es obligatorio acá independientemente del tipo de
+ * columna.
  */
-export async function listEmpresas(): Promise<EmpresaAparienciaHoldingView[]> {
-  return empresaRepository.findAll();
+export async function listEmpresas(query: {
+  page: number;
+  pageSize: number;
+  search?: string;
+}): Promise<ListEmpresasResult> {
+  const where = query.search
+    ? { nombre: { contains: query.search, mode: "insensitive" as const } }
+    : undefined;
+
+  const { items, total } = await empresaRepository.findAll({
+    where,
+    skip: (query.page - 1) * query.pageSize,
+    take: query.pageSize,
+  });
+
+  return { items, total };
 }
