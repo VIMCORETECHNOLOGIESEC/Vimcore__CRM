@@ -37,13 +37,26 @@ function empresaNotFound(): AppError {
 }
 
 /**
- * D2: mismos dos roles holding-wide incondicionales que
+ * D2: mismos roles holding-wide incondicionales que
  * `require-authentication.middleware.ts::ROLES_ACCESO_TOTAL` — nunca
  * resuelven `TenantContext` vía `Membresia`, así que crear una acá sería
  * muerta (nunca leída) y además violaría `@@unique([usuarioId, empresaId,
  * rol])` si el mismo admin se re-creara alguna vez en otra empresa.
+ *
+ * Bloque F (aditivo, fix de bug real): `SUPERVISOR_HOLDING`/`SUPER_ADMIN`
+ * agregados acá cierran el mismo hueco que tenían `citas.service.ts` y
+ * `conversaciones.access.ts` — sin esto, `createUsuario` tomaba el camino de
+ * `resolveEmpresaId` para estos dos roles y terminaba creando una
+ * `Membresia(rol: ASESOR)` corrupta para un usuario que debería ser
+ * holding-wide sin `Membresia` (mismo alcance máximo que
+ * ADMINISTRADOR/SUPERVISOR).
  */
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 /**
  * D2/backfill (mismo mapeo que `shadow-authorization.service.ts::
@@ -366,18 +379,31 @@ function buildWhere(query: ListUsuariosQuery, actor: AuthenticatedUser): Prisma.
   if (query.rol) where.rol = query.rol;
   if (query.activo !== undefined) where.activo = query.activo;
 
-  // Fix (bug de seguridad): mismo criterio de 3 ramas que
+  // Fix (bug de seguridad): mismo criterio de ramas que
   // `negociacion/producto.service.ts::listarProductos` -- (1) company-scoped:
-  // forzado a su propia empresa vía `Membresia`, el query param se ignora
-  // (anti-escalamiento, `assertUsuarioEnAlcance` arriba aplica el mismo
-  // criterio por id); (2) holding-wide con `query.empresaId`: drill-down
-  // opcional a UNA empresa puntual (`EmpresaDetallePage`); (3) holding-wide
-  // sin `query.empresaId`: sin filtro, ve todo (D2). `activa: true` en ambas
-  // ramas (fix, decisión de equipo): una `Membresia` desactivada saca al
-  // usuario del alcance administrativo de esa empresa, mismo criterio que
+  // forzado a su propia empresa vía `Membresia`, cualquier query param de
+  // empresa/holding se ignora (anti-escalamiento, `assertUsuarioEnAlcance`
+  // arriba aplica el mismo criterio por id); (2) holding-wide con
+  // `query.soloHoldingWide`: SOLO los usuarios sin ninguna `Membresia`
+  // (Bloque F, tarea 2 -- tab de holding-wide del panel); (3) holding-wide
+  // con `query.empresaId`: drill-down opcional a UNA empresa puntual
+  // (`EmpresaDetallePage`); (4) holding-wide sin ninguno de los dos: sin
+  // filtro, ve todo (D2). `activa: true` en las ramas de empresa (fix,
+  // decisión de equipo): una `Membresia` desactivada saca al usuario del
+  // alcance administrativo de esa empresa, mismo criterio que
   // `usuarioRepository.existsEnEmpresa`.
+  //
+  // Decisión de prioridad (mutuamente excluyentes a nivel de intención):
+  // `soloHoldingWide` gana sobre `query.empresaId` si ambos llegan juntos --
+  // representa una selección explícita de modo (el tab "holding-wide" del
+  // panel), mientras que `empresaId` puede quedar como residuo de query
+  // string de un modo anterior (ej. volver del drill-down de una empresa sin
+  // limpiar el query). Silenciar `soloHoldingWide` por un `empresaId`
+  // residual rompería ese tab sin ningún error visible.
   if (actor.empresaId !== null) {
     where.membresias = { some: { empresaId: actor.empresaId, activa: true } };
+  } else if (query.soloHoldingWide) {
+    where.membresias = { none: {} };
   } else if (query.empresaId) {
     where.membresias = { some: { empresaId: query.empresaId, activa: true } };
   }

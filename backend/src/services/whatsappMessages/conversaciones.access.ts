@@ -18,8 +18,20 @@ export interface ConversacionAcceso {
   empresaId: string;
 }
 
-/** Exportado (a diferencia de `leads.access.ts`): `conversaciones.service.ts::buildWhere` lo reusa para el filtro de listado. */
-export const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+/**
+ * Exportado (a diferencia de `leads.access.ts`): `conversaciones.service.ts::buildWhere`
+ * lo reusa para el filtro de listado.
+ *
+ * Bloque F (aditivo): mismo alcance máximo que ADMINISTRADOR/SUPERVISOR,
+ * holding-wide sin atarse a una empresa (mismo patrón que
+ * `metricas.access.ts`/`oportunidad.access.ts`).
+ */
+export const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 function empresaCoincide(usuario: UsuarioAccesoConversacion, conversacion: ConversacionAcceso): boolean {
   return usuario.empresaId === null || usuario.empresaId === conversacion.empresaId;

@@ -13,9 +13,15 @@ import {
   deactivateUsuario,
   findResponsables,
   findUsuarioById,
+  findUsuarios,
 } from "../src/services/usuarios.service.js";
 import type { AuthenticatedUser } from "../src/types/authenticated-user.js";
+import type { ListUsuariosQuery } from "../src/schemas/usuarios.schema.js";
 import type { EtapaLead, RolUsuario } from "@prisma/client";
+
+function queryUsuariosBase(overrides: Partial<ListUsuariosQuery> = {}): ListUsuariosQuery {
+  return { pagina: 1, limite: 100, direccion: "asc", ...overrides };
+}
 
 const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -190,6 +196,41 @@ describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure
         correo: `supervisor-nuevo-${randomUUID()}@integracion.test`,
         password: "clave-supervisor-123456",
         rol: "SUPERVISOR",
+      });
+
+      const membresias = await testAdminPrisma.membresia.findMany({ where: { usuarioId: creado.id } });
+      expect(membresias).toEqual([]);
+    }));
+
+  /**
+   * Bloque F (fix de bug real): antes de este fix, `SUPERVISOR_HOLDING`/
+   * `SUPER_ADMIN` no estaban en el `ROLES_ACCESO_TOTAL` local de
+   * `usuarios.service.ts`, así que `createUsuario` tomaba el camino de
+   * `resolveEmpresaId` para ellos y terminaba creando una
+   * `Membresia(rol: ASESOR)` corrupta -- mismo test que las dos anteriores
+   * (ADMINISTRADOR/SUPERVISOR), ahora extendido a los dos roles holding-wide
+   * nuevos.
+   */
+  it("SUPERVISOR_HOLDING: crea el Usuario SIN ninguna Membresia (holding-wide incondicional, Bloque F)", () =>
+    conContexto(async () => {
+      const creado = await createUsuario(actorHoldingWide, {
+        nombre: "Supervisor Holding Nuevo",
+        correo: `supervisor-holding-nuevo-${randomUUID()}@integracion.test`,
+        password: "clave-supervisor-holding-123456",
+        rol: "SUPERVISOR_HOLDING",
+      });
+
+      const membresias = await testAdminPrisma.membresia.findMany({ where: { usuarioId: creado.id } });
+      expect(membresias).toEqual([]);
+    }));
+
+  it("SUPER_ADMIN: crea el Usuario SIN ninguna Membresia (triangulación: segundo rol holding-wide distinto, Bloque F)", () =>
+    conContexto(async () => {
+      const creado = await createUsuario(actorHoldingWide, {
+        nombre: "Super Admin Nuevo",
+        correo: `super-admin-nuevo-${randomUUID()}@integracion.test`,
+        password: "clave-super-admin-123456",
+        rol: "SUPER_ADMIN",
       });
 
       const membresias = await testAdminPrisma.membresia.findMany({ where: { usuarioId: creado.id } });
@@ -748,5 +789,116 @@ describe("usuarios.service — findResponsables (fix: scope por empresa)", () =>
       const responsables = await findResponsables(actorCompanyScoped, { rol: "ASESOR", empresaId: empresaAjena.id });
 
       expect(responsables.map((r) => r.id)).not.toContain(asesorAjeno.id);
+    }));
+});
+
+/**
+ * Bloque F (tarea 2): cuarto modo de `buildWhere` -- `query.soloHoldingWide`
+ * filtra a los usuarios sin ninguna `Membresia` (`{ membresias: { none: {} } }`),
+ * solo con efecto para un actor holding-wide. Cobertura HTTP end-to-end
+ * (mismo query param a través de `requireRole`/`listUsuariosQuerySchema`)
+ * vive en `tests/usuarios.routes.test.ts`; acá se prueba directo contra el
+ * service, incluido el caso "actor company-scoped lo ignora" que no es
+ * practico de armar por HTTP (requeriría loguear un ADMINISTRADOR
+ * company-scoped vía credencial de Membresia, fuera del alcance de este fix).
+ */
+describe("usuarios.service — findUsuarios: soloHoldingWide (Bloque F, tarea 2)", () => {
+  it("holding-wide con soloHoldingWide=true: solo devuelve usuarios SIN ninguna Membresia", () =>
+    sinRestriccion(async () => {
+      const termino = `SoloHoldingWide-${randomUUID()}`;
+      const sinMembresia = await prisma.usuario.create({
+        data: {
+          nombre: `${termino} Sin Membresia`,
+          correo: `solo-holding-wide-${randomUUID()}@integracion.test`,
+          passwordHash: "hash-no-usado",
+          rol: "SUPERVISOR",
+          activo: true,
+        },
+      });
+      const conMembresia = await prisma.usuario.create({
+        data: {
+          nombre: `${termino} Con Membresia`,
+          correo: `con-membresia-${randomUUID()}@integracion.test`,
+          passwordHash: "hash-no-usado",
+          rol: "ASESOR",
+          activo: true,
+        },
+      });
+      await testAdminPrisma.membresia.create({
+        data: { usuarioId: conMembresia.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", habilitadoParaVenta: false, activa: true },
+      });
+
+      // Aislamiento por `busqueda` (mismo criterio que `usuarios.routes.test.ts`):
+      // la suite completa corre archivos concurrentes contra la misma BD, así
+      // que `limite: 100` por sí solo no garantiza que estos dos usuarios
+      // caigan en la primera página.
+      const resultado = await findUsuarios(
+        actorHoldingWide,
+        queryUsuariosBase({ soloHoldingWide: true, busqueda: termino }),
+      );
+      const ids = resultado.usuarios.map((u) => u.id);
+
+      expect(ids).toContain(sinMembresia.id);
+      expect(ids).not.toContain(conMembresia.id);
+    }));
+
+  it("triangulación: holding-wide SIN soloHoldingWide sigue viendo ambos usuarios (comportamiento previo sin cambios, D2)", () =>
+    sinRestriccion(async () => {
+      const termino = `SinFiltroHolding-${randomUUID()}`;
+      const sinMembresia = await prisma.usuario.create({
+        data: {
+          nombre: `${termino} Sin Membresia`,
+          correo: `sin-filtro-holding-${randomUUID()}@integracion.test`,
+          passwordHash: "hash-no-usado",
+          rol: "SUPERVISOR",
+          activo: true,
+        },
+      });
+      const conMembresia = await prisma.usuario.create({
+        data: {
+          nombre: `${termino} Con Membresia`,
+          correo: `sin-filtro-con-membresia-${randomUUID()}@integracion.test`,
+          passwordHash: "hash-no-usado",
+          rol: "ASESOR",
+          activo: true,
+        },
+      });
+      await testAdminPrisma.membresia.create({
+        data: { usuarioId: conMembresia.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", habilitadoParaVenta: false, activa: true },
+      });
+
+      const resultado = await findUsuarios(actorHoldingWide, queryUsuariosBase({ busqueda: termino }));
+      const ids = resultado.usuarios.map((u) => u.id);
+
+      expect(ids).toContain(sinMembresia.id);
+      expect(ids).toContain(conMembresia.id);
+    }));
+
+  it("actor company-scoped: soloHoldingWide=true se ignora, sigue forzado a su propia empresa", () =>
+    conContexto(async () => {
+      const termino = `CompanyScopedIgnora-${randomUUID()}`;
+      const asesorPropio = await prisma.usuario.create({
+        data: {
+          nombre: `${termino} Asesor Propio`,
+          correo: `company-scoped-ignora-${randomUUID()}@integracion.test`,
+          passwordHash: "hash-no-usado",
+          rol: "ASESOR",
+          activo: true,
+        },
+      });
+      await testAdminPrisma.membresia.create({
+        data: { usuarioId: asesorPropio.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", habilitadoParaVenta: false, activa: true },
+      });
+
+      const resultado = await findUsuarios(
+        actorCompanyScoped,
+        queryUsuariosBase({ soloHoldingWide: true, busqueda: termino }),
+      );
+      const ids = resultado.usuarios.map((u) => u.id);
+
+      // El actor company-scoped ve su propio usuario (con Membresia) pese a
+      // soloHoldingWide=true -- la rama `actor.empresaId !== null` corta
+      // antes de mirar el query param (buildWhere, primera rama).
+      expect(ids).toContain(asesorPropio.id);
     }));
 });

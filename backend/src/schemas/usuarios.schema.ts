@@ -75,6 +75,14 @@ export const listUsuariosQuerySchema = z.object({
   // company-scoped lo ignora por completo (`usuarios.service.ts::buildWhere`
   // fuerza su propia empresa sin importar este valor).
   empresaId: z.uuid().optional(),
+  // Bloque F (tarea 2, cuarto modo de `buildWhere`): solo tiene efecto para
+  // una sesión holding-wide -- pide ver ÚNICAMENTE los usuarios sin ninguna
+  // `Membresia` (ADMINISTRADOR/SUPERVISOR/SUPERVISOR_HOLDING/SUPER_ADMIN),
+  // para el tab correspondiente del panel de holding. Mutuamente excluyente
+  // con `empresaId` a nivel de intención -- ver el criterio de prioridad en
+  // `usuarios.service.ts::buildWhere`. Una sesión company-scoped lo ignora
+  // por completo (ya forzada a su propia empresa).
+  soloHoldingWide: z.coerce.boolean().optional(),
   rol: z.enum(RolUsuario).optional(),
   // `z.coerce.boolean()` NO sirve acá: `Boolean("false")` es `true` — un
   // `?activo=false` literal se leería como `true`. `z.enum` + `transform`
