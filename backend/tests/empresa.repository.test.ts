@@ -79,3 +79,55 @@ describe("empresa.repository::updateApariencia", () => {
     expect(actualizada.colorSecundario).toBeNull();
   });
 });
+
+// tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
+// exclusivo sessionScope holding consumido por `GET /empresas` -- el guard de
+// autorización vive en el controller, acá solo se prueba la lectura cruda.
+describe("empresa.repository::findAll", () => {
+  it("incluye una Empresa recién creada con su apariencia completa", async () => {
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa repo listado ${randomUUID()}`,
+        colorPrimario: "#111111",
+        colorSecundario: "#222222",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      },
+    });
+
+    const listado = await empresaRepository.findAll();
+
+    expect(listado).toContainEqual(
+      expect.objectContaining({
+        id: empresa.id,
+        nombre: empresa.nombre,
+        colorPrimario: "#111111",
+        colorSecundario: "#222222",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      }),
+    );
+  });
+
+  it("incluye una Empresa sin apariencia propia (colores/logo null)", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa repo listado sin color ${randomUUID()}` },
+    });
+
+    const listado = await empresaRepository.findAll();
+
+    expect(listado).toContainEqual(
+      expect.objectContaining({
+        id: empresa.id,
+        nombre: empresa.nombre,
+        colorPrimario: null,
+        colorSecundario: null,
+        logoUrl: null,
+      }),
+    );
+  });
+
+  it("devuelve un array (independiente de cuántas Empresa existan)", async () => {
+    const listado = await empresaRepository.findAll();
+
+    expect(Array.isArray(listado)).toBe(true);
+  });
+});

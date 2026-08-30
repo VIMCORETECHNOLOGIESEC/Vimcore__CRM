@@ -55,7 +55,7 @@ describe("foregroundForContrast", () => {
 const holdingPersonalizado = { colorPrimario: "#134e4a", colorSecundario: "#10b981" };
 
 describe("resolveEstilosMarca", () => {
-  it("nivel 1 -- sesion company con ambos colores propios seteados devuelve las 8 variables de acento (ignora el holding)", () => {
+  it("nivel 1 -- sesion company con ambos colores propios seteados devuelve las 12 variables de acento (ignora el holding)", () => {
     const estilos = resolveEstilosMarca(usuarioBase, holdingPersonalizado);
     expect(estilos).toEqual({
       "--primary": "249 115 22",
@@ -65,7 +65,24 @@ describe("resolveEstilosMarca", () => {
       "--sidebar-primary-foreground": "30 42 94",
       "--sidebar-accent": "249 115 22",
       "--sidebar-accent-foreground": "30 42 94",
+      // --sidebar* deriva de colorPrimario (#7c2d12 -> "124 45 18"), no de colorSecundario.
+      "--sidebar": "124 45 18",
+      "--sidebar-foreground": "255 255 255",
+      "--sidebar-border": "255 255 255",
+      "--sidebar-ring": "255 255 255",
     });
+  });
+
+  it("nivel 1 -- colorPrimario claro hace que --sidebar-foreground/border/ring caigan al texto oscuro del tema (WCAG AA)", () => {
+    // #fafaf5 ("250 250 245"): blanco da ~1.02:1, falla AA -- debe caer al
+    // oscuro, mismo caso límite que ya se prueba arriba para colorSecundario
+    // en `foregroundForContrast`, ahora sobre el camino de --sidebar*.
+    const usuario = { ...usuarioBase, empresaColorPrimario: "#fafaf5" };
+    const estilos = resolveEstilosMarca(usuario, holdingPersonalizado);
+    expect(estilos?.["--sidebar"]).toBe("250 250 245");
+    expect(estilos?.["--sidebar-foreground"]).toBe("30 42 94");
+    expect(estilos?.["--sidebar-border"]).toBe("30 42 94");
+    expect(estilos?.["--sidebar-ring"]).toBe("30 42 94");
   });
 
   it("nivel 2 -- sesion holding usa el color EN VIVO de configuracion-empresa cuando llegó", () => {
@@ -81,6 +98,11 @@ describe("resolveEstilosMarca", () => {
       "--sidebar-primary-foreground": "30 42 94",
       "--sidebar-accent": "16 185 129",
       "--sidebar-accent-foreground": "30 42 94",
+      // holdingPersonalizado.colorPrimario = "#134e4a" -> "19 78 74".
+      "--sidebar": "19 78 74",
+      "--sidebar-foreground": "255 255 255",
+      "--sidebar-border": "255 255 255",
+      "--sidebar-ring": "255 255 255",
     });
   });
 
@@ -97,6 +119,10 @@ describe("resolveEstilosMarca", () => {
       "--sidebar-primary-foreground": "30 42 94",
       "--sidebar-accent": "16 185 129",
       "--sidebar-accent-foreground": "30 42 94",
+      "--sidebar": "19 78 74",
+      "--sidebar-foreground": "255 255 255",
+      "--sidebar-border": "255 255 255",
+      "--sidebar-ring": "255 255 255",
     });
   });
 
@@ -113,6 +139,11 @@ describe("resolveEstilosMarca", () => {
       "--sidebar-primary-foreground": "255 255 255",
       "--sidebar-accent": "37 99 235",
       "--sidebar-accent-foreground": "255 255 255",
+      // CONFIGURACION_EMPRESA_DEFAULT.colorPrimario = "--vimcore" = "30 42 94".
+      "--sidebar": "30 42 94",
+      "--sidebar-foreground": "255 255 255",
+      "--sidebar-border": "255 255 255",
+      "--sidebar-ring": "255 255 255",
     });
   });
 

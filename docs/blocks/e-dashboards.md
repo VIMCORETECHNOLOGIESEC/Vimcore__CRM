@@ -22,13 +22,56 @@ sobre `metricas.service.ts` existente, sin duplicar agregación); módulo
 desde `Membresia`, nunca del cliente); módulo `metaAds` (OAuth de cuenta de
 anuncios, mismo patrón de 4 pasos que WhatsApp, cubre Facebook e Instagram
 con una sola conexión, más el job de sincronización real de
-`CampaniaMetricaDiaria` — CPC/CPL/CAC ya no son estimados).
+`CampaniaMetricaDiaria` — CPC/CPL/CAC ya no son estimados). Excepción: ranking
+de productos por empresa (ítem 5 de "Extensiones de dashboard" abajo) tiene
+un test en rojo tras el merge a `test/gpt` — ver "Hallazgo (2026-08-30)" más
+abajo, no cuenta todavía como cerrado.
 
 **Pendiente, fuera de este backend**: los componentes de frontend
 (`GraficoEmbudoOportunidad.tsx`, `GraficoPorProducto.tsx`, UI de reportes,
 UI de conexión de Meta Ads) — ver `docs/contrato-frontend-general.md`
 (distribuido aparte, no vive en el repo). Desglose por empresa en reportes
-holding-wide sigue como TODO explícito en el código, no implementado.
+holding-wide (el PDF/XLSX, `pdf-reporte.ts`) sigue como TODO explícito en el
+código, no implementado — distinto del hallazgo de abajo, que es sobre el
+ranking de productos, no sobre el módulo de reportes.
+
+## Hallazgo (2026-08-30) — `getRankingProductosPorEmpresa` (E5) en rojo
+
+Tras integrar `dev-mateo` a `test/gpt` (merge `aeb0ad5`, 1203/1204 tests),
+queda un test en rojo:
+
+```
+tests/metricas.service.test.ts
+services/metricas.service — getRankingProductosPorEmpresa (E5)
+  ✗ agrupa por (empresa, producto) — un administrador holding-wide ve el
+    desglose de cada empresa por separado
+
+AssertionError: expected undefined to be '335b0f52-...'
+  expect(filaEmpresaB?.empresaId).toBe(empresaB.id);
+```
+
+Un admin holding-wide no ve la fila de la segunda empresa en el ranking de
+productos — la primera empresa (bootstrap) sale bien, la segunda no aparece.
+
+**No es el mismo gap que el TODO de arriba** (`pdf-reporte.ts`, desglose por
+empresa en reportes PDF/XLSX — módulo `reportes`, función `getResumenPorEmpresa`
+que no existe todavía). Este es un caso nuevo, en `metricas.service.ts`, en
+algo que la sección "Estado real" de arriba daba por cerrado y probado.
+
+**Pistas investigadas y descartadas** (para no repetir el mismo camino):
+`getRankingProductosPorEmpresa` no envuelve sus queries en
+`prisma.$transaction`, a diferencia de funciones hermanas del mismo archivo —
+se investigó como posible causa (falta de GUCs de tenant para RLS) y se
+descartó: la extensión `$allOperations` de `lib/prisma.ts` aplica esos GUCs
+automáticamente en toda llamada directa de modelo (`groupBy`, `findMany`),
+el `$transaction` manual en las otras funciones es solo por usar `$queryRaw`.
+Confirmado además que el mecanismo holding-wide de fondo funciona
+(`tests/rls-tenant-context.test.ts`, "empresaId null lee leads de más de una
+empresa"), así que el problema es específico de esta ruta/función, no del
+aislamiento multi-tenant en general.
+
+**Estado**: ownership tomado por Mateo (2026-08-30), reproduciendo con
+request real en vez de solo lectura de código.
 
 ## Alcance
 

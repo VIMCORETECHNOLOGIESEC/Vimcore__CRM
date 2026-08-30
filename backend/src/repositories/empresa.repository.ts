@@ -45,3 +45,55 @@ export async function updateApariencia(
 ): Promise<Empresa> {
   return client.empresa.update({ where: { id }, data });
 }
+
+export interface UpdateEmpresaAparienciaHoldingData {
+  nombre?: string;
+  colorPrimario?: string | null;
+  colorSecundario?: string | null;
+  logoUrl?: string | null;
+}
+
+/**
+ * tema-empresarial-integracion (PASO 8): admin cross-empresa, exclusivo
+ * sessionScope `holding` (`services/empresa-apariencia.service.ts::
+ * updateAparienciaHolding`) -- separada de `updateApariencia` arriba a
+ * propósito: ese caso de uso exige ambos colores completos en cada PATCH,
+ * este es parcial y además escribe `nombre`. `id` viene del `:empresaId` de
+ * la URL (nunca del body/sesión) -- mecánica pura de Prisma, la autoridad
+ * (guard `sessionScope === "holding"`) vive en el controller, nunca acá.
+ */
+export async function updateAparienciaHolding(
+  id: string,
+  data: UpdateEmpresaAparienciaHoldingData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Empresa> {
+  return client.empresa.update({ where: { id }, data });
+}
+
+export interface EmpresaListItem {
+  id: string;
+  nombre: string;
+  colorPrimario: string | null;
+  colorSecundario: string | null;
+  logoUrl: string | null;
+}
+
+/**
+ * tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
+ * completo de `Empresa` para `GET /empresas` -- exclusivo sessionScope
+ * `holding` (guard en el controller, nunca acá). `empresas` NO tiene RLS
+ * (mismo comentario que `findById`), así que esta lectura no requiere
+ * `TenantContext`. `select` explícito para no filtrar campos de otros
+ * módulos (leads/usuarios/bridges no viven en esta tabla, pero cualquier
+ * columna futura de `Empresa` ajena a apariencia tampoco debe filtrarse acá
+ * sin decisión explícita). Orden estable por `nombre` para que el listado no
+ * dependa del orden de inserción.
+ */
+export async function findAll(
+  client: PrismaClientOrTransaction = prisma,
+): Promise<EmpresaListItem[]> {
+  return client.empresa.findMany({
+    select: { id: true, nombre: true, colorPrimario: true, colorSecundario: true, logoUrl: true },
+    orderBy: { nombre: "asc" },
+  });
+}
