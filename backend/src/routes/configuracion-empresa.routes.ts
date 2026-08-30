@@ -2,9 +2,11 @@ import { Router } from "express";
 import {
   getConfiguracionEmpresa,
   patchConfiguracionEmpresa,
+  postConfiguracionEmpresaLogo,
 } from "../controllers/configuracion-empresa.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../middlewares/require-role.middleware.js";
+import { uploadLogoMiddleware } from "../middlewares/upload-logo.middleware.js";
 
 export const configuracionEmpresaRouter = Router();
 
@@ -23,4 +25,16 @@ configuracionEmpresaRouter.patch(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   patchConfiguracionEmpresa,
+);
+
+// Subida de isotipo (logo) real como archivo, adicional al `logoUrl` de
+// texto libre del PATCH de arriba (que sigue intacto). Mismo rol exclusivo
+// ADMINISTRADOR. `uploadLogoMiddleware` (Multer, `memoryStorage`) parsea el
+// multipart y valida tipo/tamaño antes del controller.
+configuracionEmpresaRouter.post(
+  "/configuracion-empresa/logo",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  uploadLogoMiddleware,
+  postConfiguracionEmpresaLogo,
 );

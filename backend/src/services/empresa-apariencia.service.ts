@@ -1,4 +1,5 @@
 import { AppError } from "../lib/app-error.js";
+import { uploadImage, type UploadImageInput } from "../lib/azure-blob-storage.js";
 import * as empresaRepository from "../repositories/empresa.repository.js";
 import type {
   UpdateEmpresaAparienciaBody,
@@ -40,6 +41,23 @@ export async function updateApariencia(
     colorSecundario: input.colorSecundario,
     logoUrl: input.logoUrl,
   });
+  return toView(actualizada);
+}
+
+/**
+ * `POST /empresas/actual/apariencia/logo`: mismo guard self-service que
+ * `updateApariencia` arriba (guarda en el controller). Sube el archivo a
+ * Azure Blob Storage y persiste solo `logoUrl` -- a propósito NO reusa
+ * `updateApariencia` (que exige ambos colores completos en el body): este
+ * flujo nunca conoce los colores actuales de la empresa, y forzarlos aquí
+ * arriesgaría pisarlos con `null` en cada subida de logo.
+ */
+export async function uploadEmpresaLogo(
+  empresaId: string,
+  archivo: UploadImageInput,
+): Promise<EmpresaAparienciaView> {
+  const logoUrl = await uploadImage(archivo);
+  const actualizada = await empresaRepository.updateLogo(empresaId, logoUrl);
   return toView(actualizada);
 }
 

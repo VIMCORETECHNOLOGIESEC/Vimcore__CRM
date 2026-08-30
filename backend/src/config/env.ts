@@ -111,6 +111,18 @@ const envSchema = z.object({
   // documentado; anotado en el reporte del batch como limitación conocida en
   // un despliegue multi-réplica.
   REPORTES_STORAGE_DIR: z.string().min(1).default("storage/reportes"),
+  // logo upload (isotipo de empresa, `lib/azure-blob-storage.ts`): cadena de
+  // conexión de la Storage Account de Azure Blob Storage donde se persisten
+  // los isotipos subidos. Opcional en runtime, mismo criterio que
+  // `WHATSAPP_OAUTH_REDIRECT_URI`/`META_ADS_OAUTH_REDIRECT_URI`: si falta, los
+  // endpoints `POST .../logo` responden 503 en vez de impedir el arranque del
+  // proceso completo -- la subida de isotipo es una integración opcional, no
+  // core del producto.
+  AZURE_STORAGE_CONNECTION_STRING: optionalEnvString,
+  // Nombre del contenedor blob donde se guardan los isotipos. Con default
+  // razonable -- a diferencia de la cadena de conexión, este valor no es un
+  // secreto y no hay motivo para exigirlo explícitamente en cada entorno.
+  AZURE_STORAGE_CONTAINER_ISOTIPOS: z.string().min(1).default("isotipos"),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,
