@@ -104,6 +104,32 @@ describe("services/leads.access — canTransfer (M6, DD9/D8)", () => {
     const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: "vendedor-v", empresaId: EMPRESA_A, etapa: "CITA" };
     expect(canTransfer(usuario(OTRO, "ASESOR"), lead)).toBe("no_es_titular");
   });
+
+  /**
+   * Fix (bug P0, docs/16-hallazgos-y-preguntas.md §4.4: "Admin y supervisor
+   * pueden entregar a vendedor un lead sin asesor" -- confirmado reproducible
+   * con el modelo actual de `habilitadoParaVenta`): un lead puede avanzar de
+   * etapa sin `asesorId` nunca asignado porque `canEdit` deja editar
+   * cualquier lead a Admin/Supervisor sin importar el responsable. Antes de
+   * este fix, la excepción de acceso total de `canTransfer` no exigía
+   * `asesorId !== null`, así que ese lead sin gestión previa podía entregarse
+   * directo a un vendedor.
+   */
+  it("fix P0: Administrador NO puede traspasar un lead SIN asesor previo (asesorId null) fuera de NUEVO", () => {
+    const lead: LeadTraspaso = { asesorId: null, vendedorId: null, empresaId: EMPRESA_A, etapa: "CONTACTADO" };
+    expect(canTransfer(usuario(OTRO, "ADMINISTRADOR"), lead)).toBe("sin_asesor_previo");
+  });
+
+  it("fix P0 (triangulación): Supervisor tampoco puede traspasar un lead sin asesor previo, en una etapa distinta (CITA)", () => {
+    const lead: LeadTraspaso = { asesorId: null, vendedorId: null, empresaId: EMPRESA_A, etapa: "CITA" };
+    expect(canTransfer(usuario(OTRO, "SUPERVISOR"), lead)).toBe("sin_asesor_previo");
+  });
+
+  it("fix P0: con asesorId presente, Administrador/Supervisor vuelven a traspasar sin restricción (sin regresión sobre 10b)", () => {
+    const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, etapa: "CONTACTADO" };
+    expect(canTransfer(usuario(OTRO, "ADMINISTRADOR"), lead)).toBeNull();
+    expect(canTransfer(usuario(OTRO, "SUPERVISOR"), lead)).toBeNull();
+  });
 });
 
 describe("services/leads.access — canClose responsable operativo (companion, D1-D3, memoria #82)", () => {
@@ -163,6 +189,12 @@ describe("services/leads.access — bypass holding-wide SUPERVISOR_HOLDING/SUPER
   it("canTransfer: la compuerta de etapa NUEVO sigue aplicando incluso a SUPERVISOR_HOLDING/SUPER_ADMIN (es una regla del lead, no del actor)", () => {
     const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, etapa: "NUEVO" };
     expect(canTransfer(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBe("etapa_no_traspasable");
+  });
+
+  it("fix P0 (docs/16 §4.4): el gate 'sin asesor previo' también aplica a SUPERVISOR_HOLDING/SUPER_ADMIN, sin excepción para los roles holding", () => {
+    const lead: LeadTraspaso = { asesorId: null, vendedorId: null, empresaId: EMPRESA_A, etapa: "CONTACTADO" };
+    expect(canTransfer(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBe("sin_asesor_previo");
+    expect(canTransfer(usuario(OTRO, "SUPER_ADMIN"), lead)).toBe("sin_asesor_previo");
   });
 
   it("canClose: SUPERVISOR_HOLDING/SUPER_ADMIN cierran sin chequeo de titularidad, a diferencia de SUPERVISOR (que nunca cierra hoy)", () => {

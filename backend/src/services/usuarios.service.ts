@@ -87,14 +87,34 @@ function noCandidateToReassign(): AppError {
 }
 
 /**
- * M2: solo `ASESOR`/`VENDEDOR` tienen cartera de leads (`asesorId`/
- * `vendedorId`) — `ADMINISTRADOR`/`SUPERVISOR` nunca son responsables de un
- * lead, así que su baja nunca necesita reasignación.
+ * M2, revisado por el cutover de Bloque D (D5, docs/16 §4.2: "se elimina el
+ * rol Vendedor separado — cada asesor tiene un atributo 'habilitado para
+ * venta'"): los dos pools de cartera de `Lead` que `deactivateUsuario` (abajo)
+ * siempre intenta reasignar. `ADMINISTRADOR`/`SUPERVISOR`/holding nunca son
+ * responsables de un lead, así que ambas búsquedas de cartera dan vacío para
+ * ellos sin necesidad de una gate por `Usuario.rol` previa.
+ *
+ * Fix (bug real, no solo drift futuro): ANTES, el pool a reasignar salía de
+ * `POOL_BY_ROL[usuario.rol]` -- un mapa 1:1 sobre el enum LEGADO
+ * `Usuario.rol` (`ASESOR` u `VENDEDOR` como valores separados). Eso era
+ * incorrecto incluso HOY, antes de cualquier cutover de frontend: desde que
+ * `asignacion.service.ts::selectResponsableEnEmpresa` resuelve el pool
+ * `ASESOR` vía `Membresia(rol: ASESOR)` SIN filtrar por
+ * `habilitadoParaVenta` (ver ese archivo), un asesor habilitado para venta
+ * (`Usuario.rol` legado = `VENDEDOR`) es candidato válido del pool `ASESOR`
+ * de asignación inicial Y del pool `VENDEDOR` de traspaso a la vez -- puede
+ * terminar con cartera abierta en AMBAS columnas FK (`Lead.asesorId` para
+ * leads que nunca traspasó, `Lead.vendedorId` para los que sí). El mapa viejo
+ * elegía UN solo pool según el rol nominal y dejaba la cartera del otro
+ * huérfana (FK apuntando a un usuario ya inactivo, sin reasignar ni
+ * rechazar la baja). `findCarteraAbierta` (por columna FK real) es la fuente
+ * de verdad correcta -- no hace falta consultar `Usuario.rol` ni `Membresia`
+ * para decidir qué pool(s) aplican, solo para resolver los candidatos de
+ * reemplazo (ver el loop en `deactivateUsuario`, ya migrado a
+ * `findActivosPorRolMembresia`/`countCargaActivaPorResponsableEnEmpresa` --
+ * mismas funciones que `asignacion.service.ts`, Bloque D).
  */
-const POOL_BY_ROL: Partial<Record<RolUsuario, PoolAsignacion>> = {
-  ASESOR: "ASESOR",
-  VENDEDOR: "VENDEDOR",
-};
+const POOLS_DE_CARTERA: readonly PoolAsignacion[] = ["ASESOR", "VENDEDOR"];
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -500,15 +520,18 @@ export async function findResponsables(
  * D3 + M2 (baja lógica con reasignación obligatoria de cartera activa):
  * transaccional de punta a punta —
  *   1. lee el usuario (404 si no existe).
- *   2. si su rol tiene cartera (`ASESOR`/`VENDEDOR`) y esa cartera abierta no
- *      está vacía, resuelve los candidatos activos del pool y su carga
- *      activa con UNA sola consulta de cada una (no una por lead — hallazgo
+ *   2. por cada pool de cartera (`POOLS_DE_CARTERA` — siempre los dos,
+ *      `ASESOR` y `VENDEDOR`, ver comentario de esa constante) cuya cartera
+ *      abierta no esté vacía, resuelve los candidatos activos vía `Membresia`
+ *      (`findActivosPorRolMembresia`/`countCargaActivaPorResponsableEnEmpresa`
+ *      — mismas funciones Membresia-based que `asignacion.service.ts`,
+ *      Bloque D, escopeadas por la `empresaId` de cada lead) con UNA sola
+ *      consulta de cada una por grupo de empresa (no una por lead — hallazgo
  *      de code-review sobre N+1 dentro de esta transacción interactiva) y
  *      distribuye la cartera en memoria con el mismo criterio de desempate
- *      que `chooseCandidato` (`asignacion.service.ts`), persistiendo cada
- *      lead con `applyAsignacion` (mismo patrón que `reassignLead`/
- *      `transferLead`); sin candidato disponible, aborta con 409 y NADA se
- *      persiste (ni la baja ni ninguna reasignación parcial).
+ *      que `chooseCandidato` (`asignacion.service.ts`); sin candidato
+ *      disponible, aborta con 409 y NADA se persiste (ni la baja ni ninguna
+ *      reasignación parcial, de ningún pool).
  *   3. `activo=false` + revocación de refresh tokens
  *      (`usuarioRepository.deactivateUsuario`, mismo `tx`).
  * Los eventos SSE se publican DESPUÉS del commit, igual que el resto de
@@ -528,28 +551,47 @@ export async function deactivateUsuario(actor: AuthenticatedUser, id: string): P
       }
 
       const eventosAcumulados: CommittedEvent[] = [];
-      const pool = POOL_BY_ROL[usuario.rol];
+      const ahora = new Date();
 
-      if (pool !== undefined) {
-        const ahora = new Date();
+      for (const pool of POOLS_DE_CARTERA) {
         const cartera = await leadRepository.findCarteraAbierta(id, pool, tx);
+        if (cartera.length === 0) continue;
 
-        if (cartera.length > 0) {
-          // Una sola consulta de candidatos y una sola de carga activa para
-          // TODA la cartera (nunca una por lead, ver hallazgo de code-review
-          // sobre N+1 dentro de la transacción de baja): la distribución
-          // entre candidatos ocurre en memoria reusando el mismo criterio de
-          // desempate que `asignacion.service.ts::chooseCandidato`.
-          const activos = await usuarioRepository.findActivosPorRol(pool, tx);
+        // Fix (bug real, ver comentario de `POOLS_DE_CARTERA`): la cartera de
+        // ESTE pool puede repartirse en más de una empresa si el usuario dado
+        // de baja tiene `Membresia` activa en varias -- los candidatos y su
+        // carga activa se resuelven POR empresa (mismo scoping que
+        // `asignacion.service.ts::selectResponsableEnEmpresa`), nunca de
+        // forma global.
+        const carteraPorEmpresa = new Map<string, typeof cartera>();
+        for (const lead of cartera) {
+          const grupo = carteraPorEmpresa.get(lead.empresaId);
+          if (grupo) {
+            grupo.push(lead);
+          } else {
+            carteraPorEmpresa.set(lead.empresaId, [lead]);
+          }
+        }
+
+        const entradas: ApplyAsignacionesEnLoteInput[] = [];
+        for (const [empresaId, carteraEmpresa] of carteraPorEmpresa) {
+          // Una sola consulta de candidatos y una sola de carga activa por
+          // grupo de empresa (nunca una por lead, ver hallazgo de
+          // code-review sobre N+1 dentro de la transacción de baja): la
+          // distribución entre candidatos ocurre en memoria reusando el
+          // mismo criterio de desempate que
+          // `asignacion.service.ts::chooseCandidato`.
+          const activos = await usuarioRepository.findActivosPorRolMembresia(pool, empresaId, tx);
           const candidatosElegibles = activos.filter((u) => u.id !== id);
 
           if (candidatosElegibles.length === 0) {
             throw noCandidateToReassign();
           }
 
-          const cargas = await leadRepository.countCargaActivaPorResponsable(
+          const cargas = await leadRepository.countCargaActivaPorResponsableEnEmpresa(
             pool,
             candidatosElegibles.map((u) => u.id),
+            empresaId,
             tx,
           );
 
@@ -564,8 +606,7 @@ export async function deactivateUsuario(actor: AuthenticatedUser, id: string): P
           // ESCRITURA se agrupa por receptor y se ejecuta una única vez
           // después del loop (`applyAsignacionesEnLote`), en vez de un
           // `applyAsignacion` awaited por lead.
-          const entradas: ApplyAsignacionesEnLoteInput[] = [];
-          for (const lead of cartera) {
+          for (const lead of carteraEmpresa) {
             const candidato = chooseCandidato(candidatos);
             if (candidato === null) {
               // Inalcanzable: `candidatos` nunca queda vacío dentro de este
@@ -589,20 +630,20 @@ export async function deactivateUsuario(actor: AuthenticatedUser, id: string): P
             candidato.cargaActiva += 1;
             candidato.ultimaAsignacionEn = ahora;
           }
-
-          const eventos = await applyAsignacionesEnLote(
-            entradas,
-            {
-              pool,
-              tipoEvento: pool === "ASESOR" ? "REASIGNACION" : "TRASPASO",
-              motivo: "baja_usuario",
-              ejecutadoPorId: null,
-              ahora,
-            },
-            tx,
-          );
-          eventosAcumulados.push(...eventos);
         }
+
+        const eventos = await applyAsignacionesEnLote(
+          entradas,
+          {
+            pool,
+            tipoEvento: pool === "ASESOR" ? "REASIGNACION" : "TRASPASO",
+            motivo: "baja_usuario",
+            ejecutadoPorId: null,
+            ahora,
+          },
+          tx,
+        );
+        eventosAcumulados.push(...eventos);
       }
 
       await usuarioRepository.deactivateUsuario(id, tx);

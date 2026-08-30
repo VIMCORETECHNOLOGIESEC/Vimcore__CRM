@@ -111,7 +111,17 @@ export type MotivoDenegacion =
   | "semaforo_verde"
   | "etapa_no_traspasable"
   | "ya_traspasado"
-  | "etapa_no_cerrable";
+  | "etapa_no_cerrable"
+  // Fix (bug P0, docs/16-hallazgos-y-preguntas.md §4.4: "Admin y supervisor
+  // pueden entregar a vendedor un lead sin asesor"): la excepción de acceso
+  // total de `canTransfer` (abajo) permitía traspasar a un lead que nunca
+  // tuvo un asesor titular -- el gate de etapa NUEVO no alcanza a cubrir este
+  // caso porque nada impide que un Admin/Supervisor avance la etapa de un
+  // lead sin asesor (`canEdit` los deja editar cualquier lead sin importar
+  // `asesorId`). Reproducido y confirmado con el modelo actual de
+  // `habilitadoParaVenta` -- el bug es de `canTransfer`, no del corte de
+  // rol/Membresia, así que se corrige acá sin reabrir esa migración.
+  | "sin_asesor_previo";
 
 export interface LeadReasignacion extends LeadAcceso {
   semaforo: Semaforo | null;
@@ -184,7 +194,19 @@ export function canTransfer(usuario: UsuarioAcceso, lead: LeadTraspaso): MotivoD
   if (lead.etapa === "NUEVO") return "etapa_no_traspasable";
   // Bloque F (aditivo): mismo criterio que `canReassign` — constante separada
   // para no alterar `canRead`/`canEdit`.
-  if (ROLES_ACCESO_TOTAL.includes(usuario.rol) || ROLES_HOLDING_TOTAL.includes(usuario.rol)) return null;
+  //
+  // Fix (bug P0, docs/16 §4.4): la excepción de acceso total NO es
+  // incondicional -- exige que el lead ya tenga un asesor titular
+  // (`asesorId !== null`). Sin esto, un Admin/Supervisor podía avanzar la
+  // etapa de un lead nunca asignado (`canEdit` los deja editar cualquiera) y
+  // traspasarlo directo a un vendedor, saltándose por completo la
+  // intervención del asesor que D9/docs/02 exigen. La rama ASESOR de abajo ya
+  // exige titularidad (`usuario.id !== lead.asesorId`), así que un asesor
+  // nunca pudo alcanzar esta ruta con `asesorId: null` -- el hueco era
+  // exclusivo de la excepción de acceso total.
+  if (ROLES_ACCESO_TOTAL.includes(usuario.rol) || ROLES_HOLDING_TOTAL.includes(usuario.rol)) {
+    return lead.asesorId === null ? "sin_asesor_previo" : null;
+  }
   if (usuario.rol !== "ASESOR") return "rol";
   if (usuario.id !== lead.asesorId) return "no_es_titular";
   // M-hardening Bloque A (D4, corrige docs/06 P0): el asesor origen agota su

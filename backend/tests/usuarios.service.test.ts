@@ -94,6 +94,18 @@ async function crearCliente(): Promise<{ id: string }> {
   });
 }
 
+/**
+ * Fix (bug real, `deactivateUsuario`/`POOL_BY_ROL` -- ver comentario de
+ * `POOLS_DE_CARTERA` en `usuarios.service.ts`): el candidato de reemplazo
+ * ahora se resuelve vía `Membresia` (`findActivosPorRolMembresia`), no vía
+ * `Usuario.rol` legado -- un fixture `ASESOR`/`VENDEDOR` sin `Membresia`
+ * activa ya no es un candidato válido. Mismo patrón que
+ * `tests/asignacion.routes.test.ts::crearUsuarioConToken`: `VENDEDOR` legado
+ * -> `Membresia(rol: ASESOR, habilitadoParaVenta: true)`, `ASESOR` legado ->
+ * `Membresia(rol: ASESOR, habilitadoParaVenta: false)`. `ADMINISTRADOR`/
+ * `SUPERVISOR` no reciben `Membresia` (mismo criterio que `createUsuario`
+ * real -- están en `ROLES_ACCESO_TOTAL`).
+ */
 async function crearUsuario(rol: RolUsuario, activo = true): Promise<{ id: string; rol: RolUsuario }> {
   contador += 1;
   const usuario = await prisma.usuario.create({
@@ -105,6 +117,17 @@ async function crearUsuario(rol: RolUsuario, activo = true): Promise<{ id: strin
       activo,
     },
   });
+  if (rol === "ASESOR" || rol === "VENDEDOR") {
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: activo,
+      },
+    });
+  }
   return { id: usuario.id, rol: usuario.rol };
 }
 
@@ -127,10 +150,29 @@ async function crearLead(data: {
   });
 }
 
-/** Aislamiento (mismo criterio que `asignacion.service.test.ts`): la suite
- * corre archivos de prueba concurrentes contra la misma BD real. */
+/**
+ * Aislamiento (mismo criterio que `asignacion.service.test.ts`): la suite
+ * corre archivos de prueba concurrentes contra la misma BD real.
+ *
+ * Fix (mismo hueco que `asignacion.routes.test.ts::desactivarPoolAsesores`,
+ * documentado ahí): desde que `deactivateUsuario` resuelve candidatos vía
+ * `Membresia` (`POOLS_DE_CARTERA`, `usuarios.service.ts`), `RolMembresia` no
+ * distingue `ASESOR`/`VENDEDOR` -- ambos son `Membresia(rol: ASESOR)`, solo
+ * `habilitadoParaVenta` los distingue. Desactivar solo por `Usuario.rol`
+ * legado (como antes) YA NO aísla: un fixture `VENDEDOR` de un test previo
+ * (Membresia activa, `usuario.activo` todavía true) sigue siendo un candidato
+ * `ASESOR` válido aunque `updateMany({ where: { rol: "ASESOR" } })` no lo
+ * toque. Cortar también por `Membresia` (cualquiera de los dos rol pedidos)
+ * cierra el hueco para ambas literales.
+ */
 async function desactivarTodos(rol: RolUsuario): Promise<void> {
   await prisma.usuario.updateMany({ where: { rol }, data: { activo: false } });
+  if (rol === "ASESOR" || rol === "VENDEDOR") {
+    await testAdminPrisma.membresia.updateMany({
+      where: { empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR" },
+      data: { activa: false },
+    });
+  }
 }
 
 afterAll(async () => {
@@ -376,8 +418,13 @@ describe("usuarios.service — deactivateUsuario (M2: baja lógica con reasignac
         Array.from({ length: 6 }, () => crearLead({ asesorId: victima.id, etapa: "NUEVO" })),
       );
 
-      const spyActivos = vi.spyOn(usuarioRepository, "findActivosPorRol");
-      const spyCargas = vi.spyOn(leadRepository, "countCargaActivaPorResponsable");
+      // Fix (`deactivateUsuario` migrado a Membresia, ver
+      // `usuarios.service.ts::POOLS_DE_CARTERA`): la cartera de este fixture
+      // vive en UNA sola empresa (BOOTSTRAP), así que sigue siendo UNA sola
+      // consulta de candidatos y de carga -- ahora vía las funciones
+      // Membresia-based, mismas que `asignacion.service.ts` (Bloque D).
+      const spyActivos = vi.spyOn(usuarioRepository, "findActivosPorRolMembresia");
+      const spyCargas = vi.spyOn(leadRepository, "countCargaActivaPorResponsableEnEmpresa");
 
       await deactivateUsuario(actorHoldingWide, victima.id);
 
@@ -572,6 +619,114 @@ describe("usuarios.service — deactivateUsuario (M2: baja lógica con reasignac
       expect(eventos).toBe(0);
     }));
 
+  /**
+   * Fix (bug real confirmado, `usuarios.service.ts::POOLS_DE_CARTERA` -- ver
+   * comentario de esa constante): ANTES, `POOL_BY_ROL[usuario.rol]` elegía
+   * UN solo pool según el `Usuario.rol` legado del usuario dado de baja. Un
+   * asesor habilitado para venta (`Usuario.rol` legado = `VENDEDOR`) es
+   * candidato válido del pool `ASESOR` de asignación inicial DESDE que
+   * `asignacion.service.ts::selectResponsableEnEmpresa("ASESOR", ...)` no
+   * filtra por `habilitadoParaVenta` -- así que puede terminar con cartera
+   * abierta en las DOS columnas FK a la vez: `asesorId` (leads que nunca
+   * traspasó) y `vendedorId` (leads que recibió por traspaso). El mapa viejo
+   * solo miraba el pool `VENDEDOR` para este usuario y dejaba la cartera
+   * `asesorId` huérfana (FK apuntando a un usuario ya inactivo, sin
+   * reasignar ni rechazar la baja).
+   */
+  it("fix (bug real): asesor habilitado para venta con cartera abierta en LOS DOS pools a la vez (asesorId sin traspasar + vendedorId traspasado) se reasigna en ambos, ninguna cartera queda huérfana", () =>
+    conContexto(async () => {
+      await desactivarTodos("VENDEDOR");
+      await desactivarTodos("ASESOR");
+
+      // Membresia(rol: ASESOR, habilitadoParaVenta: true) -- elegible para
+      // AMBOS pools de asignación (D5).
+      const victima = await crearUsuario("VENDEDOR");
+      const candidatoAsesor = await crearUsuario("ASESOR");
+      const candidatoVendedor = await crearUsuario("VENDEDOR");
+
+      const leadAsesor = await crearLead({ asesorId: victima.id, etapa: "CONTACTADO" });
+      const leadVendedor = await crearLead({
+        asesorId: candidatoAsesor.id,
+        vendedorId: victima.id,
+        etapa: "CITA",
+      });
+
+      await deactivateUsuario(actorHoldingWide, victima.id);
+
+      const victimaTrasBaja = await prisma.usuario.findUniqueOrThrow({ where: { id: victima.id } });
+      expect(victimaTrasBaja.activo).toBe(false);
+
+      const leadAsesorTrasBaja = await prisma.lead.findUniqueOrThrow({ where: { id: leadAsesor.id } });
+      expect(leadAsesorTrasBaja.asesorId).not.toBeNull();
+      expect(leadAsesorTrasBaja.asesorId).not.toBe(victima.id);
+      const eventoAsesor = await prisma.leadEvento.findFirst({
+        where: { leadId: leadAsesor.id, tipo: "REASIGNACION" },
+      });
+      expect(eventoAsesor).not.toBeNull();
+      expect(eventoAsesor?.detalle).toMatchObject({
+        motivo: "baja_usuario",
+        responsableAnteriorId: victima.id,
+        ejecutadoPorId: null,
+      });
+
+      const leadVendedorTrasBaja = await prisma.lead.findUniqueOrThrow({ where: { id: leadVendedor.id } });
+      expect(leadVendedorTrasBaja.vendedorId).toBe(candidatoVendedor.id);
+      const eventoVendedor = await prisma.leadEvento.findFirst({
+        where: { leadId: leadVendedor.id, tipo: "TRASPASO" },
+      });
+      expect(eventoVendedor).not.toBeNull();
+      expect(eventoVendedor?.detalle).toMatchObject({
+        motivo: "baja_usuario",
+        responsableId: candidatoVendedor.id,
+        responsableAnteriorId: victima.id,
+        ejecutadoPorId: null,
+      });
+    }));
+
+  /**
+   * Triangulación del fix de arriba (segundo caso distinto, TDD): con
+   * candidato disponible en el pool `ASESOR` pero NINGUNO en `VENDEDOR`, la
+   * baja se rechaza ENTERA -- ninguna de las dos carteras se toca, ni
+   * siquiera la que sí tenía candidato. Prueba la atomicidad cross-pool: el
+   * pool `ASESOR` se procesa primero en el loop y escribiría dentro de la
+   * misma `tx` antes de que el pool `VENDEDOR` lance -- esa escritura debe
+   * revertirse junto con el resto.
+   */
+  it("fix (triangulación): candidato disponible en ASESOR pero ninguno en VENDEDOR — baja RECHAZADA entera, ni siquiera la cartera ASESOR (que sí tenía candidato) se toca", () =>
+    conContexto(async () => {
+      await desactivarTodos("VENDEDOR");
+      await desactivarTodos("ASESOR");
+
+      const victima = await crearUsuario("VENDEDOR");
+      const candidatoAsesor = await crearUsuario("ASESOR");
+
+      const leadAsesor = await crearLead({ asesorId: victima.id, etapa: "CONTACTADO" });
+      const leadVendedor = await crearLead({
+        asesorId: candidatoAsesor.id,
+        vendedorId: victima.id,
+        etapa: "CITA",
+      });
+
+      await expect(deactivateUsuario(actorHoldingWide, victima.id)).rejects.toMatchObject({
+        code: "baja_sin_candidato_reasignacion",
+        statusHttp: 409,
+      });
+
+      const victimaTrasIntento = await prisma.usuario.findUniqueOrThrow({ where: { id: victima.id } });
+      expect(victimaTrasIntento.activo).toBe(true);
+
+      const leadAsesorTrasIntento = await prisma.lead.findUniqueOrThrow({ where: { id: leadAsesor.id } });
+      expect(leadAsesorTrasIntento.asesorId).toBe(victima.id);
+
+      const leadVendedorTrasIntento = await prisma.lead.findUniqueOrThrow({ where: { id: leadVendedor.id } });
+      expect(leadVendedorTrasIntento.vendedorId).toBe(victima.id);
+
+      const eventos = await prisma.leadEvento.count({
+        where: { leadId: { in: [leadAsesor.id, leadVendedor.id] } },
+      });
+      expect(eventos).toBe(0);
+    }));
+
   it("administrador dado de baja: sin cambios de comportamiento — nunca corre ningún paso de reasignación", () =>
     conContexto(async () => {
       const admin = await crearUsuario("ADMINISTRADOR");
@@ -681,10 +836,11 @@ describe("usuarios.service — findResponsables (fix: scope por empresa)", () =>
       const empresaAjena = await testAdminPrisma.empresa.create({
         data: { nombre: `Empresa ajena responsables ${randomUUID()}` },
       });
+      // Fix: `crearUsuario("ASESOR")` ya crea su propia Membresia activa en
+      // BOOTSTRAP_EMPRESA_ID (ver comentario de esa función) -- una segunda
+      // `membresia.create` acá duplicaría la tripleta
+      // `(usuarioId, empresaId, rol)` y violaría el `@@unique` del schema.
       const asesorPropio = await crearUsuario("ASESOR");
-      await testAdminPrisma.membresia.create({
-        data: { usuarioId: asesorPropio.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", habilitadoParaVenta: false, activa: true },
-      });
       const asesorAjeno = await prisma.usuario.create({
         data: {
           nombre: `Asesor ajeno responsables ${randomUUID()}`,
