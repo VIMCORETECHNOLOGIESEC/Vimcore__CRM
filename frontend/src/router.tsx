@@ -12,6 +12,7 @@ import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
 import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
 import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage";
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
+import { LinkedInCallbackPage } from "@/funcionalidades/linkedin/LinkedInCallbackPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
 import { WhatsAppCallbackPage } from "@/funcionalidades/whatsapp/WhatsAppCallbackPage";
 import { AppLayout } from "@/layouts/AppLayout";
@@ -54,6 +55,14 @@ import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
  * ruta protegida ADMINISTRADOR ya existente -- no se agregó una ruta nueva
  * solo para eso.
  *
+ * `/linkedin/callback`: mismo criterio que `/whatsapp/callback` de arriba --
+ * pública, LinkedIn redirige acá el navegador de verdad (contrato,
+ * `docs/contrato-frontend-linkedin-api_mat_05.md`, paso 2). A diferencia de
+ * WhatsApp, el Paso 1 (botón "Conectar LinkedIn") vive DENTRO de
+ * `BridgeDetallePage.tsx` (`LinkedInIntegracionSection.tsx`, ruta protegida
+ * `bridges/:id` ya existente) porque LinkedIn Lead Sync cuelga de un
+ * `Bridge` concreto -- no de "Bridges" en general como WhatsApp.
+ *
  * `apariencia-empresa`: self-service de la propia `Empresa`
  * (`docs/blocks/d0-visualizacion-multitenant.md`, PASO 8) -- grupo de
  * `ProtectedRoute` separado del resto de rutas `ADMINISTRADOR` porque además
@@ -74,6 +83,10 @@ export const router = createBrowserRouter([
   {
     path: "/whatsapp/callback",
     element: <WhatsAppCallbackPage />,
+  },
+  {
+    path: "/linkedin/callback",
+    element: <LinkedInCallbackPage />,
   },
   ...(import.meta.env.DEV
     ? [
