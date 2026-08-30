@@ -31,7 +31,7 @@
 | 11 | Integración WhatsApp Business (real) | 🚧 | Bridges / Integraciones |
 | 12 | Dashboard de métricas (general) | ✅ | Dashboard y Métricas |
 | 13 | Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto) | ✅ | Dashboard y Métricas |
-| 14 | Dashboard con filtro por empresa (holding) | 🚧 | Dashboard y Métricas |
+| 14 | Dashboard con filtro por empresa (holding) | ✅ | Dashboard y Métricas |
 | 15 | Exportación de reportes (PDF/XLSX) | ✅ | Reportes |
 | 16 | Conexión de Meta Ads (métricas publicitarias reales) | ⏳ | Reportes |
 | 17 | Listado y detalle de Oportunidad (negociación) | ✅ | Negociación / Oportunidad |
@@ -40,9 +40,9 @@
 | 20 | Edición de usuario | ✅ | Usuarios y Membresías |
 | 21 | Baja de usuario (con reasignación de cartera) | ✅ | Usuarios y Membresías |
 | 22 | Restablecimiento de contraseña | ✅ | Usuarios y Membresías |
-| 23 | Alta de administrador de empresa | 🚧 | Usuarios y Membresías |
+| 23 | Alta de administrador de empresa | ✅ | Usuarios y Membresías |
 | 24 | Membresía por red social (asesor scopeado por canal) | ⏳ | Usuarios y Membresías |
-| 25 | Tab usuarios holding-wide vs. usuarios por empresa | 🚧 | Usuarios y Membresías |
+| 25 | Tab usuarios holding-wide vs. usuarios por empresa | ✅ | Usuarios y Membresías |
 | 26 | Gestor de empresas (listado) | ✅ | Gestión de Empresas / Holding |
 | 27 | Gestor de empresas (cards con isotipo) | ✅ | Gestión de Empresas / Holding |
 | 28 | Detalle de empresa (usuarios y bridges de esa empresa) | 🚧 | Gestión de Empresas / Holding |
@@ -272,13 +272,13 @@
 
 ### Dashboard con filtro por empresa (holding)
 
-**Estado**: 🚧 Frontend construido, no filtra de verdad todavía (falta merge de backend)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Para una sesión de holding (`ADMINISTRADOR`), un selector de empresa (combobox buscable) en el dashboard permite hacer drill-down a una empresa puntual; sin selección, se ve el agregado de todo el holding (comportamiento previo sin cambios).
+**Descripción funcional**: Para una sesión de holding (`ADMINISTRADOR`), un selector de empresa (combobox buscable) en el dashboard permite hacer drill-down a una empresa puntual; sin selección, se ve el agregado de todo el holding (comportamiento previo sin cambios).
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: commit `33968fe` (local, verificado, pendiente de push a `origin/test/gpt`). `SelectorEmpresaDashboard.tsx` (nuevo), `empresaId` threadeado a las 13 queries de `useMetricas.ts`, gateado a `ADMINISTRADOR` + sesión holding (más estrecho que otras pantallas holding-wide, porque `GET /empresas` es `ADMINISTRADOR`-only en backend). **El schema `empresaId` opcional que hace real el filtro** (`resolveEmpresaId`, 3 ramas: company-scoped lo ignora, holding-wide con `empresaId` hace drill-down, sin él ve todo el holding) ya existe en `origin/main` (`a76c62b`) pero **todavía no está mergeado a `test/gpt`** — hasta ese merge, el selector se ve y se puede elegir una empresa, pero el backend de `test/gpt` ignora el parámetro en silencio y el dashboard sigue mostrando el agregado completo del holding sin acotar. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, mismo bloque que el ítem 13).
+**Notas técnicas**: commit `33968fe` (frontend, `SelectorEmpresaDashboard.tsx`, `empresaId` threadeado a las 13 queries de `useMetricas.ts`, gateado a `ADMINISTRADOR` + sesión holding). El schema `empresaId` opcional (`resolveEmpresaId`, 3 ramas: company-scoped lo ignora, holding-wide con `empresaId` hace drill-down, sin él ve todo el holding) llegó a `test/gpt` con el merge `main→test/gpt` (`f6ce0be`, 2026-08-30) — verificado presente en `backend/src/schemas/metricas.schema.ts`. El filtro ya es real de punta a punta. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, mismo bloque que el ítem 13).
 
 ---
 
@@ -396,13 +396,13 @@
 
 ### Alta de administrador de empresa
 
-**Estado**: 🚧 Frontend construido, pendiente de merge de backend
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Permite que el holding designe a una persona como administradora de una empresa específica del grupo, con acceso acotado a esa empresa únicamente.
+**Descripción funcional**: Permite que el holding designe a una persona como administradora de una empresa específica del grupo, con acceso acotado a esa empresa únicamente.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: commit `a63553c` (local, verificado, pendiente de push a `origin/test/gpt`). `CrearAdministradorEmpresaDialog.tsx` (nuevo, sin campo `rol` — implícito `ADMINISTRADOR`), disparado desde una tercera tarjeta ("Nuevo administrador") en `EmpresaDetallePage.tsx`, contra `POST /empresas/:empresaId/administradores`. Ese endpoint todavía no existe en el backend de `test/gpt` (el schema/servicio correspondiente vive en `origin/main`, pendiente del mismo merge main→test/gpt que el ítem 14) — hasta entonces el diálogo no puede completar el alta contra un backend real. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, Bloque F).
+**Notas técnicas**: commit `a63553c` (frontend, `CrearAdministradorEmpresaDialog.tsx` — sin campo `rol`, implícito `ADMINISTRADOR` — disparado desde una tercera tarjeta "Nuevo administrador" en `EmpresaDetallePage.tsx`), contra `POST /empresas/:empresaId/administradores`. El endpoint llegó a `test/gpt` con el merge `main→test/gpt` (`f6ce0be`, 2026-08-30) — verificado presente en `backend/src/routes/usuarios.routes.ts`. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, Bloque F).
 
 ### Membresía por red social
 
@@ -416,13 +416,13 @@
 
 ### Tab usuarios holding-wide vs. usuarios por empresa
 
-**Estado**: 🚧 Frontend construido, pendiente de merge de backend
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: En el listado de usuarios, separa la vista entre "usuarios del holding" (sin empresa asignada) y "usuarios de la empresa X" cuando se está viendo una empresa en particular.
+**Descripción funcional**: En el listado de usuarios, separa la vista entre "usuarios del holding" (sin empresa asignada) y "usuarios de la empresa X" cuando se está viendo una empresa en particular.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: commit `a63553c` (local, verificado, pendiente de push a `origin/test/gpt`). Toggle nuevo en `UsuariosFiltros.tsx`, visible solo para sesión `holding`, contra el parámetro `soloHoldingWide` de `GET /usuarios`. Ese parámetro todavía no existe en el backend de `test/gpt` (vive en `origin/main`, mismo merge pendiente que los ítems 14 y 23) — hasta entonces el toggle no filtra de verdad. De paso, `RolUsuario` (frontend) se amplió a `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (ya existentes en el enum de Prisma), visibles en la tabla y en este filtro. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, Bloque F).
+**Notas técnicas**: commit `a63553c` (frontend, toggle nuevo en `UsuariosFiltros.tsx`, visible solo para sesión `holding`), contra el parámetro `soloHoldingWide` de `GET /usuarios`. Llegó a `test/gpt` con el merge `main→test/gpt` (`f6ce0be`, 2026-08-30) — verificado presente en `backend/src/schemas/usuarios.schema.ts`. De paso, `RolUsuario` (frontend) se amplió a `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (ya existentes en el enum de Prisma), visibles en la tabla y en este filtro. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, Bloque F).
 
 ---
 
