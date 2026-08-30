@@ -120,7 +120,12 @@ export async function generarPdfReporte(datos: DatosReporte): Promise<Buffer> {
   });
   try {
     const page = await browser.newPage();
-    await page.setContent(renderHtml(datos), { waitUntil: "networkidle0" });
+    // `page.setContent` solo acepta "domcontentloaded"/"load" en esta
+    // version de Puppeteer -- "networkidle0" es valido para `page.goto`
+    // (navegacion real), no para contenido inyectado directo. "load" es el
+    // equivalente mas cercano para esperar a que se resuelvan los recursos
+    // (imagenes/fuentes) del HTML servido inline.
+    await page.setContent(renderHtml(datos), { waitUntil: "load" });
     const pdf = await page.pdf({ format: "A4", printBackground: true });
     return Buffer.from(pdf);
   } finally {
