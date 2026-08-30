@@ -26,15 +26,15 @@
 | 6 | Listado de bridges (integraciones) | ✅ | Bridges / Integraciones |
 | 7 | Alta de bridge | ✅ | Bridges / Integraciones |
 | 8 | Detalle de bridge (credenciales, cuentas publicitarias, bitácora) | ✅ | Bridges / Integraciones |
-| 9 | Bridge API_EXTERNA (bridgeApi) | 🎨 | Bridges / Integraciones |
-| 10 | Integración LinkedIn | ⏳ | Bridges / Integraciones |
-| 11 | Integración WhatsApp Business (real) | ⏳ | Bridges / Integraciones |
+| 9 | Bridge API_EXTERNA (bridgeApi) | ✅ | Bridges / Integraciones |
+| 10 | Integración LinkedIn | ✅ | Bridges / Integraciones |
+| 11 | Integración WhatsApp Business (real) | 🚧 | Bridges / Integraciones |
 | 12 | Dashboard de métricas (general) | ✅ | Dashboard y Métricas |
 | 13 | Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto) | ⏳ | Dashboard y Métricas |
 | 14 | Dashboard con filtro por empresa (holding) | ⏳ | Dashboard y Métricas |
 | 15 | Exportación de reportes (PDF/XLSX) | ⏳ | Reportes |
 | 16 | Conexión de Meta Ads (métricas publicitarias reales) | ⏳ | Reportes |
-| 17 | Listado y detalle de Oportunidad (negociación) | ⏳ | Negociación / Oportunidad |
+| 17 | Listado y detalle de Oportunidad (negociación) | 🚧 | Negociación / Oportunidad |
 | 18 | Listado de usuarios | ✅ | Usuarios y Membresías |
 | 19 | Alta de usuario | 🚧 | Usuarios y Membresías |
 | 20 | Edición de usuario | ✅ | Usuarios y Membresías |
@@ -43,10 +43,10 @@
 | 23 | Alta de administrador de empresa | ⏳ | Usuarios y Membresías |
 | 24 | Membresía por red social (asesor scopeado por canal) | ⏳ | Usuarios y Membresías |
 | 25 | Tab usuarios holding-wide vs. usuarios por empresa | ⏳ | Usuarios y Membresías |
-| 26 | Gestor de empresas (listado) | 🚧 | Gestión de Empresas / Holding |
-| 27 | Gestor de empresas (cards con isotipo) | ⏳ | Gestión de Empresas / Holding |
-| 28 | Detalle de empresa (usuarios y bridges de esa empresa) | ⏳ | Gestión de Empresas / Holding |
-| 29 | Acceder a empresa / salir de vista de empresa | ⏳ | Gestión de Empresas / Holding |
+| 26 | Gestor de empresas (listado) | ✅ | Gestión de Empresas / Holding |
+| 27 | Gestor de empresas (cards con isotipo) | ✅ | Gestión de Empresas / Holding |
+| 28 | Detalle de empresa (usuarios y bridges de esa empresa) | 🚧 | Gestión de Empresas / Holding |
+| 29 | Acceder a empresa / salir de vista de empresa | ✅ | Gestión de Empresas / Holding |
 | 30 | Alta de empresa nueva | ⏳ | Gestión de Empresas / Holding |
 | 31 | Configuración de empresa (single-company legacy) | ✅ | Configuración / Apariencia |
 | 32 | Apariencia de la propia empresa (self-service) | ✅ | Configuración / Apariencia |
@@ -185,48 +185,57 @@
 
 ### Bridge API_EXTERNA (bridgeApi)
 
-**Estado**: 🎨 UI lista, sin conexión real
+**Estado**: ✅ Implementado y funcional (con límite de alcance conocido)
 
 **Descripción funcional**: Permite conectar un bridge genérico contra una API externa no cubierta por los canales predefinidos.
 
-**Pasos de uso esperados**:
+**Pasos de uso**:
 1. Al dar de alta un bridge, elegir la opción "API externa" en vez de una red social predefinida.
-2. Completar la configuración de conexión y el mapeo de campos.
-3. Probar la conexión antes de guardar.
+2. Completar la configuración de conexión (URL, credencial, header de API key).
+3. Completar el mapeo de campos.
+4. Probar la conexión antes de guardar.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: la opción ya aparece en el selector de alta de bridge, pero la pantalla de configuración/mapeo todavía no está construida — el backend ya soporta esta funcionalidad de punta a punta.
+**Notas técnicas**: `ApiExternaSetupDialog.tsx` está conectado a los 3 endpoints reales de configuración/prueba (`PATCH /bridges/:id/api-externa/conexion`, `PATCH /bridges/:id/api-externa/mapeo`, `POST /bridges/:id/api-externa/probar-conexion`; el alta del bridge en sí sigue siendo el `POST /bridges` genérico) — sin datos mock, commit `3fa8ea1` en `origin/test/gpt`. **Límite de alcance conocido y aceptado** (documentado en `docs/contrato-frontend-bridge-api_mat_01.md`): el job de backend que hace polling y efectivamente trae los leads todavía no existe, así que un bridge API_EXTERNA configurado hoy no recibe leads reales todavía en este entorno — no es un bug de esta pantalla, es un gap de backend ya conocido.
 
 ### Integración LinkedIn
 
-**Estado**: ⏳ Pendiente (sin frontend, backend listo)
+**Estado**: ✅ Implementado y funcional (con reserva de backend, ver nota)
 
-**Descripción funcional esperada**: Conexión de una cuenta de LinkedIn Ads para sincronizar leads de formularios de LinkedIn de forma automática.
+**Descripción funcional**: Conexión de una cuenta de LinkedIn Ads para sincronizar leads de formularios de LinkedIn.
 
-**Pasos de uso esperados**:
+**Pasos de uso**:
 1. Conectar la cuenta de LinkedIn mediante autenticación OAuth.
 2. Descubrir y elegir los formularios de captación a sincronizar.
-3. Activar la suscripción para recibir leads nuevos automáticamente.
+3. Activar la suscripción para recibir leads nuevos.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: contrato de integración ya definido y documentado formalmente (`docs/contrato-frontend-linkedin-api_mat_05.md`) — el backend está implementado y probado, falta únicamente construir esta interfaz.
+**Notas técnicas**: `frontend/src/funcionalidades/linkedin/` está conectado a los 7 endpoints reales del contrato (`docs/contrato-frontend-linkedin-api_mat_05.md`: iniciar OAuth, callback, ver conexión, probar conexión, listar fuentes, descubrir fuentes, activar/desactivar fuente) — sin mocks, commit `ac906c9` en `origin/test/gpt`. **Reserva de backend pendiente de confirmar por Mateo**: según `docs/claude-linkedin-estado-actual.md` (pusheado, mismo estado que `origin/test/gpt`), a la fecha de esta revisión el webhook que efectivamente recibe los leads de LinkedIn ("webhook durable V3") todavía no estaba implementado — solo OAuth, conexión, discovery de fuentes y activación/suscripción a `leadNotifications` lo estaban. Si ese webhook sigue pendiente, activar una fuente desde esta pantalla no hace llegar leads reales al CRM todavía, igual que el límite ya documentado en "Bridge API_EXTERNA" — Mateo debe confirmar el estado actual de esa pieza antes de dar por cerrado el flujo de punta a punta.
 
 ### Integración WhatsApp Business (real)
 
-**Estado**: ⏳ Pendiente (sin frontend real, backend listo)
+**Estado**: 🚧 En curso — Parte 1 (conexión) hecha y pusheada; Parte 2 (mensajería real) construida pero congelada, pendiente de decisión de alcance
 
-**Descripción funcional esperada**: Conexión de una cuenta de WhatsApp Business para enviar y recibir mensajes reales desde la aplicación (ver también "Chat de WhatsApp en detalle de lead").
+**Descripción funcional**: Conexión de una cuenta de WhatsApp Business y, en una segunda etapa, envío/recepción de mensajes reales desde la aplicación (ver también "Chat de WhatsApp en detalle de lead").
 
-**Pasos de uso esperados**:
+**Parte 1 — Conexión (Embedded Signup): ✅ hecha y pusheada**
+
+**Pasos de uso**:
 1. Conectar el número de WhatsApp Business mediante autenticación asistida (Embedded Signup de Meta).
 2. Elegir el número a conectar.
-3. A partir de ahí, los mensajes entrantes y salientes de ese número quedan disponibles desde el chat del detalle de lead.
+3. La conexión queda persistida.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: contrato ya definido (`docs/contrato-frontend-whatsapp-api_mat_04.md`) — el backend está implementado y probado. La interfaz de chat ya existe visualmente (ver arriba), falta la pantalla de conexión y conectar el chat a datos reales.
+**Notas técnicas**: `funcionalidades/whatsapp/` (`ConectarWhatsAppCard.tsx`, montada en `BridgesPage.tsx`; `WhatsAppCallbackPage.tsx`, ruta pública `/whatsapp/callback`; `useWhatsApp.ts`; `whatsapp.api.ts`; `whatsapp.utils.ts`; `tipos/whatsapp.ts`) está conectado a los endpoints reales del contrato (`docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3: `GET /whatsapp/conectar`, `GET /whatsapp/callback`, `POST /whatsapp/conexion`) — sin mocks, commit `e684eee` en `origin/test/gpt`. Esta excepción de alcance está aprobada y documentada explícitamente en `AGENTS.md` §7.
+
+**Parte 2 — Bandeja de conversaciones (envío/recepción real de mensajes): pendiente de coordinación, NO lista**
+
+**Estado**: construida y en verde en este worktree, pero **congelada sin commitear** por decisión del usuario, a la espera de coordinar con el desarrollador de backend (Mateo) si entra en esta ronda de despliegue. `AGENTS.md` §7 es explícito: la excepción de alcance aprobada cubre únicamente el flujo de **conexión** (Parte 1); el envío y recepción real de mensajes **no** está cubierto por esa ampliación y sigue fuera de alcance salvo que se decida aparte — probablemente como su propio bloque SDD.
+
+**Notas técnicas**: no confundir con "Chat de WhatsApp en detalle de lead" (ítem 5), que sigue siendo la UI de demo con datos mock — la bandeja real (`CajaRespuesta.tsx`, `ConversacionesPage.tsx`, `HiloMensajes.tsx`, `ListaConversaciones.tsx`, `conversaciones.api.ts`, `conversaciones.utils.ts`, `useConversaciones.ts`, `tipos/conversacion.ts`) existe como archivos sin commitear en el worktree de desarrollo al momento de esta revisión — no está en `origin/test/gpt` y no debe documentarse como disponible hasta que se resuelva el alcance y se commitee/pushee.
 
 ---
 
@@ -307,13 +316,13 @@
 
 ### Listado y detalle de Oportunidad
 
-**Estado**: ⏳ Pendiente (sin frontend, sin contrato)
+**Estado**: 🚧 En desarrollo (sin commitear todavía)
 
 **Descripción funcional esperada**: Nueva entidad de negociación, separada del Lead de captación — permite que un mismo cliente tenga varias negociaciones paralelas (una por producto). Incluye pool de asignación por empresa, autoridad de cierre restringida al asesor asignado, y excepción administrativa para reasignar.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: es el gap de frontend más grande del proyecto — cambio de modelo de datos completo, sin ningún contrato de frontend documentado todavía. El backend está implementado y probado.
+**Notas técnicas**: en desarrollo activo por otra sesión en paralelo al momento de esta revisión — `frontend/src/funcionalidades/oportunidades/`, `frontend/src/tipos/oportunidad.ts` y las rutas `/oportunidades` y `/oportunidades/:id` en `router.tsx` existen en el worktree de trabajo pero aparecen como **no rastreados/sin commitear** en `git status` (no están en ningún commit, ni local ni en `origin/test/gpt`). No documentar como disponible ni tomar capturas hasta que se commitee y pushee.
 
 ---
 
@@ -419,51 +428,53 @@
 
 ### Gestor de empresas (listado)
 
-**Estado**: 🚧 En desarrollo
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional**: Pantalla exclusiva de sesión holding — lista todas las empresas del grupo, con su nombre, colores de marca e isotipo.
+**Descripción funcional**: Pantalla exclusiva de sesión holding — lista todas las empresas del grupo en un grid de tarjetas, con búsqueda por nombre y paginación.
 
-**Pasos de uso (versión actual)**:
+**Pasos de uso**:
 1. Ingresar desde el menú lateral, opción "Empresas" (solo visible en sesión holding).
-2. Buscar una empresa por nombre.
-3. Editar la apariencia de una empresa desde la tabla.
+2. Buscar una empresa por nombre (con debounce).
+3. Navegar entre páginas de resultados (25 por página).
+4. Editar la apariencia de una empresa desde su tarjeta.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: está en proceso de rediseño hacia un formato de tarjetas (ver ítem siguiente) — la versión de tabla actual es transitoria.
+**Notas técnicas**: `GestorEmpresasPage.tsx` — rediseño a grid de tarjetas (commit `23069cd`) y agregado de paginación/búsqueda (commit `18752ee`), ambos en `origin/test/gpt`. Conectado a `GET /empresas` real, sin mocks.
 
 ### Gestor de empresas (cards con isotipo)
 
-**Estado**: ⏳ Pendiente (en diseño)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Reemplaza la tabla actual por un grid de tarjetas — cada una muestra el isotipo de la empresa, su nombre y un botón para ver el detalle/gestionar esa empresa.
+**Descripción funcional**: Cada tarjeta del gestor de empresas muestra el isotipo de la empresa (o una inicial de respaldo si no tiene logo cargado), su nombre y un botón "Ver detalles".
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
+
+**Notas técnicas**: mismo commit que el ítem anterior (`23069cd`) — es la misma entrega, no una pantalla separada.
 
 ### Detalle de empresa
 
-**Estado**: ⏳ Pendiente (en diseño)
+**Estado**: 🚧 En curso — pantalla construida y pusheada, pero sin punto de entrada desde la navegación principal todavía
 
-**Descripción funcional esperada**: Pantalla nueva, accesible desde el gestor de empresas — muestra los usuarios y los bridges configurados de esa empresa específica, sin mezclarlos con los del resto del holding.
+**Descripción funcional esperada**: Pantalla accesible desde el gestor de empresas — muestra accesos a los usuarios y los bridges de esa empresa específica.
 
-**Pasos de uso esperados**:
-1. Desde el gestor de empresas, elegir "Ver detalles" sobre una tarjeta.
-2. Revisar la pestaña de usuarios de esa empresa.
-3. Revisar la pestaña de bridges configurados de esa empresa.
+**Pasos de uso (estado actual)**:
+1. Hoy, el botón "Ver detalles" de cada tarjeta del gestor navega directo a `/usuarios?empresaId=...` (el atajo que ya existía en producción) y **no** pasa por esta pantalla de detalle.
+2. La pantalla de detalle en sí (`/empresas/:empresaId`) existe y funciona si se accede directamente a esa URL — muestra el nombre de la empresa y enlaces a "Usuarios" y "Bridges" de esa empresa.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: la administración de bridges queda restringida al rol Administrador, según la documentación de bridges del proyecto.
+**Notas técnicas**: `EmpresaDetallePage.tsx` está commiteado y pusheado (commit `1b43c8f`, `origin/test/gpt`), pero el gestor de empresas todavía no enlaza a esta pantalla — llegar a ella hoy requiere escribir la URL a mano. Además, según un comentario explícito en el propio código (`EmpresaDetallePage.tsx`), los enlaces a "Usuarios"/"Bridges" de esa empresa **todavía no filtran del lado del servidor** — el backend ignora el parámetro `empresaId` (gap ya reportado a Mateo, prioridad 1, según ese mismo comentario) y por ahora muestran el listado completo del holding sin acotar. **Pendiente de que Mateo confirme el estado actual de ese filtro server-side** antes de dar la pantalla por cerrada de punta a punta. También hay un límite de escala documentado en el código: la pantalla resuelve la empresa buscando en memoria sobre una página de hasta 500 registros (funciona a la escala real actual, ~478 empresas, pero no escalaría a miles).
 
 ### Acceder a empresa / salir de vista de empresa
 
-**Estado**: ⏳ Pendiente (en diseño)
+**Estado**: ✅ Implementado y funcional (mecanismo distinto al descrito originalmente, ver nota)
 
-**Descripción funcional esperada**: Desde el detalle de una empresa, un botón permite "entrar" a verla en detalle; mientras se está en ese modo, un botón flotante permite salir en cualquier momento y volver al panel general del holding.
+**Descripción funcional**: Desde el gestor de empresas, el botón "Ver detalles" de una tarjeta pone al holding en "vista de esa empresa" (una vista de solo lectura simulada, no un cambio real de sesión); mientras está en ese modo, un botón flotante visible en toda la aplicación permite salir en cualquier momento y volver al panel general del holding.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: por decisión de producto, esta es una vista de solo lectura (no un cambio real de sesión) — el holding consulta los datos de esa empresa, no actúa como si fuera un usuario de esa empresa.
+**Notas técnicas**: implementado sobre un query param (`?empresaId=`) centralizado en `useVistaEmpresa.ts`, consumido por `UsuariosPage.tsx` y `BridgesPage.tsx` para acotar su propio fetch, y por `SalirVistaEmpresaButton.tsx` (montado en `AppLayout.tsx`) para salir — commits `10f6dcb` (botón de salir) y `1b43c8f` (centralización del hook), ambos en `origin/test/gpt`. **Diferencia con la descripción original de este ítem**: "entrar" no ocurre desde la pantalla de "Detalle de empresa" (ítem anterior, todavía sin punto de entrada en la navegación) sino directamente desde la tarjeta del gestor de empresas — el resultado funcional (vista acotada + botón para salir) es el mismo. Por decisión de producto, sigue siendo una vista de solo lectura. Mismo gap de backend que el ítem anterior: el filtro por `empresaId` que el frontend ya envía todavía no lo aplica el servidor (pendiente de que Mateo lo confirme/cierre).
 
 ### Alta de empresa nueva
 
