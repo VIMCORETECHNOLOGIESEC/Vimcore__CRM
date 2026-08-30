@@ -31,3 +31,7 @@ docker-compose.override.yml
 # texto plano (bodies de requests guardados, ej. login).
 .postman/
 postman/
+
+# Contrato general para frontend -- se distribuye por otro medio, no vive
+# en el repo compartido.
+docs/contrato-frontend-general.md
