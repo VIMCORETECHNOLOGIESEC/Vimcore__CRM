@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
-import { Controller, useForm, type Control, type FieldErrors } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { hexColorSchema, logoUrlSchema, nombreMarcaSchema } from "schemas";
 import { z } from "zod";
 import { getErrorMessage } from "@/api/httpClient";
@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CampoColorHex } from "@/componentes/formularios/CampoColorHex";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
@@ -61,9 +62,13 @@ type ConfiguracionEmpresaValues = z.infer<typeof configuracionEmpresaSchema>;
 /**
  * Pantalla de configuración de marca de la empresa (tema empresarial --
  * integración login + splash de bienvenida, ruta protegida solo
- * `ADMINISTRADOR` en `router.tsx`). App single-tenant (AGENTS.md §1): esta
- * es la ÚNICA configuración para todo el despliegue -- no hay selector ni
- * tabla de tenants, y a propósito NO se agrega lógica multi-tenant acá.
+ * `ADMINISTRADOR` en `router.tsx`). Configura el branding GLOBAL de la
+ * instancia (holding) -- distinto de la apariencia por-`Empresa` self-service
+ * (`empresa-apariencia/EmpresaAparienciaPage.tsx`) y del gestor cross-empresa
+ * (`empresa-apariencia/GestorEmpresasPage.tsx`, PASO 8): esta pantalla no
+ * tiene selector porque edita el único registro de configuración global, no
+ * porque la infraestructura multi-tenant (`Empresa`/`Membresia`/RLS,
+ * AGENTS.md §1) no exista.
  *
  * Sin estado "vacío": a diferencia de un listado, este recurso siempre
  * existe (el backend devuelve los defaults documentados si nunca se
@@ -201,19 +206,19 @@ function ConfiguracionEmpresaForm({
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <CampoColor
+        <CampoColorHex<ConfiguracionEmpresaValues>
           name="colorPrimario"
           label="Color primario"
           control={control}
           errors={errors}
-          enviando={enviando}
+          disabled={enviando}
         />
-        <CampoColor
+        <CampoColorHex<ConfiguracionEmpresaValues>
           name="colorSecundario"
           label="Color secundario"
           control={control}
           errors={errors}
-          enviando={enviando}
+          disabled={enviando}
         />
       </div>
 
@@ -248,59 +253,5 @@ function ConfiguracionEmpresaForm({
         {enviando ? "Guardando…" : "Guardar cambios"}
       </Button>
     </form>
-  );
-}
-
-interface CampoColorProps {
-  name: "colorPrimario" | "colorSecundario";
-  label: string;
-  control: Control<ConfiguracionEmpresaValues>;
-  errors: FieldErrors<ConfiguracionEmpresaValues>;
-  enviando: boolean;
-}
-
-/**
- * Selector de color + input hex de respaldo, sincronizados sobre el mismo
- * campo de RHF (`Controller`, no dos fuentes de verdad separadas). El
- * selector visual (`type="color"`) exige siempre un hex de 6 dígitos válido
- * -- si el hex tecleado todavía no lo es (a medio escribir), se le muestra
- * negro como placeholder neutro sin tocar el valor real del campo.
- */
-function CampoColor({ name, label, control, errors, enviando }: CampoColorProps) {
-  const inputId = `config-${name}`;
-  const error = errors[name]?.message;
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={inputId}>{label}</Label>
-      <Controller
-        control={control}
-        name={name}
-        render={({ field }) => (
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              aria-label={`${label} (selector visual)`}
-              disabled={enviando}
-              value={HEX_COLOR_REGEX.test(field.value) ? field.value : "#000000"}
-              onChange={(event) => field.onChange(event.target.value)}
-              className="h-10 w-12 shrink-0 cursor-pointer rounded-md border border-input bg-transparent p-1"
-            />
-            <Input
-              id={inputId}
-              type="text"
-              placeholder="#1e2a5e"
-              disabled={enviando}
-              aria-invalid={error ? "true" : undefined}
-              className="flex-1 font-mono"
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              onBlur={field.onBlur}
-            />
-          </div>
-        )}
-      />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
   );
 }

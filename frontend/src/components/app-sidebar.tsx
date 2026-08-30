@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
 import { useAuth } from "@/funcionalidades/autenticacion/authContext"
-import { hasRoleAccess } from "@/funcionalidades/autenticacion/permissions"
+import { hasRoleAccess, hasScopeAccess } from "@/funcionalidades/autenticacion/permissions"
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
 import { resolveLogoMarca, resolveNombreMarca } from "@/lib/color-marca"
 import { NAVIGATION_ITEMS } from "@/layouts/navigation"
@@ -46,8 +46,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const nombreMarca = resolveNombreMarca(user, configuracionHolding)
   const logoMarca = resolveLogoMarca(user, configuracionHolding)
 
-  const items = NAVIGATION_ITEMS.filter((item) =>
-    hasRoleAccess(user?.rol, item.allowedRoles),
+  const items = NAVIGATION_ITEMS.filter(
+    (item) =>
+      hasRoleAccess(user?.rol, item.allowedRoles) &&
+      hasScopeAccess(user?.sessionScope, item.allowedScopes),
   )
 
   return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getLandingRoute, hasRoleAccess } from "@/funcionalidades/autenticacion/permissions";
+import { getLandingRoute, hasRoleAccess, hasScopeAccess } from "@/funcionalidades/autenticacion/permissions";
 
 describe("hasRoleAccess", () => {
   it("permite el acceso cuando no se especifican roles permitidos", () => {
@@ -24,6 +24,32 @@ describe("hasRoleAccess", () => {
 
   it("deniega el acceso cuando no hay rol de usuario (undefined) y hay roles restringidos", () => {
     expect(hasRoleAccess(undefined, ["ADMINISTRADOR"])).toBe(false);
+  });
+});
+
+describe("hasScopeAccess", () => {
+  it("permite el acceso cuando no se especifican scopes permitidos", () => {
+    expect(hasScopeAccess("company", undefined)).toBe(true);
+  });
+
+  it("permite el acceso cuando la lista de scopes permitidos está vacía", () => {
+    expect(hasScopeAccess("holding", [])).toBe(true);
+  });
+
+  it("permite el acceso cuando el scope de la sesión está en la lista permitida", () => {
+    expect(hasScopeAccess("holding", ["holding"])).toBe(true);
+  });
+
+  it("deniega el acceso cuando el scope de la sesión no está en la lista permitida", () => {
+    expect(hasScopeAccess("company", ["holding"])).toBe(false);
+  });
+
+  it("deniega el acceso cuando no hay scope de sesión (null) y hay scopes restringidos", () => {
+    expect(hasScopeAccess(null, ["holding"])).toBe(false);
+  });
+
+  it("deniega el acceso cuando no hay scope de sesión (undefined) y hay scopes restringidos", () => {
+    expect(hasScopeAccess(undefined, ["holding"])).toBe(false);
   });
 });
 
