@@ -241,8 +241,8 @@
 }
 
 /*
- * Fila resaltada de LeadsTable (F3, "fila completa clickeable"): gris suave
- * de --muted-foreground a baja opacidad, no --ring/--primary (casi negro) --
+ * Fila resaltada de Leads/Usuarios/Bridges (F3, "fila completa clickeable"):
+ * gris suave de --muted-foreground a baja opacidad, no --ring (casi negro) --
  * la idea es orientar ("estás pasando por acá"), no un glow llamativo. Clase
  * propia en vez de un `hover:shadow-[...]` arbitrario de Tailwind porque
  * `color-mix()` anidado dentro de un `box-shadow` de varias capas es más
@@ -255,21 +255,21 @@
 }
 
 .leads-table-row:hover {
-  /* Barra de acento a la izquierda en el color vimcore (--sidebar) vía
-     `box-shadow` inset: pinta el borde sin desplazar el contenido (un
-     `border-left` real correría las celdas 3px). Fondo gris suave de
-     --muted para que el hover se note. */
-  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  /* Barra de acento a la izquierda en el acento de marca (--primary, deriva
+     de colorSecundario, `color-marca.ts`) vía `box-shadow` inset: pinta el
+     borde sin desplazar el contenido (un `border-left` real correría las
+     celdas 3px). Fondo gris suave de --muted para que el hover se note. */
+  box-shadow: inset 3px 0 0 0 rgb(var(--primary));
   background-color: rgb(var(--muted));
 }
 
 .leads-table-row[data-state="selected"] {
-  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  box-shadow: inset 3px 0 0 0 rgb(var(--primary));
   background-color: rgb(var(--muted));
 }
 
 .leads-table-row[data-state="selected"]:hover {
-  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  box-shadow: inset 3px 0 0 0 rgb(var(--primary));
 }
 
 .bulk-actions-content {

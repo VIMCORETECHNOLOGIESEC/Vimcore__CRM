@@ -72,6 +72,19 @@ describe("GestorEmpresasPage", () => {
     expect(await screen.findByText("No se pudo completar la operación")).toBeInTheDocument();
   });
 
+  it("el encabezado de la tabla usa la superficie de marca (--sidebar), igual que Usuarios/Bridges/Leads", async () => {
+    fetchEmpresasHoldingApiMock.mockResolvedValue([empresaFake()]);
+    renderPage();
+
+    await screen.findByText("Empresa A");
+
+    const encabezado = screen.getByText("Nombre").closest("thead");
+    expect(encabezado).toHaveClass("bg-sidebar");
+    for (const etiqueta of ["Nombre", "Color primario", "Color secundario", "Isotipo", "Acciones"]) {
+      expect(screen.getByText(etiqueta).closest("th")).toHaveClass("text-sidebar-foreground/80");
+    }
+  });
+
   it("lista las empresas devueltas por el backend", async () => {
     fetchEmpresasHoldingApiMock.mockResolvedValue([
       empresaFake({ id: "e1", nombre: "Empresa A" }),

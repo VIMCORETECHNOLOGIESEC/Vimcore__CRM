@@ -72,13 +72,13 @@ export function GestorEmpresasPage() {
         />
       ) : (
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-20 bg-sidebar">
             <TableRow className="hover:bg-transparent">
-              <TableHead>Nombre</TableHead>
-              <TableHead>Color primario</TableHead>
-              <TableHead>Color secundario</TableHead>
-              <TableHead>Isotipo</TableHead>
-              <TableHead className="w-24 text-right">Acciones</TableHead>
+              <TableHead className="text-sidebar-foreground/80">Nombre</TableHead>
+              <TableHead className="text-sidebar-foreground/80">Color primario</TableHead>
+              <TableHead className="text-sidebar-foreground/80">Color secundario</TableHead>
+              <TableHead className="text-sidebar-foreground/80">Isotipo</TableHead>
+              <TableHead className="w-24 text-right text-sidebar-foreground/80">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

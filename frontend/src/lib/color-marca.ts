@@ -64,21 +64,24 @@ export function foregroundForContrast(backgroundTriplet: string): string {
 
 /**
  * Overrides de acento para el shell autenticado (`AppLayout.tsx`) -- decisión
- * del usuario, alcance acotado: SOLO acentos interactivos
- * (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`), nunca
- * fondos ni texto de contenido. Se descartó recolorear toda la paleta
- * (riesgo de contraste en fondos/texto) y un simple badge sin tocar
+ * del usuario, alcance acotado: acentos interactivos
+ * (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`) MÁS la
+ * superficie del panel lateral (`--sidebar` y sus 3 tokens companion), nunca
+ * fondos ni texto del contenido central. Se descartó recolorear toda la
+ * paleta (riesgo de contraste en fondos/texto) y un simple badge sin tocar
  * componentes (cambio insuficiente).
  *
- * `--sidebar` (el fondo sólido del panel, hoy `var(--vimcore)`) queda
- * DELIBERADAMENTE fuera de esta lista -- no es solo la lectura de que el
- * pedido nombró los 4 tokens de arriba y no ese: `--sidebar` también se usa
- * como acento decorativo en contenido (`index.css`,
- * `box-shadow: inset 3px 0 0 0 rgb(var(--sidebar))` en filas destacadas de
- * tablas), así que tocarlo filtraría el color de marca a áreas de contenido
- * que la decisión del usuario excluye explícitamente. Si en vivo se ve
- * insuficiente, es un cambio de una línea agregar `--sidebar` acá -- no un
- * rediseño.
+ * `--sidebar` (personalizacion-identidad-visual, revisión de la decisión
+ * previa): esta función ahora SÍ deriva `--sidebar`,
+ * `--sidebar-foreground`, `--sidebar-border` y `--sidebar-ring` desde
+ * `colorPrimario` -- decisión consciente que reemplaza la exclusión
+ * anterior (`--sidebar` fijo en `var(--vimcore)` para toda empresa). El
+ * mismo token también pinta el acento decorativo de filas destacadas en
+ * tablas (`index.css`, antes `box-shadow: inset 3px 0 0 0 rgb(var(--sidebar))`
+ * en `.leads-table-row`) -- ese acento de contenido se repuntó a `--primary`
+ * (derivado de `colorSecundario`) precisamente para mantener `--sidebar`
+ * fuera del contenido central y dejarlo exclusivo del panel lateral y los
+ * encabezados de tabla (`bg-sidebar`/`text-sidebar-foreground`).
  *
  * Usa `colorSecundario` (el tono más vívido de los dos, ej. `#f97316` sobre
  * el `colorPrimario` `#7c2d12` de Empresa A) para los 4 tokens de acento,
@@ -116,12 +119,18 @@ export function resolveEstilosMarca(
     usuario.empresaColorPrimario !== null &&
     usuario.empresaColorSecundario !== null;
 
+  const colorPrimario = tieneColorPropio
+    ? (usuario.empresaColorPrimario as string)
+    : (configuracionHolding?.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario);
   const colorSecundario = tieneColorPropio
     ? (usuario.empresaColorSecundario as string)
     : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
 
   const acento = hexToRgbTriplet(colorSecundario);
   const acentoForeground = foregroundForContrast(acento);
+
+  const sidebar = hexToRgbTriplet(colorPrimario);
+  const sidebarForeground = foregroundForContrast(sidebar);
 
   return {
     "--primary": acento,
@@ -131,6 +140,10 @@ export function resolveEstilosMarca(
     "--sidebar-primary-foreground": acentoForeground,
     "--sidebar-accent": acento,
     "--sidebar-accent-foreground": acentoForeground,
+    "--sidebar": sidebar,
+    "--sidebar-foreground": sidebarForeground,
+    "--sidebar-border": sidebarForeground,
+    "--sidebar-ring": sidebarForeground,
   };
 }
 
