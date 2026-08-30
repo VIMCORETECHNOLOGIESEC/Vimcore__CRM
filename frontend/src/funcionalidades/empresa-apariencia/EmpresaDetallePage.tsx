@@ -1,10 +1,13 @@
-import { Building2, Plug, Users } from "lucide-react";
-import { useEffect } from "react";
+import { Building2, Plug, UserPlus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { getErrorMessage } from "@/api/httpClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { CrearAdministradorEmpresaDialog } from "@/funcionalidades/usuarios/CrearAdministradorEmpresaDialog";
+import { useCreateEmpresaAdministrador } from "@/funcionalidades/usuarios/useUsuarios";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { useEmpresasHolding } from "./useEmpresaAparienciaHolding";
 import { useVistaEmpresa } from "./useVistaEmpresa";
@@ -39,6 +42,9 @@ export function EmpresaDetallePage() {
   const { data, isLoading, isError, error, refetch } = useEmpresasHolding({
     pageSize: EMPRESAS_PAGE_SIZE_DETALLE,
   });
+  const { hasRole } = useAuth();
+  const [dialogAdminAbierto, setDialogAdminAbierto] = useState(false);
+  const crearAdministrador = useCreateEmpresaAdministrador(empresaId ?? "");
 
   const empresa = data?.items.find((item) => item.id === empresaId);
 
@@ -126,7 +132,39 @@ export function EmpresaDetallePage() {
             </CardContent>
           </Card>
         </Link>
+        {hasRole(["ADMINISTRADOR"]) ? (
+          <button
+            type="button"
+            className="block text-left"
+            onClick={() => setDialogAdminAbierto(true)}
+          >
+            <Card className="transition-colors hover:border-primary/50">
+              <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+                <UserPlus className="size-5 text-muted-foreground" aria-hidden="true" />
+                <CardTitle className="text-base">Nuevo administrador</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Dar de alta un administrador para esta empresa.
+                </p>
+              </CardContent>
+            </Card>
+          </button>
+        ) : null}
       </section>
+
+      {dialogAdminAbierto ? (
+        <CrearAdministradorEmpresaDialog
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setDialogAdminAbierto(false);
+          }}
+          enviando={crearAdministrador.isPending}
+          onSubmit={(valores) =>
+            crearAdministrador.mutate(valores, { onSuccess: () => setDialogAdminAbierto(false) })
+          }
+        />
+      ) : null}
     </div>
   );
 }

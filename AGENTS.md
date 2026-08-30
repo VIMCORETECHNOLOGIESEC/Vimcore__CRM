@@ -319,6 +319,37 @@ de modificar código, datos o despliegue:
     jerárquica más allá de eso. No incluye dashboards jerárquicos (ver
     punto anterior) ni el "corte" de `Lead` (retirarle columnas de
     negociación) — fase separada, sin arrancar.
+  - **Bloque F / docs/23 item 23** ("Alta de administrador de empresa"):
+    `POST /empresas/:empresaId/administradores` (`requireRole("ADMINISTRADOR")`,
+    body `{ nombre, correo, password }`) crea un `Usuario` `ADMINISTRADOR`
+    scopeado a esa empresa, con login propio (correo/contraseña separados,
+    `sessionScope: "company"`). Frontend nuevo:
+    `CrearAdministradorEmpresaDialog.tsx` (sin campo `rol`: implícito
+    `ADMINISTRADOR`, `password` reusa `passwordPolicySchema` compartido) +
+    `createEmpresaAdministradorApi`/`useCreateEmpresaAdministrador` en
+    `usuarios.api.ts`/`useUsuarios.ts`. Disparado desde una tercera tarjeta
+    ("Nuevo administrador") en `EmpresaDetallePage.tsx`, gated
+    `hasRole(["ADMINISTRADOR"])` — la página ya está bajo
+    `ProtectedRoute allowedScopes={["holding"]}` a nivel de ruta, sin
+    gating adicional necesario. No agrega ningún endpoint de alta de
+    administrador holding-wide ni auto-provisioning de `Membresia` —
+    ambos siguen sin arrancar del lado de Mateo.
+  - **Bloque F / docs/23 item 25** ("Tab usuarios holding-wide vs. por
+    empresa"): `listUsuariosQuerySchema` gana `soloHoldingWide` opcional
+    (gana sobre `empresaId` si ambos llegan juntos) — lista únicamente
+    usuarios sin ninguna `Membresia` (`ADMINISTRADOR`/`SUPERVISOR`/
+    `SUPERVISOR_HOLDING`/`SUPER_ADMIN` sin empresa). Frontend: toggle
+    nuevo en `UsuariosFiltros.tsx`, visible solo para sesión `holding`
+    (`useAuth().user?.sessionScope === "holding"`). De paso, `RolUsuario`
+    (frontend) se amplió a los dos roles holding-wide de Bloque F
+    (`SUPERVISOR_HOLDING`/`SUPER_ADMIN`, ya existentes en el enum Prisma
+    sin reflejarse en el tipo del frontend) — visibles en la tabla y en
+    este filtro, pero NO agregados a `ROLES_USUARIO_SELECCIONABLES`
+    (siguen sin ser creables por la vía normal de alta de usuario).
+    Ambos ítems (23 y 25), igual que el 14 de arriba, construidos contra
+    el schema de `origin/main` (`a76c62b`), todavía sin mergear a
+    `test/gpt` — forward-compatible, el backend actual de esta rama
+    ignora los params nuevos en silencio.
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado).

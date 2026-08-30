@@ -12,9 +12,13 @@ import type { RolUsuario } from "@/tipos/usuario";
 import { useAuth } from "./authContext";
 import { changePasswordApi } from "./autenticacion.api";
 
+// `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (Bloque F): ver el docblock de
+// `RolUsuario` en `@/tipos/usuario` -- mismo texto que `usuarios/catalogos.ts::ROL_ETIQUETAS`.
 const ETIQUETAS_ROL: Record<RolUsuario, string> = {
   ADMINISTRADOR: "Administrador",
   SUPERVISOR: "Supervisor",
+  SUPERVISOR_HOLDING: "Supervisor de holding",
+  SUPER_ADMIN: "Super administrador",
   ASESOR: "Asesor",
   VENDEDOR: "Vendedor",
 };

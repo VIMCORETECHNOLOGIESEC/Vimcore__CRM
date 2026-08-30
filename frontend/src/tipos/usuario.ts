@@ -3,18 +3,43 @@
  * `RolUsuario` refleja el enum Prisma `RolUsuario` (backend/prisma/schema.prisma).
  * Mantenerlos sincronizados manualmente: el frontend no comparte el cliente
  * de Prisma generado.
+ *
+ * `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (Bloque F, aditivo): mismo alcance
+ * máximo entre los dos -- acceso total holding-wide, sin restricción de
+ * `empresaId`, tratados como bypass total en cualquier chequeo de autoridad
+ * "acceso total" ya existente (mismo criterio que `ADMINISTRADOR` hoy, ver
+ * el comentario de `backend/prisma/schema.prisma::RolUsuario`). No son
+ * seleccionables al crear/editar un usuario desde el frontend
+ * (`catalogos.ts::ROLES_USUARIO_SELECCIONABLES` no los incluye) -- se
+ * provisionan por otro camino, fuera de este alcance.
  */
-export type RolUsuario = "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR";
+export type RolUsuario =
+  | "ADMINISTRADOR"
+  | "SUPERVISOR"
+  | "SUPERVISOR_HOLDING"
+  | "SUPER_ADMIN"
+  | "ASESOR"
+  | "VENDEDOR";
 
 /**
  * `as const satisfies` (no solo `readonly RolUsuario[]`) para que el tipo se
  * infiera como tupla literal -- necesario para reutilizarla directamente en
  * `z.enum(ROLES_USUARIO)` (F7, formularios de alta/edición de usuario) sin
  * duplicar la lista de roles en un segundo lugar.
+ *
+ * Incluye los 6 valores del enum ampliado (Bloque F) -- necesario para que
+ * `EditarUsuarioDialog.tsx::editarUsuarioSchema` (`z.enum(ROLES_USUARIO)`)
+ * acepte como `defaultValues.rol` el `rol` real de CUALQUIER `AdminUsuario`,
+ * incluido uno `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (visible vía el filtro
+ * "solo holding-wide", Item 25). No cambia qué se puede SELECCIONAR desde
+ * cero -- eso sigue acotado a `catalogos.ts::ROLES_USUARIO_SELECCIONABLES`,
+ * que deliberadamente no los incluye.
  */
 export const ROLES_USUARIO = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
   "ASESOR",
   "VENDEDOR",
 ] as const satisfies readonly RolUsuario[];

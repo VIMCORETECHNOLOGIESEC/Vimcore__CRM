@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EmpresaAparienciaHoldingView } from "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api";
+import type { RolUsuario } from "@/tipos/usuario";
 
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
   fetchEmpresasHoldingApi: vi.fn(),
@@ -10,20 +12,46 @@ vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", (
 vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
   useVistaEmpresa: vi.fn(),
 }));
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
+  createEmpresaAdministradorApi: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const empresaAparienciaHoldingApi = await import(
   "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api"
 );
 const { useVistaEmpresa } = await import("@/funcionalidades/empresa-apariencia/useVistaEmpresa");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const usuariosApi = await import("@/funcionalidades/usuarios/usuarios.api");
+const { toast } = await import("sonner");
 const { EmpresaDetallePage } = await import(
   "@/funcionalidades/empresa-apariencia/EmpresaDetallePage"
 );
 
 const fetchEmpresasHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresasHoldingApi);
 const useVistaEmpresaMock = vi.mocked(useVistaEmpresa);
+const useAuthMock = vi.mocked(useAuth);
+const createEmpresaAdministradorApiMock = vi.mocked(usuariosApi.createEmpresaAdministradorApi);
 
 const entrarAEmpresaMock = vi.fn();
 const salirDeEmpresaMock = vi.fn();
+
+/**
+ * Helper de rol -- mismo criterio que `ProductosAdminDialog.test.tsx`: un
+ * `hasRole` mínimo que solo verifica pertenencia al array de roles permitidos.
+ */
+function mockUseAuth(rol: RolUsuario) {
+  useAuthMock.mockReturnValue({
+    user: null,
+    isLoading: false,
+    isLoginPending: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    hasRole: (allowedRoles?: readonly RolUsuario[]) =>
+      !allowedRoles || allowedRoles.length === 0 || allowedRoles.includes(rol),
+  } as unknown as ReturnType<typeof useAuth>);
+}
 
 function empresaFake(overrides: Partial<EmpresaAparienciaHoldingView> = {}): EmpresaAparienciaHoldingView {
   return {
@@ -49,6 +77,8 @@ beforeEach(() => {
     entrarAEmpresa: entrarAEmpresaMock,
     salirDeEmpresa: salirDeEmpresaMock,
   });
+  createEmpresaAdministradorApiMock.mockReset();
+  mockUseAuth("ADMINISTRADOR");
 });
 
 afterEach(() => {
@@ -136,6 +166,76 @@ describe("EmpresaDetallePage — punto frágil: empresa no encontrada en el list
 
     expect(await screen.findByText("No se encontró la empresa solicitada.")).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Cargando" })).not.toBeInTheDocument();
+  });
+});
+
+describe("EmpresaDetallePage — alta de administrador de empresa (Item 23)", () => {
+  it("muestra el disparador «Nuevo administrador» para ADMINISTRADOR y abre el diálogo al hacer clic", async () => {
+    const user = userEvent.setup();
+    fetchEmpresasHoldingApiMock.mockResolvedValue({
+      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
+      total: 1,
+    });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    const disparador = screen.getByRole("button", { name: /nuevo administrador/i });
+    expect(disparador).toBeInTheDocument();
+
+    await user.click(disparador);
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Crear administrador" })).toBeInTheDocument();
+  });
+
+  it("no muestra el disparador para un rol sin permiso (no ADMINISTRADOR)", async () => {
+    mockUseAuth("SUPERVISOR");
+    fetchEmpresasHoldingApiMock.mockResolvedValue({
+      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
+      total: 1,
+    });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    expect(screen.queryByRole("button", { name: /nuevo administrador/i })).not.toBeInTheDocument();
+  });
+
+  it("al enviar el formulario, llama a la mutación con el `empresaId` de la página y avisa con un toast", async () => {
+    const user = userEvent.setup();
+    fetchEmpresasHoldingApiMock.mockResolvedValue({
+      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
+      total: 1,
+    });
+    createEmpresaAdministradorApiMock.mockResolvedValue({
+      id: "u1",
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      rol: "ADMINISTRADOR",
+      activo: true,
+      creadoEn: "2026-08-30T00:00:00.000Z",
+      actualizadoEn: "2026-08-30T00:00:00.000Z",
+    });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    await user.click(screen.getByRole("button", { name: /nuevo administrador/i }));
+
+    await user.type(screen.getByLabelText("Nombre"), "Ana Gómez");
+    await user.type(screen.getByLabelText("Correo"), "ana@crm.test");
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear administrador" }));
+
+    await waitFor(() =>
+      expect(createEmpresaAdministradorApiMock).toHaveBeenCalledWith("e1", {
+        nombre: "Ana Gómez",
+        correo: "ana@crm.test",
+        password: "una-contraseña-larga-1",
+      }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Administrador creado correctamente."));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Crear administrador" })).not.toBeInTheDocument(),
+    );
   });
 });
 

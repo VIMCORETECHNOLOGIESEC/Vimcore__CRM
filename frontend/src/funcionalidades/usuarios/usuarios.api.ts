@@ -28,6 +28,12 @@ export interface CreateUsuarioInput {
   rol: RolUsuario;
 }
 
+export interface CreateEmpresaAdministradorInput {
+  nombre: string;
+  correo: string;
+  password: string;
+}
+
 export interface UpdateUsuarioInput {
   nombre: string;
   correo: string;
@@ -64,6 +70,17 @@ export interface UsuariosQueryParams {
    * de verdad sin ningún cambio de frontend.
    */
   empresaId?: string;
+  /**
+   * Bloque F (tarea 2), Item 25: filtra el listado a SOLO los usuarios sin
+   * ninguna `Membresia` (roles holding-wide: ADMINISTRADOR/SUPERVISOR/
+   * SUPERVISOR_HOLDING/SUPER_ADMIN sin empresa). Gana sobre `empresaId` si
+   * ambos viajan (`usuarios.service.ts::buildWhere`,
+   * `listUsuariosQuerySchema` en `backend/src/schemas/usuarios.schema.ts`).
+   * Igual que `empresaId` arriba, contrato confirmado en `origin/main`
+   * (commit a76c62b) TODAVÍA no mergeado a `test/gpt` -- se manda igual,
+   * forward-compatible: sin efecto hasta que el merge llegue.
+   */
+  soloHoldingWide?: boolean;
   direccion?: "asc" | "desc";
 }
 
@@ -96,6 +113,34 @@ export async function fetchUsuariosApi(params: UsuariosQueryParams): Promise<Usu
 /** `POST /usuarios` -- backend real (D9: alta exclusiva de ADMINISTRADOR). */
 export async function createUsuarioApi(input: CreateUsuarioInput): Promise<AdminUsuario> {
   const { user } = await httpClient.post<UsuarioResponse>("/usuarios", input);
+  return user;
+}
+
+/**
+ * Alta de administrador de empresa (Item 23, docs/23) -- `POST
+ * /empresas/:empresaId/administradores`, `requireRole("ADMINISTRADOR")`.
+ * SIN prefijo `/usuarios/`: `usuariosRouter` se monta sin prefijo en
+ * `backend/src/routes/index.ts` (`apiRouter.use(usuariosRouter)`) y la ruta
+ * se registra tal cual en `usuarios.routes.ts` -- mismo patrón que
+ * `empresa-apariencia-holding.api.ts::updateEmpresaAparienciaHolding`
+ * (`/empresas/${empresaId}/apariencia`). El rol del usuario creado es
+ * implícito ADMINISTRADOR, fijado por el backend
+ * (`createEmpresaAdministradorBodySchema` no tiene campo `rol`).
+ *
+ * Contrato confirmado contra `origin/main` (commit a76c62b) -- TODAVÍA no
+ * existe en este branch (`test/gpt`, bloqueado por el merge pendiente de
+ * Mateo, no relacionado con este cambio). Se llama igual, forward-compatible
+ * (mismo criterio que `empresaId`/`soloHoldingWide` en `UsuariosQueryParams`
+ * más arriba).
+ */
+export async function createEmpresaAdministradorApi(
+  empresaId: string,
+  input: CreateEmpresaAdministradorInput,
+): Promise<AdminUsuario> {
+  const { user } = await httpClient.post<UsuarioResponse>(
+    `/empresas/${empresaId}/administradores`,
+    input,
+  );
   return user;
 }
 

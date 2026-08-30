@@ -10,6 +10,13 @@ export interface UsuariosFiltrosState {
   rol: RolUsuario | typeof FILTRO_TODOS;
   /** Tres estados en vez de un booleano: "sin elegir" es un estado real del filtro, no solo `false`. */
   estado: "TODOS" | "ACTIVOS" | "INACTIVOS";
+  /**
+   * Tab holding-wide vs. por empresa (Item 25, Bloque F tarea 2) -- solo
+   * tiene efecto para una sesión holding-wide (`UsuariosFiltros.tsx` lo
+   * oculta para una sesión company-scoped). Ver el docblock de
+   * `UsuariosQueryParams::soloHoldingWide` en `usuarios.api.ts`.
+   */
+  soloHoldingWide: boolean;
 }
 
 /**
@@ -22,6 +29,7 @@ export const FILTROS_USUARIOS_VACIOS: UsuariosFiltrosState = {
   busqueda: "",
   rol: FILTRO_TODOS,
   estado: "ACTIVOS",
+  soloHoldingWide: false,
 };
 
 /**
@@ -46,6 +54,7 @@ export function buildUsuariosQueryParams(
   if (filtros.estado === "ACTIVOS") params.activo = true;
   if (filtros.estado === "INACTIVOS") params.activo = false;
   if (empresaId) params.empresaId = empresaId;
+  if (filtros.soloHoldingWide) params.soloHoldingWide = true;
 
   return params;
 }

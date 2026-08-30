@@ -2,6 +2,7 @@ import { Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,9 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { ROLES_USUARIO } from "@/tipos/usuario";
 import { ROL_ETIQUETAS } from "./catalogos";
 import { FILTRO_TODOS, FILTROS_USUARIOS_VACIOS, type UsuariosFiltrosState } from "./usuarios.utils";
+
+/** Etiqueta del toggle "solo holding-wide" -- misma cadena en el `<Label>`, el chip y `aria-label` del `Checkbox`. */
+const ETIQUETA_SOLO_HOLDING_WIDE = "Solo usuarios holding-wide (sin empresa)";
 
 interface UsuariosFiltrosProps {
   filtros: UsuariosFiltrosState;
@@ -31,6 +36,17 @@ interface UsuariosFiltrosProps {
  * estado) que antes estaban como selects inline.
  */
 export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosProps) {
+  const { user } = useAuth();
+  /**
+   * El toggle "solo holding-wide" solo tiene sentido para una sesión
+   * holding-wide -- `sessionScope` es el campo real resuelto server-side
+   * (`AuthenticatedUser`), nunca se infiere localmente (ver
+   * `tipos/usuario.ts::AuthenticatedUser`). Una sesión company-scoped ni
+   * siquiera ve el control (backend lo ignora igual, ver el docblock de
+   * `UsuariosQueryParams::soloHoldingWide`).
+   */
+  const esHoldingWide = user?.sessionScope === "holding";
+
   function update<K extends keyof UsuariosFiltrosState>(campo: K, valor: UsuariosFiltrosState[K]) {
     onChange({ ...filtros, [campo]: valor });
   }
@@ -48,6 +64,9 @@ export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosP
       const estadoLegible =
         filtros.estado === "INACTIVOS" ? "Inactivos" : filtros.estado === "TODOS" ? "Todos" : filtros.estado;
       chips.push({ campo: "estado", etiqueta: "Estado", valorLegible: estadoLegible });
+    }
+    if (filtros.soloHoldingWide) {
+      chips.push({ campo: "soloHoldingWide", etiqueta: "Alcance", valorLegible: ETIQUETA_SOLO_HOLDING_WIDE });
     }
     return chips;
   }, [filtros]);
@@ -121,6 +140,20 @@ export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosP
                     ]}
                   />
                 </div>
+
+                {esHoldingWide ? (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="filtro-solo-holding-wide"
+                      checked={filtros.soloHoldingWide}
+                      onCheckedChange={(marcado) => update("soloHoldingWide", marcado === true)}
+                      aria-label={ETIQUETA_SOLO_HOLDING_WIDE}
+                    />
+                    <Label htmlFor="filtro-solo-holding-wide" className="text-sm font-normal">
+                      {ETIQUETA_SOLO_HOLDING_WIDE}
+                    </Label>
+                  </div>
+                ) : null}
               </div>
             </PopoverContent>
           </Popover>

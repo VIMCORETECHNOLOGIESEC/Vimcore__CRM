@@ -69,6 +69,7 @@ describe("buildUsuariosQueryParams", () => {
       busqueda: "gómez",
       rol: "VENDEDOR",
       estado: "ACTIVOS",
+      soloHoldingWide: false,
     };
     expect(buildUsuariosQueryParams(filtros, 3, 10)).toEqual({
       pagina: 3,
@@ -76,6 +77,27 @@ describe("buildUsuariosQueryParams", () => {
       busqueda: "gómez",
       rol: "VENDEDOR",
       activo: true,
+    });
+  });
+
+  it("soloHoldingWide en false (default) no se manda -- solo tiene efecto para una sesión holding-wide (Item 25)", () => {
+    expect(buildUsuariosQueryParams(FILTROS_USUARIOS_VACIOS, 1, 20)).toEqual({
+      pagina: 1,
+      limite: 20,
+      activo: true,
+    });
+  });
+
+  it("soloHoldingWide en true se manda al backend", () => {
+    const filtros: UsuariosFiltrosState = {
+      ...FILTROS_USUARIOS_VACIOS,
+      estado: "TODOS",
+      soloHoldingWide: true,
+    };
+    expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({
+      pagina: 1,
+      limite: 20,
+      soloHoldingWide: true,
     });
   });
 });

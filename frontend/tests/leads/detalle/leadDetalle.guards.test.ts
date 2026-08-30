@@ -80,6 +80,12 @@ describe("canHandoffToVendedor (docs/02-reglas-negocio.md §5)", () => {
     expect(canHandoffToVendedor(leadVenta, usuario({ id: "admin-1", rol: "ADMINISTRADOR" }))).toBe(false);
     expect(canHandoffToVendedor(leadNoVenta, usuario({ id: "admin-1", rol: "ADMINISTRADOR" }))).toBe(false);
   });
+
+  it("supervisor-holding y super-admin traspasan cualquier lead, bypass total (Bloque F)", () => {
+    const lead = leadParcial({ etapa: "CONTACTADO", asesor: otroAsesor });
+    expect(canHandoffToVendedor(lead, usuario({ id: "sh-1", rol: "SUPERVISOR_HOLDING" }))).toBe(true);
+    expect(canHandoffToVendedor(lead, usuario({ id: "sa-1", rol: "SUPER_ADMIN" }))).toBe(true);
+  });
 });
 
 describe("canReassignLead (docs/02-reglas-negocio.md §5)", () => {
@@ -116,5 +122,11 @@ describe("canReassignLead (docs/02-reglas-negocio.md §5)", () => {
   it("supervisor reasigna cualquier lead sin condición de semáforo", () => {
     const lead = leadParcial({ semaforo: "VERDE", asesor: otroAsesor });
     expect(canReassignLead(lead, usuario({ id: "sup-1", rol: "SUPERVISOR" }))).toBe(true);
+  });
+
+  it("supervisor-holding y super-admin reasignan cualquier lead sin condición, bypass total (Bloque F)", () => {
+    const lead = leadParcial({ semaforo: "VERDE", asesor: otroAsesor });
+    expect(canReassignLead(lead, usuario({ id: "sh-1", rol: "SUPERVISOR_HOLDING" }))).toBe(true);
+    expect(canReassignLead(lead, usuario({ id: "sa-1", rol: "SUPER_ADMIN" }))).toBe(true);
   });
 });

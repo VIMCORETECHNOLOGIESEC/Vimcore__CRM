@@ -14,6 +14,7 @@ const { httpClient } = await import("@/api/httpClient");
 const {
   fetchUsuariosApi,
   createUsuarioApi,
+  createEmpresaAdministradorApi,
   updateUsuarioApi,
   resetPasswordApi,
   deactivateUsuarioApi,
@@ -111,6 +112,24 @@ describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
       rol: "ASESOR",
     });
     expect(resultado).toEqual(nuevo);
+  });
+
+  it("createEmpresaAdministradorApi llama a POST /empresas/:empresaId/administradores (SIN prefijo /usuarios) con el cuerpo dado y devuelve `user`", async () => {
+    const nuevoAdmin = usuarioFake({ id: "admin-1", rol: "ADMINISTRADOR" });
+    postMock.mockResolvedValue({ user: nuevoAdmin });
+
+    const resultado = await createEmpresaAdministradorApi("empresa-1", {
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      password: "una-contraseña-larga-1",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/empresas/empresa-1/administradores", {
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      password: "una-contraseña-larga-1",
+    });
+    expect(resultado).toEqual(nuevoAdmin);
   });
 
   it("updateUsuarioApi llama a PATCH /usuarios/:id con nombre/correo/rol, sin password", async () => {

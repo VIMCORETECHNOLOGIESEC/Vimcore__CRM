@@ -80,7 +80,8 @@ export function UsuariosPage() {
   const hayFiltrosActivos =
     filtros.busqueda !== "" ||
     filtros.rol !== FILTRO_TODOS ||
-    filtros.estado !== FILTROS_USUARIOS_VACIOS.estado;
+    filtros.estado !== FILTROS_USUARIOS_VACIOS.estado ||
+    filtros.soloHoldingWide;
 
   const usuarios = data?.users ?? [];
   const total = data?.total ?? 0;

@@ -18,9 +18,17 @@ vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   getCargaActivaDeUsuario: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// `UsuariosFiltros` ahora llama a `useAuth()` para gatear el toggle "solo
+// holding-wide" (Item 25) -- se mockea acá también, default company-scoped
+// (mismo criterio que `tests/oportunidades/OportunidadesFiltros.test.tsx`),
+// para no romper ninguno de los tests existentes que no le importa el scope.
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+  useAuth: vi.fn(),
+}));
 
 const usuariosApi = await import("@/funcionalidades/usuarios/usuarios.api");
 const { toast } = await import("sonner");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { UsuariosPage } = await import("@/funcionalidades/usuarios/UsuariosPage");
 
 const fetchUsuariosApiMock = vi.mocked(usuariosApi.fetchUsuariosApi);
@@ -32,6 +40,29 @@ const reactivateUsuarioApiMock = vi.mocked(usuariosApi.reactivateUsuarioApi);
 const getCargaActivaDeUsuarioMock = vi.mocked(usuariosApi.getCargaActivaDeUsuario);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
+const useAuthMock = vi.mocked(useAuth);
+
+function mockearAuth(sessionScope: "company" | "holding" = "company") {
+  useAuthMock.mockReturnValue({
+    user: {
+      id: "admin-1",
+      nombre: "Admin",
+      correo: "admin@crm.test",
+      rol: "ADMINISTRADOR",
+      sessionScope,
+      empresaId: sessionScope === "company" ? "empresa-1" : null,
+      empresaNombre: null,
+      empresaColorPrimario: null,
+      empresaColorSecundario: null,
+      empresaLogoUrl: null,
+    },
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    hasRole: () => true,
+  });
+}
 
 function usuarioFake(overrides: Partial<AdminUsuario> = {}): AdminUsuario {
   return {
@@ -84,6 +115,8 @@ beforeEach(() => {
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReturnValue(0);
+  useAuthMock.mockReset();
+  mockearAuth("company");
 });
 
 afterEach(() => {
@@ -553,5 +586,34 @@ describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
 
     const fila = (await screen.findByText("Marta Herrera")).closest("tr");
     expect(fila).not.toHaveClass("opacity-60");
+  });
+});
+
+describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración con useVistaEmpresa)", () => {
+  it("con sesión holding-wide, activar el toggle manda `soloHoldingWide: true` a fetchUsuariosApi", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await abrirFiltros(user);
+    await user.click(screen.getByRole("checkbox", { name: /holding-wide/i }));
+
+    await waitFor(() => {
+      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.soloHoldingWide).toBe(true);
+    });
+  });
+
+  it("con sesión company-scoped, el toggle no se muestra", async () => {
+    mockearAuth("company");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    await abrirFiltros(user);
+
+    expect(screen.queryByRole("checkbox", { name: /holding-wide/i })).not.toBeInTheDocument();
   });
 });
