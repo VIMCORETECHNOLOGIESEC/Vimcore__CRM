@@ -1,4 +1,4 @@
-import { Building2, LayoutDashboard, Palette, Plug, UserCog, Users } from "lucide-react";
+import { Building2, Handshake, LayoutDashboard, Palette, Plug, UserCog, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
@@ -45,6 +45,7 @@ export function resolveNavigationRoute(
 export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   { label: "Dashboard", route: "/panel", icon: LayoutDashboard },
   { label: "Leads", route: "/leads", icon: Users },
+  { label: "Oportunidades", route: "/oportunidades", icon: Handshake },
   {
     label: "Usuarios",
     route: "/usuarios",

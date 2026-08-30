@@ -39,3 +39,22 @@ describe("NAVIGATION_ITEMS -- consolidación de Apariencia", () => {
     expect(itemsApariencia).toHaveLength(1);
   });
 });
+
+describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
+  const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
+  if (!oportunidades) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Oportunidades'");
+  }
+
+  it("apunta a /oportunidades y es visible para cualquier rol y scope", () => {
+    expect(oportunidades.route).toBe("/oportunidades");
+    expect(oportunidades.allowedRoles).toBeUndefined();
+    expect(oportunidades.allowedScopes).toBeUndefined();
+    expect(oportunidades.routeByScope).toBeUndefined();
+  });
+
+  it("resuelve /oportunidades para holding y company", () => {
+    expect(resolveNavigationRoute(oportunidades, "holding")).toBe("/oportunidades");
+    expect(resolveNavigationRoute(oportunidades, "company")).toBe("/oportunidades");
+  });
+});

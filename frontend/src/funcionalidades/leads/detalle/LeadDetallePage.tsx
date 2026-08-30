@@ -7,6 +7,7 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { NuevaOportunidadButton } from "@/funcionalidades/oportunidades/NuevaOportunidadButton";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AccionesResponsable } from "./AccionesResponsable";
 import { LeadDatosContacto } from "./LeadDatosContacto";
@@ -374,8 +375,9 @@ export function LeadDetallePage() {
             <LeadDatosContacto cliente={lead.cliente} />
             <LeadOrigenInfo lead={lead} />
           </div>
-          <div className="mt-4">
+          <div className="mt-4 flex flex-col gap-4">
             <AccionesResponsable lead={lead} user={user} />
+            <NuevaOportunidadButton leadId={lead.id} />
           </div>
         </div>
         <div data-tour="lead-summary">

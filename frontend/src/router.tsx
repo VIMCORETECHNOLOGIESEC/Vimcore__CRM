@@ -13,6 +13,8 @@ import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
 import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage";
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { LinkedInCallbackPage } from "@/funcionalidades/linkedin/LinkedInCallbackPage";
+import { OportunidadDetallePage } from "@/funcionalidades/oportunidades/detalle/OportunidadDetallePage";
+import { OportunidadesPage } from "@/funcionalidades/oportunidades/OportunidadesPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
 import { WhatsAppCallbackPage } from "@/funcionalidades/whatsapp/WhatsAppCallbackPage";
 import { AppLayout } from "@/layouts/AppLayout";
@@ -104,6 +106,8 @@ export const router = createBrowserRouter([
           { path: "panel", element: <DashboardPage /> },
           { path: "leads", element: <LeadsPage /> },
           { path: "leads/:id", element: <LeadDetallePage /> },
+          { path: "oportunidades", element: <OportunidadesPage /> },
+          { path: "oportunidades/:id", element: <OportunidadDetallePage /> },
           { path: "perfil", element: <PerfilPage /> },
           {
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,
