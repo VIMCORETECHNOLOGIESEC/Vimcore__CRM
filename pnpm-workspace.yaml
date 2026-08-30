@@ -8,4 +8,3 @@ allowBuilds:
   esbuild: true
   prisma: true
   puppeteer: true
-storeDir: /root/.pnpm-store-internal

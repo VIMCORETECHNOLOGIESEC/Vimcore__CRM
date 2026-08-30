@@ -311,6 +311,16 @@ por membresía de empresa, sin sub-filtro dentro de ella.
   regla de herencia adicional, la membresía ya lo cubre. → ver
   `docs/blocks/d-routing-oportunidad.md`.
 
+**Reconfirmado (2026-08-30):** el roadmap de seguridad/holding planteó como
+posible feature "membresía scopeada por red social" (un asesor restringido a
+un solo canal dentro de su empresa). Se descarta explícitamente — contradice
+D4 tal como está resuelto arriba. Regla de negocio confirmada: un asesor
+gestiona TODOS los leads de su empresa sin importar el canal/red social de
+origen; ese origen queda trazable igual, denormalizado en `Lead.redSocial` y
+alcanzable desde cualquier `Oportunidad` vía `Oportunidad.leadId` — no hace
+falta ningún campo de canal en `Membresia` para eso. No se abre ningún
+cambio de schema por este punto.
+
 **D3 — Cardinalidad de routing por sitio — Resuelto (2026-08-25):** pool por
 empresa, no pool global. Candidatos = asesores activos que pertenecen (vía
 membresía) a la empresa dueña del bridge de origen del lead. Se conserva el

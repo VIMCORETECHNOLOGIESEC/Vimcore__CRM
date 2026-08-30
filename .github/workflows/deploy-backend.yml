@@ -1,0 +1,123 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "packages/schemas/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/deploy-backend.yml"
+
+permissions:
+  contents: read
+
+env:
+  ACR_NAME: nexuscorp
+  ACR_LOGIN_SERVER: nexuscorp.azurecr.io
+  IMAGE_NAME: arcano-crm
+  CONTAINER_APP_NAME: arcano-crm
+  RESOURCE_GROUP: documents
+  NODE_VERSION: 22.23.2
+  PNPM_VERSION: 11.21.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.14-alpine
+        env:
+          POSTGRES_USER: crm_dev
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          POSTGRES_DB: crm_comercial_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crm_dev -d crm_comercial_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter backend...
+
+      - name: Prisma generate
+        run: pnpm --filter backend exec prisma generate
+
+      - name: Run migrations (test DB) — crea crm_app/crm_bypass_jobs
+        run: pnpm --filter backend exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://crm_dev:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/crm_comercial_test?schema=public
+
+      - name: Fijar contraseña de crm_app (test DB)
+        run: |
+          echo "ALTER ROLE crm_app WITH LOGIN PASSWORD '${{ secrets.CI_POSTGRES_PASSWORD }}';" | \
+          pnpm --filter backend exec prisma db execute --url "$DATABASE_URL" --stdin
+        env:
+          DATABASE_URL: postgresql://crm_dev:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/crm_comercial_test?schema=public
+
+      - name: Run tests
+        run: pnpm --filter backend test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://crm_dev:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/crm_comercial_test?schema=public
+          DATABASE_URL_APP: postgresql://crm_app:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/crm_comercial_test?schema=public
+          JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.CI_TOKEN_ENCRYPTION_KEY }}
+          META_WEBHOOK_VERIFY_TOKEN: ci-dummy-verify-token
+          META_APP_SECRET: ci-dummy-secret
+          META_APP_ID: "000000000000000"
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest \
+            -f backend/Dockerfile .
+
+      - name: Push images
+        run: |
+          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Install Container Apps extension
+        run: az extension add --name containerapp --upgrade --allow-preview true
+
+      - name: Update Container App
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}

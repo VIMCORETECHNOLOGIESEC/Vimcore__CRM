@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { AppError } from "../../lib/app-error.js";
+import { assertAuthenticated } from "../../lib/assert-authenticated.js";
 import { conexionBridgeApiBodySchema, idParamSchema, mapeoBridgeApiBodySchema } from "../../schemas/bridges.schema.js";
 import { actualizarConexion, actualizarMapeo, probarConexion } from "../../services/bridgeApi/configuracion.service.js";
 
@@ -13,6 +14,8 @@ function invalidIdParam(): AppError {
 
 /** `PATCH /bridges/:id/api-externa/conexion`: carga o corrige url/credencial/header del bridge API_EXTERNA. */
 export async function patchBridgeApiConexion(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
@@ -23,12 +26,14 @@ export async function patchBridgeApiConexion(req: Request, res: Response): Promi
     throw zodValidationError();
   }
 
-  const bridgeApiConfig = await actualizarConexion(parsedId.data.id, parsedBody.data);
+  const bridgeApiConfig = await actualizarConexion(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ bridgeApiConfig });
 }
 
 /** `PATCH /bridges/:id/api-externa/mapeo`: carga o corrige mapeoCampos/parametroFecha del bridge API_EXTERNA. */
 export async function patchBridgeApiMapeo(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
@@ -39,7 +44,7 @@ export async function patchBridgeApiMapeo(req: Request, res: Response): Promise<
     throw zodValidationError();
   }
 
-  const bridgeApiConfig = await actualizarMapeo(parsedId.data.id, parsedBody.data);
+  const bridgeApiConfig = await actualizarMapeo(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ bridgeApiConfig });
 }
 
@@ -49,11 +54,13 @@ export async function patchBridgeApiMapeo(req: Request, res: Response): Promise<
  * un problema de la API externa, siempre devuelve `{ ok, mensaje }` con 200.
  */
 export async function postBridgeApiProbarConexion(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const resultado = await probarConexion(parsedId.data.id);
+  const resultado = await probarConexion(usuario, parsedId.data.id);
   res.status(200).json(resultado);
 }

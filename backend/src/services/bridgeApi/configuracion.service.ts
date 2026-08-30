@@ -3,6 +3,7 @@ import { AppError } from "../../lib/app-error.js";
 import { decrypt, encrypt } from "../../lib/cifrado-token.js";
 import * as bridgeRepository from "../../repositories/bridge.repository.js";
 import type { ConexionBridgeApiBody, MapeoBridgeApiBody } from "../../schemas/bridges.schema.js";
+import type { AuthenticatedUser } from "../../types/authenticated-user.js";
 import type { ConfiguracionBridgeApi } from "../../types/bridgeApi/configuracion-bridge-api.js";
 import { consultarLeadsExternos } from "./cliente-externo.service.js";
 
@@ -18,9 +19,19 @@ function redSocialInvalida(): AppError {
   );
 }
 
-async function obtenerBridgeApiExterna(bridgeId: string): Promise<Bridge> {
+/**
+ * Fix (bug de seguridad: los sub-recursos de bridge no filtraban por
+ * empresa): mismo criterio que `bridge.service.ts::bridgeFueraDeAlcance`,
+ * replicado acá (mismo criterio de duplicación deliberada que
+ * `cuenta-publicitaria.service.ts`).
+ */
+function bridgeFueraDeAlcance(usuario: AuthenticatedUser, bridge: Pick<Bridge, "empresaId">): boolean {
+  return usuario.empresaId !== null && bridge.empresaId !== usuario.empresaId;
+}
+
+async function obtenerBridgeApiExterna(usuario: AuthenticatedUser, bridgeId: string): Promise<Bridge> {
   const bridge = await bridgeRepository.findById(bridgeId);
-  if (!bridge) throw bridgeNoEncontrado();
+  if (!bridge || bridgeFueraDeAlcance(usuario, bridge)) throw bridgeNoEncontrado();
   if (bridge.redSocial !== "API_EXTERNA") throw redSocialInvalida();
   return bridge;
 }
@@ -56,10 +67,11 @@ function toBridgeApiConfigDto(
  * el Page Access Token de Meta).
  */
 export async function actualizarConexion(
+  usuario: AuthenticatedUser,
   bridgeId: string,
   input: ConexionBridgeApiBody,
 ): Promise<BridgeApiConfigDto> {
-  const bridge = await obtenerBridgeApiExterna(bridgeId);
+  const bridge = await obtenerBridgeApiExterna(usuario, bridgeId);
   const actual = (bridge.configuracionJson as Partial<ConfiguracionBridgeApi> | null) ?? {};
 
   const configuracionActualizada: Partial<ConfiguracionBridgeApi> = {
@@ -82,10 +94,11 @@ export async function actualizarConexion(
  * tocar url/credencial/header ya cargados.
  */
 export async function actualizarMapeo(
+  usuario: AuthenticatedUser,
   bridgeId: string,
   input: MapeoBridgeApiBody,
 ): Promise<BridgeApiConfigDto> {
-  const bridge = await obtenerBridgeApiExterna(bridgeId);
+  const bridge = await obtenerBridgeApiExterna(usuario, bridgeId);
   const actual = (bridge.configuracionJson as Partial<ConfiguracionBridgeApi> | null) ?? {};
 
   const configuracionActualizada: Partial<ConfiguracionBridgeApi> = {
@@ -113,8 +126,8 @@ export type ResultadoPruebaConexion =
  * ausente) -- una prueba de conexión quiere ver que la API responde, no
  * simular el filtro incremental del job real.
  */
-export async function probarConexion(bridgeId: string): Promise<ResultadoPruebaConexion> {
-  const bridge = await obtenerBridgeApiExterna(bridgeId);
+export async function probarConexion(usuario: AuthenticatedUser, bridgeId: string): Promise<ResultadoPruebaConexion> {
+  const bridge = await obtenerBridgeApiExterna(usuario, bridgeId);
   const configuracion = bridge.configuracionJson as Partial<ConfiguracionBridgeApi> | null;
 
   if (!configuracion?.url) {

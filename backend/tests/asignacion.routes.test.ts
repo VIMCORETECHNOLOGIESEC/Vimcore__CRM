@@ -222,6 +222,38 @@ describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 10 (D9): compu
     expect(sinCambios.vendedorId).toBeNull();
   });
 
+  /**
+   * Fix (bug P0, docs/16-hallazgos-y-preguntas.md §4.4: "Admin y supervisor
+   * pueden entregar a vendedor un lead sin asesor"): un Administrador puede
+   * avanzar la etapa de un lead que nunca tuvo asesor (`canEdit` no exige
+   * titularidad para Admin/Supervisor) -- reproducido acá con el flujo HTTP
+   * real (PATCH etapa + POST traspasar) para probar el cierre end-to-end,
+   * no solo la unidad `canTransfer` (ver `leads.access.asignacion.test.ts`).
+   */
+  it("409 (fix P0): un lead SIN asesor previo (asesorId null) no puede traspasarse a un vendedor ni por un administrador, aunque ya haya avanzado de etapa", async () => {
+    await desactivarPoolAsesores();
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    await crearUsuarioConToken("VENDEDOR");
+    const lead = await crearLead({ etapa: "NUEVO" });
+
+    const avanceEtapa = await request(app)
+      .patch(`/api/v1/leads/${lead.id}/etapa`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ etapa: "CONTACTADO", respuestas: {} });
+    expect(avanceEtapa.status).toBe(200);
+    expect(avanceEtapa.body.lead.asesorId).toBeNull();
+
+    const traspaso = await request(app)
+      .post(`/api/v1/leads/${lead.id}/traspasar`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({});
+
+    expect(traspaso.status).toBe(409);
+    expect(traspaso.body.code).toBe("traspaso_sin_asesor");
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(sinCambios.vendedorId).toBeNull();
+  });
+
   it("200: desde CONTACTADO, sin destinatario explícito, el vendedor lo elige el algoritmo", async () => {
     await desactivarPoolAsesores();
     const asesorTitular = await crearUsuarioConToken("ASESOR");

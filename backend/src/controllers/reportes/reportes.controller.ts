@@ -1,8 +1,7 @@
-import path from "node:path";
-import type { NextFunction, Request, Response } from "express";
-import { env } from "../../config/env.js";
+import type { Request, Response } from "express";
 import { AppError } from "../../lib/app-error.js";
 import { assertAuthenticated } from "../../lib/assert-authenticated.js";
+import { generarUrlTemporalReporte } from "../../lib/azure-blob-storage.js";
 import { crearReporteJobBodySchema, idParamSchema } from "../../schemas/reportes/reporte.schema.js";
 import {
   crearReporteJob,
@@ -48,26 +47,26 @@ export async function getReporteJobById(req: Request, res: Response): Promise<vo
 }
 
 /**
- * `res.download` usa un callback (no una promesa) para reportar errores de
- * streaming (p. ej. el archivo fue barrido del disco efímero del contenedor
- * aunque el estado en BD siga en `LISTO`) -- por eso este único controller de
- * este módulo recibe `next` explícito, en vez de dejar que el rechazo de una
- * promesa llegue solo al `errorHandler` (Express 5 sí reenvía promesas
- * rechazadas automáticamente, pero el callback de `res.download` NO es una
- * promesa).
+ * Descarga vía Azure Blob Storage: el backend ya NO proxea/streamea el
+ * archivo él mismo (decisión del usuario, 2026-08-30) -- después de que
+ * `obtenerJobParaDescarga` autoriza (dueño del `ReporteJob`), genera una URL
+ * firmada (SAS) de solo lectura, vigente unos minutos
+ * (`azure-blob-storage.ts::SAS_URL_TTL_MS`), y se la devuelve al cliente. El
+ * navegador la consume directo contra Azure -- el backend deja de estar en
+ * el camino del archivo en sí, sin necesidad de manejar streaming ni cortes
+ * de conexión a mitad de transferencia.
  */
-export async function getReporteJobDescarga(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getReporteJobDescarga(req: Request, res: Response): Promise<void> {
   const usuario = assertAuthenticated(req);
 
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) throw zodValidationError();
 
   const job = await obtenerJobParaDescarga(usuario, parsedId.data.id);
-  const extension = job.tipo === "pdf" ? "pdf" : "xlsx";
-  const rutaArchivo = path.join(env.REPORTES_STORAGE_DIR, `${job.id}.${extension}`);
+  if (!job.archivoUrl) {
+    throw new AppError("archivo_no_encontrado", 404, "El archivo del reporte ya no está disponible");
+  }
 
-  res.download(rutaArchivo, `reporte-${job.id}.${extension}`, (err) => {
-    if (!err || res.headersSent) return;
-    next(new AppError("archivo_no_encontrado", 404, "El archivo del reporte ya no está disponible"));
-  });
+  const url = await generarUrlTemporalReporte(job.archivoUrl);
+  res.status(200).json({ url });
 }

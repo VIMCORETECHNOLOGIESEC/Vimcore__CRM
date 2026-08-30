@@ -6,10 +6,25 @@ import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import type { BridgeConCuentas } from "../repositories/bridge.repository.js";
 import type { ListBridgesQuery } from "../schemas/bridges.schema.js";
+import type { AuthenticatedUser } from "../types/authenticated-user.js";
 import { toCuentaPublicitariaDto, type CuentaPublicitariaDto } from "./cuenta-publicitaria.service.js";
 
 function bridgeNotFound(): AppError {
   return new AppError("bridge_no_encontrado", 404, "Bridge no encontrado");
+}
+
+/**
+ * Fix (bug de seguridad: GET/PATCH/DELETE /bridges no filtraban por
+ * empresa): mismo criterio D2 que `negociacion/producto.service.ts::
+ * listarProductos` -- `usuario.empresaId === null` es holding-wide (sin
+ * restricción); cualquier otro valor exige coincidencia EXACTA con
+ * `Bridge.empresaId` (columna propia, a diferencia de `Usuario`). Usado por
+ * cada lookup-por-id de este archivo para devolver 404 (nunca 403) cuando el
+ * bridge existe pero pertenece a otra empresa -- "Direct id access is
+ * denied, not leaked", mismo criterio que `leads.access.ts`.
+ */
+function bridgeFueraDeAlcance(usuario: AuthenticatedUser, bridge: Pick<Bridge, "empresaId">): boolean {
+  return usuario.empresaId !== null && bridge.empresaId !== usuario.empresaId;
 }
 
 /**
@@ -59,8 +74,32 @@ function toBridgeDetalleDto(bridge: BridgeConCuentas): BridgeDetalleDto {
 export interface CreateBridgeInput {
   redSocial: RedSocial;
   nombre: string;
-  // Bloque C (D4, Fase 2/Stage 2): obligatorio, ver `bridges.schema.ts`.
-  empresaId: string;
+  // Fix (bug de seguridad, empresaId forzado por sesión): opcional en el
+  // tipo -- `resolveEmpresaId` abajo decide si hace falta y de dónde sale,
+  // según el actor (ver `bridges.schema.ts`).
+  empresaId?: string;
+}
+
+/**
+ * Fix (bug de seguridad: POST /bridges no forzaba `empresaId` a la empresa
+ * del actor): mismo criterio/mismo error que
+ * `negociacion/producto.service.ts::resolveEmpresaId` -- una sesión
+ * company-scoped nunca puede elegir su empresa por body (anti-escalamiento);
+ * una sesión holding-wide (D2) no tiene una empresa de sesión de la que
+ * derivarlo, así que el body debe traerla explícita. Replicado acá en vez de
+ * importado (mismo criterio de duplicación deliberada que
+ * `usuarios.service.ts::resolveEmpresaId`).
+ */
+function resolveEmpresaId(usuario: AuthenticatedUser, empresaIdBody: string | undefined): string {
+  if (usuario.empresaId !== null) return usuario.empresaId;
+  if (!empresaIdBody) {
+    throw new AppError(
+      "empresa_requerida",
+      400,
+      "Debes indicar empresaId explícitamente para una sesión holding-wide",
+    );
+  }
+  return empresaIdBody;
 }
 
 export interface ClaveApiResult {
@@ -74,13 +113,14 @@ export interface ClaveApiResult {
  * de verdad para el default (ver docstring de `bridge.repository.create`,
  * requirement "Bridge creation starts inactive with one-time plaintext key").
  */
-export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiResult> {
+export async function createBridge(usuario: AuthenticatedUser, input: CreateBridgeInput): Promise<ClaveApiResult> {
+  const empresaId = resolveEmpresaId(usuario, input.empresaId);
   const claveApi = generarClaveBridge();
   const bridge = await bridgeRepository.create({
     redSocial: input.redSocial,
     nombre: input.nombre,
     claveApiHash: hashClaveBridge(claveApi),
-    empresaId: input.empresaId,
+    empresaId,
   });
   return { bridge: toBridgeDto(bridge), claveApi };
 }
@@ -97,8 +137,15 @@ export interface FindBridgesResult {
  * `usuarios.service.ts::buildWhere` + `findUsuarios` — `where` armado acá
  * (búsqueda por `nombre`, filtros exactos por `redSocial`/`estado`),
  * paginación/conteo resueltos por el repositorio.
+ *
+ * Fix (bug de seguridad, scope por empresa): mismo criterio de 3 ramas que
+ * `negociacion/producto.service.ts::listarProductos` -- (1) company-scoped:
+ * forzado a su propia empresa, el query param se ignora (anti-escalamiento);
+ * (2) holding-wide con `query.empresaId`: drill-down opcional a UNA empresa
+ * puntual (`EmpresaDetallePage`); (3) holding-wide sin `query.empresaId`: sin
+ * filtro, ve todo (D2).
  */
-function buildBridgeWhere(query: ListBridgesQuery): Prisma.BridgeWhereInput {
+function buildBridgeWhere(query: ListBridgesQuery, usuario: AuthenticatedUser): Prisma.BridgeWhereInput {
   const where: Prisma.BridgeWhereInput = {};
 
   if (query.busqueda) {
@@ -107,11 +154,17 @@ function buildBridgeWhere(query: ListBridgesQuery): Prisma.BridgeWhereInput {
   if (query.redSocial) where.redSocial = query.redSocial;
   if (query.estado) where.estado = query.estado;
 
+  if (usuario.empresaId !== null) {
+    where.empresaId = usuario.empresaId;
+  } else if (query.empresaId) {
+    where.empresaId = query.empresaId;
+  }
+
   return where;
 }
 
-export async function findBridges(query: ListBridgesQuery): Promise<FindBridgesResult> {
-  const where = buildBridgeWhere(query);
+export async function findBridges(usuario: AuthenticatedUser, query: ListBridgesQuery): Promise<FindBridgesResult> {
+  const where = buildBridgeWhere(query, usuario);
   const { bridges, total } = await bridgeRepository.findMany(where, {
     skip: (query.pagina - 1) * query.limite,
     take: query.limite,
@@ -120,9 +173,9 @@ export async function findBridges(query: ListBridgesQuery): Promise<FindBridgesR
   return { bridges: bridges.map(toBridgeDetalleDto), total, pagina: query.pagina, limite: query.limite };
 }
 
-export async function getBridgeById(id: string): Promise<BridgeDetalleDto> {
+export async function getBridgeById(usuario: AuthenticatedUser, id: string): Promise<BridgeDetalleDto> {
   const bridge = await bridgeRepository.findById(id);
-  if (!bridge) {
+  if (!bridge || bridgeFueraDeAlcance(usuario, bridge)) {
     throw bridgeNotFound();
   }
   return toBridgeDetalleDto(bridge);
@@ -139,9 +192,13 @@ export interface UpdateBridgeInput {
  * `TOKEN_EXPIRADO`/`ERROR`) y "al menos un campo" ya se resolvieron en
  * `bridges.schema.ts` — acá solo queda la existencia del bridge.
  */
-export async function updateBridge(id: string, input: UpdateBridgeInput): Promise<BridgeDto> {
+export async function updateBridge(
+  usuario: AuthenticatedUser,
+  id: string,
+  input: UpdateBridgeInput,
+): Promise<BridgeDto> {
   const existente = await bridgeRepository.findById(id);
-  if (!existente) {
+  if (!existente || bridgeFueraDeAlcance(usuario, existente)) {
     throw bridgeNotFound();
   }
   const actualizado = await bridgeRepository.update(id, input);
@@ -161,12 +218,12 @@ export interface DeleteBridgeResult {
  * "Delete mode is decided by lead count, never ultimoLeadEn") — evita una
  * carrera con una ingesta concurrente entre el conteo y la decisión.
  */
-export async function deleteBridge(id: string): Promise<DeleteBridgeResult> {
+export async function deleteBridge(usuario: AuthenticatedUser, id: string): Promise<DeleteBridgeResult> {
   return runInTransaction(
     undefined,
     async (tx) => {
       const existente = await bridgeRepository.findById(id, tx);
-      if (!existente) {
+      if (!existente || bridgeFueraDeAlcance(usuario, existente)) {
         throw bridgeNotFound();
       }
 
@@ -188,9 +245,9 @@ export async function deleteBridge(id: string): Promise<DeleteBridgeResult> {
  * "generarClaveBridge() shape and lifecycle", user-confirmed; requirement
  * "Key regeneration never changes bridge state").
  */
-export async function regenerateClave(id: string): Promise<ClaveApiResult> {
+export async function regenerateClave(usuario: AuthenticatedUser, id: string): Promise<ClaveApiResult> {
   const existente = await bridgeRepository.findById(id);
-  if (!existente) {
+  if (!existente || bridgeFueraDeAlcance(usuario, existente)) {
     throw bridgeNotFound();
   }
 
@@ -274,9 +331,13 @@ export interface ListarLogsFiltros {
   limite?: number;
 }
 
-export async function listLogs(id: string, filtros: ListarLogsFiltros): Promise<BridgeLog[]> {
+export async function listLogs(
+  usuario: AuthenticatedUser,
+  id: string,
+  filtros: ListarLogsFiltros,
+): Promise<BridgeLog[]> {
   const existente = await bridgeRepository.findById(id);
-  if (!existente) {
+  if (!existente || bridgeFueraDeAlcance(usuario, existente)) {
     throw bridgeNotFound();
   }
 

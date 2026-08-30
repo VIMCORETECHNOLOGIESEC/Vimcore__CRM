@@ -1,6 +1,6 @@
 import type { Prisma, RolUsuario } from "@prisma/client";
 import type { MetricasQuery } from "../schemas/metricas.schema.js";
-import { aplicarFiltroEmpresa, type UsuarioAcceso } from "./leads.access.js";
+import type { UsuarioAcceso } from "./leads.access.js";
 import type { RendimientoCampaniaFiltro } from "../repositories/metaAds/campania-metrica-diaria.repository.js";
 
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
@@ -32,6 +32,20 @@ export function resolveResponsableIds(usuario: UsuarioAcceso, query: MetricasQue
 }
 
 /**
+ * Drill-down de empresa (mismo criterio de 3 ramas ya usado en
+ * `usuarios.service.ts::buildWhere` y `bridge.service.ts::buildBridgeWhere`):
+ * (1) sesión company-scoped: forzada a su propia empresa, `query.empresaId`
+ * se ignora (nunca puede escalar a otra empresa); (2) sesión holding-wide con
+ * `query.empresaId`: drill-down opcional a UNA empresa puntual del holding;
+ * (3) sesión holding-wide sin `query.empresaId`: `null` = sin filtro, ve el
+ * agregado de todo el holding (D2/D6, comportamiento previo sin cambios).
+ */
+export function resolveEmpresaId(usuario: UsuarioAcceso, query: MetricasQuery): string | null {
+  if (usuario.empresaId !== null) return usuario.empresaId;
+  return query.empresaId ?? null;
+}
+
+/**
  * Alcance base compartido por las 7 consultas de M9: rol (vía
  * `resolveResponsableIds`) + red social + campaña — SIN fecha. El campo de
  * fecha a filtrar depende de cada indicador (docs/08 §2.3: "los cerrados se
@@ -50,10 +64,13 @@ export function resolveAlcanceBase(usuario: UsuarioAcceso, query: MetricasQuery)
   // Bloque C) queda acotado a esa única empresa. `metricas.routes.ts` no
   // expone ningún endpoint de escritura — "sin permiso de escritura" se
   // satisface por construcción (módulo 100% GET), no requiere un chequeo
-  // adicional acá. Filtro vía `leads.access.ts::aplicarFiltroEmpresa` (task
-  // 2.12 REFACTOR: mismo helper que `leads.service.ts::buildWhere`, antes
-  // duplicado idéntico en ambos archivos).
-  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario);
+  // adicional acá. Fix (drill-down holding-wide): `resolveEmpresaId` agrega
+  // la tercera rama (`query.empresaId`) que `leads.access.ts::aplicarFiltroEmpresa`
+  // no puede cubrir porque ese helper no conoce el query de métricas — se
+  // resuelve inline acá, mismo criterio que `bridge.service.ts::buildBridgeWhere`.
+  const where: Prisma.LeadWhereInput = {};
+  const empresaId = resolveEmpresaId(usuario, query);
+  if (empresaId !== null) where.empresaId = empresaId;
 
   const responsableIds = resolveResponsableIds(usuario, query);
   if (responsableIds) {
@@ -120,7 +137,7 @@ export function resolveFiltroSql(
 ): FiltroLeadsSql {
   return {
     responsableIds: resolveResponsableIds(usuario, query),
-    empresaId: usuario.empresaId,
+    empresaId: resolveEmpresaId(usuario, query),
     redSocial: query.redSocial ?? null,
     campania: query.campania ?? null,
     campoFecha,
@@ -137,7 +154,7 @@ export function resolveRendimientoCampaniaFiltro(
 ): RendimientoCampaniaFiltro {
   return {
     responsableIds: resolveResponsableIds(usuario, query),
-    empresaId: usuario.empresaId,
+    empresaId: resolveEmpresaId(usuario, query),
     redSocial: query.redSocial ?? null,
     campania: query.campania ?? null,
     desde,
@@ -168,7 +185,11 @@ export function resolveAlcanceBaseOportunidad(
   usuario: UsuarioAcceso,
   query: MetricasQuery,
 ): Prisma.OportunidadWhereInput {
-  const where: Prisma.OportunidadWhereInput = aplicarFiltroEmpresa({}, usuario);
+  // Fix (drill-down holding-wide): mismo criterio que `resolveAlcanceBase`
+  // arriba — `resolveEmpresaId` cubre la tercera rama (`query.empresaId`).
+  const where: Prisma.OportunidadWhereInput = {};
+  const empresaId = resolveEmpresaId(usuario, query);
+  if (empresaId !== null) where.empresaId = empresaId;
 
   const responsableIds = resolveResponsableIds(usuario, query);
   if (responsableIds) {

@@ -342,6 +342,82 @@ describe("GET /api/v1/usuarios — filtros y paginación", () => {
 
     expect(respuesta.status).toBe(400);
   });
+
+  /**
+   * Bloque F (tarea 2, cuarto modo de `buildWhere`): `soloHoldingWide=true`
+   * solo tiene efecto para un actor holding-wide -- filtra a los usuarios SIN
+   * ninguna `Membresia`, para el tab correspondiente del panel de holding.
+   * `adminAccessToken` (fixture del `beforeAll` de este archivo) es
+   * holding-wide (ADMINISTRADOR sin Membresia propia, D2).
+   */
+  describe("GET /api/v1/usuarios?soloHoldingWide=true (Bloque F, tarea 2)", () => {
+    let holdingWideId: string;
+    let companyScopedId: string;
+    const terminoUnico = `SoloHolding ${Date.now()}`;
+
+    beforeAll(async () => {
+      const holdingUsuario = await prisma.usuario.create({
+        data: {
+          nombre: `${terminoUnico} Sin Membresia`,
+          correo: `solo-holding-wide-${Date.now()}@integracion.test`,
+          passwordHash: await hashPassword("clave-solo-holding-123456"),
+          rol: "SUPERVISOR",
+          activo: true,
+        },
+      });
+      holdingWideId = holdingUsuario.id;
+
+      const companyUsuario = await prisma.usuario.create({
+        data: {
+          nombre: `${terminoUnico} Con Membresia`,
+          correo: `solo-holding-company-${Date.now()}@integracion.test`,
+          passwordHash: await hashPassword("clave-solo-holding-123456"),
+          rol: "ASESOR",
+          activo: true,
+        },
+      });
+      companyScopedId = companyUsuario.id;
+      await testAdminPrisma.membresia.create({
+        data: { usuarioId: companyUsuario.id, empresaId, rol: "ASESOR", habilitadoParaVenta: false, activa: true },
+      });
+    });
+
+    it("200 devuelve solo el usuario sin Membresia, no el que sí tiene Membresia", async () => {
+      const respuesta = await request(app)
+        .get("/api/v1/usuarios")
+        .query({ soloHoldingWide: "true", busqueda: terminoUnico })
+        .set("Authorization", `Bearer ${adminAccessToken}`);
+
+      expect(respuesta.status).toBe(200);
+      const ids = respuesta.body.users.map((u: { id: string }) => u.id);
+      expect(ids).toContain(holdingWideId);
+      expect(ids).not.toContain(companyScopedId);
+    });
+
+    it("200 triangulación: sin soloHoldingWide, el mismo busqueda devuelve AMBOS usuarios (comportamiento por defecto sin cambios)", async () => {
+      const respuesta = await request(app)
+        .get("/api/v1/usuarios")
+        .query({ busqueda: terminoUnico })
+        .set("Authorization", `Bearer ${adminAccessToken}`);
+
+      expect(respuesta.status).toBe(200);
+      const ids = respuesta.body.users.map((u: { id: string }) => u.id);
+      expect(ids).toContain(holdingWideId);
+      expect(ids).toContain(companyScopedId);
+    });
+
+    it("200 soloHoldingWide=true prioriza sobre empresaId cuando llegan juntos (mutuamente excluyentes, decisión de prioridad)", async () => {
+      const respuesta = await request(app)
+        .get("/api/v1/usuarios")
+        .query({ soloHoldingWide: "true", empresaId, busqueda: terminoUnico })
+        .set("Authorization", `Bearer ${adminAccessToken}`);
+
+      expect(respuesta.status).toBe(200);
+      const ids = respuesta.body.users.map((u: { id: string }) => u.id);
+      expect(ids).toContain(holdingWideId);
+      expect(ids).not.toContain(companyScopedId);
+    });
+  });
 });
 
 describe("PATCH /api/v1/usuarios/:id", () => {

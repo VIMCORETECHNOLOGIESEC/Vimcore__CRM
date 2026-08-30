@@ -4,6 +4,7 @@ import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
 import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { cargarToken, probarConexion } from "../src/services/cuenta-publicitaria.service.js";
+import type { AuthenticatedUser } from "../src/types/authenticated-user.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
@@ -14,6 +15,24 @@ import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 function conContexto<T>(fn: () => Promise<T>): Promise<T> {
   return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
 }
+
+/**
+ * Fix (bug de seguridad: los sub-recursos de bridge no filtraban por
+ * empresa): `cargarToken`/`probarConexion` ahora exigen el actor
+ * autenticado. Este archivo prueba el contrato de cada operación en sí (no
+ * el scope por empresa, cubierto en `bridges.service.test.ts` y
+ * `tests/bridgeApi/configuracion.service.test.ts`) -- todos los fixtures de
+ * acá viven en la empresa bootstrap, así que un actor holding-wide preserva
+ * el comportamiento exacto previo a este fix.
+ */
+const actorHoldingWide: AuthenticatedUser = {
+  id: "00000000-0000-0000-0000-000000000ab",
+  nombre: "Actor Holding-Wide (fixture de test)",
+  correo: "actor-holding-wide-cuenta-token@fixture.test",
+  rol: "ADMINISTRADOR",
+  sessionScope: "holding",
+  empresaId: null,
+};
 
 /**
  * `cargarToken`/`probarConexion` (docs/05-bridges.md §7): mismo estilo de
@@ -71,7 +90,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const dto = await conContexto(() => cargarToken(bridgeId, cuentaId, "page-access-token-en-claro"));
+    const dto = await conContexto(() => cargarToken(actorHoldingWide, bridgeId, cuentaId, "page-access-token-en-claro"));
 
     expect(dto).not.toHaveProperty("tokenCifrado");
     expect(JSON.stringify(dto)).not.toContain("page-access-token-en-claro");
@@ -93,7 +112,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(conContexto(() => cargarToken(bridgeId, cuentaId, "token-malo"))).rejects.toMatchObject({
+    await expect(conContexto(() => cargarToken(actorHoldingWide, bridgeId, cuentaId, "token-malo"))).rejects.toMatchObject({
       code: "meta_token_invalido",
       statusHttp: 422,
     });
@@ -109,7 +128,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
 
     await expect(
       conContexto(() =>
-        cargarToken("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", "token"),
+        cargarToken(actorHoldingWide, "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", "token"),
       ),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -122,7 +141,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(conContexto(() => cargarToken(bridgeB, cuentaDeA, "token"))).rejects.toMatchObject({
+    await expect(conContexto(() => cargarToken(actorHoldingWide, bridgeB, cuentaDeA, "token"))).rejects.toMatchObject({
       code: "cuenta_publicitaria_no_encontrada",
       statusHttp: 404,
     });
@@ -140,7 +159,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     vi.stubGlobal("fetch", fetchMock);
     const antes = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
 
-    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
+    const resultado = await conContexto(() => probarConexion(actorHoldingWide, bridgeId, cuentaId));
 
     expect(resultado).toEqual({ ok: true, mensaje: "Conexión verificada correctamente." });
     const despues = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
@@ -155,7 +174,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const fetchMock = vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: false } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
+    const resultado = await conContexto(() => probarConexion(actorHoldingWide, bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
     const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
@@ -168,7 +187,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
+    const resultado = await conContexto(() => probarConexion(actorHoldingWide, bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -177,7 +196,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
       conContexto(() =>
-        probarConexion("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
+        probarConexion(actorHoldingWide, "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
       ),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
@@ -190,7 +209,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
+    const resultado = await conContexto(() => probarConexion(actorHoldingWide, bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
     expect(typeof resultado.mensaje).toBe("string");

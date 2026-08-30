@@ -1486,6 +1486,13 @@ model ReporteJob {
   tipo         String           // "pdf" | "xlsx"
   parametros   Json             @db.JsonB
   estado       EstadoReporteJob @default(PENDIENTE)
+  // NOMBRE del blob en el contenedor privado de Azure Blob Storage
+  // (`AZURE_STORAGE_CONTAINER_REPORTES`, `lib/azure-blob-storage.ts::
+  // uploadReporteArchivo`), NO una URL pública ni una ruta de disco local --
+  // el contenedor es privado (sin `access: "blob"`, a diferencia del isotipo
+  // de empresa), así que una URL no serviría de nada sin un SAS token. `GET
+  // /reportes/jobs/:id/descargar` usa este valor para que el backend
+  // descargue el blob con sus propias credenciales y lo streamee de vuelta.
   archivoUrl   String?          @map("archivo_url")
   error        String?          @db.Text
   creadoEn     DateTime         @default(now()) @map("creado_en") @db.Timestamptz(6)

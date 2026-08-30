@@ -36,3 +36,22 @@ describe("schemas/metricas.schema — normalización de `hasta` a fin de día (d
     expect(result.hasta).toBeUndefined();
   });
 });
+
+describe("schemas/metricas.schema — empresaId opcional (fix: drill-down holding-wide)", () => {
+  it("acepta empresaId como uuid opcional", () => {
+    const result = metricasQuerySchema.parse({
+      rango: "30d",
+      empresaId: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(result.empresaId).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  it("triangulación: sin empresaId en el query, queda undefined (no rompe el uso previo sin este filtro)", () => {
+    const result = metricasQuerySchema.parse({ rango: "30d" });
+    expect(result.empresaId).toBeUndefined();
+  });
+
+  it("empresaId no-uuid es rechazado", () => {
+    expect(() => metricasQuerySchema.parse({ rango: "30d", empresaId: "no-es-un-uuid" })).toThrow();
+  });
+});

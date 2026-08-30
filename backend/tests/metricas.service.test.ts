@@ -691,7 +691,19 @@ describe("services/metricas.service — getRankingProductosPorEmpresa (E5)", () 
       await crearOportunidad(leadBootstrap.id, { productoId: productoBootstrap.id, etapa: "VENTA" });
       await crearOportunidad(leadEmpresaB.id, { empresaId: empresaB.id, productoId: productoEmpresaB.id, etapa: "NO_VENTA" });
 
-      const filas = await getRankingProductosPorEmpresa(admin, query());
+      // Hallazgo real (no de logica de negocio): `conContexto` de este
+      // archivo fija SIEMPRE `runWithTenantContext({ empresaId:
+      // EMPRESA_BOOTSTRAP_ID })` -- el objeto `admin` en JS dice
+      // `empresaId: null` (holding-wide), pero el contexto REAL de Postgres
+      // para RLS queda anclado a bootstrap de todas formas, son dos cosas
+      // independientes. Mientras `oportunidades` no tenia RLS esto nunca se
+      // notaba (unica proteccion era el filtro de aplicacion); con RLS ya
+      // activo (20260830020000_negociacion_rls_tenant_isolation), la fila de
+      // `empresaB` queda bloqueada a nivel de base de datos sin este
+      // contexto anidado que sí marca la sesion como holding-wide de verdad.
+      const filas = await runWithTenantContext({ empresaId: null }, () =>
+        getRankingProductosPorEmpresa(admin, query()),
+      );
       const filaBootstrap = filas.find((f) => f.productoId === productoBootstrap.id);
       const filaEmpresaB = filas.find((f) => f.productoId === productoEmpresaB.id);
 

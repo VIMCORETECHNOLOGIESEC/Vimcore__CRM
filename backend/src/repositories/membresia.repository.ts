@@ -56,6 +56,11 @@ export interface CreateMembresiaData {
   habilitadoParaVenta: boolean;
 }
 
+export interface CreateMembresiaConCredencialData extends CreateMembresiaData {
+  correo: string;
+  passwordHash: string;
+}
+
 /**
  * Bloque C follow-up (D2 gap closure, spec "Request-scoped tenant context"):
  * cierra el hueco que dejó Fase 1/Stage 1 — hasta este cambio, ningún camino
@@ -75,6 +80,29 @@ export async function createMembresia(
       empresaId: data.empresaId,
       rol: data.rol,
       habilitadoParaVenta: data.habilitadoParaVenta,
+      activa: true,
+    },
+  });
+}
+
+/**
+ * Alta explícita de credencial de membresía. Separada de `createMembresia` para
+ * preservar intactos los callers que crean membresías sin login propio
+ * (`usuarios.service.ts::createUsuario` y reasignación administrativa de
+ * oportunidades).
+ */
+export async function createMembresiaConCredencial(
+  data: CreateMembresiaConCredencialData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Membresia> {
+  return client.membresia.create({
+    data: {
+      usuarioId: data.usuarioId,
+      empresaId: data.empresaId,
+      rol: data.rol,
+      habilitadoParaVenta: data.habilitadoParaVenta,
+      correo: data.correo,
+      passwordHash: data.passwordHash,
       activa: true,
     },
   });

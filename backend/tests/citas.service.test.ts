@@ -14,7 +14,9 @@ import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
-async function crearUsuario(rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR"): Promise<{
+async function crearUsuario(
+  rol: "ADMINISTRADOR" | "SUPERVISOR" | "SUPERVISOR_HOLDING" | "SUPER_ADMIN" | "ASESOR" | "VENDEDOR",
+): Promise<{
   id: string;
   rol: typeof rol;
 }> {
@@ -34,9 +36,17 @@ async function crearUsuario(rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VE
 // Bloque C (D2): Admin/Supervisor holding-wide (empresaId null), Asesor/
 // Vendedor acotados a la empresa bootstrap (misma empresa que `crearLead`
 // de abajo) — este archivo no ejercita aislamiento cross-empresa.
+// Bloque F (aditivo): SUPERVISOR_HOLDING/SUPER_ADMIN son holding-wide con el
+// mismo criterio que ADMINISTRADOR/SUPERVISOR (empresaId null, sin Membresia).
+const ROLES_HOLDING_WIDE: readonly UsuarioAcceso["rol"][] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
+
 function comoActor(usuario: { id: string; rol: UsuarioAcceso["rol"] }): UsuarioAcceso {
-  const empresaId =
-    usuario.rol === "ADMINISTRADOR" || usuario.rol === "SUPERVISOR" ? null : EMPRESA_BOOTSTRAP_ID;
+  const empresaId = ROLES_HOLDING_WIDE.includes(usuario.rol) ? null : EMPRESA_BOOTSTRAP_ID;
   return { id: usuario.id, rol: usuario.rol, empresaId };
 }
 
@@ -113,6 +123,46 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     const lead = await crearLead({ etapa: "CITA" });
 
     const cita = await scheduleCita(comoActor(admin), lead.id, {
+      programadaPara: enUnaHora(),
+      modalidad: "PRESENCIAL",
+      usuarioId: vendedor.id,
+    });
+
+    expect(cita.usuarioId).toBe(vendedor.id);
+  }));
+
+  /**
+   * Bloque F: `canEdit` (`leads.access.ts`) EXCLUYE a propósito el bypass
+   * holding-wide (ver su propio comentario "Bloque F" ahí, no se toca) —
+   * SUPERVISOR_HOLDING/SUPER_ADMIN solo pasan `canEdit` por titularidad, igual
+   * que un ASESOR. Por eso el lead se crea con `asesorId` = el propio actor
+   * (a diferencia del test de ADMINISTRADOR de arriba, que no lo necesita
+   * porque su bypass SÍ vive en `canEdit`). Lo que este test aísla es el
+   * `ROLES_ACCESO_TOTAL` LOCAL de `citas.service.ts::resolveResponsable` —
+   * exactamente el fix de esta tarea.
+   */
+  it("un SUPERVISOR_HOLDING (titular del lead) puede agendar la cita a nombre de otro usuario explícito (Bloque F, bypass en resolveResponsable)", () =>
+    conContexto(async () => {
+    const supervisorHolding = await crearUsuario("SUPERVISOR_HOLDING");
+    const vendedor = await crearUsuario("VENDEDOR");
+    const lead = await crearLead({ etapa: "CITA", asesorId: supervisorHolding.id });
+
+    const cita = await scheduleCita(comoActor(supervisorHolding), lead.id, {
+      programadaPara: enUnaHora(),
+      modalidad: "PRESENCIAL",
+      usuarioId: vendedor.id,
+    });
+
+    expect(cita.usuarioId).toBe(vendedor.id);
+  }));
+
+  it("un SUPER_ADMIN (titular del lead) puede agendar la cita a nombre de otro usuario explícito (triangulación: segundo rol holding-wide distinto)", () =>
+    conContexto(async () => {
+    const superAdmin = await crearUsuario("SUPER_ADMIN");
+    const vendedor = await crearUsuario("VENDEDOR");
+    const lead = await crearLead({ etapa: "CITA", asesorId: superAdmin.id });
+
+    const cita = await scheduleCita(comoActor(superAdmin), lead.id, {
       programadaPara: enUnaHora(),
       modalidad: "PRESENCIAL",
       usuarioId: vendedor.id,

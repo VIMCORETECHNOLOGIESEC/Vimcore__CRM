@@ -1,8 +1,9 @@
-import type { CuentaPublicitaria, EstadoTokenCuenta } from "@prisma/client";
+import type { Bridge, CuentaPublicitaria, EstadoTokenCuenta } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { decrypt, encrypt } from "../lib/cifrado-token.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import * as cuentaPublicitariaRepository from "../repositories/cuenta-publicitaria.repository.js";
+import type { AuthenticatedUser } from "../types/authenticated-user.js";
 import { verificarTokenPagina } from "./meta-token.service.js";
 
 function bridgeNotFound(): AppError {
@@ -18,13 +19,29 @@ function tokenInvalido(mensaje: string): AppError {
 }
 
 /**
- * Resuelve y valida pertenencia (bridge existe, cuenta pertenece a ESE
- * bridge) — mismo chequeo que `toggleActiva`, extraído porque `cargarToken`
- * y `probarConexion` lo repiten.
+ * Fix (bug de seguridad: los sub-recursos de bridge no filtraban por
+ * empresa): mismo criterio que `bridge.service.ts::bridgeFueraDeAlcance`,
+ * replicado acá (no importado, para evitar un ciclo -- `bridge.service.ts`
+ * ya importa de este archivo `toCuentaPublicitariaDto`). "Direct id access is
+ * denied, not leaked": un bridge de otra empresa siempre resuelve 404, nunca
+ * 403, sin importar qué sub-recurso lo pida.
  */
-async function resolverCuentaDelBridge(bridgeId: string, cuentaId: string): Promise<CuentaPublicitaria> {
+function bridgeFueraDeAlcance(usuario: AuthenticatedUser, bridge: Pick<Bridge, "empresaId">): boolean {
+  return usuario.empresaId !== null && bridge.empresaId !== usuario.empresaId;
+}
+
+/**
+ * Resuelve y valida pertenencia (bridge existe Y está en el alcance del
+ * actor, cuenta pertenece a ESE bridge) — mismo chequeo que `toggleActiva`,
+ * extraído porque `cargarToken` y `probarConexion` lo repiten.
+ */
+async function resolverCuentaDelBridge(
+  usuario: AuthenticatedUser,
+  bridgeId: string,
+  cuentaId: string,
+): Promise<CuentaPublicitaria> {
   const bridge = await bridgeRepository.findById(bridgeId);
-  if (!bridge) {
+  if (!bridge || bridgeFueraDeAlcance(usuario, bridge)) {
     throw bridgeNotFound();
   }
 
@@ -88,11 +105,12 @@ export interface CreateCuentaPublicitariaInput {
  * todavía para cruzar Page↔Instagram.
  */
 export async function create(
+  usuario: AuthenticatedUser,
   bridgeId: string,
   input: CreateCuentaPublicitariaInput,
 ): Promise<CuentaPublicitariaDto> {
   const bridge = await bridgeRepository.findById(bridgeId);
-  if (!bridge) {
+  if (!bridge || bridgeFueraDeAlcance(usuario, bridge)) {
     throw bridgeNotFound();
   }
 
@@ -106,9 +124,9 @@ export async function create(
 }
 
 /** `GET /bridges/:id/cuentas`: listado de cuentas publicitarias del bridge (Requirement: Bridge detail embeds its accounts). */
-export async function listByBridge(bridgeId: string): Promise<CuentaPublicitariaDto[]> {
+export async function listByBridge(usuario: AuthenticatedUser, bridgeId: string): Promise<CuentaPublicitariaDto[]> {
   const bridge = await bridgeRepository.findById(bridgeId);
-  if (!bridge) {
+  if (!bridge || bridgeFueraDeAlcance(usuario, bridge)) {
     throw bridgeNotFound();
   }
 
@@ -123,12 +141,13 @@ export async function listByBridge(bridgeId: string): Promise<CuentaPublicitaria
  * cuenta de OTRO bridge nunca se puede alternar desde este endpoint.
  */
 export async function toggleActiva(
+  usuario: AuthenticatedUser,
   bridgeId: string,
   cuentaId: string,
   activa: boolean,
 ): Promise<CuentaPublicitariaDto> {
   const bridge = await bridgeRepository.findById(bridgeId);
-  if (!bridge) {
+  if (!bridge || bridgeFueraDeAlcance(usuario, bridge)) {
     throw bridgeNotFound();
   }
 
@@ -153,11 +172,12 @@ export async function toggleActiva(
  * `tokenCifrado`).
  */
 export async function cargarToken(
+  usuario: AuthenticatedUser,
   bridgeId: string,
   cuentaId: string,
   token: string,
 ): Promise<CuentaPublicitariaDto> {
-  const cuenta = await resolverCuentaDelBridge(bridgeId, cuentaId);
+  const cuenta = await resolverCuentaDelBridge(usuario, bridgeId, cuentaId);
 
   const verificacion = await verificarTokenPagina(token);
   if (!verificacion.valido) {
@@ -185,8 +205,12 @@ export interface ResultadoPruebaConexion {
  * que un administrador confirme el estado real sin esperar al próximo tick
  * del trabajo programado.
  */
-export async function probarConexion(bridgeId: string, cuentaId: string): Promise<ResultadoPruebaConexion> {
-  const cuenta = await resolverCuentaDelBridge(bridgeId, cuentaId);
+export async function probarConexion(
+  usuario: AuthenticatedUser,
+  bridgeId: string,
+  cuentaId: string,
+): Promise<ResultadoPruebaConexion> {
+  const cuenta = await resolverCuentaDelBridge(usuario, bridgeId, cuentaId);
 
   if (cuenta.tokenCifrado === null) {
     return { ok: false, mensaje: "Esta cuenta todavía no tiene un token cargado." };

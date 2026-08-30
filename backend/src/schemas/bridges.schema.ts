@@ -29,9 +29,13 @@ const mapeoCamposSchema = z
 // D-M4-fundacion (diseño m4-bridges-crud-fundacion): Zod 4.4.3, mismo patrón
 // que `usuarios.schema.ts` (formatos top-level, enum nativo de Prisma como
 // valor en runtime).
-// Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `empresaId` obligatorio
-// desde que `Bridge.empresaId` es NOT NULL (`schema.prisma`) — un bridge ya
-// no puede crearse sin empresa asignada.
+// Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): `Bridge.empresaId` es
+// NOT NULL (`schema.prisma`) — un bridge nunca se crea sin empresa asignada.
+// Fix (bug de seguridad, empresaId forzado por sesión): `empresaId` opcional
+// en el BODY -- una sesión company-scoped la deriva de su propio actor
+// (`bridge.service.ts::resolveEmpresaId`, el body se ignora si lo manda); una
+// sesión holding-wide sigue debiendo traerla explícita, o el service rechaza
+// con 400 `empresa_requerida`.
 // bridgeApi (RedSocial.API_EXTERNA): la configuración (conexión + mapeo) NO
 // entra por acá — se carga después de crear el bridge, vía
 // `PATCH /bridges/:id/api-externa/conexion` y `.../mapeo` (mismo patrón que
@@ -40,7 +44,7 @@ const mapeoCamposSchema = z
 export const createBridgeBodySchema = z.object({
   redSocial: z.enum(RedSocial),
   nombre: z.string().trim().min(1).max(120),
-  empresaId: z.uuid(),
+  empresaId: z.uuid().optional(),
 });
 
 /**
@@ -70,6 +74,13 @@ export const listBridgesQuerySchema = z.object({
   busqueda: z.string().trim().min(1).optional(),
   redSocial: z.enum(RedSocial).optional(),
   estado: z.enum(EstadoBridge).optional(),
+  // Fix (bug de seguridad, scope por empresa): mismo criterio de 3 ramas que
+  // `negociacion/producto.schema.ts::listProductosQuerySchema` -- opcional
+  // porque solo tiene efecto para una sesión holding-wide (drill-down a UNA
+  // empresa puntual, `EmpresaDetallePage` del frontend); una sesión
+  // company-scoped lo ignora por completo (`bridge.service.ts::
+  // buildBridgeWhere` fuerza su propia empresa sin importar este valor).
+  empresaId: z.uuid().optional(),
   pagina: z.coerce.number().int().min(1).default(1),
   limite: z.coerce.number().int().min(1).max(100).default(20),
 });

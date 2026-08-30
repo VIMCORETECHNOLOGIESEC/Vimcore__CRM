@@ -809,6 +809,17 @@ function throwForMotivoDenegacion(motivo: MotivoDenegacion): never {
       "Un lead en etapa NUEVO no puede traspasarse",
     );
   }
+  // Fix (bug P0, docs/16-hallazgos-y-preguntas.md §4.4): mismo criterio 409
+  // que `etapa_no_traspasable` -- es una regla del lead ("todavía no tuvo un
+  // asesor titular"), no una cuestión de permiso del actor, así que no
+  // colapsa al 403 genérico de abajo.
+  if (motivo === "sin_asesor_previo") {
+    throw new AppError(
+      "traspaso_sin_asesor",
+      409,
+      "El lead no puede traspasarse a un vendedor sin que un asesor lo haya gestionado primero",
+    );
+  }
   throw new AppError("permiso_denegado", 403, "No tienes permiso para esta acción");
 }
 

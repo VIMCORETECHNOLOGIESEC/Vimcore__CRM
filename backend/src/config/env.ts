@@ -104,13 +104,6 @@ const envSchema = z.object({
   // esa: opcional, `GET /meta-ads/conectar` responde 503 en vez de impedir el
   // arranque del proceso si no está configurada).
   META_ADS_OAUTH_REDIRECT_URI: optionalEnvUrl,
-  // reportes (Bloque E, exportación PDF/XLSX): directorio local donde
-  // `jobs/reportes/reporte-generacion.job.ts` escribe el PDF/XLSX generado
-  // antes de que `GET /reportes/jobs/:id/descargar` lo sirva. Sin backend de
-  // almacenamiento externo (S3 u otro) en este batch -- fuera del alcance
-  // documentado; anotado en el reporte del batch como limitación conocida en
-  // un despliegue multi-réplica.
-  REPORTES_STORAGE_DIR: z.string().min(1).default("storage/reportes"),
   // logo upload (isotipo de empresa, `lib/azure-blob-storage.ts`): cadena de
   // conexión de la Storage Account de Azure Blob Storage donde se persisten
   // los isotipos subidos. Opcional en runtime, mismo criterio que
@@ -134,6 +127,16 @@ const envSchema = z.object({
   // Account real ya expone una URL pública única, igual de resoluble desde
   // el backend y desde el navegador -- no hay split que resolver ahí.
   AZURE_STORAGE_PUBLIC_BASE_URL: optionalEnvString,
+  // reportes (Bloque E, exportación PDF/XLSX, `lib/azure-blob-storage.ts::
+  // uploadReporteArchivo`/`generarUrlTemporalReporte`): contenedor blob PRIVADO
+  // (nunca `access: "blob"`) donde `jobs/reportes/reporte-generacion.job.ts`
+  // sube el PDF/XLSX generado. Reemplaza al antiguo `REPORTES_STORAGE_DIR`
+  // (disco local del contenedor de Azure Container Apps, que no sobrevivía
+  // ni era visible entre réplicas al escalar horizontalmente) -- retirado por
+  // completo tras confirmar que ningún otro archivo lo referenciaba. Mismo
+  // criterio de default que `AZURE_STORAGE_CONTAINER_ISOTIPOS`: no es un
+  // secreto, no hace falta exigirlo explícitamente en cada entorno.
+  AZURE_STORAGE_CONTAINER_REPORTES: z.string().min(1).default("reportes"),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,

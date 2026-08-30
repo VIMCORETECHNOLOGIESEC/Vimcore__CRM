@@ -41,6 +41,12 @@ export const metricasQuerySchema = z
     // contra `payload_original ->> 'nombreCampania'`.
     campania: z.string().trim().min(1).optional(),
     responsableId: z.uuid().optional(),
+    // Fix (drill-down holding-wide, mismo criterio que
+    // `usuarios.service.ts::buildWhere`/`bridge.service.ts::buildBridgeWhere`):
+    // solo tiene efecto para una sesión holding-wide (`usuario.empresaId ===
+    // null`) — `metricas.access.ts::resolveEmpresaId` es quien lo consume y
+    // decide ignorarlo cuando el actor ya está acotado a una empresa.
+    empresaId: z.uuid().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.rango !== "personalizado") return;

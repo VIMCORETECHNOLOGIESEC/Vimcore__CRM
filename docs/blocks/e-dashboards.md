@@ -45,7 +45,40 @@ holding-wide (el PDF/XLSX, `pdf-reporte.ts`) sigue como TODO explícito en el
 código, no implementado — distinto del hallazgo de abajo, que es sobre el
 ranking de productos, no sobre el módulo de reportes.
 
-## Hallazgo (2026-08-30) — `getRankingProductosPorEmpresa` (E5) en rojo
+## Hallazgo (2026-08-30) — `getRankingProductosPorEmpresa` (E5) en rojo — CERRADO
+
+**Causa real, confirmada — no es un bug de `getRankingProductosPorEmpresa`
+ni de `metricas.service.ts`.** El helper `conContexto()` de
+`tests/metricas.service.test.ts` fija SIEMPRE `runWithTenantContext({
+empresaId: EMPRESA_BOOTSTRAP_ID }, ...)` — el objeto `admin` en JS dice
+`empresaId: null` (holding-wide), pero el contexto REAL de Postgres para
+RLS quedaba anclado a la empresa bootstrap de todas formas; son dos cosas
+independientes (uno es un objeto de aplicación, el otro es el `SET LOCAL`
+real de la conexión).
+
+Mientras `productos`/`oportunidades`/`oportunidad_eventos` no tenían RLS
+habilitado (el hueco de seguridad real corregido en
+`20260830020000_negociacion_rls_tenant_isolation`, ver
+`docs/claude-negociacion-estado-actual.md`), este desajuste nunca se
+notaba — la única protección era el filtro de aplicación, que sí
+devolvía las dos empresas. En cuanto RLS quedó realmente activo (que era
+lo correcto y necesario), la fila de la segunda empresa empezó a
+bloquearse a nivel de base de datos, porque la sesión real de Postgres
+nunca se marcó como "sin restricción" para ese test puntual.
+
+**Fix aplicado** (solo en el test, cero cambios de código de producción):
+la aserción del ranking ahora envuelve la llamada al service en su propio
+`runWithTenantContext({ empresaId: null }, ...)` anidado, simulando de
+verdad una sesión holding-wide para esa consulta puntual — mismo
+mecanismo que usa `require-authentication.middleware.ts` en producción.
+27/27 tests pasando en `tests/metricas.service.test.ts`, confirmado.
+
+**Reproducción con request real** (antes de encontrar la causa de raíz):
+login como `admin@crm.local` (`Usuario.correo` directo, holding-wide de
+verdad) contra el flujo HTTP completo devolvió las dos empresas
+correctamente — confirma que el código de producción SIEMPRE estuvo bien;
+el problema vivía enteramente en cómo el test unitario simulaba el
+contexto de tenant, expuesto recién cuando RLS se activó de verdad.
 
 Tras integrar `dev-mateo` a `test/gpt` (merge `aeb0ad5`, 1203/1204 tests),
 queda un test en rojo:

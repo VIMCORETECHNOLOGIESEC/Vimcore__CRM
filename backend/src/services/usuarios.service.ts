@@ -1,7 +1,9 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { hashPassword } from "../lib/password.js";
-import { runInTransaction, USUARIOS_TRANSACTION_BOUNDS } from "../lib/prisma.js";
+import { runInTransaction, USUARIOS_TRANSACTION_BOUNDS, type PrismaClientOrTransaction } from "../lib/prisma.js";
+import * as empresaRepository from "../repositories/empresa.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
@@ -11,7 +13,8 @@ import type {
   ResponsableView,
   UpdateUsuarioData,
 } from "../repositories/usuario.repository.js";
-import type { ListUsuariosQuery } from "../schemas/usuarios.schema.js";
+import type { ListResponsablesQuery, ListUsuariosQuery } from "../schemas/usuarios.schema.js";
+import type { AuthenticatedUser } from "../types/authenticated-user.js";
 import {
   applyAsignacionesEnLote,
   chooseCandidato,
@@ -29,31 +32,31 @@ function emailAlreadyInUse(): AppError {
   return new AppError("correo_en_uso", 409, "El correo ya está en uso");
 }
 
-/**
- * Bloque C follow-up (D2 gap closure, spec "Request-scoped tenant context"):
- * `empresaId` es obligatorio al crear un `ASESOR`/`VENDEDOR` — son los únicos
- * roles legado cuyo `TenantContext` se resuelve vía `Membresia`
- * (`require-authentication.middleware.ts::resolverEmpresaId`,
- * `ROLES_ACCESO_TOTAL` excluye a estos dos). Sin esto, el usuario nuevo
- * nacería sin `Membresia` y su `TenantContext` sería irresoluble en el
- * primer login — el mismo hueco que esta batch cierra.
- */
-function empresaIdRequerido(): AppError {
-  return new AppError(
-    "empresa_id_requerido",
-    400,
-    "empresaId es obligatorio para crear un usuario ASESOR o VENDEDOR",
-  );
+function empresaNotFound(): AppError {
+  return new AppError("empresa_no_encontrada", 404, "Empresa no encontrada");
 }
 
 /**
- * D2: mismos dos roles holding-wide incondicionales que
+ * D2: mismos roles holding-wide incondicionales que
  * `require-authentication.middleware.ts::ROLES_ACCESO_TOTAL` — nunca
  * resuelven `TenantContext` vía `Membresia`, así que crear una acá sería
  * muerta (nunca leída) y además violaría `@@unique([usuarioId, empresaId,
  * rol])` si el mismo admin se re-creara alguna vez en otra empresa.
+ *
+ * Bloque F (aditivo, fix de bug real): `SUPERVISOR_HOLDING`/`SUPER_ADMIN`
+ * agregados acá cierran el mismo hueco que tenían `citas.service.ts` y
+ * `conversaciones.access.ts` — sin esto, `createUsuario` tomaba el camino de
+ * `resolveEmpresaId` para estos dos roles y terminaba creando una
+ * `Membresia(rol: ASESOR)` corrupta para un usuario que debería ser
+ * holding-wide sin `Membresia` (mismo alcance máximo que
+ * ADMINISTRADOR/SUPERVISOR).
  */
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 /**
  * D2/backfill (mismo mapeo que `shadow-authorization.service.ts::
@@ -84,14 +87,34 @@ function noCandidateToReassign(): AppError {
 }
 
 /**
- * M2: solo `ASESOR`/`VENDEDOR` tienen cartera de leads (`asesorId`/
- * `vendedorId`) — `ADMINISTRADOR`/`SUPERVISOR` nunca son responsables de un
- * lead, así que su baja nunca necesita reasignación.
+ * M2, revisado por el cutover de Bloque D (D5, docs/16 §4.2: "se elimina el
+ * rol Vendedor separado — cada asesor tiene un atributo 'habilitado para
+ * venta'"): los dos pools de cartera de `Lead` que `deactivateUsuario` (abajo)
+ * siempre intenta reasignar. `ADMINISTRADOR`/`SUPERVISOR`/holding nunca son
+ * responsables de un lead, así que ambas búsquedas de cartera dan vacío para
+ * ellos sin necesidad de una gate por `Usuario.rol` previa.
+ *
+ * Fix (bug real, no solo drift futuro): ANTES, el pool a reasignar salía de
+ * `POOL_BY_ROL[usuario.rol]` -- un mapa 1:1 sobre el enum LEGADO
+ * `Usuario.rol` (`ASESOR` u `VENDEDOR` como valores separados). Eso era
+ * incorrecto incluso HOY, antes de cualquier cutover de frontend: desde que
+ * `asignacion.service.ts::selectResponsableEnEmpresa` resuelve el pool
+ * `ASESOR` vía `Membresia(rol: ASESOR)` SIN filtrar por
+ * `habilitadoParaVenta` (ver ese archivo), un asesor habilitado para venta
+ * (`Usuario.rol` legado = `VENDEDOR`) es candidato válido del pool `ASESOR`
+ * de asignación inicial Y del pool `VENDEDOR` de traspaso a la vez -- puede
+ * terminar con cartera abierta en AMBAS columnas FK (`Lead.asesorId` para
+ * leads que nunca traspasó, `Lead.vendedorId` para los que sí). El mapa viejo
+ * elegía UN solo pool según el rol nominal y dejaba la cartera del otro
+ * huérfana (FK apuntando a un usuario ya inactivo, sin reasignar ni
+ * rechazar la baja). `findCarteraAbierta` (por columna FK real) es la fuente
+ * de verdad correcta -- no hace falta consultar `Usuario.rol` ni `Membresia`
+ * para decidir qué pool(s) aplican, solo para resolver los candidatos de
+ * reemplazo (ver el loop en `deactivateUsuario`, ya migrado a
+ * `findActivosPorRolMembresia`/`countCargaActivaPorResponsableEnEmpresa` --
+ * mismas funciones que `asignacion.service.ts`, Bloque D).
  */
-const POOL_BY_ROL: Partial<Record<RolUsuario, PoolAsignacion>> = {
-  ASESOR: "ASESOR",
-  VENDEDOR: "VENDEDOR",
-};
+const POOLS_DE_CARTERA: readonly PoolAsignacion[] = ["ASESOR", "VENDEDOR"];
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -107,9 +130,10 @@ export interface CreateUsuarioInput {
   correo: string;
   password: string;
   rol: RolUsuario;
-  // Bloque C follow-up (D2 gap closure): obligatorio solo para ASESOR/VENDEDOR
-  // (validado en `empresaIdRequerido` abajo, no en el tipo — el schema Zod de
-  // la capa HTTP hace la misma validación condicional antes de llegar acá).
+  // Bloque C follow-up (D2 gap closure) + fix (bug de seguridad, empresaId
+  // forzado por sesión): opcional en el tipo -- `resolveEmpresaId` abajo
+  // decide si hace falta y de dónde sale, según el actor. El schema Zod de la
+  // capa HTTP ya no reaplica esta validación condicional (movida acá).
   empresaId?: string;
 }
 
@@ -119,6 +143,59 @@ export interface UpdateUsuarioInput {
   password?: string;
   rol?: RolUsuario;
   activo?: boolean;
+}
+
+export interface CreateEmpresaAdministradorInput {
+  nombre: string;
+  correo: string;
+  password: string;
+}
+
+export interface EmpresaAdministradorView {
+  usuario: {
+    id: string;
+    nombre: string;
+    rol: "ADMINISTRADOR";
+    activo: boolean;
+  };
+  membresia: {
+    id: string;
+    usuarioId: string;
+    empresaId: string;
+    rol: "ADMINISTRADOR";
+    activa: boolean;
+    correo: string;
+  };
+}
+
+function correoPortadorAdministrador(empresaId: string, correoMembresia: string): string {
+  const digest = createHash("sha256")
+    .update(`${empresaId}:${correoMembresia.trim().toLowerCase()}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `portador-admin-${empresaId}-${digest}@no-login.crm.local`;
+}
+
+/**
+ * Fix (bug de seguridad: POST /usuarios no forzaba `empresaId` a la empresa
+ * del actor): mismo criterio/mismo error que `negociacion/producto.service.ts
+ * ::resolveEmpresaId` -- una sesión company-scoped nunca puede elegir su
+ * empresa por body (anti-escalamiento); una sesión holding-wide (D2) no tiene
+ * una empresa de sesión de la que derivarlo, así que el body debe traerla
+ * explícita. Replicado acá en vez de importado (mismo criterio de
+ * duplicación deliberada que `ROLES_ACCESO_TOTAL` de arriba, ya documentado
+ * como divergencia intencional entre archivos de este codebase).
+ */
+function resolveEmpresaId(actor: AuthenticatedUser, empresaIdBody: string | undefined): string {
+  if (actor.empresaId !== null) return actor.empresaId;
+  if (!empresaIdBody) {
+    throw new AppError(
+      "empresa_requerida",
+      400,
+      "Debes indicar empresaId explícitamente para una sesión holding-wide",
+    );
+  }
+  return empresaIdBody;
 }
 
 /**
@@ -132,12 +209,21 @@ export interface UpdateUsuarioInput {
  * desviación documentada en `sdd/bloque-c-aislamiento/tasks`).
  * `ADMINISTRADOR`/`SUPERVISOR` siguen sin `Membresia`: resuelven
  * `empresaId: null` (holding-wide) incondicionalmente en el middleware (D2),
- * así que una `Membresia` para ellos nunca se leería.
+ * así que una `Membresia` para ellos nunca se leería -- `resolveEmpresaId` ni
+ * siquiera se invoca para estos dos roles.
+ *
+ * Fix (bug de seguridad): `empresaId` para ASESOR/VENDEDOR ya NO sale directo
+ * del body -- `resolveEmpresaId(actor, input.empresaId)` fuerza la empresa
+ * del actor si es company-scoped (el body se ignora), o exige que el body la
+ * traiga explícita si el actor es holding-wide (400 `empresa_requerida`).
  */
-export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsuarioView> {
-  if (!ROLES_ACCESO_TOTAL.includes(input.rol) && !input.empresaId) {
-    throw empresaIdRequerido();
-  }
+export async function createUsuario(
+  actor: AuthenticatedUser,
+  input: CreateUsuarioInput,
+): Promise<AdminUsuarioView> {
+  const empresaId = ROLES_ACCESO_TOTAL.includes(input.rol)
+    ? undefined
+    : resolveEmpresaId(actor, input.empresaId);
 
   const passwordHash = await hashPassword(input.password);
 
@@ -155,14 +241,14 @@ export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsu
           tx,
         );
 
-        if (!ROLES_ACCESO_TOTAL.includes(input.rol) && input.empresaId) {
+        if (empresaId !== undefined) {
           const { rol, habilitadoParaVenta } = membresiaParaRolLegado(
             input.rol as "ASESOR" | "VENDEDOR",
           );
           await membresiaRepository.createMembresia(
             {
               usuarioId: usuario.id,
-              empresaId: input.empresaId,
+              empresaId,
               rol,
               habilitadoParaVenta,
             },
@@ -182,6 +268,81 @@ export async function createUsuario(input: CreateUsuarioInput): Promise<AdminUsu
   }
 }
 
+/**
+ * Provisiona un administrador company-scoped sin cambiar `POST /usuarios`:
+ * el correo de login vive en `Membresia.correo`; el `Usuario` es solo el
+ * portador legado requerido por la sesión y la autorización existentes.
+ */
+export async function createEmpresaAdministrador(
+  empresaId: string,
+  input: CreateEmpresaAdministradorInput,
+): Promise<EmpresaAdministradorView> {
+  const membresiaPasswordHash = await hashPassword(input.password);
+  const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
+  const usuarioCorreo = correoPortadorAdministrador(empresaId, input.correo);
+
+  try {
+    return await runInTransaction(
+      undefined,
+      async (tx) => {
+        const empresa = await empresaRepository.findById(empresaId, tx);
+        if (!empresa) {
+          throw empresaNotFound();
+        }
+
+        await membresiaRepository.assertCorreoDisponible(input.correo, tx);
+        await membresiaRepository.assertCorreoDisponible(usuarioCorreo, tx);
+
+        const usuario = await usuarioRepository.createUsuario(
+          {
+            nombre: input.nombre,
+            correo: usuarioCorreo,
+            // Invariantes: rol ADMINISTRADOR para que el login por Membresia pase;
+            // password no expuesta para que Usuario.correo no autentique holding-wide.
+            passwordHash: usuarioPasswordHash,
+            rol: "ADMINISTRADOR",
+          },
+          tx,
+        );
+        const membresia = await membresiaRepository.createMembresiaConCredencial(
+          {
+            usuarioId: usuario.id,
+            empresaId,
+            rol: "ADMINISTRADOR",
+            habilitadoParaVenta: false,
+            correo: input.correo,
+            passwordHash: membresiaPasswordHash,
+          },
+          tx,
+        );
+
+        return {
+          usuario: {
+            id: usuario.id,
+            nombre: usuario.nombre,
+            rol: "ADMINISTRADOR",
+            activo: usuario.activo,
+          },
+          membresia: {
+            id: membresia.id,
+            usuarioId: membresia.usuarioId,
+            empresaId: membresia.empresaId,
+            rol: "ADMINISTRADOR",
+            activa: membresia.activa,
+            correo: membresia.correo as string,
+          },
+        };
+      },
+      USUARIOS_TRANSACTION_BOUNDS,
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw emailAlreadyInUse();
+    }
+    throw error;
+  }
+}
+
 export interface FindUsuariosResult {
   usuarios: AdminUsuarioView[];
   total: number;
@@ -190,11 +351,36 @@ export interface FindUsuariosResult {
 }
 
 /**
+ * Fix (bug de seguridad: GET/PATCH/DELETE /usuarios no filtraban por
+ * empresa): mismo criterio D2 que `negociacion/producto.service.ts::
+ * listarProductos` -- `empresaId === null` en el actor es holding-wide (sin
+ * restricción, D2); cualquier otro valor exige que el `Usuario` objetivo
+ * tenga AL MENOS una `Membresia` en esa empresa exacta (`Usuario` no tiene
+ * columna `empresaId` propia, a diferencia de `Bridge`/`Lead` --
+ * `usuarioRepository.existsEnEmpresa`, único punto de verdad de ese chequeo).
+ * Un actor de empresa nunca ve ni un usuario de otra empresa NI a
+ * ADMINISTRADOR/SUPERVISOR/SUPERVISOR_HOLDING/SUPER_ADMIN holding-wide (sin
+ * `Membresia` propia): quedan fuera del `some` por no tener ninguna fila de
+ * `Membresia`.
+ */
+async function assertUsuarioEnAlcance(
+  actor: AuthenticatedUser,
+  targetId: string,
+  client?: PrismaClientOrTransaction,
+): Promise<void> {
+  if (actor.empresaId === null) return;
+  const pertenece = await usuarioRepository.existsEnEmpresa(targetId, actor.empresaId, client);
+  if (!pertenece) {
+    throw userNotFound();
+  }
+}
+
+/**
  * F7 (admin de usuarios): mismo patrón de `leads.service.ts::buildWhere` +
  * `findLeads` — `where` armado acá, paginación/orden resueltos por el
  * repositorio con `skip`/`take`/`count` en paralelo.
  */
-function buildWhere(query: ListUsuariosQuery): Prisma.UsuarioWhereInput {
+function buildWhere(query: ListUsuariosQuery, actor: AuthenticatedUser): Prisma.UsuarioWhereInput {
   const where: Prisma.UsuarioWhereInput = {};
 
   if (query.busqueda) {
@@ -213,11 +399,40 @@ function buildWhere(query: ListUsuariosQuery): Prisma.UsuarioWhereInput {
   if (query.rol) where.rol = query.rol;
   if (query.activo !== undefined) where.activo = query.activo;
 
+  // Fix (bug de seguridad): mismo criterio de ramas que
+  // `negociacion/producto.service.ts::listarProductos` -- (1) company-scoped:
+  // forzado a su propia empresa vía `Membresia`, cualquier query param de
+  // empresa/holding se ignora (anti-escalamiento, `assertUsuarioEnAlcance`
+  // arriba aplica el mismo criterio por id); (2) holding-wide con
+  // `query.soloHoldingWide`: SOLO los usuarios sin ninguna `Membresia`
+  // (Bloque F, tarea 2 -- tab de holding-wide del panel); (3) holding-wide
+  // con `query.empresaId`: drill-down opcional a UNA empresa puntual
+  // (`EmpresaDetallePage`); (4) holding-wide sin ninguno de los dos: sin
+  // filtro, ve todo (D2). `activa: true` en las ramas de empresa (fix,
+  // decisión de equipo): una `Membresia` desactivada saca al usuario del
+  // alcance administrativo de esa empresa, mismo criterio que
+  // `usuarioRepository.existsEnEmpresa`.
+  //
+  // Decisión de prioridad (mutuamente excluyentes a nivel de intención):
+  // `soloHoldingWide` gana sobre `query.empresaId` si ambos llegan juntos --
+  // representa una selección explícita de modo (el tab "holding-wide" del
+  // panel), mientras que `empresaId` puede quedar como residuo de query
+  // string de un modo anterior (ej. volver del drill-down de una empresa sin
+  // limpiar el query). Silenciar `soloHoldingWide` por un `empresaId`
+  // residual rompería ese tab sin ningún error visible.
+  if (actor.empresaId !== null) {
+    where.membresias = { some: { empresaId: actor.empresaId, activa: true } };
+  } else if (query.soloHoldingWide) {
+    where.membresias = { none: {} };
+  } else if (query.empresaId) {
+    where.membresias = { some: { empresaId: query.empresaId, activa: true } };
+  }
+
   return where;
 }
 
-export async function findUsuarios(query: ListUsuariosQuery): Promise<FindUsuariosResult> {
-  const where = buildWhere(query);
+export async function findUsuarios(actor: AuthenticatedUser, query: ListUsuariosQuery): Promise<FindUsuariosResult> {
+  const where = buildWhere(query, actor);
 
   const { usuarios, total } = await usuarioRepository.findUsuarios(where, {
     skip: (query.pagina - 1) * query.limite,
@@ -228,7 +443,8 @@ export async function findUsuarios(query: ListUsuariosQuery): Promise<FindUsuari
   return { usuarios, total, pagina: query.pagina, limite: query.limite };
 }
 
-export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
+export async function findUsuarioById(actor: AuthenticatedUser, id: string): Promise<AdminUsuarioView> {
+  await assertUsuarioEnAlcance(actor, id);
   const user = await usuarioRepository.findPublicById(id);
   if (!user) {
     throw userNotFound();
@@ -244,7 +460,12 @@ export async function findUsuarioById(id: string): Promise<AdminUsuarioView> {
  * ni reemite tokens/sesión; el usuario reactivado arranca con cartera vacía
  * y vuelve a recibir leads por asignación normal hacia adelante.
  */
-export async function updateUsuario(id: string, input: UpdateUsuarioInput): Promise<AdminUsuarioView> {
+export async function updateUsuario(
+  actor: AuthenticatedUser,
+  id: string,
+  input: UpdateUsuarioInput,
+): Promise<AdminUsuarioView> {
+  await assertUsuarioEnAlcance(actor, id);
   const data: UpdateUsuarioData = {
     nombre: input.nombre,
     correo: input.correo,
@@ -273,61 +494,104 @@ export async function updateUsuario(id: string, input: UpdateUsuarioInput): Prom
  * F3/F4 (diseño D-A1): catálogo de responsables activos para un pool de rol
  * — consumido por `GET /usuarios/responsables` y (indirectamente, vía el
  * frontend) por el selector de destinatario del lote de asignación.
+ *
+ * Fix (bug de seguridad, scope por empresa): mismo criterio de 3 ramas que
+ * `buildWhere` arriba -- (1) company-scoped: forzado a su propia empresa, el
+ * query param se ignora (anti-escalamiento); (2) holding-wide con
+ * `query.empresaId`: drill-down opcional a UNA empresa puntual; (3)
+ * holding-wide sin `query.empresaId`: sin filtro, ve responsables de
+ * cualquier empresa (D2).
  */
-export async function findResponsables(rol: RolUsuario): Promise<ResponsableView[]> {
-  return usuarioRepository.findResponsablesActivosPorRol(rol);
+export async function findResponsables(
+  actor: AuthenticatedUser,
+  query: ListResponsablesQuery,
+): Promise<ResponsableView[]> {
+  let empresaId: string | undefined;
+  if (actor.empresaId !== null) {
+    empresaId = actor.empresaId;
+  } else if (query.empresaId) {
+    empresaId = query.empresaId;
+  }
+
+  return usuarioRepository.findResponsablesActivosPorRol(query.rol, empresaId);
 }
 
 /**
  * D3 + M2 (baja lógica con reasignación obligatoria de cartera activa):
  * transaccional de punta a punta —
  *   1. lee el usuario (404 si no existe).
- *   2. si su rol tiene cartera (`ASESOR`/`VENDEDOR`) y esa cartera abierta no
- *      está vacía, resuelve los candidatos activos del pool y su carga
- *      activa con UNA sola consulta de cada una (no una por lead — hallazgo
+ *   2. por cada pool de cartera (`POOLS_DE_CARTERA` — siempre los dos,
+ *      `ASESOR` y `VENDEDOR`, ver comentario de esa constante) cuya cartera
+ *      abierta no esté vacía, resuelve los candidatos activos vía `Membresia`
+ *      (`findActivosPorRolMembresia`/`countCargaActivaPorResponsableEnEmpresa`
+ *      — mismas funciones Membresia-based que `asignacion.service.ts`,
+ *      Bloque D, escopeadas por la `empresaId` de cada lead) con UNA sola
+ *      consulta de cada una por grupo de empresa (no una por lead — hallazgo
  *      de code-review sobre N+1 dentro de esta transacción interactiva) y
  *      distribuye la cartera en memoria con el mismo criterio de desempate
- *      que `chooseCandidato` (`asignacion.service.ts`), persistiendo cada
- *      lead con `applyAsignacion` (mismo patrón que `reassignLead`/
- *      `transferLead`); sin candidato disponible, aborta con 409 y NADA se
- *      persiste (ni la baja ni ninguna reasignación parcial).
+ *      que `chooseCandidato` (`asignacion.service.ts`); sin candidato
+ *      disponible, aborta con 409 y NADA se persiste (ni la baja ni ninguna
+ *      reasignación parcial, de ningún pool).
  *   3. `activo=false` + revocación de refresh tokens
  *      (`usuarioRepository.deactivateUsuario`, mismo `tx`).
  * Los eventos SSE se publican DESPUÉS del commit, igual que el resto de
  * `asignacion.service.ts`.
  */
-export async function deactivateUsuario(id: string): Promise<void> {
+export async function deactivateUsuario(actor: AuthenticatedUser, id: string): Promise<void> {
   const events = await runInTransaction(
     undefined,
     async (tx) => {
+      // Fix (bug de seguridad): chequeo de alcance DENTRO de la misma tx que
+      // el resto de la baja -- mismo criterio que `assertUsuarioEnAlcance`,
+      // reusado con el cliente de transacción para ver el mismo snapshot.
+      await assertUsuarioEnAlcance(actor, id, tx);
       const usuario = await usuarioRepository.findById(id, tx);
       if (!usuario) {
         throw userNotFound();
       }
 
       const eventosAcumulados: CommittedEvent[] = [];
-      const pool = POOL_BY_ROL[usuario.rol];
+      const ahora = new Date();
 
-      if (pool !== undefined) {
-        const ahora = new Date();
+      for (const pool of POOLS_DE_CARTERA) {
         const cartera = await leadRepository.findCarteraAbierta(id, pool, tx);
+        if (cartera.length === 0) continue;
 
-        if (cartera.length > 0) {
-          // Una sola consulta de candidatos y una sola de carga activa para
-          // TODA la cartera (nunca una por lead, ver hallazgo de code-review
-          // sobre N+1 dentro de la transacción de baja): la distribución
-          // entre candidatos ocurre en memoria reusando el mismo criterio de
-          // desempate que `asignacion.service.ts::chooseCandidato`.
-          const activos = await usuarioRepository.findActivosPorRol(pool, tx);
+        // Fix (bug real, ver comentario de `POOLS_DE_CARTERA`): la cartera de
+        // ESTE pool puede repartirse en más de una empresa si el usuario dado
+        // de baja tiene `Membresia` activa en varias -- los candidatos y su
+        // carga activa se resuelven POR empresa (mismo scoping que
+        // `asignacion.service.ts::selectResponsableEnEmpresa`), nunca de
+        // forma global.
+        const carteraPorEmpresa = new Map<string, typeof cartera>();
+        for (const lead of cartera) {
+          const grupo = carteraPorEmpresa.get(lead.empresaId);
+          if (grupo) {
+            grupo.push(lead);
+          } else {
+            carteraPorEmpresa.set(lead.empresaId, [lead]);
+          }
+        }
+
+        const entradas: ApplyAsignacionesEnLoteInput[] = [];
+        for (const [empresaId, carteraEmpresa] of carteraPorEmpresa) {
+          // Una sola consulta de candidatos y una sola de carga activa por
+          // grupo de empresa (nunca una por lead, ver hallazgo de
+          // code-review sobre N+1 dentro de la transacción de baja): la
+          // distribución entre candidatos ocurre en memoria reusando el
+          // mismo criterio de desempate que
+          // `asignacion.service.ts::chooseCandidato`.
+          const activos = await usuarioRepository.findActivosPorRolMembresia(pool, empresaId, tx);
           const candidatosElegibles = activos.filter((u) => u.id !== id);
 
           if (candidatosElegibles.length === 0) {
             throw noCandidateToReassign();
           }
 
-          const cargas = await leadRepository.countCargaActivaPorResponsable(
+          const cargas = await leadRepository.countCargaActivaPorResponsableEnEmpresa(
             pool,
             candidatosElegibles.map((u) => u.id),
+            empresaId,
             tx,
           );
 
@@ -342,8 +606,7 @@ export async function deactivateUsuario(id: string): Promise<void> {
           // ESCRITURA se agrupa por receptor y se ejecuta una única vez
           // después del loop (`applyAsignacionesEnLote`), en vez de un
           // `applyAsignacion` awaited por lead.
-          const entradas: ApplyAsignacionesEnLoteInput[] = [];
-          for (const lead of cartera) {
+          for (const lead of carteraEmpresa) {
             const candidato = chooseCandidato(candidatos);
             if (candidato === null) {
               // Inalcanzable: `candidatos` nunca queda vacío dentro de este
@@ -367,20 +630,20 @@ export async function deactivateUsuario(id: string): Promise<void> {
             candidato.cargaActiva += 1;
             candidato.ultimaAsignacionEn = ahora;
           }
-
-          const eventos = await applyAsignacionesEnLote(
-            entradas,
-            {
-              pool,
-              tipoEvento: pool === "ASESOR" ? "REASIGNACION" : "TRASPASO",
-              motivo: "baja_usuario",
-              ejecutadoPorId: null,
-              ahora,
-            },
-            tx,
-          );
-          eventosAcumulados.push(...eventos);
         }
+
+        const eventos = await applyAsignacionesEnLote(
+          entradas,
+          {
+            pool,
+            tipoEvento: pool === "ASESOR" ? "REASIGNACION" : "TRASPASO",
+            motivo: "baja_usuario",
+            ejecutadoPorId: null,
+            ahora,
+          },
+          tx,
+        );
+        eventosAcumulados.push(...eventos);
       }
 
       await usuarioRepository.deactivateUsuario(id, tx);

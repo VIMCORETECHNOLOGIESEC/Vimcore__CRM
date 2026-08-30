@@ -12,7 +12,15 @@ import type {
 } from "../schemas/citas.schema.js";
 import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+// Bloque F (aditivo): mismo alcance máximo que ADMINISTRADOR/SUPERVISOR,
+// holding-wide sin atarse a una empresa (ver `metricas.access.ts`/
+// `oportunidad.access.ts`, mismo patrón).
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 /**
  * Re-tipada localmente al tipo amplio `EtapaLead`, mismo motivo que
