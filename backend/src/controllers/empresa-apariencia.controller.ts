@@ -50,7 +50,7 @@ export async function patchEmpresaApariencia(req: Request, res: Response): Promi
   res.status(200).json(apariencia);
 }
 
-function archivoFaltante(): AppError {
+function missingUploadedFile(): AppError {
   return new AppError(
     "archivo_faltante",
     400,
@@ -70,11 +70,11 @@ function archivoFaltante(): AppError {
  */
 export async function postEmpresaAparienciaLogo(req: Request, res: Response): Promise<void> {
   if (!req.user || req.user.sessionScope !== "company" || req.user.empresaId === null) {
-    throw soloEmpresaPropia();
+    throw forbiddenCompanyScope();
   }
 
   if (!req.file) {
-    throw archivoFaltante();
+    throw missingUploadedFile();
   }
 
   const apariencia = await uploadEmpresaLogo(req.user.empresaId, {

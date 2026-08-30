@@ -7,7 +7,12 @@ services:
     # cualquiera que corra Azurite) -- en produccion se pisa con la
     # connection string real de nexuscorp, sin ningun cambio de código.
     image: mcr.microsoft.com/azure-storage/azurite:3.35.0
-    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000"
+    # --skipApiVersionCheck: @azure/storage-blob manda una version de API
+    # mas nueva que la que Azurite 3.35.0 reconoce por defecto (rechaza con
+    # InvalidHeaderValue/400 sin esto). Solo afecta al emulador local -- la
+    # Storage Account real de Azure acepta cualquier version del SDK, esto
+    # nunca corre en produccion.
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck"
     ports:
       - "10000:10000"
     volumes:
