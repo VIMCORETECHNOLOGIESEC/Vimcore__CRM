@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/componentes/ConfirmDialog";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { Bridge } from "@/tipos/bridge";
 import { BridgesFiltros } from "./BridgesFiltros";
@@ -53,10 +54,11 @@ export function BridgesPage() {
 
   const [filtros, setFiltros] = useState<BridgesFiltrosState>(FILTROS_BRIDGES_VACIOS);
   const [pagina, setPagina] = useState(1);
+  const { empresaVistaId } = useVistaEmpresa();
 
   const params = useMemo(
-    () => buildBridgesQueryParams(filtros, pagina, BRIDGES_POR_PAGINA),
-    [filtros, pagina],
+    () => buildBridgesQueryParams(filtros, pagina, BRIDGES_POR_PAGINA, empresaVistaId ?? undefined),
+    [filtros, pagina, empresaVistaId],
   );
 
   const { data, isLoading, isError, error, refetch } = useBridges(params);

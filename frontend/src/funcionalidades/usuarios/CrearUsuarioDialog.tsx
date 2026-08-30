@@ -14,8 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ROLES_USUARIO } from "@/tipos/usuario";
-import { ROL_ETIQUETAS } from "./catalogos";
+import { ROL_ETIQUETAS, ROLES_USUARIO_SELECCIONABLES } from "./catalogos";
 import type { CreateUsuarioInput } from "./usuarios.api";
 
 /**
@@ -30,7 +29,7 @@ import type { CreateUsuarioInput } from "./usuarios.api";
 const crearUsuarioSchema = z.object({
   nombre: z.string().trim().min(1, "Ingresá el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
   correo: z.string().trim().pipe(z.email("Ingresá un correo electrónico válido.")),
-  rol: z.enum(ROLES_USUARIO, { error: "Elegí un rol." }),
+  rol: z.enum(ROLES_USUARIO_SELECCIONABLES, { error: "Elegí un rol." }),
   password: passwordPolicySchema,
 });
 
@@ -99,7 +98,7 @@ export function CrearUsuarioDialog({ open, onOpenChange, onSubmit, enviando }: C
                     <SelectValue placeholder="Elegir rol…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLES_USUARIO.map((rol) => (
+                    {ROLES_USUARIO_SELECCIONABLES.map((rol) => (
                       <SelectItem key={rol} value={rol}>
                         {ROL_ETIQUETAS[rol]}
                       </SelectItem>

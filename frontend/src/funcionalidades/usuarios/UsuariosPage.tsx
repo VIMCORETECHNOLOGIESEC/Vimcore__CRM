@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { AdminUsuario } from "@/tipos/usuario";
 import { BajaUsuarioDialog } from "./BajaUsuarioDialog";
@@ -52,10 +53,11 @@ export function UsuariosPage() {
 
   const [filtros, setFiltros] = useState<UsuariosFiltrosState>(FILTROS_USUARIOS_VACIOS);
   const [pagina, setPagina] = useState(1);
+  const { empresaVistaId } = useVistaEmpresa();
 
   const params = useMemo(
-    () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA),
-    [filtros, pagina],
+    () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA, empresaVistaId ?? undefined),
+    [filtros, pagina, empresaVistaId],
   );
 
   const { data, isLoading, isError, error, refetch } = useUsuarios(params);

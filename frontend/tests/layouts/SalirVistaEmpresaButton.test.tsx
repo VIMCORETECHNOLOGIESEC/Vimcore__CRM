@@ -11,14 +11,12 @@ const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { SalirVistaEmpresaButton } = await import("@/layouts/SalirVistaEmpresaButton");
 
 /**
- * `SalirVistaEmpresaButton`: interfaz TEMPORAL del punto de "salir de vista
- * de empresa" (reparto de trabajo, ver AppLayout.tsx) -- lee/limpia
- * `?empresaId=` directo de la URL en vez de consumir el context compartido
- * `empresaVistaId`/`entrarAEmpresa`/`salirDeEmpresa` (otra sesión, todavía
- * en curso). Mientras tanto es el mecanismo REAL: `GestorEmpresasPage.tsx`
- * ya navega a `/usuarios?empresaId=X` hoy, así que este botón debe
- * aparecer/desaparecer y limpiar ese mismo query param de verdad, no un
- * placeholder inerte.
+ * `SalirVistaEmpresaButton`: consume `useVistaEmpresa()` (fuente de verdad
+ * compartida, `funcionalidades/empresa-apariencia/useVistaEmpresa.ts`), que
+ * a su vez está implementado sobre `useSearchParams` -- estos tests siguen
+ * verificando el comportamiento observable real vía la URL (`?empresaId=`),
+ * sin mockear el hook, para probar la integración completa igual que antes
+ * del swap.
  */
 
 function renderConRuta(searchParamsIniciales: string, sessionScope: "holding" | "company" = "holding") {

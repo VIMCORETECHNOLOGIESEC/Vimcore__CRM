@@ -35,6 +35,8 @@ export function buildUsuariosQueryParams(
   filtros: UsuariosFiltrosState,
   pagina: number,
   limite: number,
+  /** Vista de empresa de un holding-wide (`useVistaEmpresa`) -- ver el docblock de `UsuariosQueryParams::empresaId`. */
+  empresaId?: string,
 ): UsuariosQueryParams {
   const busqueda = filtros.busqueda.trim();
   const params: UsuariosQueryParams = { pagina, limite };
@@ -43,6 +45,7 @@ export function buildUsuariosQueryParams(
   if (filtros.rol !== FILTRO_TODOS) params.rol = filtros.rol;
   if (filtros.estado === "ACTIVOS") params.activo = true;
   if (filtros.estado === "INACTIVOS") params.activo = false;
+  if (empresaId) params.empresaId = empresaId;
 
   return params;
 }

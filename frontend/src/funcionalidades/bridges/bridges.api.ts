@@ -53,6 +53,8 @@ export interface BridgesQueryParams {
   busqueda?: string;
   redSocial?: RedSocial;
   estado?: EstadoBridge;
+  /** Vista de empresa de un holding-wide -- ver `UsuariosQueryParams::empresaId` (mismo criterio, mismo gap de backend). */
+  empresaId?: string;
 }
 
 export interface BridgesResponse {

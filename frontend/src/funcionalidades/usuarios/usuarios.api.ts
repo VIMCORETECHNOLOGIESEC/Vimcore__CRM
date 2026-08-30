@@ -55,6 +55,15 @@ export interface UsuariosQueryParams {
   busqueda?: string;
   rol?: RolUsuario;
   activo?: boolean;
+  /**
+   * Vista de empresa de un holding-wide (`useVistaEmpresa`, GestorEmpresasPage
+   * -> EmpresaDetallePage). El backend TODAVÍA no filtra por esto (mismo
+   * hallazgo de scope reportado a Mateo) -- se manda igual, forward-compatible:
+   * el día que el backend lo soporte (mismo patrón que ya usa
+   * `producto.service.ts::listarProductos`), esta pantalla empieza a filtrar
+   * de verdad sin ningún cambio de frontend.
+   */
+  empresaId?: string;
   direccion?: "asc" | "desc";
 }
 

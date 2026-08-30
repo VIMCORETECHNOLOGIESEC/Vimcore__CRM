@@ -248,6 +248,8 @@ export function buildBridgesQueryParams(
   filtros: BridgesFiltrosState,
   pagina: number,
   limite: number,
+  /** Vista de empresa de un holding-wide (`useVistaEmpresa`). */
+  empresaId?: string,
 ): BridgesQueryParams {
   const busqueda = filtros.busqueda.trim();
   const params: BridgesQueryParams = { pagina, limite };
@@ -255,6 +257,7 @@ export function buildBridgesQueryParams(
   if (busqueda) params.busqueda = busqueda;
   if (filtros.redSocial !== FILTRO_TODOS) params.redSocial = filtros.redSocial;
   if (filtros.estado !== FILTRO_TODOS) params.estado = filtros.estado;
+  if (empresaId) params.empresaId = empresaId;
 
   return params;
 }

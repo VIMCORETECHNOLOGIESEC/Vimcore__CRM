@@ -5,6 +5,7 @@ import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
 import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { EmpresaAparienciaPage } from "@/funcionalidades/empresa-apariencia/EmpresaAparienciaPage";
+import { EmpresaDetallePage } from "@/funcionalidades/empresa-apariencia/EmpresaDetallePage";
 import { GestorEmpresasPage } from "@/funcionalidades/empresa-apariencia/GestorEmpresasPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
@@ -103,7 +104,16 @@ export const router = createBrowserRouter([
             element: (
               <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} allowedScopes={["holding"]} />
             ),
-            children: [{ path: "empresas", element: <GestorEmpresasPage /> }],
+            children: [
+              { path: "empresas", element: <GestorEmpresasPage /> },
+              // Detalle de empresa (vista de solo lectura simulada, ver
+              // `EmpresaDetallePage.tsx`) -- mismo grupo/`allowedScopes` que
+              // `empresas`: un admin de sesión `company` nunca debería entrar
+              // al detalle de OTRA empresa por acá, ni siquiera la propia
+              // (para eso ya existe `apariencia-empresa`/`usuarios`/`bridges`
+              // sin necesitar este id explícito en la URL).
+              { path: "empresas/:empresaId", element: <EmpresaDetallePage /> },
+            ],
           },
         ],
       },
