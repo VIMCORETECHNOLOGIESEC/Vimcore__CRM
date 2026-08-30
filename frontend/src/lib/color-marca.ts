@@ -38,7 +38,7 @@ function relativeLuminance(triplet: string): number {
   return 0.2126 * linearChannel(r) + 0.7152 * linearChannel(g) + 0.0722 * linearChannel(b);
 }
 
-function contrastRatio(tripletA: string, tripletB: string): number {
+export function contrastRatio(tripletA: string, tripletB: string): number {
   const lA = relativeLuminance(tripletA);
   const lB = relativeLuminance(tripletB);
   const [lighter, darker] = lA >= lB ? [lA, lB] : [lB, lA];

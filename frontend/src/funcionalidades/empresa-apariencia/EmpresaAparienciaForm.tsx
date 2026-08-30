@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CampoColorHex } from "@/componentes/formularios/CampoColorHex";
+import { contrastRatio, foregroundForContrast, hexToRgbTriplet } from "@/lib/color-marca";
 
 /**
  * Formulario compartido de apariencia de una `Empresa`
@@ -25,6 +26,21 @@ import { CampoColorHex } from "@/componentes/formularios/CampoColorHex";
  * `ConfiguracionEmpresaPage.tsx` para `logoUrl`.
  */
 const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+
+/** Mismo umbral WCAG AA (4.5:1) que ya usa `foregroundForContrast`
+ * (`color-marca.ts`) para elegir el foreground del shell autenticado -- acá
+ * se reutiliza solo para decidir si corresponde mostrar la advertencia de
+ * bajo contraste en la vista previa, nunca para bloquear el guardado. */
+const CONTRASTE_MINIMO_AA = 4.5;
+
+/** "124 45 18" (triplete RGB espaciado que usa `color-marca.ts` para
+ * componer con las variables CSS del tema) -> "rgb(124, 45, 18)" para un
+ * `style` inline puntual de esta vista previa -- no se reusa el formato
+ * espaciado de `index.css` porque acá no hay una variable CSS de por medio,
+ * es un color en vivo calculado en JS. */
+function cssRgb(triplet: string): string {
+  return `rgb(${triplet.trim().split(/\s+/).join(", ")})`;
+}
 
 const empresaAparienciaSchema = z.object({
   nombre: z.string().optional(),
@@ -110,6 +126,28 @@ export function EmpresaAparienciaForm({
     ? colorSecundarioTecleado
     : "#9ca3af";
 
+  // Advertencia de bajo contraste (no bloqueante -- el color se guarda igual):
+  // `foregroundForContrast` ya elige el mejor foreground posible entre blanco
+  // y el oscuro del tema para cada fondo, así que si ESE contraste no llega a
+  // 4.5:1 (WCAG AA), ninguno de los dos candidatos lo alcanza. Solo se avisa
+  // sobre un color realmente elegido por el usuario, nunca sobre el gris de
+  // reemplazo ("#9ca3af") que se muestra mientras el campo está vacío o a
+  // medio escribir.
+  const colorPrimarioValido = HEX_COLOR_REGEX.test(colorPrimarioTecleado);
+  const colorSecundarioValido = HEX_COLOR_REGEX.test(colorSecundarioTecleado);
+
+  const tripletPrimario = hexToRgbTriplet(previewColorPrimario);
+  const tripletSecundario = hexToRgbTriplet(previewColorSecundario);
+  const foregroundPrimario = foregroundForContrast(tripletPrimario);
+  const foregroundSecundario = foregroundForContrast(tripletSecundario);
+
+  const bajoContrastePrimario =
+    colorPrimarioValido &&
+    contrastRatio(tripletPrimario, foregroundPrimario) < CONTRASTE_MINIMO_AA;
+  const bajoContrasteSecundario =
+    colorSecundarioValido &&
+    contrastRatio(tripletSecundario, foregroundSecundario) < CONTRASTE_MINIMO_AA;
+
   return (
     <form onSubmit={enviar} noValidate className="flex flex-col gap-5">
       {mostrarNombre ? (
@@ -165,12 +203,50 @@ export function EmpresaAparienciaForm({
       <div className="flex flex-col gap-2">
         <Label>Vista previa</Label>
         <div
-          className="flex h-24 items-center justify-center rounded-lg text-center text-sm font-medium text-white shadow-inner"
+          className="flex h-16 items-center justify-center rounded-lg text-center text-sm font-medium text-white shadow-inner"
           style={{
             background: `linear-gradient(135deg, ${previewColorPrimario}, ${previewColorSecundario})`,
           }}
         >
           Así se ve la marca de esta empresa
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <div
+              data-testid="vista-previa-sidebar"
+              className="flex h-20 flex-col justify-center gap-1 rounded-lg px-3 shadow-inner"
+              style={{ backgroundColor: cssRgb(tripletPrimario), color: cssRgb(foregroundPrimario) }}
+            >
+              <span className="text-xs font-semibold">Panel lateral</span>
+              <span className="text-[0.7rem] opacity-90">Leads</span>
+            </div>
+            {bajoContrastePrimario ? (
+              <p className="text-xs text-muted-foreground">
+                Este color tiene bajo contraste, el texto podría costar leerse.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-muted-foreground/30 bg-muted">
+              <span
+                data-testid="vista-previa-acento-boton"
+                className="rounded-md px-3 py-1.5 text-xs font-semibold shadow-sm"
+                style={{
+                  backgroundColor: cssRgb(tripletSecundario),
+                  color: cssRgb(foregroundSecundario),
+                }}
+              >
+                Botón de ejemplo
+              </span>
+            </div>
+            {bajoContrasteSecundario ? (
+              <p className="text-xs text-muted-foreground">
+                Este color tiene bajo contraste, el texto podría costar leerse.
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
 
