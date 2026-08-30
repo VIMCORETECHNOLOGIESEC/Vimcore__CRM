@@ -4,6 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CRM Embudo de Leads</title>
+    <!--
+      Google Fonts de la variante "Propuesta B -- Consejo directivo"
+      (src/temas/variante-empresarial): único punto de carga a nivel raíz,
+      compartido por el boot pre-login (AppBoot.tsx), el login
+      (LoginPage.tsx) y el splash del shell autenticado (AppLayout.tsx).
+      Antes cada uno declaraba su propio <link> (React 19 los hoistea a
+      <head>, pero cada componente los montaba en un instante distinto del
+      ciclo de red), así que los dos splashes de bienvenida podían pintar en
+      estados de carga de fuente distintos y producir un salto de glifos
+      (FOUT) visible entre uno y otro. Cargarlo acá, antes de que React
+      exista, le da a la fuente el mayor margen posible para resolver antes
+      de que cualquier splash la necesite.
+
+      Fraunces (headlines/splash) usa `display=optional` en vez de `swap`:
+      si no resuelve a tiempo, el navegador se queda con el fallback
+      (Georgia, ver `.headline` en tema-empresarial.css) y NUNCA hace swap
+      más tarde -- evita el salto visible a costa de, en cargas frías muy
+      lentas, no llegar a usar Fraunces. `font-display` solo es válido
+      dentro de una regla `@font-face`, así que el único lugar donde se
+      puede fijar es acá, en la URL de Google Fonts (que genera esas reglas
+      del lado del servidor) -- no existe como propiedad aplicable a un
+      selector como `.headline` directamente.
+
+      Source Sans 3 (tipografía de trabajo del resto de esta variante)
+      mantiene `display=swap`: es texto de UI/tablas donde un swap tardío es
+      mucho menos perceptible que en un headline grande, y swap sigue
+      garantizando que termine usándose la fuente correcta.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&display=optional"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

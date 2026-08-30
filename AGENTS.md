@@ -258,11 +258,25 @@ de modificar código, datos o despliegue:
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado)
 - Integración con calendarios externos (Google Calendar, Outlook)
-- Notificaciones por correo, SMS o WhatsApp (solo in-app)
+- Notificaciones por correo, SMS o WhatsApp (solo in-app). **Excepción
+  documentada (2026-08-30):** `LeadDetallePage.tsx` (commit `34e49db`,
+  rama de Steven, ya mergeado a `test/gpt`) monta un panel de chat de
+  WhatsApp (`WhatsAppChat`) con historial y mensajes **hardcodeados/mock**
+  — no envía ni recibe mensajes reales, no hay integración con la API de
+  WhatsApp de por medio. Es UI de demo/venta, aprobada para el despliegue
+  vigente por decisión del usuario. Cualquier integración REAL con
+  WhatsApp (envío/recepción de mensajes de verdad) sigue fuera de alcance
+  y requiere su propio bloque SDD.
 - App móvil nativa
 - Bridges de TikTok y sitio web propio (no implementados ni modelados como
   canales; el endpoint genérico actual registra el origen como `GOOGLE_FORMS`)
-- Timeline cronológico de interacciones en la vista de detalle del lead
+- Timeline cronológico de interacciones en la vista de detalle del lead.
+  **Excepción documentada (2026-08-30):** `LeadDetallePage.tsx` (commit
+  `606036a`, rama de Steven, ya mergeado a `test/gpt`) usa `LeadTimeline`
+  para visualizar el AVANCE DE ETAPAS del lead (Nuevo → Contactado → Cita,
+  etc.), no un historial libre de interacciones/eventos — distinción que
+  el propio docblock del componente ya documenta. Aprobado para el
+  despliegue vigente por decisión del usuario.
 - SSO / OAuth corporativo (se expone la API para integrarlo después)
 
 ---

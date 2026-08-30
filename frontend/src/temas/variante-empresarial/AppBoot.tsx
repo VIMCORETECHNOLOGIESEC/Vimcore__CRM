@@ -130,17 +130,15 @@ export function AppBoot({ children }: { children: ReactNode }) {
       {bootActive ? (
         <div className="tema-empresarial">
           {/*
-            React 19 hoista automáticamente <link> renderizados en cualquier
-            parte del árbol hacia <head> -- mismo patrón que
-            `LoginPage.tsx`/`FlujoIntegracionDemo.tsx` para cargar las fuentes
-            de esta variante.
+            Las fuentes de esta variante (Fraunces/Source Sans 3) se cargan
+            una sola vez a nivel raíz en `index.html` -- fix "FOUT entre los
+            dos splashes de bienvenida" (boot pre-login vs. shell
+            autenticado, `AppLayout.tsx`): antes este componente y
+            `LoginPage.tsx` cada uno declaraba su propio <link>, montado en
+            un instante distinto del ciclo de red, así que cada splash podía
+            pintar con un estado de carga de fuente diferente. Ya no hace
+            falta declararlo acá.
           */}
-          <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-          <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
-          />
           <WelcomeSplashLoader
             contexto={marca.nombre}
             mensaje="Cargando…"

@@ -201,25 +201,20 @@ export function LoginPage() {
   return (
     <div className="tema-empresarial patron-papel flex min-h-screen w-full flex-col lg:flex-row">
       {/*
-        React 19 hoista automáticamente <link> renderizados en cualquier
-        parte del árbol hacia <head> -- mismo patrón que
-        `FlujoIntegracionDemo.tsx`/`StyleguidePage.tsx` para cargar las
-        fuentes de esta variante.
+        Las fuentes de esta variante (Fraunces/Source Sans 3) se cargan una
+        sola vez a nivel raíz en `index.html` -- fix "FOUT entre los dos
+        splashes de bienvenida": antes este componente y `AppBoot.tsx` cada
+        uno declaraba su propio <link>, ver el comentario en `AppBoot.tsx`
+        para el detalle completo.
       */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
-      />
 
       <div className="chrome-gradiente chrome-sombra-derecha hidden shrink-0 flex-col items-center justify-center gap-6 px-10 py-16 lg:flex lg:w-2/5">
         {logoHolding ? (
           <img src={logoHolding} alt="Isotipo del holding" className="h-20 w-20 object-contain" />
         ) : (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[#F5F3EE]/35 px-10 py-12">
-            <ImageIcon className="size-9 text-[#F5F3EE]/60" aria-hidden="true" />
-            <p className="max-w-[16rem] text-center text-sm leading-relaxed text-[#F5F3EE]/70">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-background/35 px-10 py-12">
+            <ImageIcon className="size-9 text-background/60" aria-hidden="true" />
+            <p className="max-w-[16rem] text-center text-sm leading-relaxed text-background/70">
               Isotipo del holding
               <br />
               <span className="text-xs opacity-80">(personalizable por empresa)</span>

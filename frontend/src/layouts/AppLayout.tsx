@@ -60,6 +60,40 @@ export function AppLayout() {
   // `WelcomeSplashLoader` del boot en vez de un shell a medio pintar.
   const showSplash = useSplashGate(isLoadingHolding, SPLASH_MIN_MS);
 
+  // Fix real (Bug 3 -- color de marca no llega a componentes Radix:
+  // tooltip/dropdown/dialog/sheet/select/popover/alert-dialog): antes
+  // `estilosMarca` solo se aplicaba como `style` inline en
+  // `SidebarProvider` (abajo). Los componentes Radix de este proyecto
+  // renderizan vía Portal directo a `document.body`, FUERA del subárbol de
+  // `SidebarProvider` -- nunca heredaban esas variables CSS y caían al
+  // `:root` fijo (azul por defecto, `--ring: 37 99 235`). Este efecto
+  // espeja las mismas propiedades en `document.documentElement` (nivel
+  // `<html>`), que SÍ es ancestro de cualquier portal montado en `<body>`
+  // sin importar dónde cuelgue -- las custom properties CSS heredan por el
+  // DOM sin importar `position: fixed`. El `style` inline de
+  // `SidebarProvider` se mantiene (no se quita): sigue siendo necesario
+  // para el render inicial sin flash, antes de que este efecto corra.
+  //
+  // `estilosMarca` es `undefined` mientras no hay `usuario` (sesión sin
+  // resolver, o logout) -- el cleanup de abajo se encarga de retirar las
+  // propiedades del `documentElement` en ese caso, para no dejar residuo
+  // de una sesión anterior.
+  useEffect(() => {
+    if (!estilosMarca) {
+      return undefined;
+    }
+    const raiz = document.documentElement;
+    const claves = Object.keys(estilosMarca);
+    for (const clave of claves) {
+      raiz.style.setProperty(clave, estilosMarca[clave]);
+    }
+    return () => {
+      for (const clave of claves) {
+        raiz.style.removeProperty(clave);
+      }
+    };
+  }, [estilosMarca]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -79,8 +113,11 @@ export function AppLayout() {
   if (showSplash) {
     // `.tema-empresarial` es requerido -- `tema-empresarial.css` scopea
     // `.welcome-splash` bajo ese ancestro (mismo patrón que `AppBoot.tsx`).
-    // La hoja de estilos y las fuentes ya se cargaron con el boot pre-login,
-    // que siempre monta antes que este layout autenticado.
+    // Las fuentes (Fraunces/Source Sans 3) se cargan una sola vez a nivel
+    // raíz en `index.html` (fix "FOUT entre los dos splashes de
+    // bienvenida"), así que ya están en curso de descarga desde el primer
+    // byte de HTML -- este layout ya no depende de que el boot pre-login
+    // haya montado antes para tener margen de tiempo.
     return (
       <div className="tema-empresarial">
         <WelcomeSplashLoader

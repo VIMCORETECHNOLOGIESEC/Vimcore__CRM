@@ -383,7 +383,7 @@ export function LeadDetallePage() {
         </div>
       </div>
       {chatAbierto ? (
-        <div className="modo-idec fixed inset-0 z-40 flex flex-col overflow-hidden bg-background md:left-60">
+        <div className="modo-idec fixed inset-0 z-40 flex flex-col overflow-hidden bg-background md:left-[--sidebar-width]">
           <div className="flex shrink-0 items-center gap-3 p-3 md:p-4 md:pl-5">
             {/*
              * Navbar flotante (solo en la vista de chat): la información del
