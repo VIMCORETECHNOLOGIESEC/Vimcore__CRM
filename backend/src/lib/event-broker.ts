@@ -11,7 +11,14 @@ export type EventType =
   | "whatsapp.mensaje-nuevo"
   // whatsappMessages: `Conversacion.asesorId` cambió (primera asignación,
   // ruteo hacia un Lead ya asignado, o reasignación por SLA vencido).
-  | "whatsapp.conversacion-reasignada";
+  | "whatsapp.conversacion-reasignada"
+  // reportes (Bloque E, "Exportación PDF/XLSX"): progreso de un `ReporteJob`
+  // en background (`jobs/reportes/reporte-generacion.job.ts`). Flujo UI:
+  // botón "Generar" -> "reporte.iniciado" -> "Generando…" -> "reporte.listo"
+  // (con `archivoUrl` de descarga) o "reporte.error" (con `error`).
+  | "reporte.iniciado"
+  | "reporte.listo"
+  | "reporte.error";
 
 export interface BrokerEvent {
   id: string;
