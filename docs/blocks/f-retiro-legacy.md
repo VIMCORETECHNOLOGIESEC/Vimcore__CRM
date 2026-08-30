@@ -17,6 +17,29 @@ holding.
 - **Bloques B, C, D y E** — este bloque retira la compatibilidad temporal
   que esos bloques dejaron activa; retirarla antes rompería el rollback.
 
+## Estado real (2026-08-30)
+
+**Precondición de autoridad holding-wide resuelta de forma aditiva** — ver
+sección siguiente para el detalle histórico de la decisión, esto documenta
+el resultado real ya implementado sobre `dev-mateo`: `RolUsuario` ganó dos
+valores nuevos, `SUPERVISOR_HOLDING` y `SUPER_ADMIN`, con el mismo alcance
+máximo entre los dos (acceso total holding-wide, sin restricción de
+`empresaId`, capacidad de asignación manual) — migración aditiva, ningún
+valor existente se tocó. El bypass está conectado en un solo punto
+(`require-role.middleware.ts`), cubriendo todas las rutas gateadas por rol
+fijo sin tocar los ~17-19 archivos que referencian `RolUsuario` hoy, más el
+bypass equivalente en los chequeos de "acceso total" reescritos por el
+corte de Bloque D (`leads.access.ts`, `oportunidad.access.ts`,
+`oportunidad.service.ts`, `asignacion.service.ts`) y en
+`metricas.access.ts`.
+
+**Esto NO cierra Bloque F.** Es solo la parte aditiva — resuelve la
+precondición de que exista un mecanismo de autoridad holding-wide antes de
+poder retirar el legacy. El retiro real (`Usuario.rol`/`enum RolUsuario`
+fuera del esquema y del código) sigue sin arrancar, sigue bloqueado por la
+otra precondición de este documento (congelar/mergear `dev-back`/
+`dev-front`) — no verificada como cumplida en esta actualización.
+
 ## Precondición bloqueante — autoridad holding-wide sustituta (sin resolver)
 
 `Usuario.rol` legacy es hoy la **única** autoridad holding-wide implementada

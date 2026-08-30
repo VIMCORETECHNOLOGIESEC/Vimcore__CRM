@@ -10,6 +10,26 @@
 > Bloque D provea `Oportunidad`/`Producto`: el embudo de negociación y el
 > rendimiento por producto dependen de esas entidades.
 
+## Estado real (2026-08-30)
+
+**Backend cerrado, frontend pendiente.** Las tres piezas de backend están
+construidas y probadas sobre `dev-mateo`: extensiones de dashboard
+(embudo de Oportunidad, rendimiento por producto, cascada Lead→Oportunidad→
+Venta, eficiencia de habilitados para venta D8, ranking de productos, todo
+sobre `metricas.service.ts` existente, sin duplicar agregación); módulo
+`reportes` (exportación PDF vía Chromium headless, XLSX vía `exceljs`,
+`ReporteJob` asíncrono con progreso SSE, scope siempre derivado server-side
+desde `Membresia`, nunca del cliente); módulo `metaAds` (OAuth de cuenta de
+anuncios, mismo patrón de 4 pasos que WhatsApp, cubre Facebook e Instagram
+con una sola conexión, más el job de sincronización real de
+`CampaniaMetricaDiaria` — CPC/CPL/CAC ya no son estimados).
+
+**Pendiente, fuera de este backend**: los componentes de frontend
+(`GraficoEmbudoOportunidad.tsx`, `GraficoPorProducto.tsx`, UI de reportes,
+UI de conexión de Meta Ads) — ver `docs/contrato-frontend-general.md`
+(distribuido aparte, no vive en el repo). Desglose por empresa en reportes
+holding-wide sigue como TODO explícito en el código, no implementado.
+
 ## Alcance
 
 Sincronizar métricas publicitarias reales de Meta, exponer
