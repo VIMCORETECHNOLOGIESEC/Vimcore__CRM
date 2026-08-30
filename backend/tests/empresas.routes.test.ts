@@ -71,9 +71,10 @@ async function loginHoldingSession(rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR
 
 describe("GET /api/v1/empresas", () => {
   it("200 sesión holding lista Empresa de la instancia con el shape esperado", async () => {
+    const nombre = `Empresa listado ruta ${randomUUID()}`;
     const empresa = await prisma.empresa.create({
       data: {
-        nombre: `Empresa listado ruta ${randomUUID()}`,
+        nombre,
         colorPrimario: "#7c2d12",
         colorSecundario: "#f97316",
         logoUrl: "https://cdn.miempresa.com/logo.svg",
@@ -81,13 +82,18 @@ describe("GET /api/v1/empresas", () => {
     });
     const token = await loginHoldingSession("ADMINISTRADOR");
 
+    // `search` acota la búsqueda a la Empresa recién creada -- sin esto, la
+    // paginación por defecto (pageSize 25, orden por nombre) podría dejarla
+    // fuera de la primera página junto a las demás filas de la BD de test.
     const respuesta = await request(app)
       .get("/api/v1/empresas")
+      .query({ search: nombre })
       .set("Authorization", `Bearer ${token}`);
 
     expect(respuesta.status).toBe(200);
-    expect(Array.isArray(respuesta.body)).toBe(true);
-    expect(respuesta.body).toContainEqual({
+    expect(Array.isArray(respuesta.body.items)).toBe(true);
+    expect(typeof respuesta.body.total).toBe("number");
+    expect(respuesta.body.items).toContainEqual({
       id: empresa.id,
       nombre: empresa.nombre,
       colorPrimario: "#7c2d12",
@@ -97,19 +103,68 @@ describe("GET /api/v1/empresas", () => {
   });
 
   it("no incluye campos de otros módulos (leads/usuarios/bridges)", async () => {
+    const nombre = `Empresa listado shape acotado ${randomUUID()}`;
     const empresa = await prisma.empresa.create({
-      data: { nombre: `Empresa listado shape acotado ${randomUUID()}` },
+      data: { nombre },
     });
     const token = await loginHoldingSession("ADMINISTRADOR");
 
     const respuesta = await request(app)
       .get("/api/v1/empresas")
+      .query({ search: nombre })
       .set("Authorization", `Bearer ${token}`);
 
-    const item = respuesta.body.find((e: { id: string }) => e.id === empresa.id);
+    const item = respuesta.body.items.find((e: { id: string }) => e.id === empresa.id);
     expect(Object.keys(item).sort()).toEqual(
       ["colorPrimario", "colorSecundario", "id", "logoUrl", "nombre"].sort(),
     );
+  });
+
+  // Gap de paginación (478 filas reales sin límite ni filtro en este
+  // entorno): `page`/`pageSize` acotan la página devuelta en `items`,
+  // `total` refleja el conteo completo del filtro (`search`), no el tamaño
+  // de la página.
+  it("pageSize acota items, total refleja el conteo completo", async () => {
+    const nombreBase = `Empresa listado paginacion ${randomUUID()}`;
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} A` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} B` } });
+    await prisma.empresa.create({ data: { nombre: `${nombreBase} C` } });
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .get("/api/v1/empresas")
+      .query({ search: nombreBase, page: 1, pageSize: 2 })
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.items).toHaveLength(2);
+    expect(respuesta.body.total).toBe(3);
+  });
+
+  it("search filtra por nombre, case-insensitive", async () => {
+    const marca = `MarcaBuscable${randomUUID().replace(/-/g, "")}`;
+    await prisma.empresa.create({ data: { nombre: `Empresa ${marca} SA` } });
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .get("/api/v1/empresas")
+      .query({ search: marca.toLowerCase() })
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.total).toBe(1);
+    expect(respuesta.body.items[0].nombre).toContain(marca);
+  });
+
+  it("400 pageSize por encima del tope permitido", async () => {
+    const token = await loginHoldingSession("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .get("/api/v1/empresas")
+      .query({ pageSize: 101 })
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(respuesta.status).toBe(400);
   });
 
   it("403 sesión company (aunque el rol sea ADMINISTRADOR)", async () => {

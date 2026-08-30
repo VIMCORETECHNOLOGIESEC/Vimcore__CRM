@@ -1,4 +1,4 @@
-import type { Empresa } from "@prisma/client";
+import type { Empresa, Prisma } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 /**
@@ -78,22 +78,49 @@ export interface EmpresaListItem {
   logoUrl: string | null;
 }
 
+export interface FindAllOptions {
+  skip?: number;
+  take?: number;
+  where?: Prisma.EmpresaWhereInput;
+}
+
+export interface FindAllResult {
+  items: EmpresaListItem[];
+  total: number;
+}
+
 /**
  * tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
- * completo de `Empresa` para `GET /empresas` -- exclusivo sessionScope
+ * paginado de `Empresa` para `GET /empresas` -- exclusivo sessionScope
  * `holding` (guard en el controller, nunca acá). `empresas` NO tiene RLS
  * (mismo comentario que `findById`), así que esta lectura no requiere
  * `TenantContext`. `select` explícito para no filtrar campos de otros
  * módulos (leads/usuarios/bridges no viven en esta tabla, pero cualquier
  * columna futura de `Empresa` ajena a apariencia tampoco debe filtrarse acá
  * sin decisión explícita). Orden estable por `nombre` para que el listado no
- * dependa del orden de inserción.
+ * dependa del orden de inserción, ni cambie de página en página.
+ *
+ * Paginación agregada (gap: 478 filas reales sin límite ni filtro, admin
+ * holding con un listado ilegible) -- mismo patrón `Promise.all`
+ * página+conteo que `usuario.repository.ts::findUsuarios` (F7), `where`
+ * compartido entre ambas queries. `skip`/`take`/`where` opcionales (no
+ * `FindAllOptions` requerido) para no forzar a ningún otro llamador futuro
+ * a paginar si solo necesita la lista completa.
  */
 export async function findAll(
+  options: FindAllOptions = {},
   client: PrismaClientOrTransaction = prisma,
-): Promise<EmpresaListItem[]> {
-  return client.empresa.findMany({
-    select: { id: true, nombre: true, colorPrimario: true, colorSecundario: true, logoUrl: true },
-    orderBy: { nombre: "asc" },
-  });
+): Promise<FindAllResult> {
+  const { skip, take, where } = options;
+  const [items, total] = await Promise.all([
+    client.empresa.findMany({
+      where,
+      select: { id: true, nombre: true, colorPrimario: true, colorSecundario: true, logoUrl: true },
+      orderBy: { nombre: "asc" },
+      skip,
+      take,
+    }),
+    client.empresa.count({ where }),
+  ]);
+  return { items, total };
 }

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import {
   empresaIdParamSchema,
+  listEmpresasQuerySchema,
   updateEmpresaAparienciaBodySchema,
   updateEmpresaAparienciaHoldingBodySchema,
 } from "../schemas/empresa-apariencia.schema.js";
@@ -11,7 +12,7 @@ import {
   updateAparienciaHolding,
 } from "../services/empresa-apariencia.service.js";
 
-function validacionInvalida(): AppError {
+function zodValidationError(): AppError {
   return new AppError("validacion_invalida", 400, "El cuerpo de la petición es inválido");
 }
 
@@ -23,7 +24,7 @@ function validacionInvalida(): AppError {
  * que editar. 403, no 401: la sesión sí está autenticada y autorizada por
  * rol, solo le falta el scope correcto para esta acción puntual.
  */
-function soloEmpresaPropia(): AppError {
+function forbiddenCompanyScope(): AppError {
   return new AppError(
     "solo_empresa_propia",
     403,
@@ -33,12 +34,12 @@ function soloEmpresaPropia(): AppError {
 
 export async function patchEmpresaApariencia(req: Request, res: Response): Promise<void> {
   if (!req.user || req.user.sessionScope !== "company" || req.user.empresaId === null) {
-    throw soloEmpresaPropia();
+    throw forbiddenCompanyScope();
   }
 
   const parsed = updateEmpresaAparienciaBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw validacionInvalida();
+    throw zodValidationError();
   }
 
   // `req.user.empresaId` -- NUNCA `req.body.empresaId` -- es la única fuente
@@ -51,7 +52,7 @@ export async function patchEmpresaApariencia(req: Request, res: Response): Promi
 /**
  * Guarda adicional (PASO 8, más allá de `requireRole("ADMINISTRADOR")` en la
  * ruta): este endpoint es exclusivamente para sesiones `holding` -- guard
- * propio, separado de `soloEmpresaPropia` de arriba (esa función exige
+ * propio, separado de `forbiddenCompanyScope` de arriba (esa función exige
  * exactamente lo opuesto: sesión `company`). 403, no 401: la sesión sí está
  * autenticada y autorizada por rol, solo le falta el scope correcto para
  * esta acción puntual.
@@ -80,7 +81,7 @@ export async function patchEmpresaAparienciaHolding(req: Request, res: Response)
 
   const parsedBody = updateEmpresaAparienciaHoldingBodySchema.safeParse(req.body);
   if (!parsedBody.success) {
-    throw validacionInvalida();
+    throw zodValidationError();
   }
 
   // `req.params.empresaId` -- NUNCA `req.body.empresaId` -- identifica la
@@ -94,14 +95,21 @@ export async function patchEmpresaAparienciaHolding(req: Request, res: Response)
 /**
  * `GET /empresas` (PASO 8, gap de gestor de empresas): reusa
  * `forbiddenSessionScope` de arriba -- misma semántica de autorización que el
- * PATCH cross-empresa, sin guard nuevo. Solo lectura, sin :params ni body que
- * validar.
+ * PATCH cross-empresa, sin guard nuevo. Sin :params ni body, pero SÍ valida
+ * query (`page`/`pageSize`/`search`) -- gap de paginación: 478 filas reales
+ * de `Empresa` sin límite ni filtro en este entorno, listado ilegible para el
+ * admin de holding.
  */
 export async function getEmpresas(req: Request, res: Response): Promise<void> {
   if (!req.user || req.user.sessionScope !== "holding") {
     throw forbiddenSessionScope();
   }
 
-  const empresas = await listEmpresas();
-  res.status(200).json(empresas);
+  const parsedQuery = listEmpresasQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw zodValidationError();
+  }
+
+  const resultado = await listEmpresas(parsedQuery.data);
+  res.status(200).json(resultado);
 }
