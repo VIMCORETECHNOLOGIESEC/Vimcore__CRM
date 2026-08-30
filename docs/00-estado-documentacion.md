@@ -79,11 +79,12 @@ al final, sujeto además a su dependencia dura de secuencia (ver
 | `docs/18-desarrollo-local.md` | Vigente | Variables de entorno, comandos y estructura de carpetas | Migrado de `backend/README.md`/`frontend/README.md`; excluye ejecución en host. |
 | `docs/19-auditoria-ciberseguridad.md` | Vigente con reservas | Informe consolidado de seguridad | Describe beneficios, hallazgos P0–P2, límites de la evidencia y pruebas pendientes; no autoriza cambios ni sustituye un pentest. |
 | `docs/21-skills-agentes-backend.md` | Vigente | Inventario real de skills de backend | Regenerado desde `.claude/skills/` y `.agents/skills/` reales. |
+| `docs/22-contrato-backend-meta-ads.md` | Vigente con reservas | Contrato backend de Meta Ads Marketing API y métricas CPC/CPL/CAC | Derivado del código y tests locales del módulo `metaAds`; la verificación real contra Meta queda pendiente por bloqueo externo de SMS/App Review. |
 | `docs/blocks/{a,b,c}-*.md` | Vigente | Bloques cerrados de la migración multi-tenant | A, B y C están implementados. Bloque C cerró en `052e811`, 894/894 tests. |
 | `docs/blocks/d0-visualizacion-multitenant.md` | Vigente | Contrato del único slice multi-tenant pre-despliegue | Expone al frontend la separación por empresa que el backend ya resuelve, sin routing, autoridad, dashboards ni cambios Prisma. |
-| `docs/blocks/d-routing-oportunidad.md` | Borrador TO-BE | Contrato post-despliegue de routing, autoridad y Oportunidad | Su ciclo SDD ya corrió y deberá ajustarse al calendario vigente antes de `apply`, no rehacerse. |
-| `docs/blocks/e-dashboards.md` | Borrador TO-BE | Contrato post-despliegue de dashboards | No puede cerrar antes de D porque depende de `Oportunidad`/`Producto`. |
-| `docs/blocks/f-retiro-legacy.md` | Borrador TO-BE | Retiro final de compatibilidad legacy | Último bloque post-despliegue; solo después de congelar o mergear el trabajo de `dev-back`/`dev-front` sobre `Usuario.rol`, nunca en paralelo. |
+| `docs/blocks/d-routing-oportunidad.md` | Vigente con reservas | Cierre esencial de routing, autoridad y Oportunidad | Corte ejecutado sobre `dev-mateo`: `Oportunidad`/`Producto`/pool por `Membresia`/autoridad de cierre D7/excepción D9 construidos y probados, cutover real de `leads.access.ts`/`asignacion.service.ts` aplicado. `CanalManual` sigue diferido. |
+| `docs/blocks/e-dashboards.md` | Vigente con reservas | Dashboards, reportes y Meta Ads | Backend cerrado (extensiones de dashboard, exportación PDF/XLSX, OAuth+sync de Meta Ads) sobre `dev-mateo`; frontend pendiente. |
+| `docs/blocks/f-retiro-legacy.md` | Vigente con reservas | Retiro final de compatibilidad legacy | Precondición de autoridad holding-wide resuelta de forma aditiva (`SUPERVISOR_HOLDING`/`SUPER_ADMIN`); el retiro real de `Usuario.rol` sigue sin arrancar, bloqueado por la precondición de secuencia con `dev-back`/`dev-front`. |
 
 ## Brechas abiertas confirmadas
 
@@ -119,7 +120,8 @@ archivo). Esta sección solo declara qué queda pendiente hoy.
 - [ ] Reconciliar el contrato de cierre de docs 02/04 con el schema y servicio.
 - [x] Separar requisitos y comportamiento implementado en `05-bridges.md`.
 - [ ] Aclarar fuentes de datos reales en `08-dashboard-kpis.md` y
-      `13-configuracion-bridges.md`.
+      `13-configuracion-bridges.md` (`13` ya separa Meta Lead Ads de Meta Ads
+      Marketing API; falta reconciliar `08`).
 
 ### Lote 3 — Reducir historia y deuda de lectura
 

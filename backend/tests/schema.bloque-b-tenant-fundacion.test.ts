@@ -107,7 +107,14 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
     ]);
   });
 
-  it("rol_usuario (legado) sigue teniendo sus 4 valores originales, sin cambios", async () => {
+  it("rol_usuario (legado) tiene sus 4 valores originales más los 2 aditivos de Bloque F (SUPERVISOR_HOLDING/SUPER_ADMIN)", async () => {
+    // Bloque F (aditivo, decisión cerrada con el usuario): agrega
+    // SUPERVISOR_HOLDING/SUPER_ADMIN al enum legado `rol_usuario` — acceso
+    // total holding-wide, mismo criterio que ADMINISTRADOR hoy, sin atarse a
+    // una empresa (ver `schema.prisma::RolUsuario`). El retiro del enum
+    // legado en sí (los 17-19 archivos que lo usan) queda fuera de este
+    // batch. Esta prueba ya NO afirma "sin cambios" — ese comportamiento fue
+    // retirado a propósito por este mismo batch.
     const valores = await prisma.$queryRaw<Array<{ enumlabel: string }>>`
       SELECT e.enumlabel
       FROM pg_enum e
@@ -118,6 +125,8 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
       "ADMINISTRADOR",
       "ASESOR",
       "SUPERVISOR",
+      "SUPERVISOR_HOLDING",
+      "SUPER_ADMIN",
       "VENDEDOR",
     ]);
   });

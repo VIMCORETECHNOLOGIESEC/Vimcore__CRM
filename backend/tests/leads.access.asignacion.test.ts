@@ -142,3 +142,37 @@ describe("services/leads.access — canReassign/canTransfer aislamiento entre em
     expect(canTransfer(usuario(ASESOR_A, "ASESOR", EMPRESA_B), lead)).toBe("no_es_titular");
   });
 });
+
+describe("services/leads.access — bypass holding-wide SUPERVISOR_HOLDING/SUPER_ADMIN (Bloque F, aditivo)", () => {
+  it("canReassign: SUPERVISOR_HOLDING reasigna cualquier lead, semaforo verde incluido, sin relación con el lead", () => {
+    const lead: LeadReasignacion = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, semaforo: "VERDE" };
+    expect(canReassign(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBeNull();
+  });
+
+  it("canReassign: SUPER_ADMIN reasigna cualquier lead (triangulación: segundo rol holding-wide distinto)", () => {
+    const lead: LeadReasignacion = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, semaforo: "VERDE" };
+    expect(canReassign(usuario(OTRO, "SUPER_ADMIN"), lead)).toBeNull();
+  });
+
+  it("canTransfer: SUPERVISOR_HOLDING/SUPER_ADMIN traspasan cualquier lead abierto, incluso ya traspasado antes", () => {
+    const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: "vendedor-v", empresaId: EMPRESA_A, etapa: "CITA" };
+    expect(canTransfer(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBeNull();
+    expect(canTransfer(usuario(OTRO, "SUPER_ADMIN"), lead)).toBeNull();
+  });
+
+  it("canTransfer: la compuerta de etapa NUEVO sigue aplicando incluso a SUPERVISOR_HOLDING/SUPER_ADMIN (es una regla del lead, no del actor)", () => {
+    const lead: LeadTraspaso = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, etapa: "NUEVO" };
+    expect(canTransfer(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBe("etapa_no_traspasable");
+  });
+
+  it("canClose: SUPERVISOR_HOLDING/SUPER_ADMIN cierran sin chequeo de titularidad, a diferencia de SUPERVISOR (que nunca cierra hoy)", () => {
+    const lead: LeadCierre = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, etapa: "CONTACTADO" };
+    expect(canClose(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBeNull();
+    expect(canClose(usuario(OTRO, "SUPER_ADMIN"), lead)).toBeNull();
+  });
+
+  it("canClose: la compuerta de etapa NUEVO sigue aplicando incluso a SUPERVISOR_HOLDING/SUPER_ADMIN", () => {
+    const lead: LeadCierre = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A, etapa: "NUEVO" };
+    expect(canClose(usuario(OTRO, "SUPERVISOR_HOLDING"), lead)).toBe("etapa_no_cerrable");
+  });
+});

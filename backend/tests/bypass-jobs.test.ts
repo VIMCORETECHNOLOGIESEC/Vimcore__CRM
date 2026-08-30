@@ -50,6 +50,7 @@ describe("bypass job discovery", () => {
       "silent-bridge": expect.objectContaining({ owner: "bridge-mudo", partitionBy: "empresaId" }),
       "token-verification": expect.objectContaining({ owner: "verificacion-token", partitionBy: "empresaId" }),
       "token-expiry-alert": expect.objectContaining({ owner: "verificacion-token", partitionBy: "empresaId" }),
+      "meta-ads-sync": expect.objectContaining({ owner: "meta-ads-sync", partitionBy: "empresaId" }),
       "post-commit-assignment": expect.objectContaining({ owner: "assignAfterCommit", partitionBy: "empresaId" }),
       "assignment-degradation": expect.objectContaining({ owner: "assignAfterCommit", partitionBy: "empresaId" }),
     });

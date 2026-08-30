@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
+import { logger } from "../lib/logger.js";
 
 /**
  * Middleware central de errores (AGENTS.md §4). Debe registrarse el último,
@@ -20,5 +21,6 @@ export function errorHandler(
     return;
   }
 
+  logger.error({ err }, "error interno no controlado");
   res.status(500).json({ code: "internal_error", message: "Error interno del servidor" });
 }

@@ -14,7 +14,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-function reqConUsuario(rol?: "ADMINISTRADOR" | "VENDEDOR"): Request {
+function reqConUsuario(
+  rol?: "ADMINISTRADOR" | "VENDEDOR" | "SUPERVISOR_HOLDING" | "SUPER_ADMIN",
+): Request {
   return {
     user: rol
       ? { id: "u1", nombre: "Test", correo: "t@t.com", rol }
@@ -51,6 +53,35 @@ describe("middlewares/require-role", () => {
 
     const err = next.mock.calls[0]![0];
     expect(err).toMatchObject({ code: "permiso_denegado", statusHttp: 403 });
+  });
+});
+
+describe("middlewares/require-role — bypass holding-wide (Bloque F, aditivo)", () => {
+  it("SUPERVISOR_HOLDING pasa aunque no esté en la lista fija de roles permitidos", () => {
+    const req = reqConUsuario("SUPERVISOR_HOLDING");
+    const next = vi.fn();
+
+    requireRole("ADMINISTRADOR")(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("SUPER_ADMIN también pasa aunque no esté en la lista fija (triangulación: segundo rol holding-wide distinto)", () => {
+    const req = reqConUsuario("SUPER_ADMIN");
+    const next = vi.fn();
+
+    requireRole("ADMINISTRADOR")(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("el bypass corta ANTES del comparador en sombra — no hay nada legado que comparar para un rol nuevo", () => {
+    const req = reqConUsuario("SUPER_ADMIN");
+    const next = vi.fn();
+
+    requireRole("ADMINISTRADOR")(req, {} as Response, next);
+
+    expect(shadowAuthorizationService.compareRequireRole).not.toHaveBeenCalled();
   });
 });
 

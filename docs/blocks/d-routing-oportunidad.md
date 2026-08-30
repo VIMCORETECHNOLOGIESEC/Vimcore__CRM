@@ -19,6 +19,30 @@
 > Cubre Fase 5 de `docs/14-evolucion-multitenant.md` §13 ("Routing y
 > handoff").
 
+## Estado real (2026-08-30)
+
+**Cierre esencial ejecutado.** El corte real corrió sobre `dev-mateo`: el
+módulo `negociacion` (schema `Oportunidad`/`Producto`/`OportunidadEvento`,
+pool D3/D4 vía `Membresia`, autoridad de cierre D7, excepción administrativa
+D9 — completada ADELANTADA respecto al plan original de abajo, no diferida)
+está construido y probado, y el cutover real de `leads.access.ts`/
+`asignacion.service.ts` de `Usuario.rol` a `Membresia` ya se ejecutó:
+`canClose` quedó retirado (`PATCH /leads/:id/etapa` con VENTA/NO_VENTA
+responde 409, cierre exclusivo vía `POST /oportunidades/:id/cerrar`); el
+pool de asignación de `Lead` (asesor de primer contacto) pasó a resolver
+candidatos por `Membresia` scopeada por empresa, cerrando de paso un gap de
+aislamiento que no existía filtrado antes. `canReassign`/`canTransfer`/
+`canEdit` de `Lead` quedan intactos a propósito — sin equivalente todavía en
+`Oportunidad`, documentado como gap de decisión de producto, no como bug.
+`Lead` conserva físicamente sus columnas de negociación (sombra primero,
+corte de columnas después, en una migración de limpieza separada aún no
+programada). Precondición de diseño resuelta: `Oportunidad` se crea
+**manual**, nunca automática al ingresar un `Lead` — `ingesta.service.ts`
+queda sin tocar.
+
+**Diferido, sin arrancar todavía**: `CanalManual` y el catálogo dinámico de
+canales sin bridge.
+
 ## Alcance
 
 Después del despliegue, activar el pool de asignación scopeado por empresa,

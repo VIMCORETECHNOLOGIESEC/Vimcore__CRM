@@ -21,6 +21,19 @@ const TABLAS_TENANT_SCOPED = [
   "campanias",
   "bridge_logs",
   "leads_abiertos_revision_pendiente",
+  "linkedin_conexiones",
+  "linkedin_oauth_states",
+  "linkedin_fuentes",
+  "linkedin_formularios",
+  "cuentas_anuncios_conexiones",
+  "cuentas_anuncios_oauth_states",
+  "campania_metricas_diarias",
+  // negociacion (Bloque D): faltaban en esta lista desde su migracion
+  // original -- hallazgo real (no cosmetico) detectado escribiendo los
+  // tests del modulo, ver 20260830020000_negociacion_rls_tenant_isolation.
+  "productos",
+  "oportunidades",
+  "oportunidad_eventos",
 ] as const;
 
 afterAll(async () => {

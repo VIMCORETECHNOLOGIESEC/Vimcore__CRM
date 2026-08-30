@@ -251,6 +251,7 @@ export const BYPASS_JOB_ALLOWLIST = {
   "silent-bridge": { owner: "bridge-mudo", reason: "discover inactive bridges", partitionBy: "empresaId" },
   "token-verification": { owner: "verificacion-token", reason: "discover loaded tokens", partitionBy: "empresaId" },
   "token-expiry-alert": { owner: "verificacion-token", reason: "discover expiring tokens", partitionBy: "empresaId" },
+  "meta-ads-sync": { owner: "meta-ads-sync", reason: "discover active Meta Ads connections", partitionBy: "empresaId" },
   "post-commit-assignment": { owner: "assignAfterCommit", reason: "resolve lead company after request commit", partitionBy: "empresaId" },
   "assignment-degradation": { owner: "assignAfterCommit", reason: "resolve incident company after retries", partitionBy: "empresaId" },
 } as const;

@@ -266,10 +266,10 @@ describe("bridge.service — regenerateClave (Requirement: Key regeneration neve
 });
 
 describe("bridge.service — listRedesSoportadas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
-  it("devuelve solo las redes con integración de ingesta real (FACEBOOK y GOOGLE_FORMS)", () => {
+  it("devuelve solo las redes con integración de ingesta real (FACEBOOK, GOOGLE_FORMS y API_EXTERNA)", () => {
     const redes = listRedesSoportadas();
 
-    expect(new Set(redes)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS"]));
+    expect(new Set(redes)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "API_EXTERNA"]));
   });
 
   it("excluye INSTAGRAM, X y LINKEDIN aunque formen parte del enum RedSocial", () => {

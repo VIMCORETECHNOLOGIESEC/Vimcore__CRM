@@ -16,6 +16,17 @@ const TABLES = [
   "campanias",
   "bridge_logs",
   "leads_abiertos_revision_pendiente",
+  "linkedin_conexiones",
+  "linkedin_oauth_states",
+  "linkedin_fuentes",
+  "linkedin_formularios",
+] as const;
+
+const LINKEDIN_TABLES = [
+  "linkedin_conexiones",
+  "linkedin_oauth_states",
+  "linkedin_fuentes",
+  "linkedin_formularios",
 ] as const;
 
 type TableName = typeof TABLES[number];
@@ -96,6 +107,40 @@ async function crearGrafoEmpresa(empresaId: string, suffix: string): Promise<Rec
       empresaIngestaId: empresaId,
     },
   });
+  const conexionLinkedIn = await testAdminPrisma.linkedInConexion.create({
+    data: {
+      bridgeId: bridge.id,
+      autorizadoPorUsuarioId: usuario.id,
+      accessTokenCifrado: `token-cifrado-${suffix}`,
+      accessTokenExpiraEn: new Date(Date.now() + 60_000),
+      scopes: ["r_marketing_leadgen_automation"],
+    },
+  });
+  const oauthStateLinkedIn = await testAdminPrisma.linkedInOAuthState.create({
+    data: {
+      stateHash: `state-${suffix}-${randomUUID()}`,
+      bridgeId: bridge.id,
+      usuarioId: usuario.id,
+      expiraEn: new Date(Date.now() + 60_000),
+    },
+  });
+  const fuenteLinkedIn = await testAdminPrisma.linkedInFuente.create({
+    data: {
+      conexionId: conexionLinkedIn.id,
+      tipo: "ORGANIZATION",
+      ownerUrn: `urn:li:organization:${randomUUID()}`,
+      nombre: `Fuente LinkedIn ${suffix}`,
+      tipoLead: "COMPANY",
+    },
+  });
+  const formularioLinkedIn = await testAdminPrisma.linkedInFormulario.create({
+    data: {
+      fuenteId: fuenteLinkedIn.id,
+      versionedFormUrn: `urn:li:versionedLeadGenForm:${randomUUID()}`,
+      contenido: {},
+      sincronizadoEn: new Date(),
+    },
+  });
   return {
     membresias: membresia.id,
     leads: lead.id,
@@ -109,10 +154,14 @@ async function crearGrafoEmpresa(empresaId: string, suffix: string): Promise<Rec
     campanias: campania.id,
     bridge_logs: log.id,
     leads_abiertos_revision_pendiente: revision.id,
+    linkedin_conexiones: conexionLinkedIn.id,
+    linkedin_oauth_states: oauthStateLinkedIn.id,
+    linkedin_fuentes: fuenteLinkedIn.id,
+    linkedin_formularios: formularioLinkedIn.id,
   };
 }
 
-async function countById(table: TableName, id: string, empresaId?: string): Promise<number> {
+async function countById(table: TableName, id: string, empresaId?: string | null): Promise<number> {
   const query = () => prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRawUnsafe<{ total: bigint }[]>(
       `SELECT COUNT(*) AS total FROM "${table}" WHERE id = $1::uuid`, id,
@@ -152,6 +201,11 @@ describe("adversarial RLS runtime matrix", () => {
       expect(await touchById(table, rowsA[table])).toBe(0);
       expect(await touchById(table, rowsA[table], empresaA.id), table).toBe(1);
       expect(await touchById(table, rowsB[table], empresaA.id)).toBe(0);
+    }
+
+    for (const table of LINKEDIN_TABLES) {
+      expect(await countById(table, rowsA[table], null), table).toBe(1);
+      expect(await countById(table, rowsB[table], null), table).toBe(1);
     }
   });
 });

@@ -49,9 +49,17 @@ async function crearLeadSinAsignar(): Promise<{ id: string; empresaId: string }>
   });
 }
 
+/**
+ * Bloque D (batch de negociación, punto 2): el pool manual/automático de
+ * `Lead` (`asignacion.service.ts::selectResponsableEnEmpresa`/
+ * `resolveReceptor`) ahora resuelve candidatos vía `Membresia`, no
+ * `Usuario.rol` — un ASESOR de este archivo necesita su `Membresia(rol:
+ * ASESOR, activa: true)` en la empresa bootstrap (misma empresa que
+ * `crearLeadSinAsignar`) para seguir siendo un candidato válido.
+ */
 async function crearAsesorActivo(): Promise<{ id: string }> {
   contador += 1;
-  return prisma.usuario.create({
+  const usuario = await prisma.usuario.create({
     data: {
       nombre: `Asesor asignacion ${contador}`,
       correo: `asesor-asignacion-${contador}@integracion.test`,
@@ -60,6 +68,10 @@ async function crearAsesorActivo(): Promise<{ id: string }> {
       activo: true,
     },
   });
+  await testAdminPrisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId: EMPRESA_BOOTSTRAP_ID, rol: "ASESOR", activa: true },
+  });
+  return usuario;
 }
 
 /**
@@ -95,6 +107,31 @@ afterAll(async () => {
 });
 
 /**
+ * Bloque D (batch de negociación, punto 2/3 — cutover del pool de `Lead`):
+ * el algoritmo (`selectResponsableEnEmpresa`) ahora resuelve candidatos vía
+ * `Membresia`, no `Usuario.rol` — `RolMembresia` no tiene un valor
+ * `VENDEDOR` propio, así que un `Usuario.rol: "VENDEDOR"` con
+ * `Membresia(rol: ASESOR, activa: true)` creado por OTRO archivo de prueba
+ * (p. ej. `auth.routes.test.ts`, que nunca desactiva sus fixtures) sigue
+ * siendo un candidato ASESOR válido aunque `updateMany({ where: { rol:
+ * "ASESOR" } })` no lo toque — la suite corre secuencial contra la misma BD
+ * real sin truncar entre archivos (`tests/setup.ts::globalSetup` trunca una
+ * sola vez, al principio de toda la corrida). Desactivar solo por
+ * `Usuario.rol` legado ya NO garantiza "ningún otro candidato"; hay que
+ * cortar también por `Membresia`, la fuente de verdad real del pool.
+ */
+async function desactivarPoolAsesores(): Promise<void> {
+  await prisma.usuario.updateMany({
+    where: { rol: { in: ["ASESOR", "VENDEDOR"] } },
+    data: { activo: false },
+  });
+  await testAdminPrisma.membresia.updateMany({
+    where: { empresaId: EMPRESA_BOOTSTRAP_ID, rol: "ASESOR" },
+    data: { activa: false },
+  });
+}
+
+/**
  * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `asignacion.
  * service.ts` no acepta un `client`/contexto swappable — se llama DIRECTO
  * (sin HTTP) en todo este archivo, y toca `leads`/`lead_eventos`/`usuarios`
@@ -112,7 +149,7 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
     // contra la misma BD real; otro archivo (p. ej. leads.access.test.ts)
     // puede haber dejado asesores activos. Desactivarlos garantiza que el
     // ganador de la asignación sea exactamente el candidato de esta prueba.
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
 
     const lead = await crearLeadSinAsignar();
     const asesor = await crearAsesorActivo();
@@ -141,7 +178,7 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
     // Aislamiento explícito: desactiva CUALQUIER asesor que otra prueba de
     // este archivo haya creado antes (p. ej. la prueba 5), sin depender del
     // orden de ejecución — "sin candidatos" es la precondición del caso.
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
 
     const lead = await crearLeadSinAsignar();
     const ahora = new Date();
@@ -168,7 +205,7 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
   it("prueba obligatoria 11: el FIFO respeta ultimaAsignacionEn — el receptor recien asignado no gana la siguiente ronda en empate", () =>
     conContexto(async () => {
     // Aislamiento: ningun asesor de pruebas previas debe competir aqui.
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
 
     const asesorA = await crearAsesorActivo();
     const asesorB = await crearAsesorActivo();
@@ -201,7 +238,7 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
     conContexto(async () => {
     // Aislamiento: mismo motivo que la prueba 5 — garantiza que el asesor de
     // esta prueba sea el único candidato elegible.
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
 
     const lead = await crearLeadSinAsignar();
     const asesor = await crearAsesorActivo();
@@ -225,10 +262,45 @@ describe("asignacion.service — assignAutomatically (M6, D1/D11)", () => {
     expect(totalEventos).toBe(0);
   }));
 });
+describe("asignacion.service — pool scopeado por empresa (Bloque D, batch de negociación, punto 2, D3)", () => {
+  it("un candidato con Membresia activa en OTRA empresa no es elegible — el pool de assignAutomatically nunca cruza empresas", () =>
+    conContexto(async () => {
+    await desactivarPoolAsesores();
+
+    const empresaB = await testAdminPrisma.empresa.create({
+      data: { nombre: `Empresa B asignacion ${Date.now()}` },
+    });
+    contador += 1;
+    const asesorEmpresaB = await prisma.usuario.create({
+      data: {
+        nombre: `Asesor empresa B ${contador}`,
+        correo: `asesor-empresa-b-${contador}@integracion.test`,
+        passwordHash: "hash-no-usado",
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: { usuarioId: asesorEmpresaB.id, empresaId: empresaB.id, rol: "ASESOR", activa: true },
+    });
+
+    const asesorBootstrap = await crearAsesorActivo();
+    const lead = await crearLeadSinAsignar();
+
+    await prisma.$transaction(async (tx) => {
+      await assignAutomatically(lead.id, new Date(), tx);
+    });
+
+    const leadActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadActualizado.asesorId).toBe(asesorBootstrap.id);
+    expect(leadActualizado.asesorId).not.toBe(asesorEmpresaB.id);
+  }));
+});
+
 describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commit con reintento acotado)", () => {
   it("reintenta hasta 3 veces ante fallos transitorios, con backoff, y nunca lanza — éxito en el tercer intento", () =>
     conContexto(async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const lead = await crearLeadSinAsignar();
     const asesor = await crearAsesorActivo();
 
@@ -255,7 +327,7 @@ describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commi
 
   it('"sin candidatos" cuenta como 1 solo intento (no reintentable) y no escribe ASIGNACION_FALLIDA', () =>
     conContexto(async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const lead = await crearLeadSinAsignar();
 
     const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
@@ -286,7 +358,7 @@ describe("asignacion.service — assignAfterCommit (D-A2 revisión 2: post-commi
 describe("asignacion.service — guarda de idempotencia obligatoria (D-A2 revisión 2)", () => {
   it("lead ya asignado manualmente antes del intento automático: assignAutomatically no-opea sin sobrescribir ni generar eventos nuevos", () =>
     conContexto(async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const lead = await crearLeadSinAsignar();
     const asesorManual = await crearAsesorActivo();
     // Un segundo asesor activo: si la guarda no existiera, sería un
@@ -318,7 +390,7 @@ describe("asignacion.service — guarda de idempotencia obligatoria (D-A2 revisi
 describe("asignacion.service — degradación tras agotar reintentos (D-A2 revisión 2)", () => {
   it("agota los 3 intentos: escribe ASIGNACION_FALLIDA (requiereNotificacion: true) + bridge_logs ERROR, lead queda sin asesor y listable", () =>
     conContexto(async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const lead = await crearLeadSinAsignar();
     await crearAsesorActivo();
 
@@ -358,7 +430,7 @@ describe("asignacion.service — degradación tras agotar reintentos (D-A2 revis
 describe("asignacion.service — assignLead con withCasRetry (Group 3, design D6, spec §4 'Retry succeeds')", () => {
   it("dos assignLead concurrentes sobre el MISMO lead (auto-select, sin destino explícito): el perdedor del CAS reintenta y termina asignando al OTRO candidato — ambas llamadas resuelven, version final es 2, nunca se pierde un write", () =>
     conContexto(async () => {
-      await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+      await desactivarPoolAsesores();
       const lead = await crearLeadSinAsignar();
       const [asesorA, asesorB, supervisor] = await Promise.all([
         crearAsesorActivo(),
@@ -389,7 +461,7 @@ describe("asignacion.service — assignLead con withCasRetry (Group 3, design D6
 describe("asignacion.service — assignLeadsBatch (design D-A1: errores de infraestructura abortan el lote)", () => {
   it("un fallo NO-AppError (infra) a mitad del lote se relanza y aborta el request, sin degradar a fallidos[]", () =>
     conContexto(async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesor = await crearAsesorActivo();
     const leadUno = await crearLeadSinAsignar();
     const leadDos = await crearLeadSinAsignar();
@@ -478,7 +550,7 @@ describe("asignacion.service — M9 señal de métricas (docs/08-dashboard-kpis.
    */
   it("assignAfterCommit programa la señal de métricas después del commit, no dentro de la transacción", () =>
     conContexto(async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const lead = await crearLeadSinAsignar();
     await crearAsesorActivo();
     const llamadasAntes = vi.mocked(metricasBroadcast.scheduleMetricasBroadcast).mock.calls.length;

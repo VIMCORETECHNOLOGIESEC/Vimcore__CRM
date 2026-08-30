@@ -415,63 +415,84 @@ describe("services/leads.service — transitionEtapa (spec: Transición de etapa
     expect(eventos.some((e) => e.tipo === "CAMBIO_SEMAFORO")).toBe(true);
   }));
 
-  it("VENTA fija verde sin cálculo, exige monto/producto/formaPago y marca cerradoEn", () =>
+  it("409 (cierre_via_oportunidad): VENTA ya no se gestiona desde /leads/:id/etapa — sin escritura alguna", () =>
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CONTACTADO", semaforo: "AMARILLO" });
 
-    const actualizado = await transitionEtapa(asesor, lead.id, {
-      etapa: "VENTA",
-      montoVenta: 2500,
-      productoServicio: "Consultoría",
-      formaPago: "CREDITO",
-    });
+    await expect(
+      transitionEtapa(asesor, lead.id, {
+        etapa: "VENTA",
+        montoVenta: 2500,
+        productoServicio: "Consultoría",
+        formaPago: "CREDITO",
+      }),
+    ).rejects.toMatchObject({ statusHttp: 409, code: "cierre_via_oportunidad" });
 
-    expect(actualizado.etapa).toBe("VENTA");
-    expect(actualizado.semaforo).toBe("VERDE");
-    expect(actualizado.cerradoEn).not.toBeNull();
-    // sin recalcular: la puntuación previa (o su ausencia) queda intacta.
-    expect(actualizado.puntuacion).toBeNull();
+    // Bloque D (batch de negociación): retirado sin equivalente parcial — ni
+    // la etapa, ni el semáforo, ni cerradoEn cambian. El cierre real ahora
+    // vive en `POST /oportunidades/:id/cerrar` (D7).
+    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(sinCambios.etapa).toBe("CONTACTADO");
+    expect(sinCambios.semaforo).toBe("AMARILLO");
+    expect(sinCambios.cerradoEn).toBeNull();
   }));
 
-  it("NO_VENTA fija rojo, exige observacionCierre >= 20 caracteres y marca cerradoEn", () =>
+  it("409 (cierre_via_oportunidad): NO_VENTA ya no se gestiona desde /leads/:id/etapa (triangulación: segundo valor de cierre distinto)", () =>
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CONTACTADO", semaforo: "VERDE" });
 
-    const actualizado = await transitionEtapa(asesor, lead.id, {
-      etapa: "NO_VENTA",
-      observacionCierre: "El cliente decidió no continuar con la compra",
-    });
+    await expect(
+      transitionEtapa(asesor, lead.id, {
+        etapa: "NO_VENTA",
+        observacionCierre: "El cliente decidió no continuar con la compra",
+      }),
+    ).rejects.toMatchObject({ statusHttp: 409, code: "cierre_via_oportunidad" });
 
-    expect(actualizado.etapa).toBe("NO_VENTA");
-    expect(actualizado.semaforo).toBe("ROJO");
-    expect(actualizado.cerradoEn).not.toBeNull();
+    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(sinCambios.etapa).toBe("CONTACTADO");
+    expect(sinCambios.cerradoEn).toBeNull();
   }));
 
-  it("fallo inyectado tras actualizar la etapa pero antes de lead_eventos: cero estado parcial persistido", () =>
+  it("409 (cierre_via_oportunidad): incluso un ADMINISTRADOR, que antes cerraba sin chequeo de titularidad, queda bloqueado igual", () =>
     conContexto(async () => {
-    // Lead ya VERDE -> transición a VENTA no dispara CAMBIO_SEMAFORO (mismo
-    // color), así la ÚNICA llamada a createEvento es CAMBIO_ETAPA, exactamente
-    // después de `updateEtapa` — el punto de falla que exige el escenario.
+    const admin = await crearUsuario("ADMINISTRADOR");
     const asesor = await crearUsuario("ASESOR");
-    const lead = await crearLead({ asesorId: asesor.id, etapa: "CONTACTADO", semaforo: "VERDE" });
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "CITA", semaforo: "VERDE" });
+
+    await expect(
+      transitionEtapa(admin, lead.id, {
+        etapa: "VENTA",
+        montoVenta: 1,
+        productoServicio: "x",
+        formaPago: "CONTADO",
+      }),
+    ).rejects.toMatchObject({ statusHttp: 409, code: "cierre_via_oportunidad" });
+  }));
+
+  it("fallo inyectado en lead_eventos durante una transición NO terminal: cero estado parcial persistido (repurposed — la rama de cierre ya no escribe nada, ver pruebas 409 de arriba)", () =>
+    conContexto(async () => {
+    // Bloque D (batch de negociación): el escenario original ejercitaba el
+    // rollback de la rama de cierre (VENTA/NO_VENTA), retirada arriba sin
+    // escritura alguna — ya no hay nada que hacer rollback ahí. Se repropone
+    // sobre NUEVO→CONTACTADO (mismo combo probado en "D17: bitácora doble",
+    // arriba), que sigue escribiendo `Lead` + `lead_eventos` dentro de la
+    // misma transacción — la primera llamada a `createEvento` (CAMBIO_SEMAFORO,
+    // disparada DESDE `applyFormulario`) es el punto de falla; el objetivo
+    // sigue siendo el mismo: verificar atomicidad de punta a punta.
+    const asesor = await crearUsuario("ASESOR");
+    const lead = await crearLead({ asesorId: asesor.id, etapa: "NUEVO", semaforo: null });
 
     const mockCreateEvento = vi.mocked(leadEventoRepository.createEvento);
     mockCreateEvento.mockRejectedValueOnce(new Error("fallo forzado para probar rollback"));
 
     await expect(
-      transitionEtapa(asesor, lead.id, {
-        etapa: "VENTA",
-        montoVenta: 1000,
-        productoServicio: "Producto X",
-        formaPago: "CONTADO",
-      }),
+      transitionEtapa(asesor, lead.id, { etapa: "CONTACTADO", respuestas: RESPUESTAS_ALTAS_NUEVO }),
     ).rejects.toThrow("fallo forzado para probar rollback");
 
     const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
-    expect(sinCambios.etapa).toBe("CONTACTADO");
-    expect(sinCambios.montoVenta).toBeNull();
+    expect(sinCambios.etapa).toBe("NUEVO");
     const eventos = await prisma.leadEvento.count({ where: { leadId: lead.id } });
     expect(eventos).toBe(0);
   }));

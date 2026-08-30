@@ -6,12 +6,18 @@ import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import type { MetricasQuery } from "../src/schemas/metricas.schema.js";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 import {
+  getCascadaLeadOportunidad,
   getEmbudo,
+  getEmbudoOportunidad,
   getPorAsesor,
   getPorCampania,
   getPorEtapa,
+  getPorHabilitadoParaVenta,
+  getPorProducto,
   getPorRedSocial,
+  getRankingProductosPorEmpresa,
   getRedSocialXSemaforo,
+  getRendimientoCampanias,
   getResumen,
 } from "../src/services/metricas.service.js";
 import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
@@ -89,6 +95,54 @@ async function crearEvento(
 
 function query(overrides: Partial<MetricasQuery> = {}): MetricasQuery {
   return { rango: "30d", ...overrides };
+}
+
+/**
+ * Extensiones de dashboard (Bloque E, docs/blocks/e-dashboards.md):
+ * fixtures de `Producto`/`Oportunidad`/`Membresia` -- mismo criterio que
+ * `crearLead`/`crearEvento` de arriba (`testAdminPrisma`, bypass de RLS
+ * exclusivo para arrange). `Oportunidad`/`Membresia` tienen RLS (mismo
+ * criterio que `leads`/`lead_eventos`), `Producto` no lo necesita para el
+ * `empresaId` fijo de este archivo.
+ */
+async function crearProducto(nombre?: string): Promise<{ id: string; nombre: string }> {
+  contador += 1;
+  const producto = await testAdminPrisma.producto.create({
+    data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: nombre ?? `Producto MS ${contador}-${Date.now()}` },
+  });
+  return { id: producto.id, nombre: producto.nombre };
+}
+
+interface OportunidadOverrides {
+  empresaId?: string;
+  etapa?: "NUEVO" | "CONTACTADO" | "CITA" | "VENTA" | "NO_VENTA";
+  asesorId?: string | null;
+  vendedorId?: string | null;
+  productoId?: string | null;
+  creadaEn?: Date;
+  cerradaEn?: Date | null;
+}
+
+async function crearOportunidad(leadId: string, overrides: OportunidadOverrides = {}): Promise<{ id: string }> {
+  const oportunidad = await testAdminPrisma.oportunidad.create({
+    data: {
+      leadId,
+      empresaId: overrides.empresaId ?? EMPRESA_BOOTSTRAP_ID,
+      productoId: overrides.productoId ?? null,
+      etapa: overrides.etapa ?? "NUEVO",
+      asesorId: overrides.asesorId ?? null,
+      vendedorId: overrides.vendedorId ?? null,
+      creadaEn: overrides.creadaEn ?? new Date(),
+      cerradaEn: overrides.cerradaEn ?? null,
+    },
+  });
+  return { id: oportunidad.id };
+}
+
+async function crearMembresiaAsesor(usuarioId: string, habilitadoParaVenta: boolean): Promise<void> {
+  await testAdminPrisma.membresia.create({
+    data: { usuarioId, empresaId: EMPRESA_BOOTSTRAP_ID, rol: "ASESOR", habilitadoParaVenta, activa: true },
+  });
 }
 
 afterAll(async () => {
@@ -450,4 +504,324 @@ describe("services/metricas.service — getRedSocialXSemaforo (docs/08 §3.5, ma
     expect(instagram?.total).toBe(1);
     expect(instagram?.pctVerde).toBe(100);
   }));
+});
+
+// ---------------------------------------------------------------------------
+// Extensiones de dashboard (Bloque E, docs/blocks/e-dashboards.md
+// "Extensiones de dashboard"): E1-E5.
+// ---------------------------------------------------------------------------
+
+describe("services/metricas.service — getEmbudoOportunidad (E1, embudo de negociación)", () => {
+  it("calcula el embudo sobre Oportunidad.etapa, separado del embudo de Lead, con caída porcentual entre pasos", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const lead1 = await crearLead();
+      const lead2 = await crearLead();
+      const lead3 = await crearLead();
+      const lead4 = await crearLead();
+
+      await crearOportunidad(lead1.id, { asesorId: asesor.id, etapa: "NUEVO" });
+      await crearOportunidad(lead2.id, { asesorId: asesor.id, etapa: "NUEVO" });
+      await crearOportunidad(lead3.id, { asesorId: asesor.id, etapa: "CONTACTADO" });
+      await crearOportunidad(lead4.id, { asesorId: asesor.id, etapa: "NO_VENTA" });
+
+      const embudo = await getEmbudoOportunidad(asesor, query());
+      expect(embudo.pasos.map((p) => p.etapa)).toEqual(["NUEVO", "CONTACTADO", "CITA", "VENTA"]);
+      expect(embudo.pasos[0]?.total).toBe(2);
+      expect(embudo.pasos[0]?.caidaPct).toBeNull();
+      expect(embudo.pasos[1]?.total).toBe(1);
+      expect(embudo.pasos[1]?.caidaPct).toBeCloseTo(50, 2);
+      expect(embudo.noVenta).toBe(1);
+    }));
+
+  it("triangulación: un asesor sin ninguna Oportunidad propia ve el embudo en cero, no lanza", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const embudo = await getEmbudoOportunidad(asesor, query());
+      expect(embudo.pasos.every((p) => p.total === 0)).toBe(true);
+      expect(embudo.noVenta).toBe(0);
+    }));
+});
+
+describe("services/metricas.service — getPorProducto (E2, rendimiento por producto)", () => {
+  it("agrupa por producto con conteos y tasa de conversión, mismo patrón que getPorRedSocial", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const productoA = await crearProducto();
+      const productoB = await crearProducto();
+      const lead1 = await crearLead();
+      const lead2 = await crearLead();
+      const lead3 = await crearLead();
+
+      await crearOportunidad(lead1.id, { asesorId: asesor.id, productoId: productoA.id, etapa: "VENTA" });
+      await crearOportunidad(lead2.id, { asesorId: asesor.id, productoId: productoA.id, etapa: "NO_VENTA" });
+      await crearOportunidad(lead3.id, { asesorId: asesor.id, productoId: productoB.id, etapa: "NUEVO" });
+
+      const filas = await getPorProducto(asesor, query());
+      const filaA = filas.find((f) => f.productoId === productoA.id);
+      const filaB = filas.find((f) => f.productoId === productoB.id);
+      expect(filaA?.total).toBe(2);
+      expect(filaA?.ventas).toBe(1);
+      expect(filaA?.noVentas).toBe(1);
+      expect(filaA?.tasaConversionPct).toBeCloseTo(50, 2);
+      expect(filaA?.nombreProducto).toBe(productoA.nombre);
+      expect(filaB?.total).toBe(1);
+      expect(filaB?.tasaConversionPct).toBeNull();
+    }));
+
+  it("triangulación: un producto sin ningún cierre en el período tiene tasaConversionPct null (denominador 0)", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const producto = await crearProducto();
+      const lead = await crearLead();
+      await crearOportunidad(lead.id, { asesorId: asesor.id, productoId: producto.id, etapa: "CITA" });
+
+      const filas = await getPorProducto(asesor, query());
+      const fila = filas.find((f) => f.productoId === producto.id);
+      expect(fila?.total).toBe(1);
+      expect(fila?.ventas).toBe(0);
+      expect(fila?.noVentas).toBe(0);
+      expect(fila?.tasaConversionPct).toBeNull();
+    }));
+});
+
+describe("services/metricas.service — getCascadaLeadOportunidad (E3, cascada Lead→Oportunidad→Venta)", () => {
+  it("cuenta cuántos Leads llegan a tener una Oportunidad y cuántos de esos cierran en VENTA", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      await crearLead({ asesorId: asesor.id }); // sin Oportunidad
+      const leadConOportunidadAbierta = await crearLead({ asesorId: asesor.id });
+      const leadConVenta = await crearLead({ asesorId: asesor.id });
+      await crearOportunidad(leadConOportunidadAbierta.id, { asesorId: asesor.id, etapa: "CONTACTADO" });
+      await crearOportunidad(leadConVenta.id, { asesorId: asesor.id, etapa: "VENTA" });
+
+      const cascada = await getCascadaLeadOportunidad(asesor, query());
+      expect(cascada.leads).toBe(3);
+      expect(cascada.conOportunidad).toBe(2);
+      expect(cascada.ventaOportunidad).toBe(1);
+      expect(cascada.tasaAperturaPct).toBeCloseTo((2 / 3) * 100, 2);
+      expect(cascada.tasaCierrePct).toBeCloseTo(50, 2);
+    }));
+
+  it("triangulación: ningún lead con Oportunidad -> tasaCierrePct es null (denominador 0), tasaAperturaPct es 0", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      await crearLead({ asesorId: asesor.id });
+      await crearLead({ asesorId: asesor.id });
+
+      const cascada = await getCascadaLeadOportunidad(asesor, query());
+      expect(cascada.leads).toBe(2);
+      expect(cascada.conOportunidad).toBe(0);
+      expect(cascada.ventaOportunidad).toBe(0);
+      expect(cascada.tasaAperturaPct).toBe(0);
+      expect(cascada.tasaCierrePct).toBeNull();
+    }));
+});
+
+describe("services/metricas.service — getPorHabilitadoParaVenta (E4, eficiencia del handoff D8)", () => {
+  it("403 cuando un asesor consulta esta gráfica directamente (mismo criterio que getPorAsesor)", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      await expect(getPorHabilitadoParaVenta(asesor, query())).rejects.toMatchObject({ statusHttp: 403 });
+    }));
+
+  it("compara volumen/conversión entre asesores habilitados y no habilitados para venta (D7)", () =>
+    conContexto(async () => {
+      const admin = await crearUsuario("ADMINISTRADOR");
+      const antes = await getPorHabilitadoParaVenta(admin, query());
+      const habilitadoAntes = antes.find((b) => b.habilitadoParaVenta === true);
+      const noHabilitadoAntes = antes.find((b) => b.habilitadoParaVenta === false);
+
+      const asesorHabilitado = await crearUsuario("ASESOR");
+      const asesorNoHabilitado = await crearUsuario("ASESOR");
+      await crearMembresiaAsesor(asesorHabilitado.id, true);
+      await crearMembresiaAsesor(asesorNoHabilitado.id, false);
+
+      const lead1 = await crearLead();
+      const lead2 = await crearLead();
+      const lead3 = await crearLead();
+      await crearOportunidad(lead1.id, { asesorId: asesorHabilitado.id, etapa: "VENTA" });
+      await crearOportunidad(lead2.id, { asesorId: asesorHabilitado.id, etapa: "NO_VENTA" });
+      await crearOportunidad(lead3.id, { asesorId: asesorNoHabilitado.id, etapa: "NO_VENTA" });
+
+      const despues = await getPorHabilitadoParaVenta(admin, query());
+      const habilitadoDespues = despues.find((b) => b.habilitadoParaVenta === true);
+      const noHabilitadoDespues = despues.find((b) => b.habilitadoParaVenta === false);
+
+      // Delta contra el "antes" -- consulta holding-wide (admin), sin un
+      // marcador equivalente a `campania` para aislar de otras pruebas de
+      // este mismo archivo (Oportunidad no tiene ese campo, ver nota de
+      // `metricas.access.ts::resolveAlcanceBaseOportunidad`); comparar la
+      // diferencia exacta que agregan LOS DOS asesores nuevos de esta prueba
+      // es correcto sin importar cuántas filas previas ya existan.
+      expect((habilitadoDespues?.total ?? 0) - (habilitadoAntes?.total ?? 0)).toBe(2);
+      expect((habilitadoDespues?.ventas ?? 0) - (habilitadoAntes?.ventas ?? 0)).toBe(1);
+      expect((habilitadoDespues?.noVentas ?? 0) - (habilitadoAntes?.noVentas ?? 0)).toBe(1);
+      expect((habilitadoDespues?.totalAsesores ?? 0) - (habilitadoAntes?.totalAsesores ?? 0)).toBe(1);
+
+      expect((noHabilitadoDespues?.total ?? 0) - (noHabilitadoAntes?.total ?? 0)).toBe(1);
+      expect((noHabilitadoDespues?.noVentas ?? 0) - (noHabilitadoAntes?.noVentas ?? 0)).toBe(1);
+      expect((noHabilitadoDespues?.totalAsesores ?? 0) - (noHabilitadoAntes?.totalAsesores ?? 0)).toBe(1);
+    }));
+});
+
+describe("services/metricas.service — getRankingProductosPorEmpresa (E5)", () => {
+  it("agrupa por (empresa, producto) — un administrador holding-wide ve el desglose de cada empresa por separado", () =>
+    conContexto(async () => {
+      const admin = await crearUsuario("ADMINISTRADOR");
+      const empresaB = await testAdminPrisma.empresa.create({ data: { nombre: `Empresa Ranking ${Date.now()}` } });
+      const productoBootstrap = await crearProducto();
+      const productoEmpresaB = await testAdminPrisma.producto.create({
+        data: { empresaId: empresaB.id, nombre: `Producto B ${Date.now()}` },
+      });
+      const clienteEmpresaB = await testAdminPrisma.cliente.create({
+        data: { nombre: "Cliente Empresa B Ranking", telefonoValido: false },
+      });
+      const leadEmpresaB = await testAdminPrisma.lead.create({
+        data: {
+          clienteId: clienteEmpresaB.id,
+          origen: "NUEVO",
+          etapa: "NUEVO",
+          ingresadoEn: new Date(),
+          empresaId: empresaB.id,
+        },
+      });
+      const leadBootstrap = await crearLead();
+
+      await crearOportunidad(leadBootstrap.id, { productoId: productoBootstrap.id, etapa: "VENTA" });
+      await crearOportunidad(leadEmpresaB.id, { empresaId: empresaB.id, productoId: productoEmpresaB.id, etapa: "NO_VENTA" });
+
+      const filas = await getRankingProductosPorEmpresa(admin, query());
+      const filaBootstrap = filas.find((f) => f.productoId === productoBootstrap.id);
+      const filaEmpresaB = filas.find((f) => f.productoId === productoEmpresaB.id);
+
+      expect(filaBootstrap?.empresaId).toBe(EMPRESA_BOOTSTRAP_ID);
+      expect(filaBootstrap?.total).toBe(1);
+      expect(filaBootstrap?.ventas).toBe(1);
+      expect(filaEmpresaB?.empresaId).toBe(empresaB.id);
+      expect(filaEmpresaB?.nombreEmpresa).toBe(empresaB.nombre);
+      expect(filaEmpresaB?.noVentas).toBe(1);
+    }));
+
+  it("triangulación: un asesor company-scoped solo ve el ranking de su propia empresa, nunca de otras", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const producto = await crearProducto();
+      const lead = await crearLead();
+      await crearOportunidad(lead.id, { asesorId: asesor.id, productoId: producto.id, etapa: "CITA" });
+
+      const filas = await getRankingProductosPorEmpresa(asesor, query());
+      expect(filas.every((f) => f.empresaId === EMPRESA_BOOTSTRAP_ID)).toBe(true);
+      expect(filas.some((f) => f.productoId === producto.id)).toBe(true);
+    }));
+});
+
+describe("services/metricas.service — getRendimientoCampanias Meta Ads", () => {
+  it("calcula CPC/CPL/CAC reales por moneda y devuelve null cuando no hay denominador", () =>
+    conContexto(async () => {
+      const admin = await crearUsuario("ADMINISTRADOR");
+      const autorizado = await testAdminPrisma.usuario.create({
+        data: {
+          nombre: "Admin Meta Ads Métricas",
+          correo: `meta-ads-metricas-${Date.now()}@test.local`,
+          passwordHash: "hash-no-usado",
+          rol: "ADMINISTRADOR",
+        },
+      });
+      const conexion = await testAdminPrisma.cuentaAnunciosConexion.create({
+        data: {
+          empresaId: EMPRESA_BOOTSTRAP_ID,
+          autorizadoPorUsuarioId: autorizado.id,
+          cuentaAnunciosIdExterno: `act_${Date.now()}`,
+          nombre: "Cuenta Meta Ads Métricas",
+          moneda: "USD",
+          tokenCifrado: "fake-ciphertext",
+          estado: "ACTIVA",
+        },
+      });
+      const campaniaConDatos = await testAdminPrisma.campania.create({
+        data: {
+          cuentaAnunciosConexionId: conexion.id,
+          idExterno: `camp-meta-${Date.now()}`,
+          nombre: "Campaña Meta con datos",
+          redSocial: "FACEBOOK",
+        },
+      });
+      const campaniaSinDenominadores = await testAdminPrisma.campania.create({
+        data: {
+          cuentaAnunciosConexionId: conexion.id,
+          idExterno: `camp-meta-sin-den-${Date.now()}`,
+          nombre: "Campaña Meta sin denominadores",
+          redSocial: "INSTAGRAM",
+        },
+      });
+
+      await testAdminPrisma.campaniaMetricaDiaria.createMany({
+        data: [
+          {
+            campaniaId: campaniaConDatos.id,
+            fecha: new Date("2026-08-10T00:00:00.000Z"),
+            redSocial: "FACEBOOK",
+            gasto: "100.00",
+            impresiones: 1000,
+            clics: 20,
+            alcance: 800,
+            moneda: "USD",
+          },
+          {
+            campaniaId: campaniaSinDenominadores.id,
+            fecha: new Date("2026-08-10T00:00:00.000Z"),
+            redSocial: "INSTAGRAM",
+            gasto: "50.00",
+            impresiones: 500,
+            clics: 0,
+            alcance: 300,
+            moneda: "ARS",
+          },
+        ],
+      });
+      const leadVenta = await crearLead({
+        etapa: "NUEVO",
+        redSocial: "FACEBOOK",
+        ingresadoEn: new Date("2026-08-10T12:00:00.000Z"),
+      });
+      await testAdminPrisma.lead.update({ where: { id: leadVenta.id }, data: { campaniaId: campaniaConDatos.id } });
+      await crearOportunidad(leadVenta.id, {
+        etapa: "VENTA",
+        cerradaEn: new Date("2026-08-11T12:00:00.000Z"),
+      });
+      const leadSinVenta = await crearLead({
+        redSocial: "FACEBOOK",
+        ingresadoEn: new Date("2026-08-12T12:00:00.000Z"),
+      });
+      await testAdminPrisma.lead.update({ where: { id: leadSinVenta.id }, data: { campaniaId: campaniaConDatos.id } });
+
+      const filas = await getRendimientoCampanias(admin, query({
+        rango: "personalizado",
+        desde: new Date("2026-08-01T00:00:00.000Z"),
+        hasta: new Date("2026-08-31T23:59:59.999Z"),
+      }));
+
+      const filaConDatos = filas.find((fila) => fila.campaniaId === campaniaConDatos.id);
+      const filaSinDenominadores = filas.find((fila) => fila.campaniaId === campaniaSinDenominadores.id);
+      expect(filaConDatos).toMatchObject({
+        moneda: "USD",
+        gasto: 100,
+        clics: 20,
+        leads: 2,
+        ventas: 1,
+        cpc: 5,
+        cpl: 50,
+        cac: 100,
+      });
+      expect(filaSinDenominadores).toMatchObject({
+        moneda: "ARS",
+        clics: 0,
+        leads: 0,
+        ventas: 0,
+        cpc: null,
+        cpl: null,
+        cac: null,
+      });
+    }));
 });

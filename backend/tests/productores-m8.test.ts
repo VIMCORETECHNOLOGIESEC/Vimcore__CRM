@@ -24,10 +24,30 @@ function conContexto<T>(fn: () => Promise<T>): Promise<T> {
 // middleware) para llamar los servicios directamente, así que replica ese
 // mismo criterio: ASESOR/VENDEDOR quedan acotados a la empresa bootstrap
 // (misma empresa que `lead()` de abajo), Admin/Supervisor quedan `null`.
+/**
+ * Bloque D (batch de negociación, punto 2): el pool de asignación manual de
+ * `Lead` (`asignacion.service.ts::resolveReceptor`/`selectResponsableEnEmpresa`)
+ * ahora resuelve candidatos vía `Membresia`, no `Usuario.rol` — un ASESOR/
+ * VENDEDOR de este archivo necesita su `Membresia` equivalente para seguir
+ * siendo un candidato/destinatario válido en `assignLead`/`transferLead`.
+ * Mismo mapeo de backfill que ya usa el resto del código: `VENDEDOR` legado
+ * -> `Membresia(ASESOR, habilitadoParaVenta: true)`.
+ */
 const actor = async (rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR", activo = true) => {
   sequence += 1;
   const user = await prisma.usuario.create({ data: { nombre: `M8 ${sequence}`, correo: `m8-${sequence}@test.local`, passwordHash: "unused", rol, activo } });
   const empresaId = rol === "ADMINISTRADOR" || rol === "SUPERVISOR" ? null : BOOTSTRAP_EMPRESA_ID;
+  if (rol === "ASESOR" || rol === "VENDEDOR") {
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: user.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: activo,
+      },
+    });
+  }
   return { id: user.id, rol: user.rol, empresaId } satisfies UsuarioAcceso;
 };
 const lead = async (responsables: { asesorId?: string; vendedorId?: string } = {}) => {
@@ -87,19 +107,32 @@ describe("M8 transactional lead producers", () => {
     const publish = vi.spyOn(eventBroker, "publish");
     await conContexto(() => transferLead(supervisor, target.id, { vendedorId: vendedor.id }));
     const beforeStage = await testAdminPrisma.notificacion.count({ where: { leadId: target.id } });
-    // M-hardening Bloque A (D1-D3, memoria #82): SUPERVISOR ya no puede
-    // cerrar (canClose deniega con "rol"); el vendedor, ya responsable
-    // operativo tras el traspaso de arriba, es quien cierra el lead.
+    // Bloque D (batch de negociación, decisión documentada, RETIRADO):
+    // `transitionEtapa` ya no acepta VENTA/NO_VENTA — cerrar una negociación
+    // ahora vive exclusivamente en `POST /oportunidades/:id/cerrar`
+    // (`leads.service.ts::transitionEtapa`, rama VENTA/NO_VENTA lanza
+    // "cierre_via_oportunidad"). Este test no ejercita el cierre: solo
+    // verifica que un cambio de etapa NO-terminal (CONTACTADO -> CITA) emite
+    // su evento sin crear una notificación nueva — la transición vendedor,
+    // ya responsable operativo tras el traspaso de arriba, la ejecuta.
     await conContexto(() =>
-      transitionEtapa(vendedor, target.id, { etapa: "VENTA", montoVenta: 100, productoServicio: "CRM", formaPago: "CONTADO" }),
+      transitionEtapa(vendedor, target.id, { etapa: "CITA", respuestas: {} }),
     );
     expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: vendedor.id, leadId: target.id, tipo: "LEAD_TRASPASADO" } })).toBe(1);
     expect(await testAdminPrisma.notificacion.count({ where: { leadId: target.id } })).toBe(beforeStage);
-    expect(publish).toHaveBeenCalledWith(vendedor.id, "lead.etapa-cambiada", expect.objectContaining({ etapaNueva: "VENTA" }), BOOTSTRAP_EMPRESA_ID);
+    expect(publish).toHaveBeenCalledWith(vendedor.id, "lead.etapa-cambiada", expect.objectContaining({ etapaNueva: "CITA" }), BOOTSTRAP_EMPRESA_ID);
   });
 
   it("fans an unassigned lead out only to active supervisors and administrators", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    // Bloque D (batch de negociación, punto 2/3): `assignAutomatically` ahora
+    // resuelve el pool ASESOR vía `Membresia`, no `Usuario.rol` — un actor
+    // VENDEDOR creado por un test ANTERIOR de este mismo archivo ("notifies
+    // transfer recipient...") sigue teniendo `Membresia(rol: ASESOR,
+    // habilitadoParaVenta: true, activa: true)`, así que desactivar solo
+    // `Usuario.rol: "ASESOR"` no lo excluye y el lead terminaría asignado en
+    // vez de quedar "sin candidatos" (0 notificaciones LEAD_SIN_ASIGNAR).
+    await prisma.usuario.updateMany({ where: { rol: { in: ["ASESOR", "VENDEDOR"] } }, data: { activo: false } });
+    await testAdminPrisma.membresia.updateMany({ where: { empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR" }, data: { activa: false } });
     const supervisor = await actorConMembresia("SUPERVISOR");
     const admin = await actorConMembresia("ADMINISTRADOR");
     const inactive = await actorConMembresia("SUPERVISOR", false);
