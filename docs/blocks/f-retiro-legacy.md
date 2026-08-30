@@ -104,11 +104,10 @@ se discutía arriba como candidato — se optó por la más simple (valores
 nuevos del enum) porque resolvía el caso real sin el hueco de bootstrap que
 esa otra alternativa dejaba sin cubrir.
 
-Sigue en pie la OTRA precondición de este documento, sin verificar acá: la
-dependencia de secuencia de "Enfoque de implementación" más abajo
-(congelar/mergear `dev-back`/`dev-front`). Ambas deben cumplirse antes de
-iniciar el retiro real — esta ya lo está, esa otra no se confirmó en esta
-actualización.
+La OTRA precondición de este documento (congelar/mergear `dev-back`/
+`dev-front`) también quedó confirmada satisfecha — ver "Estado real" arriba.
+Con las dos precondiciones cumplidas, el retiro real de `Usuario.rol` queda
+habilitado para arrancar como su propio bloque cuando se priorice.
 
 ## Decisión que implementa (ver rationale completo en `docs/16` §8 — no se repite acá)
 
