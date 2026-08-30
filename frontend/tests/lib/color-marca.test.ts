@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveEstilosMarca,
+  contrastRatio,
   foregroundForContrast,
   hexToRgbTriplet,
   resolveLogoMarca,
@@ -42,14 +43,35 @@ describe("foregroundForContrast", () => {
     expect(foregroundForContrast("37 99 235")).toBe("255 255 255");
   });
 
-  it("elige el texto oscuro del tema sobre un naranja claro que no cumple 4.5:1 con blanco", () => {
-    // Empresa A demo (#f97316): blanco da ~2.8:1, falla AA -- debe caer al oscuro.
-    expect(foregroundForContrast("249 115 22")).toBe("30 42 94");
+  it("elige una variante oscura de la MISMA tonalidad sobre un naranja claro que no cumple 4.5:1 con blanco", () => {
+    // Empresa A demo (#f97316 -> "249 115 22", H≈24.6° S≈95%): blanco da ~2.8:1,
+    // falla AA -- cae a la variante oscura (L 15%) de ese mismo hue/saturación,
+    // "75 32 2" (ratio ~4.97:1), ya NO al navy fijo "30 42 94".
+    expect(foregroundForContrast("249 115 22")).toBe("75 32 2");
   });
 
-  it("elige el texto oscuro del tema sobre un verde esmeralda que no cumple 4.5:1 con blanco", () => {
-    // Empresa B demo (#10b981): blanco da ~2.5:1, falla AA -- debe caer al oscuro.
-    expect(foregroundForContrast("16 185 129")).toBe("30 42 94");
+  it("elige una variante oscura de la MISMA tonalidad sobre un verde esmeralda que no cumple 4.5:1 con blanco", () => {
+    // Empresa B demo (#10b981 -> "16 185 129", H≈160.1° S≈84.1%): blanco da
+    // ~2.5:1, falla AA -- cae a la variante oscura de ese mismo hue,
+    // "6 70 49" (ratio ~4.29:1), ya NO al navy fijo "30 42 94".
+    expect(foregroundForContrast("16 185 129")).toBe("6 70 49");
+  });
+
+  it("elige la variante OSCURA de su propia tonalidad sobre un pastel claro (caso límite: base clara)", () => {
+    // #fde68a -> "253 230 138" (H≈48° S≈96.6%, L≈76.7%): blanco da ~1.25:1 y
+    // la variante clara (L 90%) del mismo hue da ~1.13:1, ambas fallan AA --
+    // gana la variante oscura (L 15%) del mismo hue, "75 60 1" (ratio ~8.67:1).
+    expect(foregroundForContrast("253 230 138")).toBe("75 60 1");
+  });
+
+  it("un fondo ya oscuro (terracota) sigue eligiendo blanco -- ninguna variante clara de marca puede superarlo", () => {
+    // #7c2d12 -> "124 45 18" (H≈15.3° S≈74.6%, L≈27.8%): blanco da ~9.37:1,
+    // la variante clara (L 90%) del mismo hue solo da ~7.23:1 -- blanco tiene
+    // la luminancia relativa máxima posible (1.0), así que ninguna variante
+    // clara con saturación puede superarlo contra un fondo ya oscuro. Esto
+    // ya era así con el navy fijo anterior (blanco también ganaba ahí,
+    // contraste terracota/navy ~1.45:1) -- no es una regresión.
+    expect(foregroundForContrast("124 45 18")).toBe("255 255 255");
   });
 });
 
@@ -60,30 +82,34 @@ describe("resolveEstilosMarca", () => {
     const estilos = resolveEstilosMarca(usuarioBase, holdingPersonalizado);
     expect(estilos).toEqual({
       "--primary": "249 115 22",
-      "--primary-foreground": "30 42 94",
+      // Variante oscura de la tonalidad del naranja (H≈24.6°), ya NO el navy fijo -- ver `foregroundForContrast`.
+      "--primary-foreground": "75 32 2",
       "--ring": "249 115 22",
       "--sidebar-primary": "249 115 22",
-      "--sidebar-primary-foreground": "30 42 94",
+      "--sidebar-primary-foreground": "75 32 2",
       "--sidebar-accent": "249 115 22",
-      "--sidebar-accent-foreground": "30 42 94",
+      "--sidebar-accent-foreground": "75 32 2",
       // --sidebar* deriva de colorPrimario (#7c2d12 -> "124 45 18"), no de colorSecundario.
       "--sidebar": "124 45 18",
       "--sidebar-foreground": "255 255 255",
       "--sidebar-border": "255 255 255",
       "--sidebar-ring": "255 255 255",
+      // colorSecundario (naranja) evaluado contra --background (APP_BACKGROUND, "245 243 238"), no contra sí mismo.
+      "--marca-texto-contenido": "75 32 2",
     });
   });
 
-  it("nivel 1 -- colorPrimario claro hace que --sidebar-foreground/border/ring caigan al texto oscuro del tema (WCAG AA)", () => {
-    // #fafaf5 ("250 250 245"): blanco da ~1.02:1, falla AA -- debe caer al
-    // oscuro, mismo caso límite que ya se prueba arriba para colorSecundario
-    // en `foregroundForContrast`, ahora sobre el camino de --sidebar*.
+  it("nivel 1 -- colorPrimario claro hace que --sidebar-foreground/border/ring caigan a una variante oscura de esa tonalidad (WCAG AA)", () => {
+    // #fafaf5 ("250 250 245"): blanco da ~1.02:1, falla AA -- debe caer a la
+    // variante oscura (L 15%) de esa misma tonalidad, mismo caso límite que
+    // ya se prueba arriba para colorSecundario en `foregroundForContrast`,
+    // ahora sobre el camino de --sidebar*.
     const usuario = { ...usuarioBase, empresaColorPrimario: "#fafaf5" };
     const estilos = resolveEstilosMarca(usuario, holdingPersonalizado);
     expect(estilos?.["--sidebar"]).toBe("250 250 245");
-    expect(estilos?.["--sidebar-foreground"]).toBe("30 42 94");
-    expect(estilos?.["--sidebar-border"]).toBe("30 42 94");
-    expect(estilos?.["--sidebar-ring"]).toBe("30 42 94");
+    expect(estilos?.["--sidebar-foreground"]).toBe("51 51 26");
+    expect(estilos?.["--sidebar-border"]).toBe("51 51 26");
+    expect(estilos?.["--sidebar-ring"]).toBe("51 51 26");
   });
 
   it("nivel 2 -- sesion holding usa el color EN VIVO de configuracion-empresa cuando llegó", () => {
@@ -93,17 +119,18 @@ describe("resolveEstilosMarca", () => {
     );
     expect(estilos).toEqual({
       "--primary": "16 185 129",
-      "--primary-foreground": "30 42 94",
+      "--primary-foreground": "6 70 49",
       "--ring": "16 185 129",
       "--sidebar-primary": "16 185 129",
-      "--sidebar-primary-foreground": "30 42 94",
+      "--sidebar-primary-foreground": "6 70 49",
       "--sidebar-accent": "16 185 129",
-      "--sidebar-accent-foreground": "30 42 94",
+      "--sidebar-accent-foreground": "6 70 49",
       // holdingPersonalizado.colorPrimario = "#134e4a" -> "19 78 74".
       "--sidebar": "19 78 74",
       "--sidebar-foreground": "255 255 255",
       "--sidebar-border": "255 255 255",
       "--sidebar-ring": "255 255 255",
+      "--marca-texto-contenido": "6 70 49",
     });
   });
 
@@ -114,16 +141,17 @@ describe("resolveEstilosMarca", () => {
     );
     expect(estilos).toEqual({
       "--primary": "16 185 129",
-      "--primary-foreground": "30 42 94",
+      "--primary-foreground": "6 70 49",
       "--ring": "16 185 129",
       "--sidebar-primary": "16 185 129",
-      "--sidebar-primary-foreground": "30 42 94",
+      "--sidebar-primary-foreground": "6 70 49",
       "--sidebar-accent": "16 185 129",
-      "--sidebar-accent-foreground": "30 42 94",
+      "--sidebar-accent-foreground": "6 70 49",
       "--sidebar": "19 78 74",
       "--sidebar-foreground": "255 255 255",
       "--sidebar-border": "255 255 255",
       "--sidebar-ring": "255 255 255",
+      "--marca-texto-contenido": "6 70 49",
     });
   });
 
@@ -140,11 +168,14 @@ describe("resolveEstilosMarca", () => {
       "--sidebar-primary-foreground": "255 255 255",
       "--sidebar-accent": "37 99 235",
       "--sidebar-accent-foreground": "255 255 255",
-      // CONFIGURACION_EMPRESA_DEFAULT.colorPrimario = "--vimcore" = "30 42 94".
+      // CONFIGURACION_EMPRESA_DEFAULT.colorPrimario = "--vimcore" = "30 42 94"
+      // (constante propia, no relacionada con `foregroundForContrast`).
       "--sidebar": "30 42 94",
       "--sidebar-foreground": "255 255 255",
       "--sidebar-border": "255 255 255",
       "--sidebar-ring": "255 255 255",
+      // colorSecundario default ("#2563eb" -> "37 99 235") evaluado contra APP_BACKGROUND.
+      "--marca-texto-contenido": "6 26 70",
     });
   });
 
@@ -159,6 +190,31 @@ describe("resolveEstilosMarca", () => {
   it("usuario null no devuelve overrides (sesion sin resolver todavia)", () => {
     expect(resolveEstilosMarca(null, holdingPersonalizado)).toBeUndefined();
     expect(resolveEstilosMarca(null, undefined)).toBeUndefined();
+  });
+});
+
+/**
+ * Nuevo token para texto/íconos de marca DIRECTO sobre el fondo neutro de
+ * contenido (`--background`, "245 243 238" en `index.css`) -- distinto de
+ * `--primary-foreground` (texto encima de un chip ya pintado con
+ * `--primary`). Consumo pendiente (otra tarea): migración de los 24 usos de
+ * `idec` a este token.
+ */
+describe("resolveEstilosMarca -- --marca-texto-contenido", () => {
+  it("colorSecundario OSCURO (terracota #7c2d12): cae a la variante oscura de esa tonalidad, con buen contraste contra --background", () => {
+    const usuario = { ...usuarioBase, empresaColorSecundario: "#7c2d12" };
+    const estilos = resolveEstilosMarca(usuario, holdingPersonalizado);
+    // "124 45 18" (H≈15.3°, S≈74.6%) a L 15% -> "67 24 10", ratio ~13.79:1 contra "245 243 238".
+    expect(estilos?.["--marca-texto-contenido"]).toBe("67 24 10");
+    expect(contrastRatio("245 243 238", estilos?.["--marca-texto-contenido"] ?? "")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("colorSecundario CLARO/pastel (#fde68a): cae a la variante oscura de esa tonalidad, con buen contraste contra --background", () => {
+    const usuario = { ...usuarioBase, empresaColorSecundario: "#fde68a" };
+    const estilos = resolveEstilosMarca(usuario, holdingPersonalizado);
+    // "253 230 138" (H≈48°, S≈96.6%) a L 15% -> "75 60 1", ratio ~9.73:1 contra "245 243 238".
+    expect(estilos?.["--marca-texto-contenido"]).toBe("75 60 1");
+    expect(contrastRatio("245 243 238", estilos?.["--marca-texto-contenido"] ?? "")).toBeGreaterThanOrEqual(4.5);
   });
 });
 
