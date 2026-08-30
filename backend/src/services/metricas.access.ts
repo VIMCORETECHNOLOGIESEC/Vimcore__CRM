@@ -1,8 +1,15 @@
 import type { Prisma, RolUsuario } from "@prisma/client";
 import type { MetricasQuery } from "../schemas/metricas.schema.js";
 import { aplicarFiltroEmpresa, type UsuarioAcceso } from "./leads.access.js";
+import type { RendimientoCampaniaFiltro } from "../repositories/metaAds/campania-metrica-diaria.repository.js";
 
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  // Bloque F (aditivo): mismo alcance maximo que ADMINISTRADOR, sin atarse a una empresa.
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 
 /** docs/08 §1: administrador y supervisor tienen alcance general. */
 export function tieneAccesoTotal(usuario: UsuarioAcceso): boolean {
@@ -120,4 +127,65 @@ export function resolveFiltroSql(
     desde,
     hasta,
   };
+}
+
+export function resolveRendimientoCampaniaFiltro(
+  usuario: UsuarioAcceso,
+  query: MetricasQuery,
+  desde: Date,
+  hasta: Date,
+): RendimientoCampaniaFiltro {
+  return {
+    responsableIds: resolveResponsableIds(usuario, query),
+    empresaId: usuario.empresaId,
+    redSocial: query.redSocial ?? null,
+    campania: query.campania ?? null,
+    desde,
+    hasta,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Extensiones de dashboard (Bloque E, "Extensiones de dashboard" en
+// docs/blocks/e-dashboards.md): mismo alcance rol/empresa que
+// `resolveAlcanceBase`, proyectado sobre `Oportunidad` en vez de `Lead` --
+// `Oportunidad.asesorId`/`vendedorId`/`empresaId` tienen exactamente el mismo
+// shape que en `Lead` (D13, split negociación), así que `resolveResponsableIds`
+// y `aplicarFiltroEmpresa` se reutilizan tal cual, sin reimplementar la
+// resolución de alcance por rol.
+//
+// Decisión propia: `query.redSocial`/`query.campania` NO se proyectan acá --
+// ambos filtros leen `Lead.redSocial`/`Lead.payloadOriginal` (JSONB de
+// ingesta), campos que `Oportunidad` no tiene (D13 los deja en `Lead`). Cruzar
+// esos filtros requeriría un join a `Lead` no pedido por este batch; los
+// endpoints de Oportunidad ignoran esos dos query params en silencio, mismo
+// criterio que `resolveResponsableIds` ignora `responsableId` para
+// Asesor/Vendedor (un query param que no aplica al rol/entidad actual se
+// descarta, nunca se rechaza con 400).
+// ---------------------------------------------------------------------------
+
+export function resolveAlcanceBaseOportunidad(
+  usuario: UsuarioAcceso,
+  query: MetricasQuery,
+): Prisma.OportunidadWhereInput {
+  const where: Prisma.OportunidadWhereInput = aplicarFiltroEmpresa({}, usuario);
+
+  const responsableIds = resolveResponsableIds(usuario, query);
+  if (responsableIds) {
+    where.OR = responsableIds.flatMap((id) => [{ asesorId: id }, { vendedorId: id }]);
+  }
+
+  return where;
+}
+
+export type CampoFechaMetricaOportunidad = "creadaEn" | "cerradaEn";
+
+/** Mismo criterio que `aplicarRangoFecha`, proyectado sobre `Oportunidad`. */
+export function aplicarRangoFechaOportunidad(
+  where: Prisma.OportunidadWhereInput,
+  campo: CampoFechaMetricaOportunidad,
+  desde: Date,
+  hasta: Date,
+): Prisma.OportunidadWhereInput {
+  return { ...where, [campo]: { gte: desde, lte: hasta } };
 }

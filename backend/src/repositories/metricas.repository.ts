@@ -322,6 +322,198 @@ export interface PorCampaniaRow {
  * independientes (docs/08 §3.4), Prisma `groupBy` no expresa extracción de
  * JSON path como clave.
  */
+// ---------------------------------------------------------------------------
+// Extensiones de dashboard (Bloque E, docs/blocks/e-dashboards.md
+// "Extensiones de dashboard"): mismas consultas de agregación de arriba,
+// proyectadas sobre `Oportunidad` en vez de `Lead` -- ver
+// `metricas.access.ts::resolveAlcanceBaseOportunidad`.
+// ---------------------------------------------------------------------------
+
+/** Embudo de Oportunidad (E1): mismo shape que `countPorEtapa`, sobre `oportunidades`. */
+export async function countPorEtapaOportunidad(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorEtapa[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({ by: ["etapa"], where, _count: { _all: true } });
+  return filas.map((f) => ({ etapa: f.etapa, total: f._count._all }));
+}
+
+export interface ConteoPorProducto {
+  productoId: string;
+  total: number;
+}
+
+/** E2 (rendimiento por producto): excluye `productoId IS NULL` (mismo criterio que `countPorRedSocial`). */
+export async function countPorProducto(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorProducto[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({
+    by: ["productoId"],
+    where: { ...where, productoId: { not: null } },
+    _count: { _all: true },
+  });
+  return filas.map((f) => ({ productoId: f.productoId as string, total: f._count._all }));
+}
+
+export interface ConteoPorProductoYEtapa {
+  productoId: string;
+  etapa: EtapaLead;
+  total: number;
+}
+
+/** E2: sub-conteo VENTA/NO_VENTA por producto -- tasa de conversión. */
+export async function countPorProductoYEtapaCierre(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorProductoYEtapa[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({
+    by: ["productoId", "etapa"],
+    where: { ...where, productoId: { not: null }, etapa: { in: ["VENTA", "NO_VENTA"] } },
+    _count: { _all: true },
+  });
+  return filas.map((f) => ({ productoId: f.productoId as string, etapa: f.etapa, total: f._count._all }));
+}
+
+export interface ConteoPorEmpresaYProducto {
+  empresaId: string;
+  productoId: string;
+  total: number;
+}
+
+/** E5 (ranking de productos por empresa): mismo criterio que `countPorProducto`, agrupado también por empresa. */
+export async function countPorEmpresaYProducto(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorEmpresaYProducto[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({
+    by: ["empresaId", "productoId"],
+    where: { ...where, productoId: { not: null } },
+    _count: { _all: true },
+  });
+  return filas.map((f) => ({ empresaId: f.empresaId, productoId: f.productoId as string, total: f._count._all }));
+}
+
+export interface ConteoPorEmpresaYProductoYEtapa {
+  empresaId: string;
+  productoId: string;
+  etapa: EtapaLead;
+  total: number;
+}
+
+/** E5: sub-conteo VENTA/NO_VENTA por (empresa, producto). */
+export async function countPorEmpresaYProductoYEtapaCierre(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorEmpresaYProductoYEtapa[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({
+    by: ["empresaId", "productoId", "etapa"],
+    where: { ...where, productoId: { not: null }, etapa: { in: ["VENTA", "NO_VENTA"] } },
+    _count: { _all: true },
+  });
+  return filas.map((f) => ({
+    empresaId: f.empresaId,
+    productoId: f.productoId as string,
+    etapa: f.etapa,
+    total: f._count._all,
+  }));
+}
+
+export interface ConteoPorAsesorEmpresa {
+  asesorId: string;
+  empresaId: string;
+  total: number;
+}
+
+/**
+ * E4 (habilitados vs. no habilitados para venta): agrupa por `(asesorId,
+ * empresaId)` -- no solo `asesorId` -- porque un mismo usuario puede tener
+ * `Membresia`/`habilitadoParaVenta` distinto en cada empresa (sesión
+ * holding-wide, D2); mezclar sus oportunidades de dos empresas bajo una sola
+ * fila daría un `habilitadoParaVenta` ambiguo. Excluye `asesorId IS NULL`
+ * (oportunidades `SIN_ASIGNAR`, D9).
+ */
+export async function countPorAsesorEmpresa(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorAsesorEmpresa[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({
+    by: ["asesorId", "empresaId"],
+    where: { ...where, asesorId: { not: null } },
+    _count: { _all: true },
+  });
+  return filas.map((f) => ({ asesorId: f.asesorId as string, empresaId: f.empresaId, total: f._count._all }));
+}
+
+export interface ConteoPorAsesorEmpresaYEtapa {
+  asesorId: string;
+  empresaId: string;
+  etapa: EtapaLead;
+  total: number;
+}
+
+/** E4: sub-conteo VENTA/NO_VENTA por `(asesorId, empresaId)`. */
+export async function countPorAsesorEmpresaYEtapaCierre(
+  where: Prisma.OportunidadWhereInput,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<ConteoPorAsesorEmpresaYEtapa[]> {
+  const oportunidad = client.oportunidad as Prisma.TransactionClient["oportunidad"];
+  const filas = await oportunidad.groupBy({
+    by: ["asesorId", "empresaId", "etapa"],
+    where: { ...where, asesorId: { not: null }, etapa: { in: ["VENTA", "NO_VENTA"] } },
+    _count: { _all: true },
+  });
+  return filas.map((f) => ({
+    asesorId: f.asesorId as string,
+    empresaId: f.empresaId,
+    etapa: f.etapa,
+    total: f._count._all,
+  }));
+}
+
+/**
+ * E4: `habilitadoParaVenta` real de cada par `(asesorId, empresaId)` que
+ * apareció en `countPorAsesorEmpresa` -- solo `Membresia` activa, `rol:
+ * ASESOR` (D7, mismo criterio que `membresia-pool.repository.ts::
+ * findMembresiaAsesorHabilitada`). Un par sin `Membresia` activa (asesor dado
+ * de baja después de que se le asignara la oportunidad) no aparece en el mapa
+ * -- el llamador lo trata como `false` (no habilitado), nunca lanza.
+ */
+export async function findHabilitadoParaVentaPorPares(
+  pares: readonly { asesorId: string; empresaId: string }[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, boolean>> {
+  if (pares.length === 0) return new Map();
+  const filas = await client.membresia.findMany({
+    where: {
+      rol: "ASESOR",
+      activa: true,
+      OR: pares.map((p) => ({ usuarioId: p.asesorId, empresaId: p.empresaId })),
+    },
+    select: { usuarioId: true, empresaId: true, habilitadoParaVenta: true },
+  });
+  return new Map(filas.map((f) => [`${f.usuarioId}:${f.empresaId}`, f.habilitadoParaVenta]));
+}
+
+/** E5: nombres de `Empresa` para el desglose holding-wide -- mismo patrón que `usuarioRepository.findNombresPorIds`. */
+export async function findEmpresaNombresPorIds(
+  ids: readonly string[],
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const filas = await client.empresa.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, nombre: true },
+  });
+  return new Map(filas.map((f) => [f.id, f.nombre]));
+}
+
 export async function getPorCampaniaTop10(
   filtro: FiltroLeadsSql,
   client: PrismaClientOrTransaction = prisma,
