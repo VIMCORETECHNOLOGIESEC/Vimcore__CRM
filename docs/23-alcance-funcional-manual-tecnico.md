@@ -30,11 +30,11 @@
 | 10 | Integración LinkedIn | ✅ | Bridges / Integraciones |
 | 11 | Integración WhatsApp Business (real) | 🚧 | Bridges / Integraciones |
 | 12 | Dashboard de métricas (general) | ✅ | Dashboard y Métricas |
-| 13 | Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto) | ⏳ | Dashboard y Métricas |
+| 13 | Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto) | ✅ | Dashboard y Métricas |
 | 14 | Dashboard con filtro por empresa (holding) | ⏳ | Dashboard y Métricas |
 | 15 | Exportación de reportes (PDF/XLSX) | ⏳ | Reportes |
 | 16 | Conexión de Meta Ads (métricas publicitarias reales) | ⏳ | Reportes |
-| 17 | Listado y detalle de Oportunidad (negociación) | 🚧 | Negociación / Oportunidad |
+| 17 | Listado y detalle de Oportunidad (negociación) | ✅ | Negociación / Oportunidad |
 | 18 | Listado de usuarios | ✅ | Usuarios y Membresías |
 | 19 | Alta de usuario | 🚧 | Usuarios y Membresías |
 | 20 | Edición de usuario | ✅ | Usuarios y Membresías |
@@ -262,13 +262,13 @@
 
 ### Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto)
 
-**Estado**: ⏳ Pendiente (sin frontend, backend listo)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Ampliación del dashboard actual con el embudo de negociación sobre `Oportunidad` (en vez de `Lead`), rendimiento por producto y ranking de productos.
+**Descripción funcional**: Ampliación del "Dashboard general" con métricas de negociación sobre `Oportunidad`: embudo de Oportunidad, ranking global por producto, cascada Lead→Oportunidad (stat compacto) y ranking de productos por empresa. Para una sesión holding-wide, el ranking por empresa muestra un aviso visible en vez de ocultarse (gap de backend conocido, ver nota).
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: sin contrato de frontend formalizado todavía — hace falta definirlo antes de construir la pantalla.
+**Notas técnicas**: commits `e1f2dca` (frontend) sobre backend ya cerrado en `dev-mateo` (`docs/blocks/e-dashboards.md`), pusheados a `origin/test/gpt`. Componentes: `GraficoEmbudoOportunidad.tsx`, `GraficoPorProducto.tsx`, `CascadaLeadOportunidad.tsx`, `GraficoRankingProductosPorEmpresa.tsx`, con 14 tests propios (892/892 en la suite completa al momento de esta verificación). Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, por indicación directa del usuario). **Gap de backend conocido (E5)**: `getRankingProductosPorEmpresa` no desglosa correctamente por empresa para una sesión holding-wide (test en rojo en backend, ver `docs/blocks/e-dashboards.md`) — el frontend ya lo contempla con un aviso visible en la sección en vez de mostrar datos incompletos silenciosamente. La exportación a PDF/XLSX de estas métricas no está conectada todavía (deliberado, fuera de este ítem).
 
 ### Dashboard con filtro por empresa (holding)
 
@@ -316,13 +316,13 @@
 
 ### Listado y detalle de Oportunidad
 
-**Estado**: 🚧 En desarrollo (sin commitear todavía)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Nueva entidad de negociación, separada del Lead de captación — permite que un mismo cliente tenga varias negociaciones paralelas (una por producto). Incluye pool de asignación por empresa, autoridad de cierre restringida al asesor asignado, y excepción administrativa para reasignar.
+**Descripción funcional**: Nueva entidad de negociación, separada del Lead de captación — permite que un mismo cliente tenga varias negociaciones paralelas (una por producto). Listado filtrable y paginado (`OportunidadesPage.tsx`), alta de oportunidad desde un lead (`NuevaOportunidadButton.tsx` en `LeadDetallePage.tsx`), detalle con avance de etapa (`NUEVO→CONTACTADO→CITA`, sin saltos directos a `VENTA`/`NO_VENTA`), cierre de VENTA/NO_VENTA con autoridad restringida al asesor habilitado (403 inline si no tiene `habilitadoParaVenta`, sin bypass de admin/supervisor salvo excepción de reasignación), reasignación admin/supervisor, y catálogo de productos gated a `ADMINISTRADOR`.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: en desarrollo activo por otra sesión en paralelo al momento de esta revisión — `frontend/src/funcionalidades/oportunidades/`, `frontend/src/tipos/oportunidad.ts` y las rutas `/oportunidades` y `/oportunidades/:id` en `router.tsx` existen en el worktree de trabajo pero aparecen como **no rastreados/sin commitear** en `git status` (no están en ningún commit, ni local ni en `origin/test/gpt`). No documentar como disponible ni tomar capturas hasta que se commitee y pushee.
+**Notas técnicas**: commit `0a0ab91`, pusheado a `origin/test/gpt`. Rutas `oportunidades`/`oportunidades/:id` en `router.tsx`, ítem de menú "Oportunidades" en `layouts/navigation.ts`. 17 archivos de test / 110 tests propios (892/892 en la suite completa al momento de esta verificación). Las reglas de negocio D7 (autoridad de cierre) y D9 (reasignación) ya estaban implementadas en backend — el frontend solo las consume. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, por indicación directa del usuario) — no incluye dashboards jerárquicos (ver ítem anterior) ni el "corte" de columnas de negociación en `Lead`, que sigue como fase separada sin arrancar.
 
 ---
 
