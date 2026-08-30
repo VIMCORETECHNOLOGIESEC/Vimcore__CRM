@@ -11,6 +11,7 @@ import { updateFavicon, updateThemeColor, resolveFaviconHref } from "@/lib/favic
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
+import { SalirVistaEmpresaButton } from "./SalirVistaEmpresaButton";
 
 /**
  * Piso mínimo del splash de arranque del shell (ver `useSplashGate`) -- mismo
@@ -185,6 +186,11 @@ export function AppLayout() {
             </div>
           </SidebarInset>
         </SidebarProvider>
+        {/* `position: fixed` -- el lugar en el árbol no afecta su posición
+         * visual, se monta acá para que sobreviva a cualquier scroll del
+         * contenido interno. Se muestra/oculta solo (ver
+         * `SalirVistaEmpresaButton.tsx`), sin condición extra acá. */}
+        <SalirVistaEmpresaButton />
       </LeadsNavigationTutorialProvider>
     </PageHeaderProvider>
   );
