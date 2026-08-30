@@ -36,9 +36,25 @@ corte de Bloque D (`leads.access.ts`, `oportunidad.access.ts`,
 **Esto NO cierra Bloque F.** Es solo la parte aditiva — resuelve la
 precondición de que exista un mecanismo de autoridad holding-wide antes de
 poder retirar el legacy. El retiro real (`Usuario.rol`/`enum RolUsuario`
-fuera del esquema y del código) sigue sin arrancar, sigue bloqueado por la
-otra precondición de este documento (congelar/mergear `dev-back`/
-`dev-front`) — no verificada como cumplida en esta actualización.
+fuera del esquema y del código) sigue sin arrancar.
+
+**Segunda precondición — congelamiento de `dev-back`/`dev-front` — confirmada
+satisfecha (2026-08-30).** Decisión de producto: ambas ramas quedaron
+congeladas a propósito por la prontitud del desarrollo, sin plan de
+retomarlas ni mergearlas — no es un descuido. Evidencia: `dev-back` último
+commit 2026-08-27 (103 commits detrás de `test/gpt`, sin PR ni plan de
+merge); `dev-front` último commit 2026-08-28 (97 commits detrás, misma
+situación). Las únicas ramas activas de desarrollo son `dev-mateo` (backend)
+y `test/gpt` (integración/frontend), ninguna de las dos escribe sobre
+`Usuario.rol` en paralelo al legacy single-company que motivaba este
+bloqueo.
+
+**Con las dos precondiciones de este documento satisfechas, el retiro real
+de `Usuario.rol` queda HABILITADO para arrancar como su propio bloque
+cuando se priorice.** Esto no es un inicio de ese trabajo: no se generaron
+tasks ni se tocó ninguno de los ~17-19 archivos listados en "Enfoque de
+implementación" — sigue siendo un batch de limpieza diferido a propósito,
+no bloqueado por falta de decisión ni por algo roto.
 
 ## Precondición bloqueante — autoridad holding-wide sustituta (sin resolver)
 
