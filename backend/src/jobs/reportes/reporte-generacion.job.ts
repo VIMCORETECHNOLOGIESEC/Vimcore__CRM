@@ -1,7 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { AppError } from "../../lib/app-error.js";
-import { env } from "../../config/env.js";
+import { PDF_MIME_TYPE, uploadReporteArchivo, XLSX_MIME_TYPE } from "../../lib/azure-blob-storage.js";
 import { eventBroker } from "../../lib/event-broker.js";
 import { logger } from "../../lib/logger.js";
 import { runWithTenantContext } from "../../lib/prisma.js";
@@ -68,7 +66,7 @@ export async function procesarReporteJob(jobId: string): Promise<void> {
   try {
     const usuarioView: UsuarioAcceso = { id: job.usuarioId, rol: usuario.rol, empresaId };
     const archivoUrl = await runWithTenantContext({ empresaId }, () =>
-      generarArchivo(job.id, job.tipo, usuarioView, aMetricasQuery(parametros)),
+      generarArchivo(job.tipo, usuarioView, aMetricasQuery(parametros)),
     );
 
     await reporteJobRepository.marcarListo(job.id, archivoUrl);
@@ -82,7 +80,6 @@ export async function procesarReporteJob(jobId: string): Promise<void> {
 }
 
 async function generarArchivo(
-  jobId: string,
   tipo: string,
   usuarioView: UsuarioAcceso,
   query: ReturnType<typeof aMetricasQuery>,
@@ -104,11 +101,16 @@ async function generarArchivo(
   const datos: DatosReporte = { empresaId: usuarioView.empresaId, resumen, embudo, porCampania, rendimientoCampanias, porAsesor };
 
   const buffer = tipo === "pdf" ? await generarPdfReporte(datos) : await generarXlsxReporte(datos);
-  const extension = tipo === "pdf" ? "pdf" : "xlsx";
+  const mimeType = tipo === "pdf" ? PDF_MIME_TYPE : XLSX_MIME_TYPE;
 
-  await mkdir(env.REPORTES_STORAGE_DIR, { recursive: true });
-  const rutaArchivo = path.join(env.REPORTES_STORAGE_DIR, `${jobId}.${extension}`);
-  await writeFile(rutaArchivo, buffer);
-
-  return `/api/v1/reportes/jobs/${jobId}/descargar`;
+  // `ReporteJob.archivoUrl` guarda el NOMBRE del blob en el contenedor
+  // privado de Azure Blob Storage (`AZURE_STORAGE_CONTAINER_REPORTES`), NO
+  // una ruta de disco local ni una URL pública -- cambio de significado
+  // deliberado respecto de la versión anterior de este campo (que apuntaba a
+  // `storage/reportes/<jobId>.<ext>` en disco local, invisible entre réplicas
+  // al escalar Azure Container Apps horizontalmente). `GET
+  // /reportes/jobs/:id/descargar` (`reportes.controller.ts`) usa este valor
+  // para descargar el blob del lado del servidor con sus propias
+  // credenciales y streamearlo de vuelta al cliente ya autorizado.
+  return uploadReporteArchivo({ buffer, mimeType });
 }
