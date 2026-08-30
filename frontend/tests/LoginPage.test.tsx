@@ -339,4 +339,24 @@ describe("LoginPage — prioridad de color de marca por empresa (tema-empresaria
       CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
     );
   });
+
+  it("usa el NOMBRE propio de la Empresa en el splash, no el del holding (bug real: antes 'nombre' nunca salía de resolveColorMarca)", async () => {
+    loginMock.mockResolvedValue(usuarioCompanyConColorFake);
+    fetchConfiguracionEmpresaApiMock.mockResolvedValue({
+      nombre: "Holding Global",
+      colorPrimario: "#000000",
+      colorSecundario: "#000000",
+      logoUrl: null,
+    });
+    const user = userEvent.setup();
+    renderLoginPage();
+
+    await user.type(screen.getByLabelText("Correo electrónico"), "empresa-a@crm.test");
+    await user.type(screen.getByLabelText("Contraseña"), "clave-segura");
+    await user.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    const splash = await screen.findByRole("status");
+    expect(within(splash).getByText("Empresa A")).toBeInTheDocument();
+    expect(within(splash).queryByText("Holding Global")).not.toBeInTheDocument();
+  });
 });

@@ -112,4 +112,17 @@ describe("AppLayout — gate del splash contra el gap de tema por defecto", () =
     expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
     expect(screen.queryByText("Cargando tu panel…")).not.toBeInTheDocument();
   });
+
+  it("pinta el splash con el color de marca REAL del holding, no el índigo por defecto del tema (bug real: antes se le pasaba resolveEstilosMarca, que el splash no lee)", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+
+    const splash = screen.getByRole("status");
+    expect(splash.style.getPropertyValue("--marca-color-1")).toBe("#111111");
+    expect(splash.style.getPropertyValue("--marca-color-2")).toBe("#222222");
+  });
 });

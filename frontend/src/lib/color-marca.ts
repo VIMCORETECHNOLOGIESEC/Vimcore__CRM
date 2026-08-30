@@ -192,3 +192,49 @@ export function resolveNombreMarca(
 
   return configuracionHolding?.nombre ?? CONFIGURACION_EMPRESA_DEFAULT.nombre;
 }
+
+/**
+ * Fix real (splash post-login duplicado, cada uno con un dato mal): fuente
+ * de verdad única para las 3 variables que `WelcomeSplashLoader.tsx`/
+ * `tema-empresarial.css` (`.welcome-splash`) consumen para pintar el splash
+ * -- `nombre` (texto) + `--marca-color-1`/`--marca-color-2` (hex CRUDO, sin
+ * la conversión a triplete RGB que sí usa `resolveEstilosMarca` para los
+ * tokens shadcn del shell, que son un caso de uso distinto). Antes había dos
+ * implementaciones paralelas y desincronizadas: `LoginPage.tsx` tenía su
+ * propia `resolveColorMarca` local que nunca resolvía `nombre` (seguía
+ * viniendo del holding global aunque el usuario fuera de una `Empresa` con
+ * nombre propio), y `AppLayout.tsx` no seteaba estas variables en absoluto
+ * (le pasaba al splash los tokens de `resolveEstilosMarca`, que
+ * `WelcomeSplashLoader` no lee).
+ *
+ * Reusa `resolveNombreMarca` (ya correcta) para el nombre, y replica la
+ * misma jerarquía de 3 niveles de `resolveEstilosMarca` para los colores
+ * (Empresa propia con AMBOS colores seteados -> holding EN VIVO ->
+ * `CONFIGURACION_EMPRESA_DEFAULT`) sin la conversión a RGB.
+ */
+export function resolveMarcaCompleta(
+  usuario: AuthenticatedUser | null,
+  configuracionHolding:
+    | Pick<ConfiguracionEmpresa, "nombre" | "colorPrimario" | "colorSecundario">
+    | undefined,
+): { nombre: string; "--marca-color-1": string; "--marca-color-2": string } {
+  const colorPrimario =
+    usuario?.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null
+      ? usuario.empresaColorPrimario
+      : (configuracionHolding?.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario);
+
+  const colorSecundario =
+    usuario?.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null
+      ? usuario.empresaColorSecundario
+      : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
+
+  return {
+    nombre: resolveNombreMarca(usuario, configuracionHolding),
+    "--marca-color-1": colorPrimario,
+    "--marca-color-2": colorSecundario,
+  };
+}

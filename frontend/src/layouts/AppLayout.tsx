@@ -6,7 +6,7 @@ import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
 import { useSplashGate } from "@/hooks/useSplashGate";
-import { resolveEstilosMarca, resolveNombreMarca } from "@/lib/color-marca";
+import { resolveEstilosMarca, resolveMarcaCompleta } from "@/lib/color-marca";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
@@ -44,7 +44,14 @@ export function AppLayout() {
   // `lib/color-marca.ts` para el alcance exacto y por qué `--sidebar`
   // (fondo sólido) queda afuera.
   const estilosMarca = resolveEstilosMarca(user, configuracionHolding);
-  const nombreMarca = resolveNombreMarca(user, configuracionHolding);
+  // Fix real (splash duplicado con el color índigo por defecto en vez del
+  // color de marca real): `resolveMarcaCompleta` (`lib/color-marca.ts`) es
+  // la misma fuente única que ahora usa `LoginPage.tsx`, con las variables
+  // que `WelcomeSplashLoader`/`tema-empresarial.css` realmente leen
+  // (`--marca-color-1`/`--marca-color-2`) -- `estilosMarca` de arriba son
+  // tokens shadcn del shell (`--primary`/`--sidebar*`) que el splash nunca
+  // consume, por eso antes caía al índigo default de `.tema-empresarial`.
+  const marcaSplash = resolveMarcaCompleta(user, configuracionHolding);
   // Gap real corregido -- ver `useSplashGate.ts`: en una recarga en frío de
   // una ruta ya autenticada (F5 con sesión vigente) no hay ninguna precarga
   // de `useConfiguracionEmpresa()` como sí tiene `LoginPage.tsx`, así que el
@@ -77,10 +84,15 @@ export function AppLayout() {
     return (
       <div className="tema-empresarial">
         <WelcomeSplashLoader
-          contexto={nombreMarca}
+          contexto={marcaSplash.nombre}
           mensaje="Cargando tu panel…"
           visible
-          style={estilosMarca as CSSProperties}
+          style={
+            {
+              "--marca-color-1": marcaSplash["--marca-color-1"],
+              "--marca-color-2": marcaSplash["--marca-color-2"],
+            } as CSSProperties
+          }
         />
       </div>
     );

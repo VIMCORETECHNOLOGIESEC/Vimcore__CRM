@@ -4,6 +4,7 @@ import {
   foregroundForContrast,
   hexToRgbTriplet,
   resolveLogoMarca,
+  resolveMarcaCompleta,
   resolveNombreMarca,
 } from "@/lib/color-marca";
 import type { AuthenticatedUser } from "@/tipos/usuario";
@@ -216,5 +217,81 @@ describe("resolveNombreMarca (PASO 7)", () => {
   it("usuario null cae al default de fábrica", () => {
     expect(resolveNombreMarca(null, undefined)).toBe("CRM Embudo de Leads");
     expect(resolveNombreMarca(null, holdingConNombre)).toBe("Holding En Vivo");
+  });
+});
+
+/**
+ * Fix real (splash post-login duplicado con un dato mal cada vez): unifica
+ * en un solo objeto plano `{ nombre, "--marca-color-1", "--marca-color-2" }`
+ * -- exactamente las 3 variables que `WelcomeSplashLoader.tsx`/
+ * `tema-empresarial.css` (`.welcome-splash`) consumen para pintar el splash,
+ * a diferencia de `resolveEstilosMarca` (tokens shadcn del shell, en
+ * triplete RGB, no hex). Antes `LoginPage.tsx` tenía su propia
+ * `resolveColorMarca` local que nunca resolvía `nombre` (venía del holding
+ * global) y `AppLayout.tsx` no seteaba estas variables en absoluto.
+ */
+describe("resolveMarcaCompleta (fix splash duplicado)", () => {
+  const holdingCompleto = {
+    nombre: "Holding En Vivo",
+    colorPrimario: "#134e4a",
+    colorSecundario: "#10b981",
+  };
+
+  it("nivel 1 -- sesion company con nombre y colores propios seteados devuelve los 3 campos de la Empresa (ignora el holding)", () => {
+    expect(resolveMarcaCompleta(usuarioBase, holdingCompleto)).toEqual({
+      nombre: "Empresa Test",
+      "--marca-color-1": "#7c2d12",
+      "--marca-color-2": "#f97316",
+    });
+  });
+
+  it("nivel 2 -- sesion holding usa nombre y colores EN VIVO de configuracion-empresa", () => {
+    const usuario = {
+      ...usuarioBase,
+      sessionScope: "holding" as const,
+      empresaId: null,
+      empresaNombre: null,
+      empresaColorPrimario: null,
+      empresaColorSecundario: null,
+    };
+    expect(resolveMarcaCompleta(usuario, holdingCompleto)).toEqual({
+      nombre: "Holding En Vivo",
+      "--marca-color-1": "#134e4a",
+      "--marca-color-2": "#10b981",
+    });
+  });
+
+  it("nivel 2 -- empresa sin color propio (nulls) usa los colores EN VIVO del holding aunque tenga nombre propio", () => {
+    const usuario = { ...usuarioBase, empresaColorPrimario: null, empresaColorSecundario: null };
+    expect(resolveMarcaCompleta(usuario, holdingCompleto)).toEqual({
+      // empresaNombre sigue seteado -- nivel 1 de resolveNombreMarca no depende de los colores.
+      nombre: "Empresa Test",
+      "--marca-color-1": "#134e4a",
+      "--marca-color-2": "#10b981",
+    });
+  });
+
+  it("nivel 3 -- sesion holding sin config de holding (carga/error de la query) cae al default de fábrica", () => {
+    const usuario = {
+      ...usuarioBase,
+      sessionScope: "holding" as const,
+      empresaId: null,
+      empresaNombre: null,
+      empresaColorPrimario: null,
+      empresaColorSecundario: null,
+    };
+    expect(resolveMarcaCompleta(usuario, undefined)).toEqual({
+      nombre: "CRM Embudo de Leads",
+      "--marca-color-1": "#1e2a5e",
+      "--marca-color-2": "#2563eb",
+    });
+  });
+
+  it("usuario null cae al default de fábrica para las 3 variables", () => {
+    expect(resolveMarcaCompleta(null, undefined)).toEqual({
+      nombre: "CRM Embudo de Leads",
+      "--marca-color-1": "#1e2a5e",
+      "--marca-color-2": "#2563eb",
+    });
   });
 });
