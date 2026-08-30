@@ -86,6 +86,10 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
   });
 
   it("prueba obligatoria 8b: reasignar y volver a vencer produce una segunda fila distinta", async () => {
+    // Timeout ampliado (default 5000ms): en runners de CI, más lentos que
+    // local, esta prueba —con dos corridas secuenciales de detectLeadsAtrasados
+    // contra la BD compartida de la suite (fileParallelism: false)— roza el
+    // límite bajo contención. No es un problema de lógica del test.
     const asesor = await crearAsesorActivo();
     const lead = await crearLeadAtrasado(fronteraAtrasadaHace(60_000), asesor.id);
 
@@ -112,7 +116,7 @@ describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {
     });
     expect(eventos).toHaveLength(2);
     expect(eventos[1]!.id).not.toBe(eventos[0]!.id);
-  });
+  }, 15_000);
 
   it("prueba obligatoria 4 (reafirmada, D3): lead sin asignar (slaInicioEn=null) nunca se marca atrasado", async () => {
     const cliente = await crearCliente();
