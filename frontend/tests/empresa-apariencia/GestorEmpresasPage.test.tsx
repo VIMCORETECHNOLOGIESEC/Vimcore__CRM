@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   EmpresaAparienciaHoldingView,
@@ -59,7 +60,10 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <GestorEmpresasPage />
+      {/* MemoryRouter: cada card enlaza "Ver detalles" a /usuarios?empresaId= (F8-D0). */}
+      <MemoryRouter>
+        <GestorEmpresasPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -83,17 +87,43 @@ describe("GestorEmpresasPage", () => {
     expect(await screen.findByText("No se pudo completar la operación")).toBeInTheDocument();
   });
 
-  it("el encabezado de la tabla usa la superficie de marca (--sidebar), igual que Usuarios/Bridges/Leads", async () => {
-    fetchEmpresasHoldingApiMock.mockResolvedValue(empresasResponse([empresaFake()]));
+  it("cada empresa se muestra como card con isotipo, nombre y acciones -- no como fila de tabla", async () => {
+    fetchEmpresasHoldingApiMock.mockResolvedValue(
+      empresasResponse([empresaFake({ id: "e1", nombre: "Empresa A", logoUrl: "https://cdn.test/e1.png" })]),
+    );
     renderPage();
 
     await screen.findByText("Empresa A");
 
-    const encabezado = screen.getByText("Nombre").closest("thead");
-    expect(encabezado).toHaveClass("bg-sidebar");
-    for (const etiqueta of ["Nombre", "Color primario", "Color secundario", "Isotipo", "Acciones"]) {
-      expect(screen.getByText(etiqueta).closest("th")).toHaveClass("text-sidebar-foreground/80");
-    }
+    // Ya no hay estructura de tabla.
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    // Isotipo con logo real.
+    const isotipo = screen.getByAltText("Isotipo de Empresa A");
+    expect(isotipo.tagName).toBe("IMG");
+    expect(isotipo).toHaveAttribute("src", "https://cdn.test/e1.png");
+
+    // Acción primaria: navega a la vista de detalle (hoy /usuarios?empresaId=,
+    // ver comentario en GestorEmpresasPage.tsx sobre el context pendiente).
+    const verDetalles = screen.getByRole("link", { name: "Ver detalles de Empresa A" });
+    expect(verDetalles).toHaveAttribute("href", "/usuarios?empresaId=e1");
+
+    // Acción secundaria: Editar, subordinada visualmente pero con el mismo
+    // nombre accesible que antes (no rompe el flujo de edición existente).
+    expect(screen.getByRole("button", { name: "Editar Empresa A" })).toBeInTheDocument();
+  });
+
+  it("sin isotipo, la card usa el mismo patrón visual de fallback que app-sidebar (borde punteado + inicial)", async () => {
+    fetchEmpresasHoldingApiMock.mockResolvedValue(
+      empresasResponse([empresaFake({ id: "e2", nombre: "Beta Corp", logoUrl: null })]),
+    );
+    renderPage();
+
+    await screen.findByText("Beta Corp");
+
+    expect(screen.queryByAltText("Isotipo de Beta Corp")).not.toBeInTheDocument();
+    const inicial = screen.getByText("B");
+    expect(inicial).toHaveClass("border-dashed");
   });
 
   it("el pie de la tabla también usa la superficie de marca (--sidebar), igual que Usuarios/Bridges/Leads", async () => {

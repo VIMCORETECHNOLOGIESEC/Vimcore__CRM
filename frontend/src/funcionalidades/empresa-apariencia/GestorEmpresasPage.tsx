@@ -1,9 +1,10 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { getErrorMessage } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
@@ -19,20 +20,82 @@ const EMPRESAS_POR_PAGINA = 25;
 /** Debounce del buscador -- evita un `GET /empresas` por cada tecla (478 empresas reales en este entorno). */
 const BUSQUEDA_DEBOUNCE_MS = 300;
 
-/** Muestra el swatch de color junto al hex -- nunca solo el color (accesibilidad, docs/07 criterios transversales). */
-function CeldaColor({ hex }: { hex: string | null }) {
-  if (!hex) {
-    return <span className="text-sm text-muted-foreground">Sin definir</span>;
-  }
+/**
+ * Card de una empresa del holding (F8-D0). El isotipo es el elemento
+ * protagonista -- es la forma en que un administrador de holding reconoce
+ * "de un vistazo" cada empresa en un directorio de cientos, igual que un
+ * selector de workspace -- por eso domina el tope de la card en vez de
+ * competir en tamaño con el nombre o las acciones.
+ *
+ * Toda la card es clickeable hacia "Ver detalles" (mismo patrón de hit-area
+ * estirada que ya usa la columna Cliente de `LeadsTable.tsx`: un único <a>
+ * semántico con `after:absolute after:inset-0`, en vez de un `<div onClick>`
+ * hecho a mano que perdería foco/teclado/semántica -- ver skill
+ * `interface-design`, "Use What Exists"). "Editar" es una acción secundaria
+ * en la esquina, elevada por encima de ese overlay con `relative z-10` para
+ * seguir siendo clickeable de forma independiente.
+ *
+ * TODO(bloque holding/empresa, otra sesión en curso): el destino real es
+ * `entrarAEmpresa(empresa.id)` de un context de "empresa en vista" que
+ * todavía no existe. Mientras tanto navega a `/usuarios?empresaId=` (ruta ya
+ * existente) para que el botón sea funcional hoy -- cambio de una línea
+ * cuando ese context exista.
+ */
+function CardEmpresa({
+  empresa,
+  onEditar,
+}: {
+  empresa: EmpresaAparienciaHoldingView;
+  onEditar: () => void;
+}) {
+  const inicial = empresa.nombre.trim()[0]?.toUpperCase() ?? "?";
+
   return (
-    <span className="flex items-center gap-2">
-      <span
-        aria-hidden="true"
-        className="size-4 shrink-0 rounded border border-border"
-        style={{ backgroundColor: hex }}
-      />
-      <span className="font-mono text-sm">{hex}</span>
-    </span>
+    <Card className="group relative flex flex-col items-center gap-3 border-border/70 p-5 text-center transition-all hover:border-primary/30 hover:bg-primary/5 hover:shadow-md">
+      {empresa.logoUrl ? (
+        <img
+          src={empresa.logoUrl}
+          alt={`Isotipo de ${empresa.nombre}`}
+          className="size-16 shrink-0 rounded-md border border-border/70 bg-background object-contain p-1"
+        />
+      ) : (
+        // Mismo patrón visual que el fallback de isotipo de `app-sidebar.tsx`
+        // (borde punteado + inicial) -- escalado para ser protagonista acá,
+        // adaptado a los tokens de la superficie `bg-card` en vez de `--sidebar`.
+        <span
+          aria-hidden="true"
+          className="flex size-16 shrink-0 items-center justify-center rounded-md border-2 border-dashed border-muted-foreground/35 text-xl font-bold text-muted-foreground/60"
+        >
+          {inicial}
+        </span>
+      )}
+
+      <span className="line-clamp-2 min-h-10 text-sm font-semibold leading-tight text-card-foreground">
+        {empresa.nombre}
+      </span>
+
+      <Button asChild variant="secondary" size="sm" className="w-full">
+        <Link
+          to={`/usuarios?empresaId=${empresa.id}`}
+          aria-label={`Ver detalles de ${empresa.nombre}`}
+          className="after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-1"
+        >
+          Ver detalles
+        </Link>
+      </Button>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={`Editar ${empresa.nombre}`}
+        title="Editar"
+        className="absolute right-2 top-2 z-10 size-7 text-muted-foreground hover:bg-background hover:text-foreground"
+        onClick={onEditar}
+      >
+        <Pencil className="size-3.5" aria-hidden="true" />
+      </Button>
+    </Card>
   );
 }
 
@@ -135,54 +198,26 @@ export function GestorEmpresasPage() {
         />
       ) : (
         <div className="flex flex-col">
-          <Table>
-            <TableHeader className="sticky top-0 z-20 bg-sidebar">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="text-sidebar-foreground/80">Nombre</TableHead>
-                <TableHead className="text-sidebar-foreground/80">Color primario</TableHead>
-                <TableHead className="text-sidebar-foreground/80">Color secundario</TableHead>
-                <TableHead className="text-sidebar-foreground/80">Isotipo</TableHead>
-                <TableHead className="w-24 text-right text-sidebar-foreground/80">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {empresas.map((empresa) => (
-                <TableRow key={empresa.id}>
-                  <TableCell className="font-medium">{empresa.nombre}</TableCell>
-                  <TableCell>
-                    <CeldaColor hex={empresa.colorPrimario} />
-                  </TableCell>
-                  <TableCell>
-                    <CeldaColor hex={empresa.colorSecundario} />
-                  </TableCell>
-                  <TableCell>
-                    {empresa.logoUrl ? (
-                      <img
-                        src={empresa.logoUrl}
-                        alt={`Isotipo de ${empresa.nombre}`}
-                        className="size-8 rounded object-contain"
-                      />
-                    ) : (
-                      <span className="text-sm text-muted-foreground">Sin isotipo</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      aria-label={`Editar ${empresa.nombre}`}
-                      onClick={() => setEmpresaEnEdicion(empresa)}
-                    >
-                      Editar
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          {/*
+           * Grid de directorio, no tabla densa -- el volumen real (hasta
+           * cientos de empresas) ya está resuelto por la paginación
+           * server-side de 25, así que el grid no necesita ser denso, puede
+           * priorizar reconocimiento visual del isotipo. 2 columnas en
+           * mobile (las cards son cuadradas, un listado a 1 columna
+           * desperdiciaría ancho); 5 en xl da 5x5 exacto para una página
+           * completa de 25 sin fila incompleta.
+           */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+            {empresas.map((empresa) => (
+              <CardEmpresa
+                key={empresa.id}
+                empresa={empresa}
+                onEditar={() => setEmpresaEnEdicion(empresa)}
+              />
+            ))}
+          </div>
 
-          <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
+          <div className="leads-table-footer mt-4 flex h-10 shrink-0 items-center justify-between rounded-lg border border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
             <span>
               Mostrando {desde}–{hasta} de {total} empresas
             </span>
