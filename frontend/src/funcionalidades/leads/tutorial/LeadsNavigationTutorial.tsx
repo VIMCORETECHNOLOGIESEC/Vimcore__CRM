@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { ACTIONS, EVENTS, Joyride, STATUS, type EventData, type Step } from "react-joyride";
 import { useLocation, useNavigate } from "react-router";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 
 type TutorialTransitionAction = { action: "open-workspace" | "select-tab"; tab?: string };
 
@@ -188,7 +189,23 @@ function dispatchLeadTourEvent(detail: { action: "open-workspace" | "select-tab"
   window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail }));
 }
 
-export function LeadsNavigationTutorialProvider({ children }: { children: ReactNode }) {
+interface LeadsNavigationTutorialProviderProps {
+  children: ReactNode;
+  /**
+   * Color de marca (hex) para el botón "Siguiente" de Joyride y sus estados
+   * hover/focus -- `options.primaryColor` es el único valor del que Joyride
+   * los deriva automáticamente. Lo resuelve `AppLayout.tsx` (único ancestro
+   * de este provider) vía `resolveMarcaCompleta` (`lib/color-marca.ts`,
+   * `--marca-color-2`), la misma fuente que ya usa el splash de bienvenida
+   * -- se recibe como prop en vez de que este componente resuelva la marca
+   * de cero, para no duplicar la jerarquía de 3 niveles (empresa propia ->
+   * holding en vivo -> default) ya centralizada ahí. Sin prop (ej. tests que
+   * montan el provider aislado), cae al azul de fábrica del CRM.
+   */
+  colorAcento?: string;
+}
+
+export function LeadsNavigationTutorialProvider({ children, colorAcento }: LeadsNavigationTutorialProviderProps) {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -322,7 +339,7 @@ export function LeadsNavigationTutorialProvider({ children }: { children: ReactN
         onEvent={handleTourEvent}
         options={{
           buttons: ["back", "close", "primary", "skip"],
-          primaryColor: "#2563EB",
+          primaryColor: colorAcento ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
           showProgress: true,
           skipBeacon: true,
           skipScroll: false,

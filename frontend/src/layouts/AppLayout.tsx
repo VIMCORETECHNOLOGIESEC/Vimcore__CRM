@@ -6,7 +6,8 @@ import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
 import { useSplashGate } from "@/hooks/useSplashGate";
-import { resolveEstilosMarca, resolveMarcaCompleta } from "@/lib/color-marca";
+import { resolveEstilosMarca, resolveLogoMarca, resolveMarcaCompleta } from "@/lib/color-marca";
+import { updateFavicon, updateThemeColor, resolveFaviconHref } from "@/lib/favicon-marca";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
@@ -52,6 +53,10 @@ export function AppLayout() {
   // tokens shadcn del shell (`--primary`/`--sidebar*`) que el splash nunca
   // consume, por eso antes caía al índigo default de `.tema-empresarial`.
   const marcaSplash = resolveMarcaCompleta(user, configuracionHolding);
+  // Pestaña dinámica (theme-color + favicon, ver efecto de abajo): mismo
+  // isotipo de 2 niveles que ya usa `app-sidebar.tsx` (logo propio de la
+  // empresa, o el del holding EN VIVO, o `null` si ninguno llegó todavía).
+  const logoMarca = resolveLogoMarca(user, configuracionHolding);
   // Gap real corregido -- ver `useSplashGate.ts`: en una recarga en frío de
   // una ruta ya autenticada (F5 con sesión vigente) no hay ninguna precarga
   // de `useConfiguracionEmpresa()` como sí tiene `LoginPage.tsx`, así que el
@@ -82,16 +87,43 @@ export function AppLayout() {
     if (!estilosMarca) {
       return undefined;
     }
-    const raiz = document.documentElement;
-    const claves = Object.keys(estilosMarca);
-    for (const clave of claves) {
-      raiz.style.setProperty(clave, estilosMarca[clave]);
+    const root = document.documentElement;
+    const keys = Object.keys(estilosMarca);
+    for (const key of keys) {
+      root.style.setProperty(key, estilosMarca[key]);
     }
     return () => {
-      for (const clave of claves) {
-        raiz.style.removeProperty(clave);
+      for (const key of keys) {
+        root.style.removeProperty(key);
       }
     };
+  }, [estilosMarca]);
+
+  // Pestaña dinámica (color de marca, decisión aprobada con artefacto
+  // visual de ejemplo): mismo trigger que el efecto de arriba
+  // (`estilosMarca`, que cambia exactamente cuando cambia la marca
+  // resuelta de `user`/`configuracionHolding`) para no duplicar la
+  // condición de "sesión sin resolver todavía". Lógica pura en
+  // `lib/favicon-marca.ts` (testeada ahí sin canvas real, ver
+  // `tests/lib/favicon-marca.test.ts`) -- este efecto es solo el punto de
+  // conexión con los valores de marca ya resueltos.
+  //
+  // `theme-color`: tiñe la barra de pestaña/dirección en Chrome y Safari
+  // mobile con `colorPrimario` (mismo tono que `--sidebar`, ver
+  // `resolveMarcaCompleta`/`resolveEstilosMarca`).
+  //
+  // Favicon: el logo real de la empresa si existe (`logoMarca`), o si no,
+  // un círculo con `colorPrimario` de fondo + la inicial del nombre en el
+  // color de mayor contraste -- MISMO concepto que el fallback ya
+  // existente en `app-sidebar.tsx` (letra sobre color de marca), pero
+  // como imagen aparte: el favicon no puede leer clases/variables CSS del
+  // DOM.
+  useEffect(() => {
+    if (!estilosMarca) {
+      return;
+    }
+    updateThemeColor(marcaSplash["--marca-color-1"]);
+    updateFavicon(resolveFaviconHref(logoMarca, marcaSplash.nombre, marcaSplash["--marca-color-1"]));
   }, [estilosMarca]);
 
   useEffect(() => {
@@ -137,7 +169,7 @@ export function AppLayout() {
 
   return (
     <PageHeaderProvider>
-      <LeadsNavigationTutorialProvider>
+      <LeadsNavigationTutorialProvider colorAcento={marcaSplash["--marca-color-2"]}>
         <SidebarProvider style={estilosMarca as CSSProperties}>
           <AppSidebar />
           <SidebarInset>

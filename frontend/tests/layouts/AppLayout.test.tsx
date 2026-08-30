@@ -18,8 +18,18 @@ vi.mock("@/components/app-sidebar", () => ({
 vi.mock("../../src/layouts/Header", () => ({
   Header: () => <div data-testid="app-header" />,
 }));
+let latestColorAcento: string | undefined;
 vi.mock("@/funcionalidades/leads/tutorial/LeadsNavigationTutorial", () => ({
-  LeadsNavigationTutorialProvider: ({ children }: { children: React.ReactNode }) => children,
+  LeadsNavigationTutorialProvider: ({
+    children,
+    colorAcento,
+  }: {
+    children: React.ReactNode;
+    colorAcento?: string;
+  }) => {
+    latestColorAcento = colorAcento;
+    return children;
+  },
 }));
 
 const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
@@ -58,6 +68,7 @@ function renderAppLayout() {
 }
 
 beforeEach(() => {
+  latestColorAcento = undefined;
   vi.useFakeTimers();
   useAuthMock.mockReturnValue({
     user: usuarioFake,
@@ -77,6 +88,10 @@ afterEach(() => {
   // React Testing Library (solo limpia lo montado bajo `document.body`) --
   // sin este reset, un test dejaría residuo visible para el siguiente.
   document.documentElement.removeAttribute("style");
+  // Pestaña dinámica (theme-color + favicon): mismo motivo que arriba --
+  // `<meta>`/`<link>` viven en `<head>`, fuera del árbol que RTL desmonta.
+  document.querySelector('meta[name="theme-color"]')?.remove();
+  document.querySelector('link[rel="icon"]')?.remove();
 });
 
 describe("AppLayout — gate del splash contra el gap de tema por defecto", () => {
@@ -133,6 +148,28 @@ describe("AppLayout — gate del splash contra el gap de tema por defecto", () =
   });
 });
 
+describe("AppLayout — Bug 4: color de marca real llega al tutorial guiado (Joyride)", () => {
+  /**
+   * Causa raíz: `LeadsNavigationTutorial.tsx` hardcodeaba
+   * `options.primaryColor: "#2563EB"` en vez de recibir el color de marca
+   * real ya resuelto acá (`marcaSplash["--marca-color-2"]`, misma fuente que
+   * pinta el splash de bienvenida).
+   */
+  it("pasa colorAcento = marcaSplash['--marca-color-2'] al provider del tutorial", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(latestColorAcento).toBe("#222222");
+  });
+});
+
 describe("AppLayout — Bug 3: color de marca disponible para portales Radix (tooltip/dropdown/dialog/sheet/select/popover/alert-dialog)", () => {
   /**
    * Causa raíz: `estilosMarca` solo se aplicaba como `style` inline en
@@ -185,5 +222,73 @@ describe("AppLayout — Bug 3: color de marca disponible para portales Radix (to
 
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("");
     expect(document.documentElement.style.getPropertyValue("--sidebar")).toBe("");
+  });
+});
+
+describe("AppLayout — pestaña dinámica (theme-color + favicon con la marca de la empresa logueada)", () => {
+  /**
+   * `lib/favicon-marca.ts` ya está probado de forma aislada, sin canvas
+   * real (`tests/lib/favicon-marca.test.ts`). Este bloque solo verifica el
+   * cableado en `AppLayout.tsx`: que el efecto llame a esas funciones con
+   * los valores de marca correctos ya resueltos por `color-marca.ts`.
+   */
+  it("actualiza <meta name=theme-color> con colorPrimario en cuanto se revela el shell (mismo color que el sidebar)", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(
+      "#111111",
+    );
+  });
+
+  it("usa el logo real de la empresa como favicon cuando existe, en vez de generarlo con canvas", () => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: {
+        nombre: "Holding X",
+        colorPrimario: "#111111",
+        colorSecundario: "#222222",
+        logoUrl: "https://cdn.holding.com/logo.svg",
+      },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(document.querySelector('link[rel="icon"]')?.getAttribute("href")).toBe(
+      "https://cdn.holding.com/logo.svg",
+    );
+  });
+
+  it("intenta generar el favicon con la inicial cuando la empresa no tiene logo (fallback canvas)", () => {
+    // Limitación conocida de jsdom (documentada en `favicon-marca.ts` y
+    // `tests/lib/favicon-marca.test.ts`): `HTMLCanvasElement.getContext("2d")`
+    // no está implementado sin el paquete nativo `canvas` (no instalado a
+    // propósito, agregarlo sería una dependencia nueva sin declarar,
+    // AGENTS.md §2.1) -- acá solo se confirma que el cableado corre sin
+    // romper el render y crea el `<link rel="icon">` (el data URI real con
+    // la inicial se prueba de forma aislada e inyectando un canvas falso en
+    // `tests/lib/favicon-marca.test.ts`, donde SÍ se verifica su contenido).
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(document.querySelector('link[rel="icon"]')).not.toBeNull();
+    expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
   });
 });

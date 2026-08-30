@@ -3,6 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Pestaña dinámica (decisión aprobada con artefacto visual de ejemplo):
+      `theme-color` tiñe la barra de pestaña/dirección en Chrome y Safari
+      mobile con el color de marca de la empresa logueada. Acá va SOLO el
+      default de fábrica (`CONFIGURACION_EMPRESA_DEFAULT.colorPrimario`,
+      `configuracion-empresa.api.ts`) para la carga inicial, antes de que
+      React resuelva la sesión -- `AppLayout.tsx` lo actualiza en runtime
+      con `colorPrimario` de la empresa real (mismo color que usa el
+      sidebar) en cuanto la marca se resuelve, vía
+      `lib/favicon-marca.ts::actualizarThemeColor`.
+
+      El favicon (`<link rel="icon">`) NO se declara acá a propósito: sin
+      sesión resuelta no hay forma de saber si la empresa tiene logo propio
+      o si corresponde el fallback con inicial (canvas), así que
+      `actualizarFavicon` (mismo archivo) crea el `<link>` en runtime la
+      primera vez que corre, en vez de arrancar con un ícono genérico que
+      después haya que reemplazar.
+    -->
+    <meta name="theme-color" content="#1e2a5e" />
     <title>CRM Embudo de Leads</title>
     <!--
       Google Fonts de la variante "Propuesta B -- Consejo directivo"
