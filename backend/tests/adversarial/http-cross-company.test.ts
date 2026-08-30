@@ -77,6 +77,65 @@ async function crearLead(empresaId: string): Promise<{ id: string }> {
   return { id: lead.id };
 }
 
+/**
+ * Fix (bug de seguridad: GET/PATCH/DELETE /usuarios y todo /bridges no
+ * filtraban por empresa) — mismo criterio que `crearAdminDeEmpresa`: un
+ * `Usuario` "hoja" (nunca inicia sesión) con una `Membresia` real en
+ * `empresaId`, para servir de OBJETIVO de las pruebas cruzadas de abajo.
+ */
+async function crearUsuarioEnEmpresa(empresaId: string, etiqueta: string): Promise<{ id: string; nombre: string }> {
+  const nombre = `Usuario objetivo ${etiqueta} ${crypto.randomUUID()}`;
+  const usuario = await testAdminPrisma.usuario.create({
+    data: {
+      nombre,
+      correo: `usuario-objetivo-${etiqueta}-${crypto.randomUUID()}@test.local`,
+      passwordHash: await hashPassword(PASSWORD),
+      rol: "ASESOR",
+      activo: true,
+    },
+  });
+  await testAdminPrisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId, rol: "ASESOR", habilitadoParaVenta: false, activa: true },
+  });
+  return { id: usuario.id, nombre };
+}
+
+async function crearBridgeEnEmpresa(empresaId: string, etiqueta: string): Promise<{ id: string; nombre: string }> {
+  const nombre = `Bridge objetivo ${etiqueta} ${crypto.randomUUID()}`;
+  const bridge = await testAdminPrisma.bridge.create({
+    data: {
+      redSocial: "GOOGLE_FORMS",
+      nombre,
+      claveApiHash: `hash-adversarial-${crypto.randomUUID()}`,
+      empresaId,
+    },
+  });
+  return { id: bridge.id, nombre };
+}
+
+/**
+ * Actor holding-wide GENUINO (Bloque F): `SUPER_ADMIN` nunca tiene
+ * `Membresia` propia (mismo criterio que `ADMINISTRADOR`/`SUPERVISOR`
+ * legado, D2) — login siempre por `Usuario.correo`, `empresaId: null`
+ * incondicional. Usado como control positivo de "sin restricción, ve todo".
+ */
+async function crearSuperAdminHoldingWide(): Promise<{ id: string; token: string }> {
+  const usuario = await testAdminPrisma.usuario.create({
+    data: {
+      nombre: `Super admin adversarial ${crypto.randomUUID()}`,
+      correo: `super-admin-adversarial-${crypto.randomUUID()}@test.local`,
+      passwordHash: await hashPassword(PASSWORD),
+      rol: "SUPER_ADMIN",
+      activo: true,
+    },
+  });
+  const login = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ correo: usuario.correo, password: PASSWORD });
+  expect(login.status, "login de super admin holding-wide").toBe(200);
+  return { id: usuario.id, token: login.body.accessToken as string };
+}
+
 async function crearCita(empresaId: string, usuarioId: string, leadId: string): Promise<{ id: string }> {
   const cita = await testAdminPrisma.cita.create({
     data: {
@@ -216,5 +275,374 @@ describe("adversarial/http-cross-company — GET /metricas/resumen (agregación,
     expect(resumenA.body.totalIngresados.actual).toBe(leadsA.length);
     // Empresa B tiene exactamente 3 leads propios y NUNCA debe contar los 2 de A.
     expect(resumenB.body.totalIngresados.actual).toBe(leadsB.length);
+  });
+});
+
+/**
+ * Fix (bug de seguridad CONFIRMADO en producción: GET/PATCH/DELETE /usuarios
+ * y todo /bridges no filtraban por empresa) — `usuarios.service.ts::
+ * buildWhere`/`assertUsuarioEnAlcance` y `bridge.service.ts::
+ * buildBridgeWhere`/`bridgeFueraDeAlcance`. Par de empresas DEDICADO (no el
+ * `empresaA`/`empresaB` compartido de arriba) para no mezclar usuarios/
+ * bridges con los leads/citas que otros `it` de este archivo ya crearon para
+ * esas mismas empresas.
+ */
+describe("adversarial/http-cross-company — GET/PATCH/DELETE /usuarios (bug de seguridad, scope por empresa)", () => {
+  it("404 (no 403) cuando un administrador de empresa A pide un usuario real de empresa B por id", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("usuarios-a"),
+      crearAdminDeEmpresa("usuarios-b"),
+    ]);
+    const usuarioB = await crearUsuarioEnEmpresa(adminB.empresaId, "usuarios-b");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/usuarios/${usuarioB.id}`)
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body).toMatchObject({ code: "usuario_no_encontrado" });
+  });
+
+  it("200 cuando el mismo usuario se pide desde su propia empresa (control positivo)", async () => {
+    const adminB = await crearAdminDeEmpresa("usuarios-control-b");
+    const usuarioB = await crearUsuarioEnEmpresa(adminB.empresaId, "usuarios-control-b");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/usuarios/${usuarioB.id}`)
+      .set("Authorization", `Bearer ${adminB.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.user.id).toBe(usuarioB.id);
+  });
+
+  it("GET /usuarios: un administrador de empresa A nunca ve un usuario de empresa B en el listado", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("usuarios-listado-a"),
+      crearAdminDeEmpresa("usuarios-listado-b"),
+    ]);
+    const usuarioB = await crearUsuarioEnEmpresa(adminB.empresaId, "usuarios-listado-b");
+
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ busqueda: usuarioB.nombre })
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(0);
+  });
+
+  it("PATCH /usuarios/:id: 404 cuando un administrador de empresa A intenta editar un usuario de empresa B, sin cambios persistidos", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("usuarios-patch-a"),
+      crearAdminDeEmpresa("usuarios-patch-b"),
+    ]);
+    const usuarioB = await crearUsuarioEnEmpresa(adminB.empresaId, "usuarios-patch-b");
+
+    const respuesta = await request(app)
+      .patch(`/api/v1/usuarios/${usuarioB.id}`)
+      .set("Authorization", `Bearer ${adminA.token}`)
+      .send({ nombre: "Nombre Inyectado Por Empresa A" });
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body).toMatchObject({ code: "usuario_no_encontrado" });
+
+    const sinCambios = await testAdminPrisma.usuario.findUniqueOrThrow({ where: { id: usuarioB.id } });
+    expect(sinCambios.nombre).toBe(usuarioB.nombre);
+  });
+
+  it("DELETE /usuarios/:id: 404 cuando un administrador de empresa A intenta dar de baja un usuario de empresa B, sigue activo", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("usuarios-delete-a"),
+      crearAdminDeEmpresa("usuarios-delete-b"),
+    ]);
+    const usuarioB = await crearUsuarioEnEmpresa(adminB.empresaId, "usuarios-delete-b");
+
+    const respuesta = await request(app)
+      .delete(`/api/v1/usuarios/${usuarioB.id}`)
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body).toMatchObject({ code: "usuario_no_encontrado" });
+
+    const sinCambios = await testAdminPrisma.usuario.findUniqueOrThrow({ where: { id: usuarioB.id } });
+    expect(sinCambios.activo).toBe(true);
+  });
+
+  it("GET /usuarios: un SUPER_ADMIN (holding-wide, sin empresaId) sigue viendo usuarios de cualquier empresa", async () => {
+    const [empresaX, superAdmin] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `HTTP adversarial usuarios-holding-x ${crypto.randomUUID()}` } }),
+      crearSuperAdminHoldingWide(),
+    ]);
+    const usuarioX = await crearUsuarioEnEmpresa(empresaX.id, "usuarios-holding-x");
+
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ busqueda: usuarioX.nombre })
+      .set("Authorization", `Bearer ${superAdmin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(1);
+    expect(respuesta.body.users[0].id).toBe(usuarioX.id);
+  });
+
+  it("GET /usuarios?empresaId=X: un SUPER_ADMIN puede hacer drill-down a UNA empresa puntual", async () => {
+    const [empresaX, empresaY, superAdmin] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `HTTP adversarial usuarios-drill-x ${crypto.randomUUID()}` } }),
+      testAdminPrisma.empresa.create({ data: { nombre: `HTTP adversarial usuarios-drill-y ${crypto.randomUUID()}` } }),
+      crearSuperAdminHoldingWide(),
+    ]);
+    const [usuarioX, usuarioY] = await Promise.all([
+      crearUsuarioEnEmpresa(empresaX.id, "usuarios-drill-x"),
+      crearUsuarioEnEmpresa(empresaY.id, "usuarios-drill-y"),
+    ]);
+
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ empresaId: empresaX.id, limite: 100 })
+      .set("Authorization", `Bearer ${superAdmin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    const ids = respuesta.body.users.map((u: { id: string }) => u.id);
+    expect(ids).toContain(usuarioX.id);
+    expect(ids).not.toContain(usuarioY.id);
+  });
+
+  it("GET /usuarios?empresaId=B: un administrador company-scoped de empresa A ignora el query param y sigue viendo solo su propia empresa", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("usuarios-drill-ignorado-a"),
+      crearAdminDeEmpresa("usuarios-drill-ignorado-b"),
+    ]);
+    const usuarioB = await crearUsuarioEnEmpresa(adminB.empresaId, "usuarios-drill-ignorado-b");
+
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ empresaId: adminB.empresaId, busqueda: usuarioB.nombre })
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.users).toHaveLength(0);
+  });
+});
+
+describe("adversarial/http-cross-company — GET/PATCH/DELETE /bridges (bug de seguridad, scope por empresa)", () => {
+  it("404 (no 403) cuando un administrador de empresa A pide un bridge real de empresa B por id", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("bridges-a"),
+      crearAdminDeEmpresa("bridges-b"),
+    ]);
+    const bridgeB = await crearBridgeEnEmpresa(adminB.empresaId, "bridges-b");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${bridgeB.id}`)
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body).toMatchObject({ code: "bridge_no_encontrado" });
+  });
+
+  it("200 cuando el mismo bridge se pide desde su propia empresa (control positivo)", async () => {
+    const adminB = await crearAdminDeEmpresa("bridges-control-b");
+    const bridgeB = await crearBridgeEnEmpresa(adminB.empresaId, "bridges-control-b");
+
+    const respuesta = await request(app)
+      .get(`/api/v1/bridges/${bridgeB.id}`)
+      .set("Authorization", `Bearer ${adminB.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridge.id).toBe(bridgeB.id);
+  });
+
+  it("GET /bridges: un administrador de empresa A nunca ve un bridge de empresa B en el listado", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("bridges-listado-a"),
+      crearAdminDeEmpresa("bridges-listado-b"),
+    ]);
+    const bridgeB = await crearBridgeEnEmpresa(adminB.empresaId, "bridges-listado-b");
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ busqueda: bridgeB.nombre })
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridges).toHaveLength(0);
+  });
+
+  it("PATCH /bridges/:id: 404 cuando un administrador de empresa A intenta editar un bridge de empresa B, sin cambios persistidos", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("bridges-patch-a"),
+      crearAdminDeEmpresa("bridges-patch-b"),
+    ]);
+    const bridgeB = await crearBridgeEnEmpresa(adminB.empresaId, "bridges-patch-b");
+
+    const respuesta = await request(app)
+      .patch(`/api/v1/bridges/${bridgeB.id}`)
+      .set("Authorization", `Bearer ${adminA.token}`)
+      .send({ nombre: "Nombre Inyectado Por Empresa A" });
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body).toMatchObject({ code: "bridge_no_encontrado" });
+
+    const sinCambios = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id: bridgeB.id } });
+    expect(sinCambios.nombre).toBe(bridgeB.nombre);
+  });
+
+  it("DELETE /bridges/:id: 404 cuando un administrador de empresa A intenta borrar un bridge de empresa B, sigue existiendo", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("bridges-delete-a"),
+      crearAdminDeEmpresa("bridges-delete-b"),
+    ]);
+    const bridgeB = await crearBridgeEnEmpresa(adminB.empresaId, "bridges-delete-b");
+
+    const respuesta = await request(app)
+      .delete(`/api/v1/bridges/${bridgeB.id}`)
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body).toMatchObject({ code: "bridge_no_encontrado" });
+
+    const sinCambios = await testAdminPrisma.bridge.findUnique({ where: { id: bridgeB.id } });
+    expect(sinCambios).not.toBeNull();
+  });
+
+  it("GET /bridges: un SUPER_ADMIN (holding-wide, sin empresaId) sigue viendo bridges de cualquier empresa", async () => {
+    const [empresaX, superAdmin] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `HTTP adversarial bridges-holding-x ${crypto.randomUUID()}` } }),
+      crearSuperAdminHoldingWide(),
+    ]);
+    const bridgeX = await crearBridgeEnEmpresa(empresaX.id, "bridges-holding-x");
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ busqueda: bridgeX.nombre })
+      .set("Authorization", `Bearer ${superAdmin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridges).toHaveLength(1);
+    expect(respuesta.body.bridges[0].id).toBe(bridgeX.id);
+  });
+
+  it("GET /bridges?empresaId=X: un SUPER_ADMIN puede hacer drill-down a UNA empresa puntual", async () => {
+    const [empresaX, empresaY, superAdmin] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `HTTP adversarial bridges-drill-x ${crypto.randomUUID()}` } }),
+      testAdminPrisma.empresa.create({ data: { nombre: `HTTP adversarial bridges-drill-y ${crypto.randomUUID()}` } }),
+      crearSuperAdminHoldingWide(),
+    ]);
+    const [bridgeX, bridgeY] = await Promise.all([
+      crearBridgeEnEmpresa(empresaX.id, "bridges-drill-x"),
+      crearBridgeEnEmpresa(empresaY.id, "bridges-drill-y"),
+    ]);
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ empresaId: empresaX.id, limite: 100 })
+      .set("Authorization", `Bearer ${superAdmin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    const ids = respuesta.body.bridges.map((b: { id: string }) => b.id);
+    expect(ids).toContain(bridgeX.id);
+    expect(ids).not.toContain(bridgeY.id);
+  });
+
+  it("GET /bridges?empresaId=B: un administrador company-scoped de empresa A ignora el query param y sigue viendo solo su propia empresa", async () => {
+    const [adminA, adminB] = await Promise.all([
+      crearAdminDeEmpresa("bridges-drill-ignorado-a"),
+      crearAdminDeEmpresa("bridges-drill-ignorado-b"),
+    ]);
+    const bridgeB = await crearBridgeEnEmpresa(adminB.empresaId, "bridges-drill-ignorado-b");
+
+    const respuesta = await request(app)
+      .get("/api/v1/bridges")
+      .query({ empresaId: adminB.empresaId, busqueda: bridgeB.nombre })
+      .set("Authorization", `Bearer ${adminA.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.bridges).toHaveLength(0);
+  });
+});
+
+/**
+ * Fix (bug de seguridad: POST /usuarios no forzaba `empresaId` a la empresa
+ * del actor) -- mismo criterio que `negociacion.producto.test.ts`.
+ */
+describe("adversarial/http-cross-company — POST /usuarios (bug de seguridad, empresaId forzado por sesión)", () => {
+  it("201: un administrador company-scoped ignora el empresaId del body y usa el de su propia sesión", async () => {
+    const [adminPropio, adminAjeno] = await Promise.all([
+      crearAdminDeEmpresa("usuarios-crear-propio"),
+      crearAdminDeEmpresa("usuarios-crear-ajeno"),
+    ]);
+    const correo = `asesor-inyectado-${crypto.randomUUID()}@test.local`;
+
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminPropio.token}`)
+      .send({
+        nombre: "Asesor Inyectado",
+        correo,
+        password: "clave-asesor-inyectado-123456",
+        rol: "ASESOR",
+        empresaId: adminAjeno.empresaId,
+      });
+
+    expect(respuesta.status).toBe(201);
+    const membresia = await testAdminPrisma.membresia.findFirst({ where: { usuarioId: respuesta.body.user.id } });
+    expect(membresia?.empresaId).toBe(adminPropio.empresaId);
+    expect(membresia?.empresaId).not.toBe(adminAjeno.empresaId);
+  });
+
+  it("400 empresa_requerida: un SUPER_ADMIN holding-wide sin empresaId en el body es rechazado", async () => {
+    const superAdmin = await crearSuperAdminHoldingWide();
+
+    const respuesta = await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${superAdmin.token}`)
+      .send({
+        nombre: "Asesor Sin Empresa HTTP",
+        correo: `asesor-sin-empresa-http-${crypto.randomUUID()}@test.local`,
+        password: "clave-asesor-sin-empresa-123456",
+        rol: "ASESOR",
+      });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.code).toBe("empresa_requerida");
+  });
+});
+
+/**
+ * Fix (bug de seguridad: POST /bridges no forzaba `empresaId` a la empresa
+ * del actor) -- mismo criterio que arriba.
+ */
+describe("adversarial/http-cross-company — POST /bridges (bug de seguridad, empresaId forzado por sesión)", () => {
+  it("201: un administrador company-scoped ignora el empresaId del body y usa el de su propia sesión", async () => {
+    const [adminPropio, adminAjeno] = await Promise.all([
+      crearAdminDeEmpresa("bridges-crear-propio"),
+      crearAdminDeEmpresa("bridges-crear-ajeno"),
+    ]);
+
+    const respuesta = await request(app)
+      .post("/api/v1/bridges")
+      .set("Authorization", `Bearer ${adminPropio.token}`)
+      .send({
+        redSocial: "GOOGLE_FORMS",
+        nombre: `Bridge inyectado ${crypto.randomUUID()}`,
+        empresaId: adminAjeno.empresaId,
+      });
+
+    expect(respuesta.status).toBe(201);
+    const filaPersistida = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id: respuesta.body.bridge.id } });
+    expect(filaPersistida.empresaId).toBe(adminPropio.empresaId);
+    expect(filaPersistida.empresaId).not.toBe(adminAjeno.empresaId);
+  });
+
+  it("400 empresa_requerida: un SUPER_ADMIN holding-wide sin empresaId en el body es rechazado", async () => {
+    const superAdmin = await crearSuperAdminHoldingWide();
+
+    const respuesta = await request(app)
+      .post("/api/v1/bridges")
+      .set("Authorization", `Bearer ${superAdmin.token}`)
+      .send({ redSocial: "GOOGLE_FORMS", nombre: `Bridge sin empresa ${crypto.randomUUID()}` });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.code).toBe("empresa_requerida");
   });
 });

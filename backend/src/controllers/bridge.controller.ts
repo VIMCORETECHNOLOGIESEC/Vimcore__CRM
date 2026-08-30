@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
+import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   bridgeCuentaParamsSchema,
   cargarTokenBodySchema,
@@ -38,36 +39,44 @@ function invalidCuentaParams(): AppError {
 
 /** `GET /bridges`: pagina y filtra por `busqueda`/`redSocial`/`estado` (fix, mismo contrato de forma que `GET /usuarios`). */
 export async function getBridges(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedQuery = listBridgesQuerySchema.safeParse(req.query);
   if (!parsedQuery.success) {
     throw zodValidationError();
   }
 
-  const { bridges, total, pagina, limite } = await findBridges(parsedQuery.data);
+  const { bridges, total, pagina, limite } = await findBridges(usuario, parsedQuery.data);
   res.status(200).json({ bridges, total, pagina, limite });
 }
 
 export async function postBridge(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsed = createBridgeBodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw zodValidationError();
   }
 
-  const { bridge, claveApi } = await createBridge(parsed.data);
+  const { bridge, claveApi } = await createBridge(usuario, parsed.data);
   res.status(201).json({ bridge, claveApi });
 }
 
 export async function getBridge(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const bridge = await getBridgeById(parsedId.data.id);
+  const bridge = await getBridgeById(usuario, parsedId.data.id);
   res.status(200).json({ bridge });
 }
 
 export async function patchBridge(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
@@ -78,27 +87,31 @@ export async function patchBridge(req: Request, res: Response): Promise<void> {
     throw zodValidationError();
   }
 
-  const bridge = await updateBridge(parsedId.data.id, parsedBody.data);
+  const bridge = await updateBridge(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ bridge });
 }
 
 export async function deleteBridgeHandler(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const { resultado, bridge } = await deleteBridge(parsedId.data.id);
+  const { resultado, bridge } = await deleteBridge(usuario, parsedId.data.id);
   res.status(200).json({ resultado, bridge });
 }
 
 export async function postBridgeClave(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const { bridge, claveApi } = await regenerateClave(parsedId.data.id);
+  const { bridge, claveApi } = await regenerateClave(usuario, parsedId.data.id);
   res.status(200).json({ bridge, claveApi });
 }
 
@@ -115,6 +128,8 @@ export async function getRedesActivas(_req: Request, res: Response): Promise<voi
 
 /** `GET /bridges/:id/logs`: lectura acotada de la bitácora, con tope aplicado en el servidor (Requirement: Log reads are bounded by a server-side default cap). */
 export async function getBridgeLogs(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
@@ -125,12 +140,14 @@ export async function getBridgeLogs(req: Request, res: Response): Promise<void> 
     throw zodValidationError();
   }
 
-  const logs = await listLogs(parsedId.data.id, parsedQuery.data);
+  const logs = await listLogs(usuario, parsedId.data.id, parsedQuery.data);
   res.status(200).json({ logs });
 }
 
 /** `POST /bridges/:id/cuentas`: alta manual de una cuenta publicitaria por el administrador (Requirement: Admin can manually create a CuentaPublicitaria). */
 export async function postCuentaPublicitaria(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
@@ -141,23 +158,27 @@ export async function postCuentaPublicitaria(req: Request, res: Response): Promi
     throw zodValidationError();
   }
 
-  const cuenta = await cuentaPublicitariaService.create(parsedId.data.id, parsedBody.data);
+  const cuenta = await cuentaPublicitariaService.create(usuario, parsedId.data.id, parsedBody.data);
   res.status(201).json({ cuenta });
 }
 
 /** `GET /bridges/:id/cuentas`: listado de cuentas publicitarias del bridge (Requirement: Bridge detail embeds its accounts). */
 export async function getCuentasPublicitarias(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const cuentas = await cuentaPublicitariaService.listByBridge(parsedId.data.id);
+  const cuentas = await cuentaPublicitariaService.listByBridge(usuario, parsedId.data.id);
   res.status(200).json({ cuentas });
 }
 
 /** `PATCH /bridges/:id/cuentas/:cuentaId`: solo alterna la activación de la cuenta (Requirement: PATCH toggles only activation). */
 export async function patchCuentaPublicitaria(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedParams = bridgeCuentaParamsSchema.safeParse(req.params);
   if (!parsedParams.success) {
     throw invalidCuentaParams();
@@ -169,6 +190,7 @@ export async function patchCuentaPublicitaria(req: Request, res: Response): Prom
   }
 
   const cuenta = await cuentaPublicitariaService.toggleActiva(
+    usuario,
     parsedParams.data.id,
     parsedParams.data.cuentaId,
     parsedBody.data.activa,
@@ -183,6 +205,8 @@ export async function patchCuentaPublicitaria(req: Request, res: Response): Prom
  * respuesta nunca lo incluye, ni siquiera enmascarado.
  */
 export async function postCuentaToken(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedParams = bridgeCuentaParamsSchema.safeParse(req.params);
   if (!parsedParams.success) {
     throw invalidCuentaParams();
@@ -194,6 +218,7 @@ export async function postCuentaToken(req: Request, res: Response): Promise<void
   }
 
   const cuenta = await cuentaPublicitariaService.cargarToken(
+    usuario,
     parsedParams.data.id,
     parsedParams.data.cuentaId,
     parsedBody.data.token,
@@ -207,12 +232,15 @@ export async function postCuentaToken(req: Request, res: Response): Promise<void
  * persiste cambios.
  */
 export async function postCuentaProbarConexion(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedParams = bridgeCuentaParamsSchema.safeParse(req.params);
   if (!parsedParams.success) {
     throw invalidCuentaParams();
   }
 
   const resultado = await cuentaPublicitariaService.probarConexion(
+    usuario,
     parsedParams.data.id,
     parsedParams.data.cuentaId,
   );

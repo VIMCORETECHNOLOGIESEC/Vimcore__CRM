@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
+import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   createUsuarioBodySchema,
   idParamSchema,
@@ -25,22 +26,26 @@ function invalidIdParam(): AppError {
 }
 
 export async function postUsuario(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsed = createUsuarioBodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw zodValidationError();
   }
 
-  const user = await createUsuario(parsed.data);
+  const user = await createUsuario(usuario, parsed.data);
   res.status(201).json({ user });
 }
 
 export async function getUsuarios(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsed = listUsuariosQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     throw zodValidationError();
   }
 
-  const resultado = await findUsuarios(parsed.data);
+  const resultado = await findUsuarios(usuario, parsed.data);
   res
     .status(200)
     .json({ users: resultado.usuarios, total: resultado.total, pagina: resultado.pagina, limite: resultado.limite });
@@ -50,28 +55,38 @@ export async function getUsuarios(req: Request, res: Response): Promise<void> {
  * F3/F4 (diseño D-A1): traducción HTTP pura. La ruta ya restringe el rol a
  * ADMINISTRADOR/SUPERVISOR (`requireRole`) — el servicio no reaplica la
  * regla, sigue el mismo patrón que `postLeadAsignar`.
+ *
+ * Fix (bug de seguridad, scope por empresa): ahora exige el actor
+ * autenticado -- `findResponsables` aplica el mismo criterio de 3 ramas que
+ * `getUsuarios`.
  */
 export async function getUsuariosResponsables(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsed = listResponsablesQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     throw zodValidationError();
   }
 
-  const responsables = await findResponsables(parsed.data.rol);
+  const responsables = await findResponsables(usuario, parsed.data);
   res.status(200).json({ responsables });
 }
 
 export async function getUsuarioById(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  const user = await findUsuarioById(parsedId.data.id);
+  const user = await findUsuarioById(usuario, parsedId.data.id);
   res.status(200).json({ user });
 }
 
 export async function patchUsuario(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
@@ -82,16 +97,18 @@ export async function patchUsuario(req: Request, res: Response): Promise<void> {
     throw zodValidationError();
   }
 
-  const user = await updateUsuario(parsedId.data.id, parsedBody.data);
+  const user = await updateUsuario(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ user });
 }
 
 export async function deleteUsuario(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
   const parsedId = idParamSchema.safeParse(req.params);
   if (!parsedId.success) {
     throw invalidIdParam();
   }
 
-  await deactivateUsuario(parsedId.data.id);
+  await deactivateUsuario(usuario, parsedId.data.id);
   res.status(204).send();
 }

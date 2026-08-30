@@ -117,6 +117,31 @@ export async function findPublicById(id: string): Promise<AdminUsuarioView | nul
   return prisma.usuario.findUnique({ where: { id }, select: adminUsuarioSelect });
 }
 
+/**
+ * Fix (GET/PATCH/DELETE /usuarios no filtran por empresa): "pertenece a esta
+ * empresa" para un `Usuario` -- a diferencia de `Bridge`/`Lead`, `Usuario` no
+ * tiene columna `empresaId` propia; su empresa se deriva SIEMPRE vía
+ * `Membresia` (mismo criterio que `require-authentication.middleware.ts`
+ * resuelve el `TenantContext` del actor). Existencia de AL MENOS una
+ * `Membresia` ACTIVA en `empresaId` -- decisión de equipo (fix de seguridad):
+ * una `Membresia` desactivada SÍ saca al usuario del alcance administrativo
+ * de esa empresa para el admin de empresa (mismo criterio que
+ * `auth.service.ts::login` ya aplica para bloquear el login por esa
+ * membresía). `activa: false` no borra la fila -- el usuario simplemente deja
+ * de ser visible/editable por un admin de esa empresa hasta reactivarse.
+ */
+export async function existsEnEmpresa(
+  id: string,
+  empresaId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<boolean> {
+  const match = await client.usuario.findFirst({
+    where: { id, membresias: { some: { empresaId, activa: true } } },
+    select: { id: true },
+  });
+  return match !== null;
+}
+
 export async function updateUsuario(
   id: string,
   data: UpdateUsuarioData,
@@ -150,10 +175,22 @@ export type ResponsableView = Prisma.UsuarioGetPayload<{ select: typeof responsa
  * No reusa `findActivosPorRol` porque ese select es específico del algoritmo
  * de asignación (`ultimaAsignacionEn`, sin `nombre`) — dos consumidores con
  * proyecciones distintas, mismo filtro `where`.
+ *
+ * Fix (bug de seguridad, scope por empresa): `empresaId` opcional -- mismo
+ * criterio que `existsEnEmpresa` arriba (AL MENOS una `Membresia` ACTIVA en
+ * esa empresa). `undefined` preserva el comportamiento previo sin
+ * restricción (actor holding-wide sin drill-down, D2).
  */
-export async function findResponsablesActivosPorRol(rol: RolUsuario): Promise<ResponsableView[]> {
+export async function findResponsablesActivosPorRol(
+  rol: RolUsuario,
+  empresaId?: string,
+): Promise<ResponsableView[]> {
   return prisma.usuario.findMany({
-    where: { rol, activo: true },
+    where: {
+      rol,
+      activo: true,
+      ...(empresaId ? { membresias: { some: { empresaId, activa: true } } } : {}),
+    },
     select: responsableSelect,
   });
 }
