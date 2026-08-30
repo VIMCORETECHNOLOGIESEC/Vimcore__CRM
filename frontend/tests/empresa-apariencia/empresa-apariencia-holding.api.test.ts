@@ -10,11 +10,29 @@ vi.mock("@/api/httpClient", () => ({
 }));
 
 const { httpClient } = await import("@/api/httpClient");
-const { fetchEmpresasHoldingApi } = await import(
+const { fetchEmpresasHoldingApi, fetchEmpresaHoldingApi } = await import(
   "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api"
 );
 
 const getMock = vi.mocked(httpClient.get);
+
+describe("fetchEmpresaHoldingApi", () => {
+  it("llama a GET /empresas/:empresaId y devuelve la empresa tal cual (sin envelope)", async () => {
+    const empresa = {
+      id: "e1",
+      nombre: "Empresa A",
+      colorPrimario: "#111111",
+      colorSecundario: "#222222",
+      logoUrl: null,
+    };
+    getMock.mockResolvedValue(empresa);
+
+    const resultado = await fetchEmpresaHoldingApi("e1");
+
+    expect(getMock).toHaveBeenCalledWith("/empresas/e1");
+    expect(resultado).toEqual(empresa);
+  });
+});
 
 describe("fetchEmpresasHoldingApi", () => {
   it("llama a GET /empresas con page/pageSize/search y devuelve { items, total } tal cual", async () => {

@@ -3,11 +3,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/api/httpClient";
 import type { EmpresaAparienciaHoldingView } from "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api";
 import type { RolUsuario } from "@/tipos/usuario";
 
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
-  fetchEmpresasHoldingApi: vi.fn(),
+  fetchEmpresaHoldingApi: vi.fn(),
 }));
 vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
   useVistaEmpresa: vi.fn(),
@@ -29,7 +30,7 @@ const { EmpresaDetallePage } = await import(
   "@/funcionalidades/empresa-apariencia/EmpresaDetallePage"
 );
 
-const fetchEmpresasHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresasHoldingApi);
+const fetchEmpresaHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresaHoldingApi);
 const useVistaEmpresaMock = vi.mocked(useVistaEmpresa);
 const useAuthMock = vi.mocked(useAuth);
 const createEmpresaAdministradorApiMock = vi.mocked(usuariosApi.createEmpresaAdministradorApi);
@@ -65,11 +66,11 @@ function empresaFake(overrides: Partial<EmpresaAparienciaHoldingView> = {}): Emp
 }
 
 beforeEach(() => {
-  fetchEmpresasHoldingApiMock.mockReset();
-  // Default sano para tests que no dependen del listado (ej. empresaId
+  fetchEmpresaHoldingApiMock.mockReset();
+  // Default sano para tests que no dependen del fetch puntual (ej. empresaId
   // ausente, donde el componente nunca debería llegar a leer el resultado)
   // -- evita el warning de TanStack Query por una query sin resolver.
-  fetchEmpresasHoldingApiMock.mockResolvedValue({ items: [], total: 0 });
+  fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake());
   entrarAEmpresaMock.mockReset();
   salirDeEmpresaMock.mockReset();
   useVistaEmpresaMock.mockReturnValue({
@@ -122,14 +123,14 @@ function renderSinEmpresaId() {
 }
 
 describe("EmpresaDetallePage — flujo principal", () => {
-  it("muestra un estado de carga mientras se resuelve el listado", () => {
-    fetchEmpresasHoldingApiMock.mockReturnValue(new Promise(() => {}));
+  it("muestra un estado de carga mientras se resuelve la empresa", () => {
+    fetchEmpresaHoldingApiMock.mockReturnValue(new Promise(() => {}));
     renderPage();
     expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
   });
 
   it("muestra un mensaje accionable y permite reintentar cuando falla la carga", async () => {
-    fetchEmpresasHoldingApiMock.mockRejectedValue(new Error("network error"));
+    fetchEmpresaHoldingApiMock.mockRejectedValue(new Error("network error"));
     renderPage();
 
     expect(await screen.findByText("No se pudo completar la operación")).toBeInTheDocument();
@@ -137,10 +138,9 @@ describe("EmpresaDetallePage — flujo principal", () => {
   });
 
   it("renderiza el nombre, el isotipo y los dos links de acceso de la empresa encontrada", async () => {
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "e1", nombre: "Empresa A", logoUrl: "https://cdn.test/e1.png" })],
-      total: 1,
-    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(
+      empresaFake({ id: "e1", nombre: "Empresa A", logoUrl: "https://cdn.test/e1.png" }),
+    );
     const { container } = renderPage();
 
     expect(await screen.findByRole("heading", { name: "Empresa A" })).toBeInTheDocument();
@@ -156,15 +156,14 @@ describe("EmpresaDetallePage — flujo principal", () => {
   });
 });
 
-describe("EmpresaDetallePage — punto frágil: empresa no encontrada en el listado", () => {
-  it("si el empresaId de la URL no está en los resultados, muestra 'No se encontró' sin quedar en loading infinito", async () => {
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "otra-empresa", nombre: "Otra Empresa" })],
-      total: 1,
-    });
+describe("EmpresaDetallePage — punto frágil: empresa inexistente (404 del backend)", () => {
+  it("si el backend responde empresa_no_encontrada, muestra el mensaje accionable sin quedar en loading infinito", async () => {
+    fetchEmpresaHoldingApiMock.mockRejectedValue(
+      new ApiError("empresa_no_encontrada", 404, "La empresa indicada no existe"),
+    );
     renderPage("/empresas/e1");
 
-    expect(await screen.findByText("No se encontró la empresa solicitada.")).toBeInTheDocument();
+    expect(await screen.findByText("La empresa indicada no existe")).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Cargando" })).not.toBeInTheDocument();
   });
 });
@@ -172,10 +171,7 @@ describe("EmpresaDetallePage — punto frágil: empresa no encontrada en el list
 describe("EmpresaDetallePage — alta de administrador de empresa (Item 23)", () => {
   it("muestra el disparador «Nuevo administrador» para ADMINISTRADOR y abre el diálogo al hacer clic", async () => {
     const user = userEvent.setup();
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
-      total: 1,
-    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     renderPage("/empresas/e1");
 
     await screen.findByRole("heading", { name: "Empresa A" });
@@ -190,10 +186,7 @@ describe("EmpresaDetallePage — alta de administrador de empresa (Item 23)", ()
 
   it("no muestra el disparador para un rol sin permiso (no ADMINISTRADOR)", async () => {
     mockUseAuth("SUPERVISOR");
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
-      total: 1,
-    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     renderPage("/empresas/e1");
 
     await screen.findByRole("heading", { name: "Empresa A" });
@@ -202,10 +195,7 @@ describe("EmpresaDetallePage — alta de administrador de empresa (Item 23)", ()
 
   it("al enviar el formulario, llama a la mutación con el `empresaId` de la página y avisa con un toast", async () => {
     const user = userEvent.setup();
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
-      total: 1,
-    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     createEmpresaAdministradorApiMock.mockResolvedValue({
       id: "u1",
       nombre: "Ana Gómez",
@@ -250,10 +240,7 @@ describe("EmpresaDetallePage — punto frágil: empresaId ausente en la URL", ()
 
 describe("EmpresaDetallePage — punto frágil: efecto de entrar/salir de la vista de empresa", () => {
   it("al montar con un empresaId válido llama a entrarAEmpresa una sola vez, incluso tras re-renders por la carga de datos", async () => {
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
-      total: 1,
-    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     renderPage("/empresas/e1");
 
     // Espera a que la carga termine (loading -> success ya disparó sus re-renders).
@@ -265,10 +252,7 @@ describe("EmpresaDetallePage — punto frágil: efecto de entrar/salir de la vis
   });
 
   it("al desmontar, llama a salirDeEmpresa", async () => {
-    fetchEmpresasHoldingApiMock.mockResolvedValue({
-      items: [empresaFake({ id: "e1", nombre: "Empresa A" })],
-      total: 1,
-    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     const { unmount } = renderPage("/empresas/e1");
     await screen.findByRole("heading", { name: "Empresa A" });
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
   updateEmpresaAparienciaHoldingApi: vi.fn(),
   fetchEmpresasHoldingApi: vi.fn(),
+  fetchEmpresaHoldingApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -16,18 +17,22 @@ const { toast } = await import("sonner");
 const {
   useUpdateEmpresaAparienciaHolding,
   useEmpresasHolding,
+  useEmpresaHolding,
   EMPRESAS_HOLDING_QUERY_KEY,
+  EMPRESA_HOLDING_QUERY_KEY,
 } = await import("@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding");
 
 const updateEmpresaAparienciaHoldingApiMock = vi.mocked(
   empresaAparienciaHoldingApi.updateEmpresaAparienciaHoldingApi,
 );
 const fetchEmpresasHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresasHoldingApi);
+const fetchEmpresaHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresaHoldingApi);
 const toastSuccessMock = vi.mocked(toast.success);
 
 beforeEach(() => {
   updateEmpresaAparienciaHoldingApiMock.mockReset();
   fetchEmpresasHoldingApiMock.mockReset();
+  fetchEmpresaHoldingApiMock.mockReset();
   toastSuccessMock.mockReset();
 });
 
@@ -140,5 +145,54 @@ describe("useEmpresasHolding", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(fetchEmpresasHoldingApiMock).toHaveBeenCalledWith({});
+  });
+});
+
+describe("useEmpresaHolding", () => {
+  it("consulta GET /empresas/:empresaId con el id recibido y devuelve la empresa", async () => {
+    const empresa = {
+      id: "e1",
+      nombre: "Empresa A",
+      colorPrimario: "#111111",
+      colorSecundario: "#222222",
+      logoUrl: null,
+    };
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresa);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useEmpresaHolding("e1"), {
+      wrapper: crearWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchEmpresaHoldingApiMock).toHaveBeenCalledWith("e1");
+    expect(result.current.data).toEqual(empresa);
+  });
+
+  it("no dispara la query cuando empresaId es undefined", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => useEmpresaHolding(undefined), {
+      wrapper: crearWrapper(queryClient),
+    });
+
+    expect(fetchEmpresaHoldingApiMock).not.toHaveBeenCalled();
+  });
+
+  it("usa EMPRESA_HOLDING_QUERY_KEY (singular, distinto del listado) como queryKey", async () => {
+    fetchEmpresaHoldingApiMock.mockResolvedValue({
+      id: "e1",
+      nombre: "Empresa A",
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => useEmpresaHolding("e1"), { wrapper: crearWrapper(queryClient) });
+
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData([EMPRESA_HOLDING_QUERY_KEY, "e1"]),
+      ).toBeDefined(),
+    );
+    expect(EMPRESA_HOLDING_QUERY_KEY).not.toBe(EMPRESAS_HOLDING_QUERY_KEY);
   });
 });

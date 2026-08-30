@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  fetchEmpresaHoldingApi,
   fetchEmpresasHoldingApi,
   updateEmpresaAparienciaHoldingApi,
   type EmpresaAparienciaHoldingView,
@@ -29,6 +30,25 @@ export function useEmpresasHolding(params: EmpresasHoldingQueryParams = {}) {
     queryKey: [EMPRESAS_HOLDING_QUERY_KEY, params],
     queryFn: () => fetchEmpresasHoldingApi(params),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** `queryKey` de una empresa puntual del holding -- ver `useEmpresaHolding`. */
+export const EMPRESA_HOLDING_QUERY_KEY = "empresa-holding";
+
+/**
+ * Empresa puntual por id (`GET /empresas/:empresaId`, PASO 8). Distinta de
+ * `useEmpresasHolding` (listado paginado): esta resuelve UNA `Empresa`
+ * directo del servidor, sin buscar en memoria sobre un listado. `enabled`
+ * evita disparar la query mientras `empresaId` todavía no está disponible
+ * (ej. lectura de `useParams` en el primer render). Consumido por
+ * `EmpresaDetallePage.tsx`.
+ */
+export function useEmpresaHolding(empresaId: string | undefined) {
+  return useQuery({
+    queryKey: [EMPRESA_HOLDING_QUERY_KEY, empresaId],
+    queryFn: () => fetchEmpresaHoldingApi(empresaId as string),
+    enabled: Boolean(empresaId),
   });
 }
 

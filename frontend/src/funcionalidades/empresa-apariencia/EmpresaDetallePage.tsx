@@ -9,19 +9,8 @@ import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { CrearAdministradorEmpresaDialog } from "@/funcionalidades/usuarios/CrearAdministradorEmpresaDialog";
 import { useCreateEmpresaAdministrador } from "@/funcionalidades/usuarios/useUsuarios";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
-import { useEmpresasHolding } from "./useEmpresaAparienciaHolding";
+import { useEmpresaHolding } from "./useEmpresaAparienciaHolding";
 import { useVistaEmpresa } from "./useVistaEmpresa";
-
-/**
- * Máximo de una sola página para poder resolver una `Empresa` puntual por
- * id en el cliente -- no existe todavía un `GET /empresas/:id` (gap de
- * backend, fuera de lo pedido a Mateo hasta ahora, ver
- * `docs/23-alcance-funcional-manual-tecnico.md`). Mientras tanto se
- * reutiliza el listado paginado (`GET /empresas`) con un `pageSize` grande
- * y se busca el id en memoria -- funciona para la escala real confirmada
- * por el usuario (478 empresas), no escalaría a un holding con miles.
- */
-const EMPRESAS_PAGE_SIZE_DETALLE = 500;
 
 /**
  * Detalle de empresa para un holding-wide (pantallas de gestión jerárquica
@@ -29,24 +18,22 @@ const EMPRESAS_PAGE_SIZE_DETALLE = 500;
  * SOLO LECTURA simulada -- no cambia la sesión real, solo setea
  * `?empresaId=` vía `useVistaEmpresa` para que `UsuariosPage`/`BridgesPage`
  * (reusadas tal cual, sin duplicar UI) filtren su fetch por esta empresa.
- * El backend todavía no filtra por `empresaId` (gap ya reportado a Mateo,
- * prioridad 1) -- hasta que lo haga, estos links muestran el listado
- * completo sin filtrar, no roto, solo sin scope real todavía.
+ * El backend ya filtra `GET /usuarios` y `GET /bridges` server-side por
+ * `?empresaId=` (`listUsuariosQuerySchema`/`listBridgesQuerySchema`, ver
+ * `usuarios.service.ts`/`bridge.service.ts`) -- estos links reflejan scope
+ * real, no un listado completo sin filtrar.
  *
  * Mismo patrón estructural que `BridgeDetallePage.tsx`: `useParams` + hook
- * de listado filtrado en memoria + `usePageHeader({title, backTo})`.
+ * de empresa puntual (`GET /empresas/:empresaId`) + `usePageHeader({title,
+ * backTo})`.
  */
 export function EmpresaDetallePage() {
   const { empresaId } = useParams<{ empresaId: string }>();
   const { entrarAEmpresa, salirDeEmpresa } = useVistaEmpresa();
-  const { data, isLoading, isError, error, refetch } = useEmpresasHolding({
-    pageSize: EMPRESAS_PAGE_SIZE_DETALLE,
-  });
+  const { data: empresa, isLoading, isError, error, refetch } = useEmpresaHolding(empresaId);
   const { hasRole } = useAuth();
   const [dialogAdminAbierto, setDialogAdminAbierto] = useState(false);
   const crearAdministrador = useCreateEmpresaAdministrador(empresaId ?? "");
-
-  const empresa = data?.items.find((item) => item.id === empresaId);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -74,6 +61,10 @@ export function EmpresaDetallePage() {
   }
 
   if (!empresa) {
+    // Defensivo: un 404 real de `GET /empresas/:empresaId` ya cae en la
+    // rama `isError` de arriba (`empresa_no_encontrada`), así que esta
+    // rama no debería alcanzarse en la práctica -- se mantiene por si
+    // `useEmpresaHolding` alguna vez resuelve con éxito sin datos.
     return <ErrorState message="No se encontró la empresa solicitada." />;
   }
 
@@ -96,8 +87,8 @@ export function EmpresaDetallePage() {
             {empresa.nombre}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Vista de solo lectura simulada -- los listados de abajo todavía no filtran de
-            verdad por empresa del lado del servidor.
+            Vista de solo lectura simulada -- los listados de abajo filtran por esta empresa
+            del lado del servidor.
           </p>
         </div>
       </section>

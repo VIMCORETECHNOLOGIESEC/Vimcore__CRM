@@ -9,10 +9,12 @@ import { httpClient, type QueryParamValue } from "@/api/httpClient";
  * viene explícito por parámetro, nunca de la sesión, porque el caso de uso
  * es editar CUALQUIER `Empresa` de la instancia.
  *
- * `GET /empresas` (listado, ver `fetchEmpresasHoldingApi` más abajo) ya
- * existe -- resuelve el gap de backend documentado antes acá y en
+ * `GET /empresas` (listado, ver `fetchEmpresasHoldingApi` más abajo) y
+ * `GET /empresas/:empresaId` (empresa puntual, ver `fetchEmpresaHoldingApi`)
+ * ya existen -- resuelven los gaps de backend documentados antes acá y en
  * `docs/blocks/d0-visualizacion-multitenant.md` (PASO 8, excepción
- * 2026-08-29, último bullet). Consumido por `GestorEmpresasPage.tsx`.
+ * 2026-08-29, último bullet). Consumidos por `GestorEmpresasPage.tsx` y
+ * `EmpresaDetallePage.tsx` respectivamente.
  */
 export interface EmpresaAparienciaHoldingView {
   id: string;
@@ -45,6 +47,11 @@ export interface EmpresasHoldingQueryParams {
 export interface EmpresasHoldingResponse {
   items: EmpresaAparienciaHoldingView[];
   total: number;
+}
+
+/** `GET /empresas/:empresaId` -- solo sessionScope `holding` + rol `ADMINISTRADOR`. */
+export async function fetchEmpresaHoldingApi(empresaId: string): Promise<EmpresaAparienciaHoldingView> {
+  return httpClient.get<EmpresaAparienciaHoldingView>(`/empresas/${empresaId}`);
 }
 
 /** `PATCH /empresas/:empresaId/apariencia` -- solo sessionScope `holding` + rol `ADMINISTRADOR`. */
