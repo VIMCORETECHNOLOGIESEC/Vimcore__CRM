@@ -39,3 +39,7 @@ docs/contrato-frontend-general.md
 # Credenciales reales de producción -- nunca en el repo, se distribuyen por
 # otro medio.
 docs/credenciales-produccion-arcano.md
+
+# .env.dev tiene secretos reales de desarrollo local -- *.env no lo cubre
+# (termina en .dev, no en .env).
+.env.dev
