@@ -31,7 +31,7 @@
 | 11 | Integración WhatsApp Business (real) | 🚧 | Bridges / Integraciones |
 | 12 | Dashboard de métricas (general) | ✅ | Dashboard y Métricas |
 | 13 | Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto) | ✅ | Dashboard y Métricas |
-| 14 | Dashboard con filtro por empresa (holding) | ⏳ | Dashboard y Métricas |
+| 14 | Dashboard con filtro por empresa (holding) | 🚧 | Dashboard y Métricas |
 | 15 | Exportación de reportes (PDF/XLSX) | ✅ | Reportes |
 | 16 | Conexión de Meta Ads (métricas publicitarias reales) | ⏳ | Reportes |
 | 17 | Listado y detalle de Oportunidad (negociación) | ✅ | Negociación / Oportunidad |
@@ -272,13 +272,13 @@
 
 ### Dashboard con filtro por empresa (holding)
 
-**Estado**: ⏳ Pendiente (bloqueado por backend)
+**Estado**: 🚧 Frontend construido, no filtra de verdad todavía (falta merge de backend)
 
-**Descripción funcional esperada**: Para una sesión de holding, permite elegir ver el dashboard general (todas las empresas agregadas) o filtrar la vista a una sola empresa puntual, mediante pestañas o un selector.
+**Descripción funcional esperada**: Para una sesión de holding (`ADMINISTRADOR`), un selector de empresa (combobox buscable) en el dashboard permite hacer drill-down a una empresa puntual; sin selección, se ve el agregado de todo el holding (comportamiento previo sin cambios).
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: el backend todavía no acepta un filtro de empresa en las consultas de métricas — pendiente de coordinación con el equipo de backend.
+**Notas técnicas**: commit `33968fe` (local, verificado, pendiente de push a `origin/test/gpt`). `SelectorEmpresaDashboard.tsx` (nuevo), `empresaId` threadeado a las 13 queries de `useMetricas.ts`, gateado a `ADMINISTRADOR` + sesión holding (más estrecho que otras pantallas holding-wide, porque `GET /empresas` es `ADMINISTRADOR`-only en backend). **El schema `empresaId` opcional que hace real el filtro** (`resolveEmpresaId`, 3 ramas: company-scoped lo ignora, holding-wide con `empresaId` hace drill-down, sin él ve todo el holding) ya existe en `origin/main` (`a76c62b`) pero **todavía no está mergeado a `test/gpt`** — hasta ese merge, el selector se ve y se puede elegir una empresa, pero el backend de `test/gpt` ignora el parámetro en silencio y el dashboard sigue mostrando el agregado completo del holding sin acotar. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, mismo bloque que el ítem 13).
 
 ---
 
