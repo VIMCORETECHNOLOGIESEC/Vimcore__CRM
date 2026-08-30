@@ -3,9 +3,11 @@ import {
   getEmpresas,
   patchEmpresaApariencia,
   patchEmpresaAparienciaHolding,
+  postEmpresaAparienciaLogo,
 } from "../controllers/empresa-apariencia.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../middlewares/require-role.middleware.js";
+import { uploadLogoMiddleware } from "../middlewares/upload-logo.middleware.js";
 
 export const empresaAparienciaRouter = Router();
 
@@ -20,6 +22,23 @@ empresaAparienciaRouter.patch(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   patchEmpresaApariencia,
+);
+
+/**
+ * Subida de isotipo (logo) real como archivo, adicional al `logoUrl` de
+ * texto libre del PATCH de arriba (que sigue intacto -- un admin puede
+ * seguir pegando a mano la URL de un CDN externo ya existente). Mismo guard
+ * self-service que el PATCH: ADMINISTRADOR de una sesión `company` sobre SU
+ * PROPIA empresa. `uploadLogoMiddleware` (Multer, `memoryStorage`) parsea el
+ * multipart y valida tipo/tamaño ANTES de que la request llegue al
+ * controller -- ver `middlewares/upload-logo.middleware.ts`.
+ */
+empresaAparienciaRouter.post(
+  "/empresas/actual/apariencia/logo",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  uploadLogoMiddleware,
+  postEmpresaAparienciaLogo,
 );
 
 /**

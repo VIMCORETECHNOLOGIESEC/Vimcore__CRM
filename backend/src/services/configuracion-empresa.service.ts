@@ -1,3 +1,4 @@
+import { uploadImage, type UploadImageInput } from "../lib/azure-blob-storage.js";
 import * as configuracionEmpresaRepository from "../repositories/configuracion-empresa.repository.js";
 import type { UpdateConfiguracionEmpresaData } from "../repositories/configuracion-empresa.repository.js";
 import type { UpdateConfiguracionEmpresaBody } from "../schemas/configuracion-empresa.schema.js";
@@ -56,5 +57,19 @@ export async function updateConfiguracion(
     logoUrl: input.logoUrl,
   };
   const actualizada = await configuracionEmpresaRepository.upsertSingleton(data);
+  return toView(actualizada);
+}
+
+/**
+ * `POST /configuracion-empresa/logo`: exclusivo ADMINISTRADOR (`requireRole`
+ * en la ruta), mismo criterio de autorización que `PATCH /configuracion-empresa`
+ * -- sin distinción de `sessionScope` porque es una fila singleton de
+ * holding, no scopeada por empresa. Sube el archivo a Azure Blob Storage y
+ * reusa `upsertSingleton` (ya acepta un `data` parcial) para persistir solo
+ * `logoUrl`, sin tocar nombre/colores.
+ */
+export async function uploadLogo(archivo: UploadImageInput): Promise<ConfiguracionEmpresaView> {
+  const logoUrl = await uploadImage(archivo);
+  const actualizada = await configuracionEmpresaRepository.upsertSingleton({ logoUrl });
   return toView(actualizada);
 }

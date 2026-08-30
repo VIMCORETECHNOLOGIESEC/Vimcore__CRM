@@ -10,6 +10,7 @@ import {
   listEmpresas,
   updateApariencia,
   updateAparienciaHolding,
+  uploadEmpresaLogo,
 } from "../services/empresa-apariencia.service.js";
 
 function zodValidationError(): AppError {
@@ -46,6 +47,41 @@ export async function patchEmpresaApariencia(req: Request, res: Response): Promi
   // de autoridad para qué `Empresa` se modifica (D0/RLS, mismo principio que
   // el resto del proyecto).
   const apariencia = await updateApariencia(req.user.empresaId, parsed.data);
+  res.status(200).json(apariencia);
+}
+
+function archivoFaltante(): AppError {
+  return new AppError(
+    "archivo_faltante",
+    400,
+    "Debes adjuntar un archivo de imagen en el campo 'logo'",
+  );
+}
+
+/**
+ * `POST /empresas/actual/apariencia/logo`: mismo guard self-service que
+ * `patchEmpresaApariencia` de arriba -- ADMINISTRADOR de una sesión
+ * `company` sobre SU PROPIA empresa. `req.file` lo puebla
+ * `uploadLogoMiddleware` (Multer, `memoryStorage`) antes de llegar acá; su
+ * ausencia significa que el cliente no adjuntó ningún archivo en el campo
+ * `logo` (a diferencia de un archivo de tipo/tamaño inválido, que
+ * `uploadLogoMiddleware` ya rechaza con su propio `AppError` antes de que el
+ * controller se ejecute).
+ */
+export async function postEmpresaAparienciaLogo(req: Request, res: Response): Promise<void> {
+  if (!req.user || req.user.sessionScope !== "company" || req.user.empresaId === null) {
+    throw soloEmpresaPropia();
+  }
+
+  if (!req.file) {
+    throw archivoFaltante();
+  }
+
+  const apariencia = await uploadEmpresaLogo(req.user.empresaId, {
+    buffer: req.file.buffer,
+    mimeType: req.file.mimetype,
+    sizeBytes: req.file.size,
+  });
   res.status(200).json(apariencia);
 }
 

@@ -1,4 +1,18 @@
 services:
+  azurite:
+    # Emulador local de Azure Storage -- reemplaza la Storage Account real
+    # (nexuscorp, Azure) mientras no se despliega. `AZURE_STORAGE_CONNECTION_STRING`
+    # en .env.dev usa las credenciales de desarrollo PUBLICAS y bien
+    # conocidas de Azurite (no son un secreto, son las mismas para
+    # cualquiera que corra Azurite) -- en produccion se pisa con la
+    # connection string real de nexuscorp, sin ningun cambio de código.
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000"
+    ports:
+      - "10000:10000"
+    volumes:
+      - azurite_data:/data
+
   db:
     image: postgres:16.14-alpine
     environment:
@@ -45,6 +59,8 @@ services:
       LINKEDIN_API_BASE_URL: ${LINKEDIN_API_BASE_URL}
       WHATSAPP_OAUTH_REDIRECT_URI: ${WHATSAPP_OAUTH_REDIRECT_URI:-}
       REPORTES_STORAGE_DIR: ${REPORTES_STORAGE_DIR:-storage/reportes}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
+      AZURE_STORAGE_CONTAINER_ISOTIPOS: ${AZURE_STORAGE_CONTAINER_ISOTIPOS:-isotipos}
     ports:
       - "3000:3000"
     volumes:
@@ -89,6 +105,7 @@ services:
       - frontend_pkg_node_modules:/app/frontend/node_modules
 
 volumes:
+  azurite_data:
   pgdata:
   backend_node_modules:
   backend_pkg_node_modules:

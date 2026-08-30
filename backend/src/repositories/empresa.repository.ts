@@ -70,6 +70,25 @@ export async function updateAparienciaHolding(
   return client.empresa.update({ where: { id }, data });
 }
 
+/**
+ * `POST /empresas/actual/apariencia/logo` (subida de isotipo por Azure Blob
+ * Storage): a diferencia de `updateApariencia` arriba, esta escritura toca
+ * SOLO `logoUrl` -- los dos colores no se conocen en este flujo (el
+ * controller nunca los recibe, la request es multipart con un único campo de
+ * archivo) y forzarlos aquí correría el riesgo real de pisarlos con `null`
+ * en cualquier futuro refactor que reintroduzca el shape completo de
+ * `UpdateEmpresaAparienciaData`. `id` siempre es el `empresaId` ya resuelto
+ * por `requireAuthentication` (nunca un valor del cliente), mismo criterio
+ * que `updateApariencia`.
+ */
+export async function updateLogo(
+  id: string,
+  logoUrl: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Empresa> {
+  return client.empresa.update({ where: { id }, data: { logoUrl } });
+}
+
 export interface EmpresaListItem {
   id: string;
   nombre: string;
