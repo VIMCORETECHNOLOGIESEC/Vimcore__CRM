@@ -32,7 +32,7 @@
 | 12 | Dashboard de métricas (general) | ✅ | Dashboard y Métricas |
 | 13 | Extensiones de dashboard (embudo de Oportunidad, rendimiento por producto) | ✅ | Dashboard y Métricas |
 | 14 | Dashboard con filtro por empresa (holding) | ⏳ | Dashboard y Métricas |
-| 15 | Exportación de reportes (PDF/XLSX) | ⏳ | Reportes |
+| 15 | Exportación de reportes (PDF/XLSX) | ✅ | Reportes |
 | 16 | Conexión de Meta Ads (métricas publicitarias reales) | ⏳ | Reportes |
 | 17 | Listado y detalle de Oportunidad (negociación) | ✅ | Negociación / Oportunidad |
 | 18 | Listado de usuarios | ✅ | Usuarios y Membresías |
@@ -286,19 +286,19 @@
 
 ### Exportación de reportes (PDF/XLSX)
 
-**Estado**: ⏳ Pendiente (sin frontend, backend listo)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Generación y descarga de reportes comerciales en formato PDF o XLSX, con progreso visible mientras se generan.
+**Descripción funcional**: Generación asíncrona de reportes comerciales en PDF o XLSX, gateada a `ADMINISTRADOR`/`SUPERVISOR`, con estado visible (`PENDIENTE`/`PROCESANDO`/`LISTO`/`ERROR`) refrescado por SSE y descarga autenticada una vez listo.
 
-**Pasos de uso esperados**:
-1. Elegir el tipo de reporte y los parámetros (rango de fechas, filtros).
-2. Solicitar la generación.
-3. Ver el progreso de generación en tiempo real.
-4. Descargar el archivo una vez listo (enlace de descarga temporal).
+**Pasos de uso**:
+1. Ingresar a "Reportes" desde el menú lateral (visible solo para administrador/supervisor).
+2. Elegir el tipo de reporte y los parámetros.
+3. Solicitar la generación — el job pasa por su estado en tiempo real vía notificaciones SSE, sin polling.
+4. Descargar el archivo una vez que el estado pasa a "Listo".
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: sin contrato de frontend formalizado todavía.
+**Notas técnicas**: commit `c8f80a5` (local, verificado, pendiente de push a `origin/test/gpt`). Frontend: `funcionalidades/reportes/` (`reportes.api.ts`, `useReportes.ts`, `ReportesPage.tsx`, `EstadoReporteJobBadge.tsx`, `DescargarReporteButton.tsx`) + `tipos/reporte.ts`, contra `POST /reportes/jobs`, `GET /reportes/jobs/activo`, `GET /reportes/jobs/:id`, `GET /reportes/jobs/:id/descargar`. Ruta `reportes` gateada por rol en `router.tsx`. Extensión aditiva de `notificaciones.sse.ts`/`useNotificacionesRealtime.ts` para `reporte.iniciado`/`listo`/`error` (mismo mecanismo que WhatsApp). Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, por indicación directa del usuario).
 
 ### Conexión de Meta Ads (métricas publicitarias reales)
 
