@@ -4,6 +4,7 @@ import { startBridgeMudoJob } from "./jobs/bridge-mudo.job.js";
 import { startBridgeApiPollJob } from "./jobs/bridgeApi/poll.job.js";
 import { startCitasRecordatorioJob } from "./jobs/citas-recordatorio.job.js";
 import { startIngestionWorker } from "./jobs/ingesta-inbox.job.js";
+import { startMetaAdsSyncJob } from "./jobs/metaAds/meta-ads-sync.job.js";
 import { startSlaAtrasadoJob } from "./jobs/sla-atrasado.job.js";
 import { startVerificacionTokenJob } from "./jobs/verificacion-token.job.js";
 import { startWhatsAppSlaJob } from "./jobs/whatsappMessages/whatsapp-sla.job.js";
@@ -30,6 +31,7 @@ const verificacionTokenTimer = startVerificacionTokenJob();
 const bridgeApiPollTimer = startBridgeApiPollJob();
 // whatsappMessages (rule 3): reasignación por SLA vencido de Conversacion, mismo patrón que sla/citas/bridge-mudo.
 const whatsappSlaTimer = startWhatsAppSlaJob();
+const metaAdsSyncTimer = startMetaAdsSyncJob();
 const ingestionWorker = startIngestionWorker();
 
 let shuttingDown = false;
@@ -45,6 +47,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         clearInterval(verificacionTokenTimer);
         clearInterval(bridgeApiPollTimer);
         clearInterval(whatsappSlaTimer);
+        clearInterval(metaAdsSyncTimer);
       },
       closeHttp: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
       stopAndDrain: () => ingestionWorker.stopAndDrain(),

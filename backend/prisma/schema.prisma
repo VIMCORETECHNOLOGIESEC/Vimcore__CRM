@@ -114,12 +114,23 @@ model Usuario {
   conversacionEventos     ConversacionEvento[]
   mensajesEnviados        Mensaje[]
   oauthStatesWhatsApp     WhatsAppOAuthState[]
+  // metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+  // campañas Meta"): mismo criterio de nombrado que `oauthStatesWhatsApp` --
+  // el administrador que inicia el diálogo OAuth de la cuenta de anuncios
+  // queda como dueño auditado del state efímero.
+  oauthStatesCuentaAnuncios CuentaAnunciosOAuthState[]
+  conexionesCuentaAnunciosAutorizadas CuentaAnunciosConexion[]
   // negociacion (Bloque D): mismo criterio de nombrado que
   // leadsComoAsesor/leadsComoVendedor -- dos relaciones nombradas porque
   // ambas apuntan a Usuario.
   oportunidadesComoAsesor   Oportunidad[]       @relation("OportunidadAsesor")
   oportunidadesComoVendedor Oportunidad[]       @relation("OportunidadVendedor")
   oportunidadEventos        OportunidadEvento[]
+  // reportes (Bloque E, exportación PDF/XLSX): un `ReporteJob` siempre tiene
+  // un `usuarioId` solicitante -- ver comentario del modelo `ReporteJob` para
+  // el criterio de scope empresarial (derivado de `Membresia`, no de una FK
+  // propia acá).
+  reporteJobs               ReporteJob[]
 
   @@map("usuarios")
 }
@@ -155,12 +166,25 @@ model Empresa {
   // relation field"). Mismo nombre que ya usa `Usuario.oauthStatesWhatsApp`
   // para la relación análoga por `usuarioId`.
   oauthStatesWhatsApp WhatsAppOAuthState[]
+  // metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+  // campañas Meta"): una sola cuenta de anuncios de Meta por empresa (D-mensajería,
+  // "un solo número por empresa" -- mismo criterio), por eso es opcional y no
+  // un arreglo. Cubre Facebook e Instagram a la vez -- Instagram no tiene
+  // cuenta de anuncios propia, sus campañas corren en la misma cuenta
+  // `act_<id>` y se distinguen por `publisher_platform` en la Insights API.
+  cuentaAnunciosConexion    CuentaAnunciosConexion?
+  oauthStatesCuentaAnuncios CuentaAnunciosOAuthState[]
   // negociacion (Bloque D): Oportunidad/Producto/OportunidadEvento son
   // aditivos -- Lead conserva sus columnas de negociación sin tocar (ver
   // comentario del modelo Oportunidad).
   productos           Producto[]
   oportunidades       Oportunidad[]
   oportunidadEventos  OportunidadEvento[]
+  // reportes (Bloque E): `null` = configuración default holding-wide
+  // (`ConfiguracionReporte.empresaId` nullable, ver ese modelo). `ReporteJob`
+  // deliberadamente NO tiene relación acá -- no declara `empresaId` propio
+  // (ver comentario de ese modelo).
+  configuracionesReporte ConfiguracionReporte[]
 
   @@map("empresas")
 }
@@ -918,16 +942,25 @@ model CuentaPublicitaria {
 // se fusionan nombres homónimos entre plataformas.
 model Campania {
   id                   String    @id @default(uuid()) @db.Uuid
-  cuentaPublicitariaId String    @map("cuenta_publicitaria_id") @db.Uuid
+  cuentaPublicitariaId String?   @map("cuenta_publicitaria_id") @db.Uuid
+  cuentaAnunciosConexionId String? @map("cuenta_anuncios_conexion_id") @db.Uuid
   idExterno            String    @map("id_externo") @db.Text
   nombre               String    @db.Text
   redSocial            RedSocial @map("red_social")
   activa               Boolean   @default(true)
 
-  cuentaPublicitaria CuentaPublicitaria @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+  cuentaPublicitaria      CuentaPublicitaria?      @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+  cuentaAnunciosConexion  CuentaAnunciosConexion?  @relation(fields: [cuentaAnunciosConexionId], references: [id], onDelete: Cascade)
   leads              Lead[]
+  metricasDiarias    CampaniaMetricaDiaria[]
 
+  // Un CHECK a nivel de fila (campanias_exactly_one_owner_check, en la
+  // migración) garantiza que exactamente una de las dos FK sea NOT NULL --
+  // por eso ninguno de estos dos @@unique necesita ser parcial: Postgres ya
+  // trata NULL como distinto en un índice único normal, así que una fila con
+  // `cuentaPublicitariaId: null` nunca choca con otra por esa columna.
   @@unique([cuentaPublicitariaId, idExterno])
+  @@unique([cuentaAnunciosConexionId, idExterno])
   @@map("campanias")
 }
 
@@ -1081,6 +1114,106 @@ model WhatsAppOAuthState {
   @@index([expiraEn], map: "idx_whatsapp_oauth_states_expira")
   @@index([empresaId, usuarioId], map: "idx_whatsapp_oauth_states_empresa_usuario")
   @@map("whatsapp_oauth_states")
+}
+
+// ---------------------------------------------------------------------------
+// metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+// campañas Meta") -- conexión OAuth a la Marketing/Insights API de una cuenta
+// de anuncios de Meta (`act_<id>`). Distinto de `CuentaPublicitaria`: esa
+// tabla representa una Page de Facebook (leadgen, Page Access Token scopeado
+// a webhooks), esta representa la cuenta publicitaria (`ads_read`, scopeada a
+// Marketing/Insights API). Una sola conexión cubre Facebook E Instagram a la
+// vez -- Instagram no tiene cuenta de anuncios propia, sus campañas corren en
+// la misma cuenta `act_<id>` y se distinguen por `publisher_platform` en
+// Insights, así que no hace falta una fila por plataforma. El job de
+// sincronización de `CampaniaMetricaDiaria` que consume este token es su
+// propia etapa de trabajo (docs/blocks/e-dashboards.md, "no como un job
+// más"), NO parte de este módulo.
+// ---------------------------------------------------------------------------
+
+enum EstadoConexionCuentaAnuncios {
+  ACTIVA
+  TOKEN_EXPIRADO
+  ERROR
+  INACTIVA
+
+  @@map("estado_conexion_cuenta_anuncios")
+}
+
+// Un solo actor de anuncios de Meta conectado por empresa (decisión de
+// producto, mismo criterio que `WhatsAppConexion`) -- `empresaId` es
+// `@unique`, no una FK cualquiera. `cuentaAnunciosIdExterno` NO es unique
+// global: D12 permite que distintas empresas conecten el mismo `act_<id>` con
+// credenciales propias. Facebook e Instagram se separan por `publisher_platform`
+// en `CampaniaMetricaDiaria`, no por cuentas distintas.
+model CuentaAnunciosConexion {
+  id                      String                       @id @default(uuid()) @db.Uuid
+  empresaId               String                       @unique @map("empresa_id") @db.Uuid
+  autorizadoPorUsuarioId  String                       @map("autorizado_por_usuario_id") @db.Uuid
+  cuentaAnunciosIdExterno String                       @map("cuenta_anuncios_id_externo") @db.Text
+  nombre                  String                       @map("nombre") @db.Text
+  moneda                  String?                      @db.Text
+  zonaHoraria             String?                      @map("zona_horaria") @db.Text
+  // AES-256-GCM vía lib/cifrado-token.ts -- mismo mecanismo que
+  // WhatsAppConexion.tokenCifrado/CuentaPublicitaria.tokenCifrado, nunca en claro.
+  tokenCifrado            String?                      @map("token_cifrado") @db.Text
+  tokenExpiraEn           DateTime?                    @map("token_expira_en") @db.Timestamptz(6)
+  estado                  EstadoConexionCuentaAnuncios @default(INACTIVA)
+  ultimaSincronizacionEn  DateTime?                    @map("ultima_sincronizacion_en") @db.Timestamptz(6)
+  ultimoError             String?                      @map("ultimo_error") @db.Text
+  creadoEn                DateTime                     @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn           DateTime                     @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  empresa       Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  autorizadoPor Usuario    @relation(fields: [autorizadoPorUsuarioId], references: [id], onDelete: Restrict)
+  campanias     Campania[]
+
+  @@unique([empresaId, cuentaAnunciosIdExterno], map: "cuentas_anuncios_conexiones_empresa_act_key")
+  @@index([cuentaAnunciosIdExterno], map: "idx_cuentas_anuncios_conexiones_act")
+  @@index([estado, ultimaSincronizacionEn], map: "idx_cuentas_anuncios_conexiones_sync")
+  @@map("cuentas_anuncios_conexiones")
+}
+
+model CampaniaMetricaDiaria {
+  id          String    @id @default(uuid()) @db.Uuid
+  campaniaId  String    @map("campania_id") @db.Uuid
+  fecha       DateTime  @db.Date
+  redSocial   RedSocial @map("red_social")
+  gasto       Decimal   @default(0) @db.Decimal(14, 2)
+  impresiones Int       @default(0)
+  clics       Int       @default(0)
+  alcance     Int       @default(0)
+  moneda      String    @db.Text
+  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  campania Campania @relation(fields: [campaniaId], references: [id], onDelete: Cascade)
+
+  @@unique([campaniaId, fecha, redSocial], map: "campania_metricas_diarias_campania_fecha_red_key")
+  @@index([fecha], map: "idx_campania_metricas_diarias_fecha")
+  @@map("campania_metricas_diarias")
+}
+
+// State efímero anti-CSRF para el OAuth de la cuenta de anuncios de Meta --
+// mirror exacto de `WhatsAppOAuthState` (solo el hash del state, nunca en
+// claro). Cuelga directo de empresa+usuario -- todavía no existe ninguna fila
+// de conexión en el momento en que se genera el state (se descubren las
+// cuentas recién en el callback).
+model CuentaAnunciosOAuthState {
+  id        String    @id @default(uuid()) @db.Uuid
+  stateHash String    @unique @map("state_hash") @db.Text
+  empresaId String    @map("empresa_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([expiraEn], map: "idx_cuentas_anuncios_oauth_states_expira")
+  @@index([empresaId, usuarioId], map: "idx_cuentas_anuncios_oauth_states_empresa_usuario")
+  @@map("cuentas_anuncios_oauth_states")
 }
 
 // Un hilo por (cliente, conexión) -- @@unique evita duplicar la conversación
@@ -1252,4 +1385,70 @@ model LeadAbiertoRevisionPendiente {
   @@unique([clienteId, leadAbiertoId, empresaIngestaId])
   @@index([resuelto])
   @@map("leads_abiertos_revision_pendiente")
+}
+
+// reportes (Bloque E, docs/blocks/e-dashboards.md "Exportación PDF/XLSX"):
+// esquema copiado tal cual del documento aprobado -- no se reinventa acá.
+// Módulo con carpeta propia (`services/reportes/`, `repositories/reportes/`,
+// `controllers/reportes/`, `routes/reportes/`, `schemas/reportes/`), decisión
+// de esta sesión que reemplaza el layout de "archivos sueltos" que describía
+// la sección "Enfoque de implementación" del documento -- mismo criterio de
+// carpeta que `negociacion`/`whatsappMessages`.
+//
+// `empresaId` nullable = configuración default holding-wide (doc, "null =
+// default holding"). CAVEAT no resuelto por este batch (documentado, no
+// corregido -- el esquema es el aprobado tal cual): Postgres no trata dos
+// filas con `empresa_id IS NULL` como duplicado de un `UNIQUE`, así que
+// `@@unique([empresaId])` no impide más de una fila default holding a nivel
+// de base de datos. Sin código de este batch que inserte filas de
+// `ConfiguracionReporte` (sin endpoint propio, ver `reporte-generacion.job.ts`
+// que solo LEE), el riesgo es latente, no activado.
+model ConfiguracionReporte {
+  id            String   @id @default(uuid()) @db.Uuid
+  empresaId     String?  @map("empresa_id") @db.Uuid // null = default holding
+  secciones     Json     @db.JsonB
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId])
+  @@map("configuraciones_reporte")
+}
+
+enum EstadoReporteJob {
+  PENDIENTE
+  PROCESANDO
+  LISTO
+  ERROR
+
+  @@map("estado_reporte_job")
+}
+
+// Scope empresarial de `ReporteJob` -- SIEMPRE derivado server-side (doc,
+// "Scope empresarial de ReporteJob"): deliberadamente SIN `empresaId` propio
+// acá. El alcance se resuelve en `services/reportes/reportes.access.ts::
+// resolverEmpresaIdReporte` a partir de `usuarioId` y sus `Membresia`
+// activas, nunca desde `parametros` (JSON) enviado por el cliente -- aplica a
+// la creación del job, `GET /reportes/jobs/activo` y la descarga del archivo
+// (`archivoUrl`). Por la misma razón, esta tabla NO lleva política RLS de
+// tenant (a diferencia de `ConfiguracionReporte`, que sí tiene `empresaId`):
+// no hay columna `empresa_id` que una política pueda comparar: el aislamiento
+// vive enteramente en la capa de aplicación, filtrando siempre por
+// `usuarioId` (mismo patrón ya usado por `notificacion.repository.ts::
+// listByUsuario`, tabla tampoco acotada por RLS de usuario).
+model ReporteJob {
+  id           String           @id @default(uuid()) @db.Uuid
+  usuarioId    String           @map("usuario_id") @db.Uuid
+  tipo         String           // "pdf" | "xlsx"
+  parametros   Json             @db.JsonB
+  estado       EstadoReporteJob @default(PENDIENTE)
+  archivoUrl   String?          @map("archivo_url")
+  error        String?          @db.Text
+  creadoEn     DateTime         @default(now()) @map("creado_en") @db.Timestamptz(6)
+  finalizadoEn DateTime?        @map("finalizado_en") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, estado])
+  @@map("reporte_jobs")
 }

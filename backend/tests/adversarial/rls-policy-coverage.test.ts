@@ -25,6 +25,9 @@ const TABLAS_TENANT_SCOPED = [
   "linkedin_oauth_states",
   "linkedin_fuentes",
   "linkedin_formularios",
+  "cuentas_anuncios_conexiones",
+  "cuentas_anuncios_oauth_states",
+  "campania_metricas_diarias",
 ] as const;
 
 afterAll(async () => {

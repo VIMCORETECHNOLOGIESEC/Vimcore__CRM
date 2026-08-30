@@ -96,14 +96,42 @@ const envSchema = z.object({
   // responde 503 en vez de impedir el arranque del proceso — la integración
   // de WhatsApp es opcional en runtime, igual que LinkedIn Lead Sync.
   WHATSAPP_OAUTH_REDIRECT_URI: optionalEnvUrl,
+  // metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+  // campañas Meta"): OAuth de la Marketing/Insights API de una cuenta de
+  // anuncios (`act_<id>`) -- también reusa `META_APP_ID`/`META_APP_SECRET`
+  // (misma Meta App), solo falta su propia URL de retorno registrada en el
+  // dashboard, distinta de `WHATSAPP_OAUTH_REDIRECT_URI` (mismo criterio que
+  // esa: opcional, `GET /meta-ads/conectar` responde 503 en vez de impedir el
+  // arranque del proceso si no está configurada).
+  META_ADS_OAUTH_REDIRECT_URI: optionalEnvUrl,
+  // reportes (Bloque E, exportación PDF/XLSX): directorio local donde
+  // `jobs/reportes/reporte-generacion.job.ts` escribe el PDF/XLSX generado
+  // antes de que `GET /reportes/jobs/:id/descargar` lo sirva. Sin backend de
+  // almacenamiento externo (S3 u otro) en este batch -- fuera del alcance
+  // documentado; anotado en el reporte del batch como limitación conocida en
+  // un despliegue multi-réplica.
+  REPORTES_STORAGE_DIR: z.string().min(1).default("storage/reportes"),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,
   );
 
-  if (!linkedinConfigured) {
-    return;
+  if (values.META_ADS_OAUTH_REDIRECT_URI !== undefined) {
+    const metaAdsRedirectUri = new URL(values.META_ADS_OAUTH_REDIRECT_URI);
+    const isMetaAdsHttps = metaAdsRedirectUri.protocol === "https:";
+    const isMetaAdsTestLocalhostHttp = values.NODE_ENV === "test"
+      && metaAdsRedirectUri.protocol === "http:"
+      && metaAdsRedirectUri.hostname === "localhost";
+    if (!isMetaAdsHttps && !isMetaAdsTestLocalhostHttp) {
+      context.addIssue({
+        code: "custom",
+        path: ["META_ADS_OAUTH_REDIRECT_URI"],
+        message: "META_ADS_OAUTH_REDIRECT_URI debe usar HTTPS, salvo HTTP localhost en NODE_ENV=test",
+      });
+    }
   }
+
+  if (!linkedinConfigured) return;
 
   for (const variable of LINKEDIN_CORE_VARIABLES) {
     if (values[variable] === undefined) {
@@ -115,9 +143,7 @@ const envSchema = z.object({
     }
   }
 
-  if (values.LINKEDIN_REDIRECT_URI === undefined) {
-    return;
-  }
+  if (values.LINKEDIN_REDIRECT_URI === undefined) return;
 
   let redirectUri: URL;
   try {
