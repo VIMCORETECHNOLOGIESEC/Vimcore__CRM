@@ -43,6 +43,7 @@ function toParams(filtros: MetricasFiltros): Record<string, QueryParamValue> {
     redSocial: filtros.redSocial,
     campania: filtros.campania,
     responsableId: filtros.responsableId,
+    empresaId: filtros.empresaId,
   };
 }
 

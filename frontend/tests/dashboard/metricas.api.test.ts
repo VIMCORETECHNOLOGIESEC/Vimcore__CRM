@@ -102,6 +102,7 @@ describe("fetchResumenMetricasApi — GET /metricas/resumen", () => {
         redSocial: "INSTAGRAM",
         campania: "Verano 2026",
         responsableId: "asesor-1",
+        empresaId: undefined,
       },
     });
     expect(resultado).toEqual(resumen);
@@ -120,7 +121,18 @@ describe("fetchResumenMetricasApi — GET /metricas/resumen", () => {
         redSocial: undefined,
         campania: undefined,
         responsableId: undefined,
+        empresaId: undefined,
       },
+    });
+  });
+
+  it("docs/23 item 14 -- con empresaId (drill-down de holding a una empresa), lo manda como query param", async () => {
+    getMock.mockResolvedValue({});
+
+    await fetchResumenMetricasApi({ rango: "30d", empresaId: "empresa-9" });
+
+    expect(getMock).toHaveBeenCalledWith("/metricas/resumen", {
+      params: expect.objectContaining({ empresaId: "empresa-9" }),
     });
   });
 });

@@ -25,6 +25,17 @@ export type RangoMetricas = "hoy" | "7d" | "30d" | "mes_actual" | "mes_anterior"
  * -- si lo manda un asesor/vendedor, el backend lo ignora en silencio.
  * `campania` es texto libre (`ILIKE` contra `payload_original ->>
  * 'nombreCampania'`), no un id de catálogo.
+ *
+ * `empresaId` (docs/23 item 14, "Dashboard con filtro por empresa (holding)")
+ * -- forward-compatible con `resolveEmpresaId` de
+ * `backend/src/services/metricas.access.ts` (todavía sin mergear a esta
+ * rama, el schema real de este branch descarta en silencio cualquier query
+ * param desconocido, mismo criterio que `usuarios.api.ts`/`bridges.api.ts`
+ * con su propio `empresaId` no-vigente-todavía). Solo tiene efecto real para
+ * una sesión holding-wide -- una sesión `company` ya trae su `empresaId`
+ * forzado del lado del servidor, así que el frontend nunca lo manda para
+ * ese caso (`DashboardPage.tsx` solo lo setea vía `useVistaEmpresa`, que a
+ * su vez solo se expone a `ADMINISTRADOR` + `sessionScope holding`).
  */
 export interface MetricasFiltros {
   rango: RangoMetricas;
@@ -33,6 +44,7 @@ export interface MetricasFiltros {
   redSocial?: RedSocial;
   campania?: string;
   responsableId?: string;
+  empresaId?: string;
 }
 
 /**

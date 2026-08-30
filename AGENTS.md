@@ -283,6 +283,24 @@ de modificar código, datos o despliegue:
     `/ranking-productos-por-empresa`). El ranking por empresa muestra un
     aviso visible para sesión holding-wide por un gap conocido de backend
     (E5, ver `docs/blocks/e-dashboards.md`), sin ocultar la sección.
+  - **Bloque E / docs/23 item 14** ("Dashboard con filtro por empresa
+    holding"): `metricasQuerySchema` gana `empresaId` opcional, resuelto
+    por `metricas.access.ts::resolveEmpresaId` (sesión `company` forzada a
+    su propia empresa, `query.empresaId` ignorado; sesión holding-wide con
+    `empresaId` = drill-down a una empresa puntual; sin él = agregado de
+    todo el holding, comportamiento previo sin cambios) — aplica a los 13
+    endpoints de métricas por igual. Frontend nuevo:
+    `SelectorEmpresaDashboard.tsx` (combobox buscable sobre `GET /empresas`,
+    reusa `useVistaEmpresa`/`?empresaId=` — mismo mecanismo que
+    `GestorEmpresasPage.tsx`/`EmpresaDetallePage.tsx`/`ReportesPage.tsx`),
+    visible SOLO para `ADMINISTRADOR` + sesión `holding` en
+    `DashboardPage.tsx` (deliberadamente más estrecho que "cualquier rol
+    holding-wide": `GET /empresas` es `ADMINISTRADOR`-only en el backend;
+    un `SUPERVISOR` holding-wide ve el dashboard agregado sin selector, sin
+    perder nada que ya tuviera). Construido contra el schema de
+    `origin/main` (`a76c62b`), todavía sin mergear a `test/gpt` —
+    forward-compatible, el backend actual de esta rama ignora el param en
+    silencio (mismo criterio ya usado en `usuarios.api.ts`/`bridges.api.ts`).
   - **Bloque D / Oportunidad, frontend** (`funcionalidades/oportunidades/`
     + `tipos/oportunidad.ts`, 12 slices, 17 archivos de test/110 tests):
     máquina de etapas (`NUEVO→CONTACTADO→CITA`, sin saltos a

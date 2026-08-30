@@ -6,6 +6,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { DashboardFiltros } from "./DashboardFiltros";
@@ -17,6 +18,7 @@ import {
 } from "./dashboard.utils";
 import { FiltroRangoFechas } from "./FiltroRangoFechas";
 import { DashboardExportar } from "./DashboardExportar";
+import { SelectorEmpresaDashboard } from "./SelectorEmpresaDashboard";
 import { formatFechaLocal } from "./rangoFechas";
 import { CascadaLeadOportunidad } from "./CascadaLeadOportunidad";
 import { GraficoCard } from "./GraficoCard";
@@ -53,6 +55,15 @@ import {
 export function DashboardPage() {
   const { hasRole, user } = useAuth();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
+  // docs/23 item 14 -- "Dashboard con filtro por empresa (holding)". Gate
+  // deliberadamente MÁS ESTRECHO que "cualquier rol holding-wide": la fuente
+  // del listado de empresas del selector (`GET /empresas`, ver
+  // `SelectorEmpresaDashboard.tsx`) es exclusiva de `ADMINISTRADOR` en el
+  // backend -- un `SUPERVISOR` holding-wide recibiría un 403 si se intentara
+  // poblar igual. Ese rol simplemente ve el dashboard consolidado del
+  // holding completo, sin selector, sin perder nada frente a hoy.
+  const esAdministradorHoldingWide = hasRole(["ADMINISTRADOR"]) && user?.sessionScope === "holding";
+  const { empresaVistaId } = useVistaEmpresa();
 
   usePageHeader({ title: esGestorDeCartera ? "Dashboard general" : "Dashboard personal" });
 
@@ -62,7 +73,16 @@ export function DashboardPage() {
   });
   const [filtrosDashboard, setFiltrosDashboard] = useState<DashboardFiltrosState>(FILTROS_DASHBOARD_VACIOS);
 
-  const filtros = useMemo(() => buildMetricasFiltros(filtrosDashboard, rango), [filtrosDashboard, rango]);
+  // `empresaVistaId` solo tiene efecto real para una sesión holding-wide
+  // (`resolveEmpresaId` en `metricas.access.ts`, backend); para una sesión
+  // `company` el backend ya fuerza su propia empresa e ignora este campo, así
+  // que da igual que nunca esté seteado en ese caso (el selector ni se
+  // renderiza). `undefined` (no `null`) para que `toParams` lo omita del
+  // query string igual que el resto de filtros opcionales.
+  const filtros = useMemo(
+    () => ({ ...buildMetricasFiltros(filtrosDashboard, rango), empresaId: empresaVistaId ?? undefined }),
+    [filtrosDashboard, rango, empresaVistaId],
+  );
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
   // `getCatalogoResponsables` es backend real (D-A2, integración F3/F4).
@@ -173,6 +193,12 @@ export function DashboardPage() {
             />
           </div>
         </div>
+
+        {esAdministradorHoldingWide ? (
+          <div className="mt-4 min-w-0 max-w-xs">
+            <SelectorEmpresaDashboard />
+          </div>
+        ) : null}
 
         <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.8fr)]">
           <div className="min-w-0">
