@@ -35,3 +35,7 @@ postman/
 # Contrato general para frontend -- se distribuye por otro medio, no vive
 # en el repo compartido.
 docs/contrato-frontend-general.md
+
+# Credenciales reales de producción -- nunca en el repo, se distribuyen por
+# otro medio.
+docs/credenciales-produccion-arcano.md
