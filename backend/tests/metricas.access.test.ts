@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { UsuarioAcceso } from "../src/services/leads.access.js";
 import {
   resolveAlcanceBase,
+  resolveAlcanceBaseOportunidad,
+  resolveEmpresaId,
   resolveFiltroSql,
+  resolveRendimientoCampaniaFiltro,
   resolveResponsableIds,
   tieneAccesoTotal,
 } from "../src/services/metricas.access.js";
@@ -67,6 +70,53 @@ describe("services/metricas.access — resolveFiltroSql empresa scoping (proyecc
     const adminEmpresaA = usuario("admin-1", "ADMINISTRADOR", EMPRESA_A);
     const filtro = resolveFiltroSql(adminEmpresaA, queryBase(), "ingresado_en", ahora, ahora);
 
+    expect(filtro.empresaId).toBe(EMPRESA_A);
+  });
+});
+
+describe("services/metricas.access — resolveEmpresaId: drill-down holding-wide (fix, mismo criterio que usuarios.service.ts/bridge.service.ts)", () => {
+  it("sesión company-scoped: usa siempre su propia empresa, ignora query.empresaId", () => {
+    const adminEmpresaA = usuario("admin-1", "ADMINISTRADOR", EMPRESA_A);
+    expect(resolveEmpresaId(adminEmpresaA, queryBase({ empresaId: EMPRESA_B }))).toBe(EMPRESA_A);
+  });
+
+  it("sesión holding-wide con query.empresaId: drill-down a esa empresa puntual", () => {
+    const holdingSupervisor = usuario("sup-1", "SUPERVISOR_HOLDING", null);
+    expect(resolveEmpresaId(holdingSupervisor, queryBase({ empresaId: EMPRESA_B }))).toBe(EMPRESA_B);
+  });
+
+  it("triangulación: sesión holding-wide sin query.empresaId sigue devolviendo null (sin filtro, comportamiento previo sin cambios)", () => {
+    const holdingSupervisor = usuario("sup-1", "SUPERVISOR_HOLDING", null);
+    expect(resolveEmpresaId(holdingSupervisor, queryBase())).toBeNull();
+  });
+});
+
+describe("services/metricas.access — resolveAlcanceBase/resolveAlcanceBaseOportunidad honran el drill-down de resolveEmpresaId", () => {
+  it("resolveAlcanceBase: holding-wide con query.empresaId acota where.empresaId a esa empresa", () => {
+    const holdingSupervisor = usuario("sup-1", "SUPERVISOR_HOLDING", null);
+    const where = resolveAlcanceBase(holdingSupervisor, queryBase({ empresaId: EMPRESA_A }));
+    expect(where.empresaId).toBe(EMPRESA_A);
+  });
+
+  it("resolveAlcanceBaseOportunidad: holding-wide con query.empresaId acota where.empresaId a esa empresa", () => {
+    const holdingSupervisor = usuario("sup-1", "SUPERVISOR_HOLDING", null);
+    const where = resolveAlcanceBaseOportunidad(holdingSupervisor, queryBase({ empresaId: EMPRESA_B }));
+    expect(where.empresaId).toBe(EMPRESA_B);
+  });
+});
+
+describe("services/metricas.access — resolveFiltroSql/resolveRendimientoCampaniaFiltro honran el drill-down de resolveEmpresaId", () => {
+  const ahora = new Date("2026-08-20T00:00:00Z");
+
+  it("resolveFiltroSql: holding-wide con query.empresaId proyecta ese empresaId en vez de null", () => {
+    const holdingSupervisor = usuario("sup-1", "SUPER_ADMIN", null);
+    const filtro = resolveFiltroSql(holdingSupervisor, queryBase({ empresaId: EMPRESA_A }), "ingresado_en", ahora, ahora);
+    expect(filtro.empresaId).toBe(EMPRESA_A);
+  });
+
+  it("resolveRendimientoCampaniaFiltro: holding-wide con query.empresaId proyecta ese empresaId en vez de null", () => {
+    const holdingSupervisor = usuario("sup-1", "SUPER_ADMIN", null);
+    const filtro = resolveRendimientoCampaniaFiltro(holdingSupervisor, queryBase({ empresaId: EMPRESA_A }), ahora, ahora);
     expect(filtro.empresaId).toBe(EMPRESA_A);
   });
 });
