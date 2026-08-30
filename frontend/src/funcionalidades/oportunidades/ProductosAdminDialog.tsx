@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -111,9 +112,19 @@ export function ProductosAdminDialog({ empresaVistaId }: ProductosAdminDialogPro
                   <p className="text-sm text-destructive">{errors.nombre.message}</p>
                 ) : null}
               </div>
-              <Button type="submit" className="w-fit" disabled={crearProducto.isPending}>
-                {crearProducto.isPending ? "Creando…" : "Crear producto"}
-              </Button>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  disabled={crearProducto.isPending}
+                >
+                  Cerrar
+                </Button>
+                <Button type="submit" disabled={crearProducto.isPending}>
+                  {crearProducto.isPending ? "Creando…" : "Crear producto"}
+                </Button>
+              </DialogFooter>
             </form>
           </div>
         </DialogContent>
