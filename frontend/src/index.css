@@ -306,15 +306,20 @@
  * `focus-visible:ring-2` (0,2,0) sin `!important`; el `:focus-visible` de
  * teclado activa ambas sombras, así que acá se fija la caja combinada
  * (borde pleno + halo suave) en lugar de competir con el ring de Tailwind.
+ *
+ * `:not([type="radio"])` (migración "idec-a-marca"): sin esta exclusión,
+ * esta regla -- por mayor especificidad -- pisaba el
+ * `border-muted-foreground/50` propio de los radio buttons sin marcar,
+ * dejándolos con el azul IDEC en vez de su gris neutro esperado.
  */
-.modo-idec input,
+.modo-idec input:not([type="radio"]),
 .modo-idec textarea,
 .modo-idec select {
   border-color: rgb(var(--idec) / 0.45);
 }
 
-.modo-idec input:focus,
-.modo-idec input:focus-visible,
+.modo-idec input:not([type="radio"]):focus,
+.modo-idec input:not([type="radio"]):focus-visible,
 .modo-idec textarea:focus,
 .modo-idec textarea:focus-visible,
 .modo-idec select:focus,
