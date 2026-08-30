@@ -294,6 +294,48 @@ alcance se vuelve a revisar; no se amplía silenciosamente.
 > la restricción original sobre `schema.prisma`/migraciones sigue vigente
 > para todo lo que no sea branding de marca.
 
+> **Excepción explícita (tema-empresarial-integracion, PASO 8, 2026-08-29)**:
+> sobre la misma base de las dos excepciones anteriores, se agrega autoridad
+> de ESCRITURA cross-empresa, exclusiva de sesión `holding` -- distinta de
+> la excepción previa, que es self-service y está acotada a la propia
+> `Empresa` de la sesión:
+> - `PATCH /empresas/:empresaId/apariencia` -- exclusivo sessionScope
+>   `holding` (403 para sesión `company`), permite editar
+>   `nombre`/`colorPrimario`/`colorSecundario`/`logoUrl` de CUALQUIER
+>   `Empresa` de la instancia, identificada por el `:empresaId` de la ruta
+>   (nunca por un id que venga del body). Guard propio, separado del guard
+>   self-service de la excepción anterior; no reutiliza su authorization
+>   check aunque sí puede reutilizar schema/validación de campos.
+> - Pantalla "gestor de empresas" en frontend, ruta protegida solo para
+>   sessionScope `holding` (implementado extendiendo `ProtectedRoute` con un
+>   prop `allowedScopes`, mismo patrón que ya usaba `allowedRoles`), lista las
+>   `Empresa` existentes y consume el endpoint de arriba. No hay modelo
+>   `Holding` separado todavía (single-tenant a nivel infraestructura, como
+>   ya asume la excepción de `GET /marca-publica`): "las empresas del
+>   holding" son todas las `Empresa` de esta instancia.
+> - `GET /empresas` -- exclusivo sessionScope `holding` (403 para `company`),
+>   de solo lectura, devuelve el listado de `Empresa` de la instancia con al
+>   menos `id`/`nombre`/`colorPrimario`/`colorSecundario`/`logoUrl` (sin
+>   datos de otros módulos como leads/usuarios). Necesario porque la
+>   pantalla de arriba no puede listar sin esto -- gap detectado durante la
+>   implementación del frontend, no en la redacción original de esta
+>   excepción; se documenta acá antes de escribirlo, mismo criterio que el
+>   resto de este bloque.
+>
+> A diferencia de las dos excepciones anteriores, esta SÍ tocó dos archivos
+> de la lista de alto riesgo: `frontend/src/router.tsx` y
+> `frontend/src/layouts/navigation.ts`. En ambos casos es una edición
+> puramente aditiva (dos grupos nuevos de `ProtectedRoute` con
+> `allowedScopes`, dos entradas nuevas de nav) que no toca ninguna ruta ni
+> lógica ya existente -- verificado con `git diff` acotado a esos dos
+> archivos antes de cerrar esta nota. `docs/06-modulos-backend.md` ya
+> clasifica estos dos archivos como "edición obligatoria por cada módulo
+> nuevo -> colisión de merge, no riesgo de seguridad", a diferencia de
+> `leads.access.ts`/`jwt.ts`/`asignacion.service.ts`, que sí siguen sin
+> tocarse. Ningún otro archivo de alto riesgo de la lista de arriba fue
+> modificado, y la restricción original sobre `schema.prisma`/migraciones
+> sigue vigente para todo lo que no sea branding de marca.
+
 ## Dependencia satisfecha
 
 - **Bloque C** está cerrado en `052e811` con 894/894 tests. D0 consume el

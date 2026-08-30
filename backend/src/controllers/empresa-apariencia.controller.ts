@@ -1,7 +1,15 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
-import { updateEmpresaAparienciaBodySchema } from "../schemas/empresa-apariencia.schema.js";
-import { updateApariencia } from "../services/empresa-apariencia.service.js";
+import {
+  empresaIdParamSchema,
+  updateEmpresaAparienciaBodySchema,
+  updateEmpresaAparienciaHoldingBodySchema,
+} from "../schemas/empresa-apariencia.schema.js";
+import {
+  listEmpresas,
+  updateApariencia,
+  updateAparienciaHolding,
+} from "../services/empresa-apariencia.service.js";
 
 function validacionInvalida(): AppError {
   return new AppError("validacion_invalida", 400, "El cuerpo de la petición es inválido");
@@ -38,4 +46,62 @@ export async function patchEmpresaApariencia(req: Request, res: Response): Promi
   // el resto del proyecto).
   const apariencia = await updateApariencia(req.user.empresaId, parsed.data);
   res.status(200).json(apariencia);
+}
+
+/**
+ * Guarda adicional (PASO 8, más allá de `requireRole("ADMINISTRADOR")` en la
+ * ruta): este endpoint es exclusivamente para sesiones `holding` -- guard
+ * propio, separado de `soloEmpresaPropia` de arriba (esa función exige
+ * exactamente lo opuesto: sesión `company`). 403, no 401: la sesión sí está
+ * autenticada y autorizada por rol, solo le falta el scope correcto para
+ * esta acción puntual.
+ */
+export function forbiddenSessionScope(): AppError {
+  return new AppError(
+    "solo_sesion_holding",
+    403,
+    "Esta acción es exclusiva de una sesión de holding",
+  );
+}
+
+function invalidIdParam(): AppError {
+  return new AppError("validacion_invalida", 400, "El identificador de la empresa es inválido");
+}
+
+export async function patchEmpresaAparienciaHolding(req: Request, res: Response): Promise<void> {
+  if (!req.user || req.user.sessionScope !== "holding") {
+    throw forbiddenSessionScope();
+  }
+
+  const parsedParams = empresaIdParamSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidIdParam();
+  }
+
+  const parsedBody = updateEmpresaAparienciaHoldingBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw validacionInvalida();
+  }
+
+  // `req.params.empresaId` -- NUNCA `req.body.empresaId` -- identifica la
+  // `Empresa` a editar. A diferencia del self-service de arriba, acá el id
+  // SÍ viene de la URL en vez de la sesión: es intencionalmente cross-empresa
+  // (D0, excepción explícita PASO 8).
+  const apariencia = await updateAparienciaHolding(parsedParams.data.empresaId, parsedBody.data);
+  res.status(200).json(apariencia);
+}
+
+/**
+ * `GET /empresas` (PASO 8, gap de gestor de empresas): reusa
+ * `forbiddenSessionScope` de arriba -- misma semántica de autorización que el
+ * PATCH cross-empresa, sin guard nuevo. Solo lectura, sin :params ni body que
+ * validar.
+ */
+export async function getEmpresas(req: Request, res: Response): Promise<void> {
+  if (!req.user || req.user.sessionScope !== "holding") {
+    throw forbiddenSessionScope();
+  }
+
+  const empresas = await listEmpresas();
+  res.status(200).json(empresas);
 }
