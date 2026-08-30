@@ -1,20 +1,23 @@
 # 15 — Benchmark de CRM y hoja de ruta de evolución
 
 Este documento define el **benchmark de mercado** y el estado objetivo (**TO-BE**)
-para evolucionar el CRM desde una instancia aislada por empresa hacia un producto
-capaz de atender holdings y varias empresas sin perder su diferenciador: el embudo
-propio con traspaso asesor→vendedor, auditoría transaccional, SLA, semáforo y
-asignación por menor carga con desempate FIFO.
+para evolucionar el CRM desde la fundación multi-tenant ya implementada hacia el
+comportamiento funcional requerido por holdings y varias empresas, sin perder su
+diferenciador: el embudo propio con traspaso asesor→vendedor, auditoría
+transaccional, SLA, semáforo y asignación por menor carga con desempate FIFO.
 
 > **Resultado ejecutivo:** competir no significa clonar HubSpot. La prioridad es
-> convertir las reglas que ya distinguen al producto en invariantes de dominio y
-> rodearlas de aislamiento multi-tenant, atribución y elegibilidad por fuente,
-> permisos por alcance y reporting consolidado. La elegibilidad por fuente es una
-> propuesta TO-BE; no describe el algoritmo vigente.
+> convertir las reglas que ya distinguen al producto en invariantes de dominio,
+> apoyarlas sobre el aislamiento multi-tenant ya implementado y completar
+> atribución, permisos por alcance y reporting consolidado. **D4** (`docs/16`
+> §8, resuelto) descartó la elegibilidad por Fuente como filtro automático de
+> routing: la elegibilidad es por membresía de empresa completa, sin
+> sub-filtro por Fuente dentro de la empresa. Fuente queda como dato de
+> atribución/reporte, no como algoritmo de asignación.
 
 | Dato | Valor |
 |---|---|
-| Estado | **Benchmark / TO-BE** — decisiones D1-D14 resueltas en `docs/16` §8, migración e implementación pendientes |
+| Estado | **Benchmark / TO-BE** — decisiones D1-D14 resueltas en `docs/16` §8; fundación A-C implementada (`052e811`, 894/894 tests); D0 queda pre-despliegue, D/E post-despliegue y F al final |
 | Corte de investigación | **2026-08-25** |
 | Fuentes | Documentación oficial de cada proveedor |
 | Autoridad actual del MVP | `docs/00-estado-documentacion.md`, `docs/01-alcance-mvp.md` y `docs/02-reglas-negocio.md`; para el AS-IS técnico, `backend/prisma/schema.prisma` y sus migraciones |
@@ -43,20 +46,20 @@ estas cinco conclusiones:
 
 | Tema | Estado actual | Dirección TO-BE |
 |---|---|---|
-| Despliegue | Una instancia por empresa, sin `tenant_id` | Frontera resuelta (D1): holding como tenant, empresa como scope interno |
+| Despliegue | Esquema compartido con `Empresa`/`Membresia`, ownership obligatorio, RLS, `TenantContext` y CAS | Frontera resuelta (D1): holding como tenant, empresa como scope interno; D0 hace visible la separación ya existente |
 | Embudo | Un `Lead` recorre Nuevo→Contactado→Cita→Venta/No Venta | Mantener el embudo; separar `Oportunidad` como negociación distinta del contacto (D13/D14, ya decidido) |
-| Roles | Un rol global por usuario | Membresías y capacidades por alcance: tenant, empresa, equipo y fuente según la frontera aprobada |
-| Asignación | Pool global por rol, menor carga activa y desempate FIFO | Filtrar primero por empresa, fuente y elegibilidad; aplicar después disponibilidad/capacidad y conservar una regla determinística de carga |
+| Roles | Membresías por empresa implementadas; la autoridad funcional aún depende de `Usuario.rol` | Completar el corte a capacidades por alcance: tenant, empresa, equipo y fuente según la frontera aprobada |
+| Asignación | Pool global por rol, menor carga activa y desempate FIFO | Filtrar primero por empresa (membresía, D4 — sin sub-filtro por Fuente); aplicar después disponibilidad/capacidad y conservar una regla determinística de carga |
 | Atribución | Red, bridge, cuenta publicitaria y campaña parcialmente modelados | Trazabilidad inmutable desde fuente/campaña/formulario hasta cierre e ingreso |
 | Reporting | KPIs generales y por responsable | Consolidado de holding y desglose por empresa, canal, activo de captación, asesor y vendedor |
 
-> **Límite documental:** `AGENTS.md` y `docs/01-alcance-mvp.md` mantienen el
-> despliegue single-tenant vigente; `docs/00-estado-documentacion.md` define la
-> autoridad de cada documento y reserva Prisma más sus migraciones para el AS-IS
-> técnico. Este TO-BE no debe corregir el alcance mediante frases sueltas. Cuando
-> la frontera sea aprobada, se necesita un cambio de arquitectura y una
-> actualización coordinada de alcance, reglas, modelo de datos, seguridad,
-> bridges, módulos y KPIs.
+> **Límite documental:** `AGENTS.md` y `docs/00-estado-documentacion.md` reconocen
+> la fundación multi-tenant A-C ya implementada; `docs/01-alcance-mvp.md` mantiene
+> el baseline funcional y Prisma más sus migraciones mandan para el AS-IS técnico.
+> La frontera fue aprobada en D1, pero este benchmark/TO-BE no autoriza los bloques
+> funcionales pendientes ni debe corregir contratos mediante frases sueltas. Cada
+> avance requiere su cambio coordinado de alcance, reglas, modelo de datos,
+> seguridad, bridges, módulos y KPIs.
 
 ---
 
@@ -80,7 +83,7 @@ arquitectura candidata.
 | **Marca** | Identidad comercial utilizada por una o varias empresas | Frontera de seguridad |
 | **Activo de captación** | Término paraguas para los recursos que intervienen en la captación y atribución | Una unidad necesariamente enrutable |
 | **Fuente** | Unidad concreta y enrutable dentro de un bridge, por ejemplo una Página Meta, un formulario, una cuenta LinkedIn o un sitio | El paraguas de activos o el canal genérico |
-| **Bridge** | Conexión configurada que autentica, recibe o consulta datos de un proveedor y puede resolver varias fuentes | La fuente concreta que decide la elegibilidad de routing |
+| **Bridge** | Conexión configurada que autentica, recibe o consulta datos de un proveedor y puede resolver varias fuentes | Una unidad que decide elegibilidad de routing — D4 fijó que la elegibilidad es por membresía de empresa completa, nunca por Fuente ni Bridge individual |
 | **Contacto / cliente** | Persona identificada por datos normalizados | Una oportunidad comercial |
 | **Organización prospecto** | Empresa externa con la que se mantiene una relación B2B | Empresa operadora del cliente del CRM |
 | **Lead / Oportunidad** | HubSpot y otros CRM los separan; el código de este proyecto mantiene hoy un único `Lead`, pero la separación ya fue aprobada (D13/D14) | Un cambio todavía sin decidir |
@@ -200,13 +203,14 @@ o Enterprise.
 - [HubSpot — Manage property access](https://knowledge.hubspot.com/properties/restrict-view-edit-access-for-properties), consultado el 2026-08-25; requiere Enterprise.
 - [HubSpot — Manage user permissions](https://knowledge.hubspot.com/user-management/manage-user-permissions), consultado el 2026-08-25; permission sets requiere Enterprise.
 
-Para este CRM, el modelo de autorización debe separar tres dimensiones:
+Para completar la autoridad funcional de este CRM, el modelo debe separar tres
+dimensiones:
 
 | Dimensión | Pregunta que responde | Ejemplo |
 |---|---|---|
 | **Capacidad** | ¿Qué acción puede ejecutar? | Registrar Venta, reasignar, administrar Bridges |
 | **Alcance de datos** | ¿Sobre qué registros puede ejecutarla? | Propios, equipo, empresa, tenant o federación autorizada |
-| **Elegibilidad de routing** | ¿Qué trabajo puede recibir? | Leads de Meta de Empresa A, pero no de LinkedIn ni Empresa B |
+| **Elegibilidad de routing** | ¿Qué trabajo puede recibir? | Leads de Empresa A vía membresía activa, no de Empresa B — D4 descartó un sub-filtro por Fuente (Meta/LinkedIn) dentro de la misma empresa |
 
 #### Matriz mínima TO-BE
 
@@ -217,9 +221,9 @@ Para este CRM, el modelo de autorización debe separar tres dimensiones:
 | Asesor | Solo Leads propios y los compartidos explícitamente | Primer contacto, seguimiento y solicitud de handoff | No ejecuta Venta ni ve carteras ajenas; `NO_VENTA` resuelto en D7 |
 | Vendedor | Trabajo propio posterior al handoff y registros compartidos explícitamente | Gestión desde el handoff hasta Venta; `NO_VENTA` resuelto en D7 | No recibe leads no contactados ni edita la fase de prospección |
 
-Un usuario podría tener capacidades diferentes en empresas distintas. Por ello,
-el futuro modelo no debe asumir que `usuario.rol` global describe toda su
-participación.
+Un usuario puede tener membresías diferentes en empresas distintas. Por ello, el
+corte funcional pendiente no debe asumir que `Usuario.rol` global describe toda
+su participación.
 
 > **Control de seguridad:** las restricciones deben aplicarse en backend y en
 > cada consulta. Ocultar botones o filtrar listas en frontend no constituye
@@ -243,30 +247,35 @@ mantener dos contratos y dos pools separados.
 
 #### Contrato A — asignación inicial a asesor
 
+> **Nota (D4, `docs/16` §8, resuelto):** no existe sub-filtro por Fuente. La
+> elegibilidad se resuelve por membresía de empresa completa; Fuente queda
+> como dato de atribución del Bridge de origen, no como paso de filtrado.
+
 ```text
 1. Tenant y empresa correctos
-2. Fuente y bridge configurado habilitados
+2. Bridge de origen habilitado para esa empresa
 3. Membresías activas con capacidad de asesor en esa empresa
-4. Elegibilidad efectiva para esa Fuente
-5. Disponibilidad y capacidad no agotada
-6. Menor carga activa y desempate determinístico
-7. Fallback a cola supervisada de asignación inicial si no existe asesor elegible
+4. Disponibilidad y capacidad no agotada
+5. Menor carga activa y desempate determinístico
+6. Fallback a cola supervisada de asignación inicial si no existe asesor elegible
 ```
 
 Este flujo nunca incorpora vendedores como fallback.
 
 #### Contrato B — routing post-contacto y handoff a vendedor
 
+> **Nota (D4, `docs/16` §8, resuelto):** igual que en el Contrato A, no hay
+> sub-filtro por Fuente; Fuente es atribución, no criterio de elegibilidad.
+
 ```text
-1. Tenant, empresa, Fuente y bridge configurado coinciden con el Lead
+1. Tenant, empresa y bridge de origen coinciden con el Lead
 2. Existe evidencia persistida del primer contacto
 3. El handoff es válido y efectivo bajo la modalidad aprobada en D8
 4. La competencia sobre NO_VENTA se evalúa según lo ya resuelto en D7
 5. Membresías activas con capacidad de vendedor en esa empresa
-6. Elegibilidad efectiva para esa Fuente
-7. Disponibilidad y capacidad no agotada
-8. Menor carga activa y desempate determinístico
-9. Fallback a cola supervisada de handoff si no existe vendedor elegible
+6. Disponibilidad y capacidad no agotada
+7. Menor carga activa y desempate determinístico
+8. Fallback a cola supervisada de handoff si no existe vendedor elegible
 ```
 
 El fallback post-contacto no puede degradar a una asignación inicial, omitir la
@@ -297,9 +306,10 @@ Enterprise y Brands Add-on.
 | Asociación de una cuenta social a una marca | Modelo de membresías entre holdings y empresas |
 
 **Conclusión:** Brands es una referencia útil para activos y reporting dentro de
-una organización. El aislamiento multi-tenant debe diseñarse aparte y abarcar
-base de datos, repositorios, caché, SSE, jobs, archivos, logs, métricas,
-credenciales y webhooks.
+una organización. Este CRM implementó aparte la fundación de aislamiento
+multi-tenant en A-C; los bloques funcionales pendientes deben preservar ese
+aislamiento en base de datos, repositorios, caché, SSE, jobs, archivos, logs,
+métricas, credenciales y webhooks.
 
 ---
 
@@ -373,20 +383,25 @@ Fuentes oficiales:
 - SLA de 24 horas reiniciado por asignación, reasignación o traspaso.
 - Semáforo calculado mediante formularios por etapa y una rúbrica en código.
 - Registro transaccional de eventos como base de trazabilidad y parte de los KPIs.
+- Fundación multi-tenant en esquema compartido con ownership obligatorio, RLS,
+  `TenantContext` y CAS optimista.
 - Asignación desde un pool global por rol, por menor carga activa y con desempate
   FIFO.
-- Supervisión operativa con reasignación dentro de la instancia vigente.
+- Supervisión operativa con reasignación dentro del comportamiento funcional
+  vigente.
 
 ### Propuestas TO-BE que amplían esas fortalezas
 
-- Filtrar la asignación por tenant, empresa y elegibilidad de **Fuente** antes de
-  aplicar carga y desempate; esto todavía no existe en el AS-IS.
+- Filtrar el pool de asignación por empresa (membresía completa, D4) antes de
+  aplicar carga y desempate; esto todavía no existe en el AS-IS funcional. D4
+  descartó un sub-filtro adicional por Fuente dentro de la empresa.
 - Resolver empresa y Fuente desde el Bridge configurado, sin confiar en el
-  payload externo.
+  payload externo — Fuente se conserva como atribución, no como filtro.
 - Conservar atribución inmutable desde captación, Fuente, campaña y formulario
   hasta el resultado comercial.
 - Versionar la política de routing y explicar candidatos, resultado y fallback.
-- Acotar supervisión, auditoría y reporting por la frontera tenant aprobada.
+- Completar autoridad, supervisión y reporting funcional sobre la frontera
+  tenant ya implementada.
 
 ### Qué no se debe perseguir todavía
 
@@ -396,8 +411,8 @@ Fuentes oficiales:
   captación que todavía falta completar.
 - IA predictiva sin volumen histórico, calidad de datos ni métricas confiables.
 - Permisos configurables que solo existan en frontend.
-- Un “panel de holding” construido antes de garantizar aislamiento tenant por
-  tenant.
+- Un “panel de holding” construido antes de completar autoridad, `Oportunidad`/
+  `Producto` y dashboards jerárquicos en D/E.
 
 ---
 
@@ -415,28 +430,30 @@ esfuerzo ni autorización de implementación.
       workspace solo para la interfaz.
 - [x] Definir la frontera real del tenant y el alcance del administrador del
       holding — resuelto en D1, `docs/16` §8.
-- [ ] Diseñar aislamiento obligatorio de datos y credenciales en toda consulta,
-      job, evento SSE, webhook, log y métrica.
+- [x] Implementar la fundación de aislamiento obligatorio: A-C cerrados con
+      ownership, RLS, `TenantContext` y CAS (`052e811`, 894/894 tests).
 - [ ] Sustituir el rol global como única fuente de autorización por membresías y
       capacidades con alcance.
-- [ ] Formalizar el contrato de handoff, incluido qué constituye “primer
-      contacto” y si el vendedor debe aceptar la transferencia.
+- [ ] Implementar el contrato de handoff ya resuelto, incluido qué constituye
+      “primer contacto” y la asignación inmediata sin aceptación del vendedor.
 - [ ] Impedir en backend que el asesor cierre una venta y que el vendedor reciba
       trabajo sin cumplir la precondición de contacto.
-- [ ] Incorporar elegibilidad dinámica por empresa y Fuente; el Bridge aporta el
-      contexto de conexión, pero no sustituye la unidad de routing.
+- [ ] Incorporar elegibilidad por membresía de empresa completa (D4, sin
+      sub-filtro por Fuente); el Bridge aporta el contexto de conexión y
+      atribución, pero Fuente nunca es un filtro automático de routing.
 - [ ] Añadir disponibilidad, capacidad, fallback y explicación auditable al
       algoritmo de asignación.
 - [ ] Mantener toda reasignación y cambio de ownership dentro de una transacción
       con su evento de auditoría.
-- [ ] Definir deduplicación y reingreso por tenant/empresa, incluida la política
-      para una misma persona que interactúa con varias empresas del holding.
+- [ ] Implementar la deduplicación y el reingreso ya resueltos por tenant/empresa,
+      incluida la política para una misma persona que interactúa con varias
+      empresas del holding.
 - [ ] Garantizar atribución inmutable por empresa, captación, Fuente, Bridge,
       sitio/cuenta, campaña, formulario y responsable.
 - [ ] Entregar reporting consolidado del holding con desglose por empresa,
       fuente, asesor y vendedor.
-- [ ] Actualizar de forma coordinada `AGENTS.md` y `docs/01` a `docs/08` cuando
-      estas decisiones sean aprobadas.
+- [ ] Actualizar de forma coordinada `AGENTS.md` y `docs/01` a `docs/08` conforme
+      se implementen los bloques funcionales pendientes.
 
 ### SHOULD — operación comercial competitiva
 
@@ -489,7 +506,7 @@ arquitectura candidata que las sustenta.
 | D1 — Frontera tenant | Elegir holding como tenant o empresa como tenant coordinada mediante federación | Define la clave de aislamiento y la jerarquía administrativa |
 | D2 — Identidad y deduplicación | Elegir contacto por empresa, por holding o identidad de holding con perfil comercial por empresa | Cambia privacidad, reingreso, unicidad y reporting |
 | D3 — Routing por sitio | Elegir asesor fijo, pool elegible o regla con fallback empresarial | Define cardinalidades y comportamiento cuando ingresa una captación web |
-| D4 — Granularidad de elegibilidad | Definir permisos por Fuente o selecciones de Bridge, cuenta externa o campaña que hereden o se expandan a Fuentes | Mantiene Fuente como unidad efectiva de routing sin perder administración por niveles superiores |
+| D4 — Granularidad de elegibilidad | Definir permisos por Fuente o por membresía de empresa completa | **Resuelto:** membresía de empresa completa, sin sub-filtro por Fuente — Fuente queda como dato de atribución/reporte, nunca como filtro automático de routing |
 | D5 — Roles múltiples | Definir rol dual asesor/vendedor, su alcance y la política de auto-traspaso | Cambia membresías, autorización y conflictos de interés |
 | D6 — Scope de supervisión | Definir supervisión por empresa, conjunto de empresas o equipo | Determina visibilidad, reasignación y reporting operativo |
 | D7 — Competencia sobre `NO_VENTA` | Definir el rol habilitado antes y después del handoff | Bloquea permisos y transiciones de cierre negativo; este benchmark no lo fija |
@@ -499,6 +516,7 @@ arquitectura candidata que las sustenta.
 | D11 — Topología física | Elegir base por holding, esquema compartido con RLS o control plane con bases separadas | Define migración, aislamiento, operación y recuperación |
 | D12 — Integraciones compartidas | Definir el tratamiento de una credencial o cuenta externa usada por varias empresas | Evita cruces de ownership y secretos entre empresas o tenants |
 | D13 — Límite Lead→Oportunidad | Elegir la representación física entre entidades separadas o un agregado con fases y ownership diferenciados | Define modelo de datos, API, eventos, permisos y KPIs sin imponer una entidad por imitación del mercado |
+| D14 — Efecto cascada de D13 sobre D2/D3/D7/D8/D9 | Ajustar D2/D3/D7/D8/D9 para que operen sobre `Oportunidad` (timing de apertura, pool con bypass de autoasignación, SLA propio) en vez de `Lead` | Evita que separar `Oportunidad` reabra silenciosamente la mecánica ya resuelta de D2/D3/D7/D8/D9 |
 
 ---
 
@@ -509,9 +527,10 @@ arquitectura candidata que las sustenta.
       registradas en `docs/16` §8, no solamente en este índice.
 - [ ] Exista una matriz de capacidades, alcance y routing aprobada por rol
       **como contrato**, no solo como candidata.
-- [ ] Se haya acordado la política de deduplicación entre empresas.
-- [ ] Se haya definido la primera rebanada multi-tenant sin mezclar módulos
-      `LATER`.
+- [x] Se acordó en D2 la política de deduplicación entre empresas; su
+      implementación funcional permanece pendiente.
+- [x] Se definió D0 como la primera rebanada pre-despliegue, sin mezclar módulos
+      `LATER`; D/E quedan post-despliegue y F al final.
 - [ ] La documentación vigente se actualice como un conjunto coherente y no como
       correcciones aisladas.
 

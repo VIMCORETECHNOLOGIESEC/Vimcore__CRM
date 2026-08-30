@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { createForActiveSupervisorsAndAdmins } from "../src/services/notificaciones.service.js";
 const app = createApp();
 const password = "clave-notificaciones-123456";
@@ -20,6 +21,20 @@ async function createUser(role: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR", activ
     },
   });
 }
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Bloque C (D5): `createForActiveSupervisorsAndAdmins` ahora resuelve
+ * destinatarios vía `Membresia` (empresaId+rol), no vía un scan global de
+ * `Usuario.rol` — este helper crea la Membresia activa equivalente para que
+ * estas pruebas sigan ejerciendo la resolución real de destinatarios.
+ */
+async function createUserConMembresia(role: "ADMINISTRADOR" | "SUPERVISOR", active = true) {
+  const usuario = await createUser(role, active);
+  await testAdminPrisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: role, activa: true },
+  });
+  return usuario;
+}
 async function login(correo: string): Promise<string> {
   const response = await request(app).post("/api/v1/auth/login").send({ correo, password });
   expect(response.status).toBe(200);
@@ -30,17 +45,24 @@ beforeAll(async () => {
   const foreign = await createUser("ASESOR");
   ownerId = owner.id;
   foreignId = foreign.id;
+  // Bloque C follow-up (D2 gap closure): `owner` se loguea y hace peticiones
+  // autenticadas en las pruebas de abajo — sin Membresia activa,
+  // `requireAuthentication` rechazaría el TenantContext (D2). `foreign` solo
+  // se usa como id de referencia, nunca se autentica — no la necesita.
+  await testAdminPrisma.membresia.create({
+    data: { usuarioId: owner.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR", activa: true },
+  });
   ownerToken = await login(owner.correo);
 });
 beforeEach(async () => {
-  await prisma.notificacion.deleteMany();
+  await testAdminPrisma.notificacion.deleteMany();
 });
 afterAll(async () => {
   await prisma.$disconnect();
 });
 describe("M8 notification REST API", () => {
   it("lists only the authenticated owner's unread notifications newest first", async () => {
-    const oldest = await prisma.notificacion.create({
+    const oldest = await testAdminPrisma.notificacion.create({
       data: {
         usuarioId: ownerId,
         tipo: "LEAD_ASIGNADO",
@@ -50,7 +72,7 @@ describe("M8 notification REST API", () => {
         creadaEn: new Date("2026-01-01T10:00:00Z"),
       },
     });
-    const newest = await prisma.notificacion.create({
+    const newest = await testAdminPrisma.notificacion.create({
       data: {
         usuarioId: ownerId,
         tipo: "LEAD_TRASPASADO",
@@ -60,7 +82,7 @@ describe("M8 notification REST API", () => {
         creadaEn: new Date("2026-01-01T11:00:00Z"),
       },
     });
-    await prisma.notificacion.create({
+    await testAdminPrisma.notificacion.create({
       data: {
         usuarioId: ownerId,
         tipo: "LEAD_SIN_ATENDER",
@@ -70,7 +92,7 @@ describe("M8 notification REST API", () => {
         leidaEn: new Date(),
       },
     });
-    await prisma.notificacion.create({
+    await testAdminPrisma.notificacion.create({
       data: {
         usuarioId: foreignId,
         tipo: "LEAD_ASIGNADO",
@@ -89,7 +111,7 @@ describe("M8 notification REST API", () => {
     ]);
   });
   it("marks an owned notification idempotently and rejects foreign or missing IDs", async () => {
-    const owned = await prisma.notificacion.create({
+    const owned = await testAdminPrisma.notificacion.create({
       data: {
         usuarioId: ownerId,
         tipo: "RECORDATORIO_CITA",
@@ -98,7 +120,7 @@ describe("M8 notification REST API", () => {
         mensaje: "Upcoming appointment",
       },
     });
-    const foreign = await prisma.notificacion.create({
+    const foreign = await testAdminPrisma.notificacion.create({
       data: {
         usuarioId: foreignId,
         tipo: "ERROR_BRIDGE",
@@ -121,10 +143,10 @@ describe("M8 notification REST API", () => {
       .set("Authorization", `Bearer ${ownerToken}`);
     expect(foreignResponse.status).toBe(404);
     expect(missingResponse.status).toBe(404);
-    expect((await prisma.notificacion.findUniqueOrThrow({ where: { id: foreign.id } })).leidaEn).toBeNull();
+    expect((await testAdminPrisma.notificacion.findUniqueOrThrow({ where: { id: foreign.id } })).leidaEn).toBeNull();
   });
   it("marks all and only the owner's notifications read with repeatable 204 responses", async () => {
-    await prisma.notificacion.createMany({
+    await testAdminPrisma.notificacion.createMany({
       data: [
         { usuarioId: ownerId, tipo: "LEAD_ASIGNADO", canal: "IN_APP", titulo: "A", mensaje: "A" },
         { usuarioId: ownerId, tipo: "LEAD_TRASPASADO", canal: "IN_APP", titulo: "B", mensaje: "B" },
@@ -137,21 +159,25 @@ describe("M8 notification REST API", () => {
         .set("Authorization", `Bearer ${ownerToken}`);
       expect(response.status, `attempt ${attempt}`).toBe(204);
     }
-    expect(await prisma.notificacion.count({ where: { usuarioId: ownerId, leidaEn: null } })).toBe(0);
-    expect(await prisma.notificacion.count({ where: { usuarioId: foreignId, leidaEn: null } })).toBe(1);
+    expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: ownerId, leidaEn: null } })).toBe(0);
+    expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: foreignId, leidaEn: null } })).toBe(1);
   });
 });
 describe("M8 active supervisor/admin fan-out", () => {
   it("creates alerts for every active supervisor/admin and excludes inactive users", async () => {
-    const activeSupervisor = await createUser("SUPERVISOR");
-    const activeAdmin = await createUser("ADMINISTRADOR");
-    const inactiveSupervisor = await createUser("SUPERVISOR", false);
-    await createForActiveSupervisorsAndAdmins({
-      tipo: "LEAD_SIN_ASIGNAR",
-      titulo: "Lead sin asignar",
-      mensaje: "No hay responsables disponibles",
-    });
-    const recipients = await prisma.notificacion.findMany({
+    const activeSupervisor = await createUserConMembresia("SUPERVISOR");
+    const activeAdmin = await createUserConMembresia("ADMINISTRADOR");
+    const inactiveSupervisor = await createUserConMembresia("SUPERVISOR", false);
+    await createForActiveSupervisorsAndAdmins(
+      {
+        tipo: "LEAD_SIN_ASIGNAR",
+        titulo: "Lead sin asignar",
+        mensaje: "No hay responsables disponibles",
+      },
+      BOOTSTRAP_EMPRESA_ID,
+      testAdminPrisma,
+    );
+    const recipients = await testAdminPrisma.notificacion.findMany({
       where: { tipo: "LEAD_SIN_ASIGNAR" },
       select: { usuarioId: true },
     });
@@ -161,20 +187,21 @@ describe("M8 active supervisor/admin fan-out", () => {
     expect(ids).not.toContain(inactiveSupervisor.id);
   });
   it("rolls back every fan-out notification when its transaction fails", async () => {
-    await createUser("SUPERVISOR");
+    await createUserConMembresia("SUPERVISOR");
     await expect(
-      prisma.$transaction(async (tx) => {
+      testAdminPrisma.$transaction(async (tx) => {
         await createForActiveSupervisorsAndAdmins(
           {
             tipo: "LEAD_SIN_ASIGNAR",
             titulo: "Lead sin asignar",
             mensaje: "Rollback expected",
           },
+          BOOTSTRAP_EMPRESA_ID,
           tx,
         );
         throw new Error("forced rollback");
       }),
     ).rejects.toThrow("forced rollback");
-    expect(await prisma.notificacion.count()).toBe(0);
+    expect(await testAdminPrisma.notificacion.count()).toBe(0);
   });
 });

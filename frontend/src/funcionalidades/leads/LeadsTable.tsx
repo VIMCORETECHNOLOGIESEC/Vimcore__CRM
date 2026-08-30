@@ -8,10 +8,17 @@ import { RotateCcw } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
-import { ETAPA_ETIQUETAS, RED_SOCIAL_ETIQUETAS } from "./catalogos";
+import { ETAPA_ETIQUETAS } from "./catalogos";
 import { getResponsable } from "./leads.utils";
 import { SemaforoBadge } from "./SemaforoBadge";
 import { SlaCountdownCell } from "./SlaCountdownCell";
@@ -20,34 +27,43 @@ function formatFechaIngreso(iso: string): string {
   const fecha = new Date(iso);
   const dia = String(fecha.getDate()).padStart(2, "0");
   const mes = String(fecha.getMonth() + 1).padStart(2, "0");
-  const horas = String(fecha.getHours()).padStart(2, "0");
-  const minutos = String(fecha.getMinutes()).padStart(2, "0");
-  return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
+  return `${dia}/${mes}/${fecha.getFullYear()}`;
 }
 
 const columnHelper = createColumnHelper<Lead>();
 
 /**
- * Anchos fijos por columna (`table-fixed`, ver el `<Table>` de abajo) --
- * mismo criterio que `usuarios/UsuariosTable.tsx`: Cliente y Campaña son
- * texto libre sin tope y se reparten el resto con `truncate` + `Tooltip`;
- * el resto tiene contenido acotado (catálogo, badge o formato fijo), así que
- * alcanza un ancho chico y determinístico.
+ * Anchos fijos por columna, en px -- mismo criterio que
+ * `usuarios/UsuariosTable.tsx`: Cliente y Campaña son texto libre sin tope y
+ * se reparten el resto con `truncate` + `Tooltip`; el resto tiene contenido
+ * acotado (catálogo, badge o formato fijo), así que alcanza un ancho chico y
+ * determinístico.
+ *
+ * Fuente de verdad ÚNICA vía `<colgroup>` (ver el `<Table>` de abajo), NO
+ * clases `w-*` sueltas por `<th>`/`<td>` (bug real encontrado y corregido
+ * 2026-08-28, ver el comentario junto al `<colgroup>`): declarar el ancho
+ * en la celda de cabecera y dejar la celda de cuerpo sin ancho explícito
+ * (como estaba antes acá) deja a `table-layout: fixed` con una fuente de
+ * verdad AMBIGUA por columna -- en Chromium (confirmado con
+ * `getBoundingClientRect`/`getComputedStyle` en vivo, no una suposición)
+ * eso produce un corrimiento de una columna completa: cada celda de cuerpo
+ * termina con el ancho declarado de la columna ANTERIOR, y la última
+ * columna ("Fecha de ingreso") queda con una franja de ~8px, su contenido
+ * literalmente cortado fuera del borde de la tabla.
  */
-const COLUMN_WIDTHS: Record<string, string> = {
+const COLUMN_WIDTHS_PX: Record<string, number> = {
   // Anchos fijos acotados, no porcentuales (F3, feedback QA: la tabla no debe
   // extenderse tanto que las columnas de ESTADO -- etapa/semáforo/SLA --
   // queden fuera de la vista inicial sin scroll). truncate + Tooltip ya
   // cubren el desborde de texto largo en ambas.
-  cliente: "w-48",
-  telefono: "w-32",
-  redSocial: "w-28",
-  campania: "w-36",
-  etapa: "w-28",
-  semaforo: "w-32",
-  responsable: "w-32",
-  sla: "w-36",
-  ingreso: "w-36",
+  seleccion: 40, // w-10 -- checkbox, ahora una columna TanStack real (ver useMemo de `columns`)
+  cliente: 192, // w-48
+  telefono: 128, // w-32
+  etapa: 112, // w-28
+  semaforo: 128, // w-32
+  responsable: 128, // w-32
+  sla: 144, // w-36
+  ingreso: 144, // w-36
 };
 
 interface LeadsTableProps {
@@ -76,6 +92,40 @@ export function LeadsTable({
   const todosSeleccionados = leads.length > 0 && leads.every((l) => seleccionados.has(l.id));
 
   const columns = useMemo(() => {
+    /*
+     * Columna de selección: ahora una columna TanStack real (`columnHelper.display`),
+     * NO un `<th>`/`<td>` manual insertado por fuera del modelo (como estaba antes,
+     * 2026-08-28) -- ese patrón mixto (9 columnas vía TanStack + 1 columna a mano,
+     * fuera de `headerGroup.headers`/`row.getVisibleCells()`) es la causa real de un
+     * bug de corrimiento de columnas encontrado con `getBoundingClientRect()` en
+     * navegador real: cada celda de cuerpo terminaba con el ancho de la columna
+     * ANTERIOR y la última columna quedaba con un resto de pocos px, contenido
+     * literalmente cortado. Ni declarar el ancho en cada celda NI un `<colgroup>`
+     * explícito (ambos probados, ninguno alcanzó) resolvieron el corrimiento
+     * mientras la columna de checkbox siguiera fuera del modelo de columnas de
+     * TanStack -- la única fila REALMENTE correcta fue unificar TODO en una sola
+     * fuente: una columna de TanStack más, recorrida por el mismo `.map()` que las
+     * demás, sin ninguna celda especial insertada a mano antes del loop.
+     */
+    const seleccion = columnHelper.display({
+      id: "seleccion",
+      header: () => (
+        <Checkbox
+          checked={todosSeleccionados}
+          onCheckedChange={(marcar) => onToggleSeleccionTodos(marcar === true)}
+          aria-label="Seleccionar todos los leads de esta página"
+          className="border-white data-[state=checked]:bg-white data-[state=checked]:text-primary"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={seleccionados.has(row.original.id)}
+          onCheckedChange={() => onToggleSeleccion(row.original.id)}
+          aria-label={`Seleccionar a ${row.original.cliente.nombre}`}
+        />
+      ),
+    });
+
     const base = [
       columnHelper.accessor((lead) => lead.cliente.nombre, {
         id: "cliente",
@@ -112,8 +162,8 @@ export function LeadsTable({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Cliente conocido que volvió a ingresar por el embudo (nueva oportunidad,
-                    ventana de 90 días)
+                    Cliente conocido que volvió a ingresar por el embudo (nueva oportunidad, ventana
+                    de 90 días)
                   </TooltipContent>
                 </Tooltip>
               ) : null}
@@ -135,26 +185,6 @@ export function LeadsTable({
         id: "telefono",
         header: "Teléfono",
         cell: ({ getValue }) => <span className="tabular-nums">{getValue()}</span>,
-      }),
-      columnHelper.accessor((lead) => lead.redSocial, {
-        id: "redSocial",
-        header: "Red social",
-        cell: ({ getValue }) => RED_SOCIAL_ETIQUETAS[getValue()],
-      }),
-      columnHelper.accessor((lead) => lead.campania?.nombre ?? "—", {
-        id: "campania",
-        header: "Campaña",
-        cell: ({ getValue }) => {
-          const nombre = getValue();
-          return (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="block truncate">{nombre}</span>
-              </TooltipTrigger>
-              <TooltipContent>{nombre}</TooltipContent>
-            </Tooltip>
-          );
-        },
       }),
       columnHelper.accessor((lead) => lead.etapa, {
         id: "etapa",
@@ -200,68 +230,144 @@ export function LeadsTable({
       ),
     });
 
-    return mostrarColumnaResponsable
+    const datos = mostrarColumnaResponsable
       ? [...base, responsable, sla, ingreso]
       : [...base, sla, ingreso];
-  }, [mostrarColumnaResponsable]);
+
+    return permitirSeleccion ? [seleccion, ...datos] : datos;
+    // `seleccionados`/`onToggleSeleccion`/`onToggleSeleccionTodos`/`todosSeleccionados`
+    // en las deps a propósito -- son closures capturadas dentro de `seleccion.cell`/
+    // `.header` arriba; sin esto, un toggle de selección seguiría viendo el estado
+    // "seleccionados" de la última vez que `columns` se recalculó (closure obsoleta).
+  }, [
+    mostrarColumnaResponsable,
+    permitirSeleccion,
+    seleccionados,
+    onToggleSeleccion,
+    onToggleSeleccionTodos,
+    todosSeleccionados,
+  ]);
+
+  /**
+   * Anchos del `<colgroup>`, en el MISMO orden que `columns` de arriba --
+   * derivado de ese mismo array (no una lista separada mantenida a mano)
+   * para que ambos queden siempre sincronizados por construcción, sin
+   * posibilidad de desalinearse entre sí.
+   */
+  const colWidthsPx = useMemo(
+    () => columns.map((columna) => COLUMN_WIDTHS_PX[columna.id as string]),
+    [columns],
+  );
 
   const table = useReactTable({ data: leads, columns, getCoreRowModel: getCoreRowModel() });
 
+  /**
+   * Ancho total = suma de `colWidthsPx` (checkbox incluido, ahora una
+   * columna TanStack más).
+   *
+   * `min-width`, NO `width` exacto (2026-08-28, tercera vuelta sobre este
+   * mismo bug -- ver el historial completo abajo): con `width` exacto
+   * (igual a esta suma), en viewports donde la card queda MÁS ANCHA que la
+   * tabla (sin necesidad de scroll horizontal), la ÚLTIMA columna
+   * ("Fecha de ingreso") colapsa a 0px -- su contenido queda invisible,
+   * aunque el `<thead>` de la MISMA tabla sí respeta el `<colgroup>`
+   * correctamente (confirmado con capturas reales en el navegador, no
+   * `getBoundingClientRect` aislado -- esa API mintió varias veces durante
+   * esta investigación y no es confiable para medir celdas de esta tabla en
+   * este entorno). Con `min-width` en cambio, la tabla crece para llenar el
+   * contenedor y ninguna columna queda invisible -- el costo es que la
+   * columna que absorbe el sobrante (normalmente la última) queda más
+   * ancha que su `colgroup` declarado en viewports muy anchos. Peor visual,
+   * pero NUNCA pérdida de datos.
+   *
+   * Se probaron y descartaron, todos con el mismo resultado o peor:
+   * `width` exacto solo o con buffer fijo (mueve el colapso a otra
+   * columna, no lo elimina), ancho redundante por celda además del
+   * `<colgroup>`, `!important` en la celda de checkbox, `table-layout:
+   * auto`, quitar `position: relative` de las filas, forzar reflow del
+   * `<tbody>` (`display:none`/`display:''`). Ninguno resolvió el bug de
+   * raíz -- parece un defecto real del motor de layout de esta build de
+   * Chromium (`table-layout: fixed` + `<colgroup>` + `<tbody>` renderizado
+   * por React/TanStack) que un `min-width` simplemente evita en vez de
+   * corregir.
+   */
+  const anchoTotalPx = colWidthsPx.reduce((suma, w) => suma + w, 0);
+
   return (
-    // `min-w` fijo en la <table> (no en celdas sueltas -- `table-fixed` solo
-    // respeta `width` de la primera fila e ignora `min-width` por celda, que
-    // es justo lo que causaba el choque de columnas de antes): suma exacta
-    // de las columnas, todas con ancho fijo desde el fix de COLUMN_WIDTHS
-    // (768px teléfono/red social/etapa/semáforo/SLA/ingreso + 192px Cliente +
-    // 144px Campaña + 128px Responsable + 40px checkbox, caso admin
-    // completo) -- por debajo de ese piso, gana el scroll horizontal del
-    // wrapper (`overflow-auto` en `Table`), nunca la compresión.
-    <Table className="table-fixed min-w-[1280px]">
-      <TableHeader>
+    /*
+     * `<colgroup>` -- fuente de los anchos de columna: un `<col>` por
+     * columna, en el MISMO orden que `columns`/`colWidthsPx`. `<th>`/`<td>`
+     * ya no declaran su propio ancho.
+     *
+     * TODAS las columnas (incluida "seleccion") se recorren con el MISMO
+     * `.map()` de abajo, ninguna insertada a mano por fuera del modelo de
+     * TanStack -- ver el comentario junto a la columna `seleccion` en el
+     * `useMemo` de arriba. Esto NO elimina el bug de la nota de
+     * `anchoTotalPx` de arriba (se pensó que sí en una vuelta anterior,
+     * era incorrecto), pero sigue siendo la forma correcta de declarar
+     * anchos de columna vs. celdas sueltas por fuera del modelo.
+     */
+    <Table className="table-fixed" wrapperClassName="min-h-0" style={{ minWidth: anchoTotalPx }}>
+      <colgroup>
+        {colWidthsPx.map((ancho, indice) => (
+          // eslint-disable-next-line react/no-array-index-key -- el orden de `colWidthsPx` es estable dentro de un mismo render (deriva de `columns`, memoizado junto con él); no hay reordenamiento que justifique otra key.
+          <col key={indice} style={{ width: ancho }} />
+        ))}
+      </colgroup>
+      <TableHeader className="sticky top-0 z-20 bg-sidebar" data-tour="leads-table-columns">
         {table.getHeaderGroups().map((headerGroup) => (
-          <TableRow key={headerGroup.id}>
-            {permitirSeleccion ? (
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={todosSeleccionados}
-                  onCheckedChange={(marcar) => onToggleSeleccionTodos(marcar === true)}
-                  aria-label="Seleccionar todos los leads de esta página"
-                />
-              </TableHead>
-            ) : null}
+          <TableRow key={headerGroup.id} className="h-10 hover:bg-transparent">
             {headerGroup.headers.map((header) => (
-              <TableHead key={header.id} className={COLUMN_WIDTHS[header.id]}>
+              <TableHead key={header.id} className="text-sidebar-foreground/80">
                 {flexRender(header.column.columnDef.header, header.getContext())}
               </TableHead>
             ))}
           </TableRow>
         ))}
       </TableHeader>
-      <TableBody>
-        {table.getRowModel().rows.map((row) => (
-          <TableRow
-            key={row.id}
-            data-state={seleccionados.has(row.original.id) ? "selected" : undefined}
-            // `relative`: ancla la fila estirada del <Link> de Cliente (ver comentario
-            // ahí). `.leads-table-row` trae el glow de hover (index.css).
-            className="leads-table-row relative"
-          >
-            {permitirSeleccion ? (
-              <TableCell className="relative z-10">
-                <Checkbox
-                  checked={seleccionados.has(row.original.id)}
-                  onCheckedChange={() => onToggleSeleccion(row.original.id)}
-                  aria-label={`Seleccionar a ${row.original.cliente.nombre}`}
-                />
-              </TableCell>
-            ) : null}
-            {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id} className={COLUMN_WIDTHS[cell.column.id]}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
+      <TableBody className="bg-card">
+        {table.getRowModel().rows.map((row) => {
+          const estaSeleccionado = seleccionados.has(row.original.id);
+
+          return (
+            <TableRow
+              key={row.id}
+              data-state={estaSeleccionado ? "selected" : undefined}
+              data-tour={row.index === 0 ? "leads-table-row" : undefined}
+              // `relative`: ancla la fila estirada del <Link> de Cliente (ver comentario
+              // ahí). `.leads-table-row` trae el glow de hover (index.css).
+              className="leads-table-row relative h-12"
+            >
+              {row.getVisibleCells().map((cell) => {
+                /*
+                 * `relative z-10`: la celda de checkbox Y la de SLA se elevan por
+                 * encima del overlay invisible del `<Link>` de Cliente (ver
+                 * comentario ahí) -- el checkbox para seguir siendo clickeable, y
+                 * el badge de SLA para que el puntero alcance su `Tooltip`
+                 * (sino el `::after` del link tapa el hover y el tooltip nunca
+                 * abre). La columna Cliente se ajusta a `h-10` (sin padding
+                 * vertical sobrante y con `overflow-hidden`) para que la fila
+                 * mida exactamente 40px como el resto.
+                 */
+                const cellClassName =
+                  cell.column.id === "seleccion"
+                    ? estaSeleccionado
+                      ? "relative z-10 pl-3"
+                      : "relative z-10"
+                    : cell.column.id === "sla"
+                      ? "relative z-10"
+                      : cell.column.id === "cliente"
+                        ? "overflow-hidden py-0"
+                        : undefined;
+                return (
+                  <TableCell key={cell.id} className={cellClassName}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

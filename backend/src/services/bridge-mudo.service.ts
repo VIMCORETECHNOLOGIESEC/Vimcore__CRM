@@ -1,8 +1,10 @@
 import { BRIDGE_MUDO_HORAS } from "../config/negocio.js";
 import { logger } from "../lib/logger.js";
+import { BRIDGE_TRANSACTION_BOUNDS, prisma, runAsBypassJob, runWithTenantContext } from "../lib/prisma.js";
 import type { RegistrarLogData } from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
+import { partitionByEmpresa } from "./company-partition.js";
 
 /** Umbral del checklist M4/M8: "bridge sin actividad por 72 h" (docs/05-bridges.md §8). */
 const UMBRAL_MUDO_MS = BRIDGE_MUDO_HORAS * 60 * 60 * 1000;
@@ -52,23 +54,38 @@ export async function detectarBridgesMudos(
 ): Promise<ResultadoDeteccionMudos> {
   const umbral = new Date(ahora.getTime() - UMBRAL_MUDO_MS);
 
-  const candidatos = await bridgeRepository.findBridgesMudos(umbral);
+  // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies", batch 3
+  // discovery): este cron (`jobs/bridge-mudo.job.ts`) corre sin
+  // `AsyncLocalStorage` de tenant y necesita ver bridges mudos de TODAS las
+  // empresas — mismo criterio que `sla-atrasado.service.ts::
+  // detectLeadsAtrasados`. `bridge_logs` (via `registrarLogSeguro`) no tiene
+  // RLS, así que esa escritura corre fuera de este bloque sin problema.
+  const candidatos = await runAsBypassJob(
+    "silent-bridge",
+    (tx) => bridgeRepository.findBridgesMudos(umbral, tx),
+    BRIDGE_TRANSACTION_BOUNDS,
+  );
   if (candidatos.length === 0) return { candidatos: 0, advertenciasRegistradas: 0 };
 
   let advertenciasRegistradas = 0;
-  for (const bridge of candidatos) {
-    const logRegistrado = await registrarLogSeguro({
-      bridgeId: bridge.id,
-      nivel: "ADVERTENCIA",
-      mensaje: "Bridge sin leads en las últimas 72h — probable problema de configuración",
-      payload: { ultimoLeadEn: bridge.ultimoLeadEn },
+  for (const [empresaId, partition] of partitionByEmpresa(candidatos)) {
+    await runWithTenantContext({ empresaId }, async () => {
+      for (const bridge of partition) {
+        const logRegistrado = await registrarLogSeguro({
+          bridgeId: bridge.id,
+          nivel: "ADVERTENCIA",
+          mensaje: "Bridge sin leads en las últimas 72h — probable problema de configuración",
+          payload: { ultimoLeadEn: bridge.ultimoLeadEn },
+        });
+        if (!logRegistrado) continue;
+
+        const claimed = await prisma.$transaction(
+          (tx) => bridgeRepository.markAdvertenciaMudoEnviada([bridge.id], umbral, tx),
+          BRIDGE_TRANSACTION_BOUNDS,
+        );
+        if (claimed.count > 0) advertenciasRegistradas += 1;
+      }
     });
-    if (!logRegistrado) continue;
-
-    const claimed = await bridgeRepository.markAdvertenciaMudoEnviada([bridge.id], umbral);
-    if (claimed.count === 0) continue;
-
-    advertenciasRegistradas += 1;
   }
 
   return { candidatos: candidatos.length, advertenciasRegistradas };

@@ -1,3 +1,4 @@
+import type { RedSocial } from "@prisma/client";
 import type { IngestaGenericaBody } from "../schemas/ingesta.schema.js";
 import type { LeadEntrante } from "../types/lead-entrante.js";
 
@@ -10,18 +11,23 @@ import type { LeadEntrante } from "../types/lead-entrante.js";
  * cualquier bridge de este estilo (Google Forms hoy, X/sitio propio a
  * futuro) debe enviar — el Apps Script se escribe contra ese contrato.
  *
- * `redSocial`/`bridgeId` los resuelve el llamador (middleware de
- * autenticación, PR3b), no el adaptador. Un campo que Zod ya normalizó a
- * `null` por ausencia se propaga tal cual, nunca un placeholder
- * (Requirement: LeadEntrante contract, Scenario: Unfilled field is null).
+ * `bridgeId` lo resuelve el llamador (middleware de autenticación, PR3b), no
+ * el adaptador. `redSocial` (M-hardening Bloque A, Requirement
+ * lead-attribution) también lo resuelve el llamador — es el `redSocial` del
+ * bridge autenticado (`req.bridge.redSocial`), NUNCA una constante fija: un
+ * bridge configurado como "X" debe producir leads con `redSocial: "X"`, no
+ * "GOOGLE_FORMS". Un campo que Zod ya normalizó a `null` por ausencia se
+ * propaga tal cual, nunca un placeholder (Requirement: LeadEntrante
+ * contract, Scenario: Unfilled field is null).
  */
 export function adaptGoogleForms(
   body: IngestaGenericaBody,
   bridgeId: string,
+  redSocial: RedSocial,
   recibidoEn: Date = new Date(),
 ): LeadEntrante {
   return {
-    redSocial: "GOOGLE_FORMS",
+    redSocial,
     bridgeId,
     nombre: body.nombre,
     telefono: body.telefono,

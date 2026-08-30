@@ -99,6 +99,10 @@ export interface CreateBridgeData {
   redSocial: RedSocial;
   nombre: string;
   claveApiHash: string;
+  // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): obligatorio desde
+  // que `Bridge.empresaId` es NOT NULL — `bridge.service.ts::createBridge`
+  // ya lo exige en `CreateBridgeInput`.
+  empresaId: string;
 }
 
 /**
@@ -175,6 +179,11 @@ export async function findById(
 export interface UpdateBridgeData {
   nombre?: string;
   estado?: EstadoBridge;
+  // bridgeApi (RedSocial.API_EXTERNA): `services/bridgeApi/configuracion.service.ts`
+  // arma el merge (lectura + overlay) antes de llamar acá — este repositorio
+  // sigue siendo passthrough puro, nunca decide qué mergear.
+  configuracionJson?: Prisma.InputJsonValue;
+  credencialExternaCifrada?: string;
 }
 
 /**
@@ -216,6 +225,24 @@ export async function updateClaveApiHash(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Bridge> {
   return client.bridge.update({ where: { id }, data: { claveApiHash } });
+}
+
+/**
+ * bridgeApi (RedSocial.API_EXTERNA): candidatos al job de polling
+ * (`jobs/bridgeApi/`) — todos los bridges de este tipo con `estado = ACTIVO`,
+ * sin filtro de actividad reciente (a diferencia de `findBridgesMudos`, acá
+ * se hace poll a TODOS los activos en cada tick, no solo a los silenciosos).
+ * `configuracionJson`/`credencialExternaCifrada` viajan tal cual en el
+ * `Bridge` devuelto — parsearlos contra `ConfiguracionBridgeApi` y descifrar
+ * la credencial es responsabilidad del caller (`services/bridgeApi/`), no de
+ * este repositorio.
+ */
+export async function findBridgesApiExternaActivos(
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Bridge[]> {
+  return client.bridge.findMany({
+    where: { redSocial: "API_EXTERNA", estado: "ACTIVO" },
+  });
 }
 
 /**

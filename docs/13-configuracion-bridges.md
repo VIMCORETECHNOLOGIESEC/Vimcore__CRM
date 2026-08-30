@@ -6,19 +6,22 @@ contrato técnico de cada payload de ingesta (formato de `LeadEntrante`, manejo
 de errores, idempotencia) ya está documentado en
 [`05-bridges.md`](05-bridges.md) y no se repite acá.
 
-Hoy hay dos bridges implementados de punta a punta: **Google Forms** (clave de
-API) y **Meta** (Facebook/Instagram, OAuth + webhook). LinkedIn y X están
-documentados en `05-bridges.md` pero sin adaptador implementado (ver
-`docs/06-modulos-backend.md`, M4) — no se configuran hoy.
+Hoy hay dos canales de ingesta implementados de punta a punta: **Google Forms**
+(clave de API) y **Meta Lead Ads** (Facebook/Instagram, Page Access Token +
+webhook). Además, Bloque E agrega una conexión separada de **Meta Ads
+Marketing API** para métricas de campañas (`act_<id>`); no reemplaza la
+configuración de Páginas de leadgen. LinkedIn y X están documentados en
+`05-bridges.md`; LinkedIn tiene backend propio y X sigue sin adaptador de
+ingesta dedicado.
 
 ---
 
 ## 1. Variables de entorno involucradas
 
-Todas viven en `backend/src/config/env.ts`, se validan al arrancar el proceso
-(`docker compose up`) y el backend **no arranca** si falta alguna. Se
-completan en el `.env` de la raíz del repo (ver `.env.example`), nunca en
-texto plano en este documento.
+Todas viven en `backend/src/config/env.ts` y se completan en el `.env` de la
+raíz del repo (ver `.env.example`), nunca en texto plano en este documento.
+Las variables centrales son obligatorias al arranque; las integraciones OAuth
+opcionales responden `503` en su endpoint de conexión si falta su redirect URI.
 
 | Variable | Para qué sirve | Usada por |
 |---|---|---|
@@ -26,6 +29,8 @@ texto plano en este documento.
 | `META_APP_ID` | ID numérico de la Meta App, del dashboard ("Configuración básica") | Consulta a `/debug_token` (verificación de token, carga/renovación) |
 | `META_APP_SECRET` | App Secret de la Meta App | Firma HMAC-SHA256 (`X-Hub-Signature-256`) del webhook de leadgen |
 | `META_WEBHOOK_VERIFY_TOKEN` | Valor arbitrario elegido por el administrador al suscribir el webhook en el dashboard de Meta | Handshake `GET /api/v1/ingesta/meta` (`hub.verify_token`) |
+| `META_ADS_OAUTH_REDIRECT_URI` | Redirect URI registrada en Meta para conectar cuentas de anuncios `act_<id>` con permiso `ads_read` | `GET /api/v1/meta-ads/conectar` / `callback` |
+| `REPORTES_STORAGE_DIR` | Directorio interno donde se escriben PDF/XLSX generados | Jobs de reportes |
 | `SEED_BRIDGE_CLAVE_API` | Clave de API del bridge Google Forms creado por el seed de desarrollo | Solo `backend/prisma/seed.ts` — no interviene en runtime del servidor |
 
 `SEED_BRIDGE_CLAVE_API`/`TOKEN_ENCRYPTION_KEY` nunca se imprimen en este
@@ -301,7 +306,44 @@ Respuesta esperada: `200`, cuerpo de texto plano `1234` (idéntico al
 
 ---
 
-## 5. Qué hacer si un bridge queda "mudo"
+## 5. Meta Ads Marketing API para métricas
+
+Esta sección no configura la ingesta de leads. Configura la cuenta de anuncios
+Meta (`act_<id>`) desde la que Bloque E trae campañas e Insights diarios para
+calcular CPC, CPL y CAC reales.
+
+### 5.1 Configuración externa
+
+1. Registrar `META_ADS_OAUTH_REDIRECT_URI` como redirect URI válido de la Meta
+   App.
+2. Habilitar el permiso mínimo `ads_read` para la app.
+3. Completar el flujo con una cuenta que tenga acceso a la cuenta de anuncios.
+
+Facebook e Instagram no usan cuentas de anuncios separadas: ambas plataformas
+se distinguen en Insights por `publisher_platform`.
+
+### 5.2 Flujo del CRM
+
+1. `GET /api/v1/meta-ads/conectar` inicia OAuth y devuelve una URL de Meta.
+2. `GET /api/v1/meta-ads/callback` consume el `state`, descubre cuentas
+   `act_<id>` y devuelve un blob `seleccion` cifrado.
+3. `POST /api/v1/meta-ads/conexion` recibe `cuentaAnunciosIdExterno` y
+   `seleccion`; persiste la conexión segura de la empresa.
+4. `GET /api/v1/meta-ads/conexion` devuelve el estado seguro, sin tokens.
+5. El job `backend/src/jobs/metaAds/meta-ads-sync.job.ts` sincroniza campañas e
+   Insights. Las métricas se consultan en
+   `GET /api/v1/metricas/rendimiento-campanias` y se reutilizan en reportes.
+
+El contrato técnico completo está en
+[`22-contrato-backend-meta-ads.md`](22-contrato-backend-meta-ads.md).
+
+> **Verificación externa pendiente:** el código quedó probado contra mocks y
+> checks estáticos, pero la validación con una cuenta real de Meta sigue
+> bloqueada por la verificación SMS de Meta.
+
+---
+
+## 6. Qué hacer si un bridge queda "mudo"
 
 Un trabajo programado (`backend/src/jobs/bridge-mudo.job.ts`, cada 15
 minutos, servicio `bridge-mudo.service.ts`) detecta bridges `ACTIVO` cuyo
@@ -329,11 +371,11 @@ Pasos de diagnóstico ante un bridge sin leads:
 3. Para Google Forms: verificar que el disparador `onFormSubmit` del Apps
    Script siga activo y que la clave de API usada en el `UrlFetchApp.fetch`
    coincida con la vigente (si se regeneró, el script viejo queda huérfano).
-4. Para Meta: revisar `/debug_token` manualmente o esperar al trabajo
+4. Para Meta Lead Ads: revisar `/debug_token` manualmente o esperar al trabajo
    programado diario de verificación de token
    (`backend/src/jobs/verificacion-token.job.ts`, cada 24 h) — un token
    inválido o revocado marca la cuenta `TOKEN_EXPIRADO` y sí notifica a los
    administradores (nivel `ERROR`). Confirmar también que la Página siga
    suscrita (`GET /{page-id}/subscribed_apps` contra Graph API).
-5. Probar conexión bajo demanda por cada cuenta publicitaria del bridge
+5. Probar conexión bajo demanda por cada Página del bridge
    (§4.2, paso 4) para descartar un problema de token sin esperar al cron.

@@ -1,0 +1,482 @@
+<title>Propuesta B — Consejo directivo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 200ms;
+    --dur-med: 280ms;
+    --verde: #16A34A;
+    --amarillo: #D97706;
+    --rojo: #DC2626;
+    --gris-semaforo: #94A3B8;
+    --cat-1: #DB2777;
+    --cat-2: #2563EB;
+    --cat-3: #7C3AED;
+    --cat-4: #0891B2;
+    --papel: #F6F1E7;
+    --indigo: #1E2A5E;
+    --indigo-2: #14204a;
+  }
+  html,body{ height:100%; }
+  body{
+    font-family: 'Source Sans 3', ui-sans-serif, system-ui, sans-serif;
+    background: var(--papel);
+    color: var(--indigo-2);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,h2,.headline{ font-family: 'Fraunces', Georgia, serif; }
+  .tabular{ font-variant-numeric: tabular-nums; }
+
+  .view{ display:none; }
+  .fade-in{ animation: fadeIn var(--dur-med) var(--ease-out) both; }
+  @keyframes fadeIn{ from{ opacity:0; transform: translateY(6px) scale(0.98); } to{ opacity:1; transform: translateY(0) scale(1); } }
+
+  .ledger-divider{ border-top: 1px solid rgba(30,42,94,0.18); }
+  .ledger-divider-v{ border-left: 1px solid rgba(30,42,94,0.18); }
+
+  /* Boot: stamp animation */
+  #boot-screen{ background: var(--papel); }
+  #boot-stamp{
+    opacity:0; transform: scale(1.6) rotate(-8deg);
+    transition: opacity 260ms var(--ease-out), transform 260ms cubic-bezier(0.34,1.36,0.64,1);
+  }
+  #boot-stamp.stamped{ opacity:1; transform: scale(1) rotate(0deg); }
+  #boot-screen.hide{ opacity:0; transition: opacity 400ms var(--ease-out); pointer-events:none; }
+
+  .skeleton-block{ background: rgba(30,42,94,0.08); border-radius:4px; position:relative; overflow:hidden; }
+  .skeleton-block::after{
+    content:'';
+    position:absolute; inset:0;
+    background: rgba(30,42,94,0.08);
+    animation: pulseOpacity 1.6s ease-in-out infinite;
+  }
+  @keyframes pulseOpacity{ 0%,100%{ opacity:0.4; } 50%{ opacity:1; } }
+
+  .nav-item{ border-left:3px solid transparent; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+  .nav-item.active{ border-left-color: var(--indigo); background: rgba(30,42,94,0.06); }
+  .nav-item:hover:not(.active){ background: rgba(30,42,94,0.04); }
+
+  .btn-primary{ transition: transform 150ms var(--ease-out), opacity 150ms var(--ease-out); }
+  .btn-primary:active{ transform: scale(0.97); }
+
+  .dropdown-panel{
+    transform-origin: top right;
+    transform: scale(0.97);
+    opacity:0;
+    pointer-events:none;
+    transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  }
+  .dropdown-panel.open{ transform: scale(1); opacity:1; pointer-events:auto; }
+
+  .kpi-card{ border-left: 3px solid var(--cat-2); box-shadow: 0 1px 2px rgba(30,42,94,0.06), 0 1px 1px rgba(30,42,94,0.04); }
+
+  .seal{
+    width:64px; height:64px; border:2px solid var(--indigo);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Fraunces',serif; font-weight:600; font-size:11px; text-align:center;
+    color: var(--indigo);
+  }
+
+  .funnel-bar{ transition: width 500ms var(--ease-out); }
+
+  .semaforo-ping{ position:relative; }
+  .semaforo-ping::after{ content:''; position:absolute; inset:-3px; border-radius:9999px; border:1.5px solid currentColor; opacity:0; }
+  .semaforo-ping.pinging::after{ animation: semaforoPing 900ms var(--ease-out); }
+  @keyframes semaforoPing{ 0%{ opacity:0.7; transform:scale(0.9); } 100%{ opacity:0; transform:scale(1.6); } }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+
+<!-- ============ BOOT ============ -->
+<div id="boot-screen" class="fixed inset-0 z-50 flex items-center justify-center">
+  <div id="boot-stamp" class="seal rounded-full">CRM<br>EMBUDO<br>DE LEADS</div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="view-login" class="view min-h-dvh flex items-center justify-center px-4" data-display="flex">
+  <div class="fade-in w-full max-w-sm bg-white/70 border border-[color:var(--indigo)]/20 rounded-sm p-8" style="box-shadow:0 1px 2px rgba(30,42,94,.06), 0 4px 12px rgba(30,42,94,.06)">
+    <h1 class="headline text-2xl font-semibold text-center mb-6" style="color:var(--indigo)">CRM Embudo de Leads</h1>
+    <form id="login-form" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wide mb-1.5" style="color:var(--indigo)">Correo</label>
+        <input type="email" required value="asesor@arcano.test" class="w-full border-0 border-b-2 border-[color:var(--indigo)]/25 bg-transparent px-1 py-2 text-sm focus:outline-none focus:border-[color:var(--indigo)]">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wide mb-1.5" style="color:var(--indigo)">Contraseña</label>
+        <input type="password" required value="••••••••" class="w-full border-0 border-b-2 border-[color:var(--indigo)]/25 bg-transparent px-1 py-2 text-sm focus:outline-none focus:border-[color:var(--indigo)]">
+      </div>
+      <button id="login-btn" type="submit" class="btn-primary w-full text-white text-sm font-semibold rounded-sm py-2.5" style="background:var(--indigo)">
+        <span id="login-btn-text">Iniciar sesión</span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ SELECCION DE EMPRESA (TO-BE) ============ -->
+<!-- Este paso solo se muestra cuando el usuario tiene membresía en +1 empresa del holding.
+     Un solo sello aquí es el patrón real: es un paso de confirmación de contexto, no un
+     selector entre opciones — cuando haya más de una empresa, este mismo sello se repite
+     por cada una en la grilla, cada botón navegando a SU propia empresa real. -->
+<div id="view-empresa" class="view min-h-dvh flex items-center justify-center px-4" data-display="flex">
+  <div class="fade-in w-full max-w-lg text-center">
+    <span class="inline-block text-[10px] font-bold tracking-wide uppercase border border-[color:var(--indigo)] rounded-sm px-2.5 py-1 mb-4">Nuevo · TO-BE</span>
+    <h1 class="headline text-xl font-semibold mb-1" style="color:var(--indigo)">Tu empresa</h1>
+    <p class="text-xs opacity-70 max-w-sm mx-auto mb-6">Este paso define el contexto de navegación dentro del holding Arcano — el acceso real ya fue validado por el servidor.</p>
+    <div class="flex items-center justify-center">
+      <button class="empresa-btn seal rounded-sm hover:bg-[color:var(--indigo)]/5" data-empresa="Arcano Motos">
+        ARCANO<br>MOTOS
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="view-app" class="view min-h-dvh">
+  <div class="flex min-h-dvh">
+    <!-- Sidebar -->
+    <aside class="hidden md:flex md:w-[240px] md:flex-shrink-0 ledger-divider-v flex-col" style="border-right:1px solid rgba(30,42,94,0.18)">
+      <div class="h-14 flex items-center px-4" style="border-bottom:1px solid rgba(30,42,94,0.18)">
+        <span class="headline text-sm font-semibold" style="color:var(--indigo)">CRM Embudo de Leads</span>
+      </div>
+      <nav class="flex-1 py-2">
+        <a href="#" data-target="dashboard" class="nav-item active flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a href="#" data-target="kanban" class="nav-item flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          Leads
+        </a>
+        <a href="#" class="nav-item flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium opacity-40 cursor-not-allowed" title="Solo rol ADMINISTRADOR">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          Usuarios
+        </a>
+        <a href="#" class="nav-item flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium opacity-40 cursor-not-allowed" title="Solo rol ADMINISTRADOR">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h6M14 12h6M9 8l-3 4 3 4M15 8l3 4-3 4"/></svg>
+          Bridges
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <!-- Header -->
+      <header class="h-14 flex items-center justify-between px-4 md:px-6 relative" style="border-bottom:1px solid rgba(30,42,94,0.18)">
+        <button class="md:hidden" aria-label="Abrir menú">
+          <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="md:hidden headline text-sm font-semibold" style="color:var(--indigo)">CRM Embudo de Leads</span>
+        <div class="ml-auto flex items-center gap-4">
+          <button aria-label="Notificaciones" class="relative opacity-70 hover:opacity-100">
+            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+            <span class="absolute -top-0.5 -right-0.5 size-2 rounded-full" style="background:var(--indigo)"></span>
+          </button>
+          <div class="relative">
+            <button id="user-menu-btn" class="flex items-center gap-2">
+              <span class="size-8 rounded-full text-white text-xs font-semibold flex items-center justify-center" style="background:var(--indigo)">MP</span>
+            </button>
+            <div id="user-menu" class="dropdown-panel absolute right-0 top-11 w-56 bg-[color:var(--papel)] rounded-sm py-2 z-20" style="border:1px solid rgba(30,42,94,0.18); box-shadow:0 4px 12px rgba(30,42,94,.1)">
+              <div class="px-4 py-2" style="border-bottom:1px solid rgba(30,42,94,0.18)">
+                <p class="text-sm font-semibold">María Pérez</p>
+                <p class="text-xs opacity-60">maria.perez@arcano.test</p>
+              </div>
+              <a href="#" class="block px-4 py-2 text-sm hover:bg-[color:var(--indigo)]/5">Mi perfil</a>
+              <a href="#" class="block px-4 py-2 text-sm hover:bg-[color:var(--indigo)]/5">Cerrar sesión</a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Dashboard view -->
+      <main id="panel-dashboard" class="flex-1 overflow-y-auto p-4 md:p-6">
+        <!-- Filtro rango de fechas -->
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          <button class="text-xs font-semibold rounded-sm px-3 py-1.5 text-white" style="background:var(--indigo)">Hoy</button>
+          <button class="text-xs font-medium rounded-sm px-3 py-1.5" style="border:1px solid rgba(30,42,94,0.3)">7d</button>
+          <button class="text-xs font-medium rounded-sm px-3 py-1.5" style="border:1px solid rgba(30,42,94,0.3)">30d</button>
+          <button class="text-xs font-medium rounded-sm px-3 py-1.5" style="border:1px solid rgba(30,42,94,0.3)">Mes actual</button>
+          <button class="text-xs font-medium rounded-sm px-3 py-1.5" style="border:1px solid rgba(30,42,94,0.3)">Mes anterior</button>
+          <button class="text-xs font-medium rounded-sm px-3 py-1.5" style="border:1px solid rgba(30,42,94,0.3)">Personalizado</button>
+        </div>
+        <!-- Dashboard filtros -->
+        <div class="flex flex-wrap gap-3 mb-6">
+          <select class="text-xs rounded-sm px-2.5 py-1.5 bg-white" style="border:1px solid rgba(30,42,94,0.3)"><option>Red social: Todas</option></select>
+          <select class="text-xs rounded-sm px-2.5 py-1.5 bg-white" style="border:1px solid rgba(30,42,94,0.3)"><option>Campaña: Todas</option></select>
+          <select class="text-xs rounded-sm px-2.5 py-1.5 bg-white" style="border:1px solid rgba(30,42,94,0.3)" title="Visible solo para admin/supervisor"><option>Responsable: Todos</option></select>
+        </div>
+
+        <!-- Skeleton -->
+        <div id="dash-skeleton">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div>
+            <div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div><div class="skeleton-block h-24"></div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div>
+            <div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div><div class="skeleton-block h-56"></div>
+          </div>
+        </div>
+
+        <!-- Loaded -->
+        <div id="dash-loaded" class="hidden">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Total de leads ingresados</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">248</p>
+              <p class="text-[11px] opacity-50 mt-1">Incluye reingresos</p>
+            </div>
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Leads en gestión</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">96</p>
+              <p class="text-[11px] opacity-50 mt-1">Etapa distinta de Venta/No Venta</p>
+            </div>
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Leads cerrados</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">152</p>
+              <p class="text-[11px] opacity-50 mt-1">Venta: 61 · No Venta: 91</p>
+            </div>
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Tasa de conversión</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">24.6%</p>
+              <p class="text-[11px] opacity-50 mt-1">61 de 152 cerrados</p>
+              <p class="text-[11px] font-medium mt-1" style="color:var(--verde)">↑ 3.1% vs. período anterior</p>
+            </div>
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Tiempo prom. primera respuesta</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">14 min</p>
+              <p class="text-[11px] font-medium mt-1" style="color:var(--rojo)">↓ 8% vs. período anterior</p>
+            </div>
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Tiempo prom. de cierre (Venta)</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">3.2 días</p>
+            </div>
+            <div class="fade-in kpi-card bg-white rounded-sm p-4">
+              <p class="text-[11px] opacity-60 mb-1">Cumplimiento de SLA</p>
+              <p class="text-2xl font-bold tabular" style="color:var(--indigo)">88%</p>
+              <p class="text-[11px] opacity-50 mt-1">% dentro de 24h</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="fade-in bg-white rounded-sm p-4" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-semibold mb-3">Leads por red social</p>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">Facebook</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:70%;background:var(--cat-1)"></div></div><span class="tabular w-8 text-right">98</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">Instagram</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:55%;background:var(--cat-2)"></div></div><span class="tabular w-8 text-right">77</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">WhatsApp</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:35%;background:var(--cat-3)"></div></div><span class="tabular w-8 text-right">49</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">TikTok</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:17%;background:var(--cat-4)"></div></div><span class="tabular w-8 text-right">24</span></div>
+              </div>
+            </div>
+            <div class="fade-in bg-white rounded-sm p-4" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-semibold mb-1">Leads por asesor</p>
+              <p class="text-[11px] opacity-50 mb-2">Visible solo para admin/supervisor</p>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">M. Pérez</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:80%;background:var(--cat-1)"></div></div><span class="tabular w-8 text-right">62</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">J. Rojas</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:60%;background:var(--cat-2)"></div></div><span class="tabular w-8 text-right">47</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">L. Vera</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:42%;background:var(--cat-3)"></div></div><span class="tabular w-8 text-right">33</span></div>
+              </div>
+            </div>
+            <div class="fade-in bg-white rounded-sm p-4" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-semibold mb-3">Embudo por etapa</p>
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">Nuevo</span><div class="funnel-bar h-5 rounded-sm" style="width:100%;background:var(--indigo)"></div><span class="tabular">248</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">Contactado</span><div class="funnel-bar h-5 rounded-sm" style="width:78%;background:var(--indigo);opacity:.8"></div><span class="tabular">193</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">Cita</span><div class="funnel-bar h-5 rounded-sm" style="width:48%;background:var(--indigo);opacity:.6"></div><span class="tabular">119</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-20 opacity-60">Venta</span><div class="funnel-bar h-5 rounded-sm" style="width:25%;background:var(--indigo);opacity:.4"></div><span class="tabular">61</span></div>
+              </div>
+              <div class="mt-3 pt-3 flex items-center justify-between text-xs" style="border-top:1px dashed rgba(30,42,94,0.3)">
+                <span class="opacity-60">No Venta (fuera del embudo)</span>
+                <span class="tabular font-semibold">91</span>
+              </div>
+            </div>
+            <div class="fade-in bg-white rounded-sm p-4" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-semibold mb-3">Leads por campaña</p>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-xs"><span class="w-24 opacity-60 truncate">Verano 2026</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:65%;background:var(--cat-1)"></div></div><span class="tabular w-8 text-right">91</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-24 opacity-60 truncate">Lanzamiento X</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:40%;background:var(--cat-2)"></div></div><span class="tabular w-8 text-right">56</span></div>
+                <div class="flex items-center gap-2 text-xs"><span class="w-24 opacity-60 truncate">Sin campaña</span><div class="flex-1 h-3 bg-black/5 rounded-sm"><div class="h-3 rounded-sm" style="width:72%;background:var(--cat-3)"></div></div><span class="tabular w-8 text-right">101</span></div>
+              </div>
+            </div>
+            <div class="fade-in bg-white rounded-sm p-4" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-semibold mb-3">Red social × semáforo</p>
+              <table class="w-full text-xs">
+                <thead><tr class="opacity-50"><th class="text-left font-medium pb-1">Red</th><th class="font-medium pb-1" style="color:var(--verde)">Verde</th><th class="font-medium pb-1" style="color:var(--amarillo)">Amarillo</th><th class="font-medium pb-1" style="color:var(--rojo)">Rojo</th></tr></thead>
+                <tbody>
+                  <tr style="border-top:1px solid rgba(30,42,94,0.1)"><td class="py-1 opacity-70">Facebook</td><td class="text-center tabular">18</td><td class="text-center tabular">22</td><td class="text-center tabular">9</td></tr>
+                  <tr style="border-top:1px solid rgba(30,42,94,0.1)"><td class="py-1 opacity-70">Instagram</td><td class="text-center tabular">12</td><td class="text-center tabular">15</td><td class="text-center tabular">6</td></tr>
+                  <tr style="border-top:1px solid rgba(30,42,94,0.1)"><td class="py-1 opacity-70">WhatsApp</td><td class="text-center tabular">7</td><td class="text-center tabular">10</td><td class="text-center tabular">4</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="fade-in bg-white rounded-sm p-4" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-semibold mb-3">Distribución por semáforo</p>
+              <p class="text-[11px] opacity-50 mb-3">Excluye Venta / No Venta</p>
+              <div class="flex items-center gap-4">
+                <div class="size-24 rounded-full flex-shrink-0" style="background: conic-gradient(var(--verde) 0% 38%, var(--amarillo) 38% 66%, var(--rojo) 66% 86%, var(--gris-semaforo) 86% 100%)"></div>
+                <div class="text-xs space-y-1.5">
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background:var(--verde)"></span>Verde · Lead caliente</p>
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background:var(--amarillo)"></span>Amarillo · Lead tibio</p>
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background:var(--rojo)"></span>Rojo · Lead frío</p>
+                  <p class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background:var(--gris-semaforo)"></span>Sin calificar</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Kanban -->
+      <main id="panel-kanban" class="hidden flex-1 overflow-x-auto p-4 md:p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="headline text-base font-semibold" style="color:var(--indigo)">Cartera de leads</h2>
+          <button id="simulate-live-btn" class="text-xs font-semibold rounded-sm px-3 py-1.5 text-white" style="background:var(--indigo)">Simular cambio en vivo</button>
+        </div>
+        <div class="flex gap-4 min-w-max">
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold opacity-60 mb-2">Nuevo</p>
+            <div class="bg-white rounded-sm p-3" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-medium">Carla Núñez</p>
+              <p class="text-xs opacity-60 mb-2">Facebook · Verano 2026</p>
+              <span id="lead-chip-1" class="semaforo-ping inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style="color:var(--gris-semaforo); background:color-mix(in srgb, var(--gris-semaforo) 14%, white)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Sin calificar
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold opacity-60 mb-2">Contactado</p>
+            <div class="bg-white rounded-sm p-3" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-medium">Diego Salas</p>
+              <p class="text-xs opacity-60 mb-2">Instagram · Lanzamiento X</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style="color:var(--amarillo); background:color-mix(in srgb, var(--amarillo) 14%, white)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Amarillo · Lead tibio
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold opacity-60 mb-2">Cita</p>
+            <div class="bg-white rounded-sm p-3" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-medium">Ana Reyes</p>
+              <p class="text-xs opacity-60 mb-2">WhatsApp · Sin campaña</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style="color:var(--verde); background:color-mix(in srgb, var(--verde) 14%, white)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Verde · Lead caliente
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0">
+            <p class="text-xs font-semibold opacity-60 mb-2">Venta</p>
+            <div class="bg-white rounded-sm p-3" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-medium">Marco Toledo</p>
+              <p class="text-xs opacity-60 mb-2">Facebook · Verano 2026</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style="color:var(--verde); background:color-mix(in srgb, var(--verde) 14%, white)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Verde · Lead caliente
+              </span>
+            </div>
+          </div>
+          <div class="w-64 flex-shrink-0 pl-4" style="border-left:2px dashed rgba(30,42,94,0.3)">
+            <p class="text-xs font-semibold opacity-40 mb-2">No Venta (fuera del embudo)</p>
+            <div class="bg-white rounded-sm p-3 opacity-70" style="border:1px solid rgba(30,42,94,0.18)">
+              <p class="text-sm font-medium">Pedro Luna</p>
+              <p class="text-xs opacity-60 mb-2">TikTok · Lanzamiento X</p>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style="color:var(--rojo); background:color-mix(in srgb, var(--rojo) 14%, white)">
+                <span class="size-1.5 rounded-full" style="background:currentColor"></span>Rojo · Lead frío
+              </span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+  const debugTarget = location.hash.replace('#', '');
+
+  function showView(name){
+    document.querySelectorAll('.view').forEach(v => { v.style.display = 'none'; v.classList.remove('active'); });
+    const target = document.getElementById('view-' + name);
+    target.style.display = target.dataset.display || 'block';
+    target.classList.add('active');
+  }
+
+  const bootStamp = document.getElementById('boot-stamp');
+  const bootScreen = document.getElementById('boot-screen');
+  let bootFinished = false;
+
+  function finishBoot(){
+    if (bootFinished) return;
+    bootFinished = true;
+    bootScreen.classList.add('hide');
+  }
+
+  // Única fuente de verdad para el fin del boot: la propia transición CSS de
+  // opacidad dispara el display:none + el cambio de vista, en vez de un
+  // segundo setTimeout hardcodeado que puede desincronizarse del CSS.
+  bootScreen.addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'opacity' && bootScreen.classList.contains('hide')) {
+      bootScreen.style.display = 'none';
+      showView('login');
+    }
+  });
+
+  if (!debugTarget) {
+    requestAnimationFrame(() => setTimeout(() => bootStamp.classList.add('stamped'), 150));
+    setTimeout(finishBoot, 1500);
+    bootScreen.addEventListener('click', finishBoot);
+  }
+
+  document.getElementById('login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    document.getElementById('login-btn-text').textContent = 'Ingresando…';
+    setTimeout(() => showView('empresa'), 700);
+  });
+
+  document.querySelectorAll('.empresa-btn').forEach(btn => {
+    btn.addEventListener('click', () => showView('app'));
+  });
+
+  const userBtn = document.getElementById('user-menu-btn');
+  const userMenu = document.getElementById('user-menu');
+  userBtn.addEventListener('click', () => userMenu.classList.toggle('open'));
+  document.addEventListener('click', (e) => {
+    if (!userBtn.contains(e.target) && !userMenu.contains(e.target)) userMenu.classList.remove('open');
+  });
+
+  document.querySelectorAll('.nav-item[data-target]').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.nav-item[data-target]').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const target = item.dataset.target;
+      document.getElementById('panel-dashboard').classList.toggle('hidden', target !== 'dashboard');
+      document.getElementById('panel-kanban').classList.toggle('hidden', target !== 'kanban');
+    });
+  });
+
+  setTimeout(() => {
+    document.getElementById('dash-skeleton').classList.add('hidden');
+    document.getElementById('dash-loaded').classList.remove('hidden');
+  }, 1300);
+
+  document.getElementById('simulate-live-btn').addEventListener('click', () => {
+    const chip = document.getElementById('lead-chip-1');
+    chip.style.color = 'var(--rojo)';
+    chip.style.background = 'color-mix(in srgb, var(--rojo) 14%, white)';
+    chip.innerHTML = '<span class="size-1.5 rounded-full" style="background:currentColor"></span>Rojo · Lead frío';
+    chip.classList.remove('pinging'); void chip.offsetWidth; chip.classList.add('pinging');
+  });
+
+  if (debugTarget) {
+    document.getElementById('boot-screen').style.display = 'none';
+    showView(debugTarget === 'kanban' ? 'app' : (debugTarget || 'login'));
+    if (debugTarget === 'kanban') document.querySelector('.nav-item[data-target="kanban"]').click();
+    if (debugTarget === 'app' || debugTarget === 'kanban') {
+      document.getElementById('dash-skeleton').classList.add('hidden');
+      document.getElementById('dash-loaded').classList.remove('hidden');
+    }
+  }
+</script>

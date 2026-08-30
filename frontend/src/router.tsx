@@ -3,6 +3,9 @@ import { NotFoundPage } from "@/componentes/NotFoundPage";
 import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
+import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
+import { EmpresaAparienciaPage } from "@/funcionalidades/empresa-apariencia/EmpresaAparienciaPage";
+import { GestorEmpresasPage } from "@/funcionalidades/empresa-apariencia/GestorEmpresasPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
 import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
@@ -10,6 +13,8 @@ import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
 import { AppLayout } from "@/layouts/AppLayout";
+import { FlujoIntegracionDemo } from "@/temas/variante-empresarial/FlujoIntegracionDemo";
+import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
 
 /**
  * Enrutado de la aplicación (docs/07 F1). React Router en modo de datos
@@ -29,12 +34,36 @@ import { AppLayout } from "@/layouts/AppLayout";
  * pendientes de este roadmap sin al menos una implementación (ver la nota
  * de cierre en `docs/07-modulos-frontend.md`). F6 (notificaciones) no es una
  * ruta propia -- vive en la campana de `layouts/Header.tsx`.
+ *
+ * `/temas/*`: páginas de referencia (styleguide) de variantes de línea
+ * gráfica en exploración (ver `frontend/src/temas/README.md`) -- dev-only,
+ * solo en build de desarrollo (`import.meta.env.DEV`), sin sesión ni entrada
+ * en `layouts/navigation.ts` a propósito: no debe aparecer en el sidebar de
+ * producción ni compilarse en un build de producción.
+ *
+ * `apariencia-empresa`: self-service de la propia `Empresa`
+ * (`docs/blocks/d0-visualizacion-multitenant.md`, PASO 8) -- grupo de
+ * `ProtectedRoute` separado del resto de rutas `ADMINISTRADOR` porque además
+ * exige `allowedScopes={["company"]}`; una sesión `holding` con ese rol no
+ * tiene una única empresa propia que editar por esta vía.
+ *
+ * `empresas`: gestor cross-empresa de holding (mismo PASO 8, `GET /empresas`
+ * + `PATCH /empresas/:empresaId/apariencia`) -- otro grupo de
+ * `ProtectedRoute` separado, exige `allowedScopes={["holding"]}` (el
+ * espejo exacto del grupo de arriba: acá una sesión `company` no tiene
+ * autoridad cross-empresa).
  */
 export const router = createBrowserRouter([
   {
     path: "/iniciar-sesion",
     element: <LoginPage />,
   },
+  ...(import.meta.env.DEV
+    ? [
+        { path: "/temas/empresarial", element: <StyleguidePage /> },
+        { path: "/temas/empresarial/demo", element: <FlujoIntegracionDemo /> },
+      ]
+    : []),
   {
     element: <ProtectedRoute />,
     children: [
@@ -52,7 +81,29 @@ export const router = createBrowserRouter([
               { path: "usuarios", element: <UsuariosPage /> },
               { path: "bridges", element: <BridgesPage /> },
               { path: "bridges/:id", element: <BridgeDetallePage /> },
+              { path: "configuracion-empresa", element: <ConfiguracionEmpresaPage /> },
             ],
+          },
+          {
+            // Self-service de apariencia de la PROPIA empresa (PASO 8):
+            // exclusivo ADMINISTRADOR de sesión `company` -- a diferencia del
+            // grupo de arriba, acá SÍ importa el scope (una sesión `holding`
+            // con rol ADMINISTRADOR no tiene una única empresa propia que
+            // editar por esta vía, ver `empresa-apariencia.controller.ts`).
+            element: (
+              <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} allowedScopes={["company"]} />
+            ),
+            children: [{ path: "apariencia-empresa", element: <EmpresaAparienciaPage /> }],
+          },
+          {
+            // Gestor cross-empresa de holding (PASO 8): exclusivo
+            // ADMINISTRADOR de sesión `holding` -- espejo del grupo
+            // `apariencia-empresa` de arriba, pero con `allowedScopes`
+            // invertido (`["holding"]` en vez de `["company"]`).
+            element: (
+              <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} allowedScopes={["holding"]} />
+            ),
+            children: [{ path: "empresas", element: <GestorEmpresasPage /> }],
           },
         ],
       },

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { compareClaveBridge, hashClaveBridge } from "../lib/clave-bridge.js";
 import { logger } from "../lib/logger.js";
+import { runWithTenantContext, withBootstrapClaveApiHashGuc } from "../lib/prisma.js";
 import { registrarBridgeLog } from "../services/bridge-log.service.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 
@@ -37,7 +38,12 @@ export async function requireBridgeKey(
   }
 
   const hash = hashClaveBridge(claveApi);
-  const bridge = await bridgeRepository.findByClaveApiHash(hash);
+  // Bloque C (Etapa 3, D2 gap closure, batch 3 discovery): ver
+  // `lib/prisma.ts::withBootstrapClaveApiHashGuc` — esta lectura ocurre
+  // ANTES de que exista un TenantContext (es justamente lo que resuelve).
+  const bridge = await withBootstrapClaveApiHashGuc(hash, (tx) =>
+    bridgeRepository.findByClaveApiHash(hash, tx),
+  );
   const mensajeInvalido = "X-Bridge-Key inválida o bridge inactivo";
 
   if (!bridge || bridge.estado !== "ACTIVO" || !compareClaveBridge(hash, bridge.claveApiHash)) {
@@ -47,12 +53,21 @@ export async function requireBridgeKey(
   }
 
   req.bridge = { id: bridge.id, redSocial: bridge.redSocial };
-  next();
+  // Bloque C (Etapa 3, D2/D3, batch 3 discovery): puebla el carrier de
+  // `AsyncLocalStorage` de `lib/prisma.ts` alrededor de `next()` — todo el
+  // resto del ciclo de vida de esta request (ingesta, deduplicación,
+  // creación de Lead/LeadEvento) corre dentro de este contexto, igual que
+  // `requireAuthentication` para requests autenticadas por usuario.
+  // `bridge.empresaId` es NOT NULL desde Bloque C (D4, Fase 2/Stage 2) — sin
+  // esto, todo el pipeline de ingesta (Meta/Google Forms) corría hasta ahora
+  // completamente sin TenantContext, así que cualquier escritura RLS
+  // (`leads`, `lead_eventos`, `citas`, `notificaciones`) fallaba fail-closed.
+  runWithTenantContext({ empresaId: bridge.empresaId }, next);
 }
 
 async function registrarRechazo(bridgeId: string | null, mensaje: string): Promise<void> {
   try {
-    await registrarBridgeLog({ bridgeId, nivel: "ERROR", mensaje });
+    await registrarBridgeLog({ bridgeId, nivel: "ERROR", mensaje, ...(bridgeId ? {} : { holdingWide: true }) });
   } catch (error) {
     logger.error({ err: error, bridgeId }, "requireBridgeKey: fallo al registrar bridge_logs");
   }

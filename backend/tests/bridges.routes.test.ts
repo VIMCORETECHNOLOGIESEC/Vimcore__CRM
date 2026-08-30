@@ -5,6 +5,8 @@ import { createApp } from "../src/app.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 function mockFetchJson(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
@@ -27,12 +29,13 @@ async function crearBridgeDirecto(
   overrides: Partial<{ estado: "ACTIVO" | "INACTIVO"; redSocial: RedSocial; nombre: string }> = {},
 ): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: overrides.redSocial ?? "GOOGLE_FORMS",
       nombre: overrides.nombre ?? `Bridge ruta ${contador}`,
       claveApiHash: hashClaveBridge(claveApiUnica()),
       estado: overrides.estado ?? "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -75,10 +78,16 @@ afterAll(async () => {
 
 describe("POST /api/v1/bridges (Requirement: Bridge creation starts inactive with one-time plaintext key)", () => {
   it("201 crea el bridge INACTIVO y devuelve la clave en claro", async () => {
+    // `z.uuid()` (Bloque C, `bridges.schema.ts`) exige el nibble de versión
+    // RFC 4122 — `EMPRESA_BOOTSTRAP_ID` (id fijo de la migración, hallazgo ya
+    // documentado en Batch 2 de Stage 1: "BOOTSTRAP_EMPRESA_ID fails Zod's
+    // strict z.uuid()") no lo cumple, así que este endpoint HTTP necesita
+    // una `Empresa` con un id real generado por `@default(uuid())`.
+    const empresa = await prisma.empresa.create({ data: { nombre: "Empresa Bridges Rutas" } });
     const respuesta = await request(app)
       .post("/api/v1/bridges")
       .set("Authorization", `Bearer ${adminAccessToken}`)
-      .send({ redSocial: "FACEBOOK", nombre: "Bridge Facebook Rutas" });
+      .send({ redSocial: "FACEBOOK", nombre: "Bridge Facebook Rutas", empresaId: empresa.id });
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body.bridge.estado).toBe("INACTIVO");
@@ -316,7 +325,7 @@ describe("DELETE /api/v1/bridges/:id (Requirement: Delete mode is decided by lea
 
   it("200 BAJA_LOGICA cuando leadsRecibidos.count > 0", async () => {
     const { id } = await crearBridgeDirecto({ estado: "ACTIVO" });
-    await prisma.leadRecibido.create({
+    await testAdminPrisma.leadRecibido.create({
       data: {
         bridgeId: id,
         idExternoLead: `lead-externo-ruta-${contador}`,
@@ -332,7 +341,7 @@ describe("DELETE /api/v1/bridges/:id (Requirement: Delete mode is decided by lea
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.resultado).toBe("BAJA_LOGICA");
 
-    const filaTrasBaja = await prisma.bridge.findUniqueOrThrow({ where: { id } });
+    const filaTrasBaja = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } });
     expect(filaTrasBaja.estado).toBe("INACTIVO");
   });
 
@@ -412,7 +421,9 @@ describe(
         .set("Authorization", `Bearer ${adminAccessToken}`);
 
       expect(respuesta.status).toBe(200);
-      expect(new Set(respuesta.body.redesSociales)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS"]));
+      expect(new Set(respuesta.body.redesSociales)).toEqual(
+        new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "API_EXTERNA"]),
+      );
       expect(respuesta.body.redesSociales).not.toContain("INSTAGRAM" satisfies RedSocial);
       expect(respuesta.body.redesSociales).not.toContain("X" satisfies RedSocial);
       expect(respuesta.body.redesSociales).not.toContain("LINKEDIN" satisfies RedSocial);
@@ -630,7 +641,7 @@ describe(
     "only activation)",
   () => {
     async function crearCuentaDirecta(bridgeId: string): Promise<{ cuentaId: string }> {
-      const cuenta = await prisma.cuentaPublicitaria.create({
+      const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
         data: { bridgeId, idExterno: `page-patch-${Date.now()}-${Math.random()}`, nombre: "Cuenta a togglear" },
       });
       return { cuentaId: cuenta.id };
@@ -711,7 +722,7 @@ describe(
     "verificación inmediata; el token nunca se devuelve por API)",
   () => {
     async function crearCuentaDirecta(bridgeId: string): Promise<{ cuentaId: string }> {
-      const cuenta = await prisma.cuentaPublicitaria.create({
+      const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
         data: { bridgeId, idExterno: `page-token-ruta-${Date.now()}-${Math.random()}`, nombre: "Cuenta a cargar" },
       });
       return { cuentaId: cuenta.id };
@@ -808,7 +819,7 @@ describe(
       bridgeId: string,
       overrides: { tokenCifrado?: string | null } = {},
     ): Promise<{ cuentaId: string }> {
-      const cuenta = await prisma.cuentaPublicitaria.create({
+      const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
         data: {
           bridgeId,
           idExterno: `page-probar-ruta-${Date.now()}-${Math.random()}`,

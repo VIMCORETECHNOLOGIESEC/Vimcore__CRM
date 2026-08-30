@@ -25,7 +25,7 @@ export async function postIngestaGenerica(req: Request, res: Response): Promise<
     throw new AppError("bridge_no_resuelto", 500, "El bridge autenticado no está disponible");
   }
 
-  const entrada = adaptGoogleForms(parsed.data, req.bridge.id);
+  const entrada = adaptGoogleForms(parsed.data, req.bridge.id, req.bridge.redSocial);
   const resultado = await ingestarLead(entrada);
 
   res.status(200).json(resultado);

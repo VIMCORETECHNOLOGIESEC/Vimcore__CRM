@@ -3,6 +3,11 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 export interface CreateCitaData {
   leadId: string;
+  /**
+   * Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId`,
+   * requerido desde esta migración (`citas.empresa_id` NOT NULL).
+   */
+  empresaId: string;
   usuarioId: string;
   programadaPara: Date;
   modalidad: Cita["modalidad"];

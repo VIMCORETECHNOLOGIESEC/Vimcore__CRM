@@ -17,10 +17,10 @@ export function LeadDatosContacto({ cliente }: LeadDatosContactoProps) {
   );
 
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
+    <section data-tour="lead-contact-card" className="flex flex-col gap-2 rounded-lg border border-border bg-background p-4">
       <h2 className="text-sm font-semibold text-foreground">Datos de contacto</h2>
 
-      <div className="flex items-center gap-2 text-sm">
+      <div data-tour="lead-contact-phone" className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Teléfono:</span>
         <span className="tabular-nums text-foreground">{cliente.telefonoOriginal}</span>
         {telefonoInvalido ? (
@@ -31,7 +31,7 @@ export function LeadDatosContacto({ cliente }: LeadDatosContactoProps) {
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-1 text-sm">
+      <div data-tour="lead-contact-email-state" className="flex flex-col gap-1 text-sm">
         <span className="text-muted-foreground">Correos:</span>
         {correos.length === 0 ? (
           <span className="text-foreground">Sin correo registrado</span>

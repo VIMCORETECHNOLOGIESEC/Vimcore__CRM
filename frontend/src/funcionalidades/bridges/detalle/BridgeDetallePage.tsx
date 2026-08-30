@@ -54,24 +54,38 @@ export function BridgeDetallePage() {
     <div className="flex flex-col gap-4">
       <AvisoBridge nombre={bridge.nombre} aviso={aviso} />
 
-      <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+      <section
+        aria-labelledby="bridge-resumen-title"
+        className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4"
+      >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-muted-foreground">{RED_SOCIAL_ETIQUETAS[bridge.redSocial]}</span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Bridge
+            </span>
+            <h2 id="bridge-resumen-title" className="text-sm font-semibold text-foreground">
+              Sincronización de {RED_SOCIAL_ETIQUETAS[bridge.redSocial]}
+            </h2>
+          </div>
           <EstadoBridgeBadge estado={bridge.estado} />
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <dt className="text-muted-foreground">Último lead recibido</dt>
-          <dd className="text-foreground">
-            {bridge.ultimoLeadEn ? formatFecha(bridge.ultimoLeadEn) : "Nunca"}
-          </dd>
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-1 rounded-md bg-muted/60 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Último lead recibido</dt>
+            <dd className="break-words text-sm font-medium text-foreground">
+              {bridge.ultimoLeadEn ? formatFecha(bridge.ultimoLeadEn) : "Nunca"}
+            </dd>
+          </div>
 
           {/* No lee `bridge.tokenExpiraEn` (constante muerta a nivel bridge, ver `tipos/bridge.ts`) --
               la fecha real vive por cuenta publicitaria, ver el detalle exacto en cada fila más abajo. */}
-          <dt className="text-muted-foreground">Expiración de token más próxima</dt>
-          <dd className="text-foreground">
-            {proximaExpiracion ? formatFecha(proximaExpiracion) : "No expira"}
-          </dd>
+          <div className="flex min-w-0 flex-col gap-1 rounded-md bg-muted/60 p-3">
+            <dt className="text-xs font-medium text-muted-foreground">Expiración de token más próxima</dt>
+            <dd className="break-words text-sm font-medium text-foreground">
+              {proximaExpiracion ? formatFecha(proximaExpiracion) : "No expira"}
+            </dd>
+          </div>
         </dl>
       </section>
 

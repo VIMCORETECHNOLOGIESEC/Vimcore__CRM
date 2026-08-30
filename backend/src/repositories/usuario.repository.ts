@@ -1,5 +1,6 @@
 import type { Prisma, RolUsuario, Usuario } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
+import type { PoolAsignacion } from "./lead.repository.js";
 import { revokeAllForUser } from "./refresh-token.repository.js";
 
 /**
@@ -64,8 +65,19 @@ function isRecordNotFoundError(error: unknown): boolean {
   );
 }
 
-export async function createUsuario(data: CreateUsuarioData): Promise<AdminUsuarioView> {
-  return prisma.usuario.create({ data, select: adminUsuarioSelect });
+/**
+ * Bloque C follow-up (D2 gap closure): tx-aware — `usuarios.service.ts::
+ * createUsuario` necesita crear el `Usuario` y su `Membresia` (roles
+ * `ASESOR`/`VENDEDOR`) en la MISMA transacción (mismo criterio atómico que
+ * `deactivateUsuario`/`revokeAllForUser`). `client` por defecto sigue siendo
+ * el `prisma` de módulo — comportamiento previo preservado para cualquier
+ * otro llamador.
+ */
+export async function createUsuario(
+  data: CreateUsuarioData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<AdminUsuarioView> {
+  return client.usuario.create({ data, select: adminUsuarioSelect });
 }
 
 export interface FindUsuariosOptions {
@@ -157,6 +169,16 @@ export interface CandidatoRol {
  * repositorio (arriba) usan el `prisma` de módulo y NO se refactorizan
  * (fuera de alcance, rompería M2 sin necesidad). Solo las funciones NUEVAS
  * de M6 aceptan `PrismaClientOrTransaction`.
+ *
+ * Bloque D (batch de negociación, punto 2/3): NO se migra en el lugar
+ * (deviation deliberada, ver `findActivosPorRolMembresia` abajo) — esta
+ * firma/comportamiento se PRESERVA sin cambios porque
+ * `whatsappMessages/whatsapp-sla.service.ts::reasignarPorSlaVencido` (fuera
+ * de alcance, prohibido tocar en este batch) llama a
+ * `asignacion.service.ts::selectResponsable`, que a su vez llama a esta
+ * función -- cambiar su contrato rompería ese archivo prohibido. También la
+ * sigue usando `usuarios.service.ts::deactivateUsuario` (baja lógica con
+ * reasignación de cartera), tampoco nombrado en el alcance de este batch.
  */
 export async function findActivosPorRol(
   rol: RolUsuario,
@@ -166,6 +188,42 @@ export async function findActivosPorRol(
     where: { rol, activo: true },
     select: { id: true, ultimaAsignacionEn: true },
   });
+}
+
+/**
+ * Bloque D (batch de negociación, punto 2/3 — cutover del pool de `Lead`):
+ * variante NUEVA, migrada de `Usuario.rol` a `Membresia`, mismo criterio
+ * D3/D4 que ya usa
+ * `negociacion/membresia-pool.repository.ts::findActivosAsesoresPorEmpresa`
+ * para el pool de `Oportunidad` (leído como referencia de patrón, NO
+ * reusado ni importado -- ese archivo tiene su propio ciclo de vida
+ * independiente, mismo criterio de aislamiento ya aplicado ahí). Candidatos:
+ * `Usuario` con `Membresia(activa: true, rol: ASESOR, empresaId)` Y
+ * `Usuario.activo: true`. `RolMembresia` no tiene un valor `VENDEDOR`
+ * propio (backfill: `VENDEDOR` legado -> `Membresia(ASESOR,
+ * habilitadoParaVenta: true)`), así que el pool `VENDEDOR` es el mismo
+ * conjunto de asesores, filtrado además por ese flag.
+ *
+ * Función NUEVA y separada de `findActivosPorRol` (arriba) a propósito, en
+ * vez de migrar esa en el lugar: ver el comentario de esa función para la
+ * razón (call site prohibido de tocar en `whatsappMessages/`).
+ */
+export async function findActivosPorRolMembresia(
+  pool: PoolAsignacion,
+  empresaId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CandidatoRol[]> {
+  const membresias = await client.membresia.findMany({
+    where: {
+      activa: true,
+      rol: "ASESOR",
+      empresaId,
+      usuario: { activo: true },
+      ...(pool === "VENDEDOR" ? { habilitadoParaVenta: true } : {}),
+    },
+    select: { usuario: { select: { id: true, ultimaAsignacionEn: true } } },
+  });
+  return membresias.map(({ usuario }) => ({ id: usuario.id, ultimaAsignacionEn: usuario.ultimaAsignacionEn }));
 }
 
 /**

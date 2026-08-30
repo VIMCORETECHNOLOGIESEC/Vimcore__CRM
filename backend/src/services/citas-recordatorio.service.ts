@@ -1,7 +1,8 @@
 import * as citaRepository from "../repositories/cita.repository.js";
-import { CITAS_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { CITAS_TRANSACTION_BOUNDS, prisma, runAsBypassJob, runWithTenantContext } from "../lib/prisma.js";
 import * as notificationRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
+import { partitionByEmpresa } from "./company-partition.js";
 
 /** Ventana del checklist M7: "recordatorio 1 hora antes". */
 const VENTANA_RECORDATORIO_MS = 60 * 60 * 1000;
@@ -40,12 +41,23 @@ export async function enviarRecordatoriosCita(
 ): Promise<ResultadoRecordatorioCitas> {
   const hasta = new Date(ahora.getTime() + VENTANA_RECORDATORIO_MS);
 
-  const candidatos = await citaRepository.findPendientesDeRecordatorio(ahora, hasta);
+  // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies", batch 3
+  // discovery): este cron (`jobs/citas-recordatorio.job.ts`) corre sin
+  // `AsyncLocalStorage` de tenant y necesita ver citas pendientes de TODAS
+  // las empresas — mismo criterio que `sla-atrasado.service.ts::
+  // detectLeadsAtrasados`.
+  const candidatos = await runAsBypassJob(
+    "appointment-reminder",
+    (tx) => citaRepository.findPendientesDeRecordatorio(ahora, hasta, tx),
+    CITAS_TRANSACTION_BOUNDS,
+  );
   if (candidatos.length === 0) return { candidatos: 0, recordatoriosMarcados: 0 };
 
   let recordatoriosMarcados = 0;
-  for (const cita of candidatos) {
-    const committed = await runInTransaction(undefined, async (tx) => {
+  for (const [empresaId, partition] of partitionByEmpresa(candidatos)) {
+    await runWithTenantContext({ empresaId }, async () => {
+      for (const cita of partition) {
+        const committed = await prisma.$transaction(async (tx) => {
       const claimed = await citaRepository.marcarRecordatorioEnviado([cita.id], tx);
       if (claimed.count === 0) return [];
       const notification = await notificationRepository.createNotificacion(
@@ -55,13 +67,16 @@ export async function enviarRecordatoriosCita(
           titulo: "Recordatorio de cita",
           mensaje: "Tienes una cita programada para " + cita.programadaPara.toISOString(),
           leadId: cita.leadId,
+          empresaId: cita.empresaId,
         },
         tx,
       );
       return notificationEvents(notification);
-    }, CITAS_TRANSACTION_BOUNDS);
-    if (committed.length > 0) recordatoriosMarcados += 1;
-    publishCommittedEvents(committed);
+        }, CITAS_TRANSACTION_BOUNDS);
+        if (committed.length > 0) recordatoriosMarcados += 1;
+        publishCommittedEvents(committed);
+      }
+    });
   }
 
   return { candidatos: candidatos.length, recordatoriosMarcados };

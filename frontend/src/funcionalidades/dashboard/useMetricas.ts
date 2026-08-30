@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { MetricasFiltros } from "@/tipos/metricas";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import {
   fetchMetricasEmbudoApi,
   fetchMetricasPorAsesorApi,

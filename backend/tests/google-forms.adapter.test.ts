@@ -12,7 +12,7 @@ describe("adapters/google-forms — adaptGoogleForms (M4, PR2)", () => {
       // idExternoCampania / nombreCampania / idExternoCuenta ausentes.
     });
 
-    const leadEntrante = adaptGoogleForms(body, "bridge-id-1");
+    const leadEntrante = adaptGoogleForms(body, "bridge-id-1", "GOOGLE_FORMS");
 
     expect(leadEntrante.nombreCampania).toBeNull();
     expect(leadEntrante.idExternoCampania).toBeNull();
@@ -22,7 +22,7 @@ describe("adapters/google-forms — adaptGoogleForms (M4, PR2)", () => {
   it("no usa placeholder ni cadena vacia para el campo ausente", () => {
     const body = ingestaGenericaSchema.parse({ idExternoLead: "form-respuesta-2" });
 
-    const leadEntrante = adaptGoogleForms(body, "bridge-id-1");
+    const leadEntrante = adaptGoogleForms(body, "bridge-id-1", "GOOGLE_FORMS");
 
     expect(leadEntrante.nombreCampania).not.toBe("");
     expect(leadEntrante.nombre).toBeNull();
@@ -41,7 +41,7 @@ describe("adapters/google-forms — adaptGoogleForms (M4, PR2)", () => {
       camposDinamicos: { presupuesto: "10000-15000" },
     });
 
-    const leadEntrante = adaptGoogleForms(body, "bridge-id-2", ahora);
+    const leadEntrante = adaptGoogleForms(body, "bridge-id-2", "GOOGLE_FORMS", ahora);
 
     expect(leadEntrante).toMatchObject({
       redSocial: "GOOGLE_FORMS",
@@ -63,8 +63,24 @@ describe("adapters/google-forms — adaptGoogleForms (M4, PR2)", () => {
     const antes = Date.now();
     const body = ingestaGenericaSchema.parse({ idExternoLead: "form-respuesta-4" });
 
-    const leadEntrante = adaptGoogleForms(body, "bridge-id-3");
+    const leadEntrante = adaptGoogleForms(body, "bridge-id-3", "GOOGLE_FORMS");
 
     expect(leadEntrante.ingresadoEn.getTime()).toBeGreaterThanOrEqual(antes);
+  });
+
+  it("Requirement lead-attribution, Scenario 'Google Forms bridge configured as X': redSocial se toma del bridge autenticado, no de una constante", () => {
+    const body = ingestaGenericaSchema.parse({ idExternoLead: "form-respuesta-5" });
+
+    const leadEntrante = adaptGoogleForms(body, "bridge-id-4", "X");
+
+    expect(leadEntrante.redSocial).toBe("X");
+  });
+
+  it("Scenario 'Existing Google Forms bridge unaffected': un bridge configurado como GOOGLE_FORMS sigue produciendo GOOGLE_FORMS (triangulación)", () => {
+    const body = ingestaGenericaSchema.parse({ idExternoLead: "form-respuesta-6" });
+
+    const leadEntrante = adaptGoogleForms(body, "bridge-id-5", "GOOGLE_FORMS");
+
+    expect(leadEntrante.redSocial).toBe("GOOGLE_FORMS");
   });
 });

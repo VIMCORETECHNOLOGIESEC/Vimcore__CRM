@@ -2,6 +2,13 @@
 .atl/
 .claude/settings.local.json
 .codegraph/
+graphify-out/
+
+# SDD: este repo no usa openspec/ como artefacto versionado -- los
+# artefactos SDD se persisten en Engram (AGENTS.md). Cualquier archivo que
+# aparezca acá (ej. traído sin querer por un merge de otra rama) queda
+# untracked a propósito, nunca se commitea.
+openspec/
 
 # Node / pnpm
 node_modules/
@@ -15,3 +22,24 @@ dist/
 
 # Local scratch tokens (curl testing artifacts)
 .admin_token
+
+# Local Docker Compose overrides (ej. exponer el puerto de Postgres para
+# clientes de DB como DBeaver) -- nunca compartido con el equipo.
+docker-compose.override.yml
+
+# Sincronización local de la app Postman -- puede contener credenciales en
+# texto plano (bodies de requests guardados, ej. login).
+.postman/
+postman/
+
+# Contrato general para frontend -- se distribuye por otro medio, no vive
+# en el repo compartido.
+docs/contrato-frontend-general.md
+
+# Credenciales reales de producción -- nunca en el repo, se distribuyen por
+# otro medio.
+docs/credenciales-produccion-arcano.md
+
+# .env.dev tiene secretos reales de desarrollo local -- *.env no lo cubre
+# (termina en .dev, no en .env).
+.env.dev

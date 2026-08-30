@@ -3,12 +3,14 @@ import { BRIDGE_MUDO_HORAS } from "../src/config/negocio.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { startBridgeMudoJob } from "../src/jobs/bridge-mudo.job.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as bridgeRepository from "../src/repositories/bridge.repository.js";
 import * as bridgeLogService from "../src/services/bridge-log.service.js";
 import {
   detectarBridgesMudos,
   type ResultadoDeteccionMudos,
 } from "../src/services/bridge-mudo.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 vi.mock("../src/services/bridge-log.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/bridge-log.service.js")>();
@@ -30,13 +32,14 @@ async function crearBridgeMudo(overrides: {
 } = {}): Promise<{ id: string }> {
   contador += 1;
   const horasSinLead = overrides.horasSinLead ?? 73;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "GOOGLE_FORMS",
       nombre: `Bridge mudo job ${contador}`,
       claveApiHash: hashClaveBridge(claveApiUnica()),
       estado: overrides.estado ?? "ACTIVO",
       ultimoLeadEn: new Date(Date.now() - horasSinLead * 60 * 60 * 1000),
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -57,12 +60,12 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
 
     expect(resultado.candidatos).toBeGreaterThanOrEqual(1);
     expect(resultado.advertenciasRegistradas).toBeGreaterThanOrEqual(1);
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId: id, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "desc" },
     });
     expect(log?.mensaje).toContain("72h");
-    const bridge = await prisma.bridge.findUniqueOrThrow({ where: { id } });
+    const bridge = await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } });
     expect(bridge.advertenciaMudoEnviada).toBe(true);
   });
 
@@ -72,26 +75,26 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
 
     const primera = await detectarBridgesMudos(ahora);
     expect(primera.advertenciasRegistradas).toBeGreaterThanOrEqual(1);
-    const logsAntes = await prisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
+    const logsAntes = await testAdminPrisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
 
     await detectarBridgesMudos(new Date(ahora.getTime() + 1000));
 
-    const logsDespues = await prisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
+    const logsDespues = await testAdminPrisma.bridgeLog.count({ where: { bridgeId: id, nivel: "ADVERTENCIA" } });
     expect(logsDespues).toBe(logsAntes);
   });
 
   it("un lead nuevo (touchUltimoLeadEn) re-arma la deteccion tras una advertencia previa", async () => {
     const { id } = await crearBridgeMudo();
     await detectarBridgesMudos(new Date());
-    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
+    expect((await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
 
-    await bridgeRepository.touchUltimoLeadEn(id);
-    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(false);
+    await bridgeRepository.touchUltimoLeadEn(id, testAdminPrisma);
+    expect((await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(false);
 
     const ahoraSimulado = new Date(Date.now() + UMBRAL_MS + 60 * 60 * 1000);
     const resultado = await detectarBridgesMudos(ahoraSimulado);
 
-    const log = await prisma.bridgeLog.findMany({
+    const log = await testAdminPrisma.bridgeLog.findMany({
       where: { bridgeId: id, nivel: "ADVERTENCIA" },
       orderBy: { ocurridoEn: "asc" },
     });
@@ -109,7 +112,7 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
 
     await detectarBridgesMudos(new Date());
 
-    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId: id } });
+    const log = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId: id } });
     expect(log).toBeNull();
   });
 
@@ -122,12 +125,12 @@ describe("bridge-mudo.service — detectarBridgesMudos (docs/05-bridges.md §8)"
     const primerTick = await detectarBridgesMudos(new Date());
 
     expect(primerTick.advertenciasRegistradas).toBe(0);
-    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(false);
+    expect((await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(false);
 
     const segundoTick = await detectarBridgesMudos(new Date());
 
     expect(segundoTick.advertenciasRegistradas).toBeGreaterThanOrEqual(1);
-    expect((await prisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
+    expect((await testAdminPrisma.bridge.findUniqueOrThrow({ where: { id } })).advertenciaMudoEnviada).toBe(true);
   });
 });
 

@@ -2,9 +2,26 @@ import { RolUsuario } from "@prisma/client";
 import { z } from "zod";
 import { passwordPolicySchema } from "schemas";
 
+// Bloque C follow-up (D2 gap closure, spec "Request-scoped tenant context"):
+// mismos dos roles holding-wide incondicionales que
+// `require-authentication.middleware.ts::ROLES_ACCESO_TOTAL` — los únicos
+// que NO necesitan `empresaId` al crearse (nunca resuelven TenantContext vía
+// Membresia).
+const ROLES_ACCESO_TOTAL = ["ADMINISTRADOR", "SUPERVISOR"] as const;
+
 // Zod 4.4.3: formatos de string en el nivel superior (`z.email()`, `z.uuid()`).
 // D9: exactamente los 4 roles del enum nativo de Prisma.
-export const createUsuarioBodySchema = z.object({
+//
+// Base sin `superRefine` (`usuarioBodyShapeSchema`, no exportado): la
+// condicional `empresaId` depende de `rol` en el mismo body, pero
+// `updateUsuarioBodySchema` abajo necesita `.partial()` sobre la FORMA, y
+// `ZodObject.partial()` no existe sobre el `ZodEffects` que devuelve
+// `.superRefine()`. `createUsuarioBodySchema` aplica el refine solo en la
+// forma completa (alta); el PATCH parcial no reaplica esta regla — un PATCH
+// que cambie `rol` a ASESOR/VENDEDOR sin `empresaId` no crea ninguna
+// Membresia nueva (fuera de alcance de este follow-up, mismo criterio que
+// el resto de `updateUsuario`: no reevalúa invariantes de alta).
+const usuarioBodyShapeSchema = z.object({
   nombre: z.string().trim().min(1).max(120),
   // Sin `.toLowerCase()`: `correo` es `@db.Citext`, la comparación ya es
   // insensible a mayúsculas en la base de datos (mismo patrón que auth.schema.ts).
@@ -13,6 +30,20 @@ export const createUsuarioBodySchema = z.object({
   // verdad compartido con el frontend en packages/schemas.
   password: passwordPolicySchema,
   rol: z.enum(RolUsuario),
+  // Bloque C follow-up (D2 gap closure): obligatorio SOLO para
+  // ASESOR/VENDEDOR — validado condicionalmente abajo (`superRefine`), no
+  // acá, porque depende del valor de `rol` en el mismo body.
+  empresaId: z.uuid().optional(),
+});
+
+export const createUsuarioBodySchema = usuarioBodyShapeSchema.superRefine((body, ctx) => {
+  if (!ROLES_ACCESO_TOTAL.includes(body.rol as (typeof ROLES_ACCESO_TOTAL)[number]) && !body.empresaId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["empresaId"],
+      message: "empresaId es obligatorio para crear un usuario ASESOR o VENDEDOR",
+    });
+  }
 });
 
 /**
@@ -25,7 +56,7 @@ export const createUsuarioBodySchema = z.object({
  * de cartera) sigue siendo exclusiva de `DELETE /usuarios/:id`
  * (`deactivateUsuario`), no de este PATCH.
  */
-export const updateUsuarioBodySchema = createUsuarioBodySchema
+export const updateUsuarioBodySchema = usuarioBodyShapeSchema
   .partial()
   .extend({ activo: z.boolean().optional() })
   .refine((v) => Object.keys(v).length > 0, "Debes enviar al menos un campo");

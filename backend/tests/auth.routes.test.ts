@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -5,6 +6,7 @@ import { createApp } from "../src/app.js";
 import { env } from "../src/config/env.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD_ACTIVO = "clave-integracion-123";
@@ -17,13 +19,25 @@ beforeAll(async () => {
   correoActivo = "activo@integracion.test";
   correoInactivo = "inactivo@integracion.test";
 
-  await prisma.usuario.create({
+  const usuarioActivo = await prisma.usuario.create({
     data: {
       nombre: "Usuario Activo",
       correo: correoActivo,
       passwordHash: await hashPassword(PASSWORD_ACTIVO),
       rol: "VENDEDOR",
       activo: true,
+    },
+  });
+  // Bloque C follow-up (D2 gap closure): este VENDEDOR hace peticiones
+  // autenticadas más abajo (logout, perfil) — sin Membresia activa,
+  // `requireAuthentication` rechazaría el TenantContext (D2).
+  await testAdminPrisma.membresia.create({
+    data: {
+      usuarioId: usuarioActivo.id,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
+      rol: "ASESOR",
+      habilitadoParaVenta: true,
+      activa: true,
     },
   });
 
@@ -53,6 +67,72 @@ async function firmarTokenExpirado(sub: string): Promise<string> {
     .setExpirationTime(Math.floor(Date.now() / 1000) - 3600)
     .sign(secretKey);
 }
+
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+
+describe("POST /api/v1/auth/login — dual-login-routing (Bloque B, Fase 2)", () => {
+  it("200 con credenciales de Membresia (Company credential succeeds)", async () => {
+    const correoMembresia = "membresia-integracion@empresa.local";
+    const passwordMembresia = "clave-membresia-123";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Titular Membresia",
+        correo: "titular-membresia@integracion.test",
+        passwordHash: await hashPassword("clave-no-usada-123"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        correo: correoMembresia,
+        passwordHash: await hashPassword(passwordMembresia),
+        activa: true,
+      },
+    });
+
+    const respuesta = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoMembresia, password: passwordMembresia });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.user.id).toBe(usuario.id);
+    expect(respuesta.body.accessToken).toEqual(expect.any(String));
+  });
+
+  it("401 con el mismo mensaje genérico cuando la Membresia está inactiva (activa=false)", async () => {
+    const correoMembresia = "membresia-inactiva@empresa.local";
+    const passwordMembresia = "clave-membresia-456";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Titular Membresia Inactiva",
+        correo: "titular-membresia-inactiva@integracion.test",
+        passwordHash: await hashPassword("clave-no-usada-456"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        correo: correoMembresia,
+        passwordHash: await hashPassword(passwordMembresia),
+        activa: false,
+      },
+    });
+
+    const respuesta = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoMembresia, password: passwordMembresia });
+
+    expect(respuesta.status).toBe(401);
+  });
+});
 
 describe("POST /api/v1/auth/login", () => {
   it("200 con accessToken y refreshToken cuando las credenciales son válidas", async () => {
@@ -209,4 +289,94 @@ describe("GET /api/v1/auth/perfil — matriz docs/06 L45", () => {
 
     expect(respuesta.status).toBe(401);
   });
+
+  it("empresaNombre y los dos colores de marca vienen null en una sesión holding", async () => {
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoActivo, password: PASSWORD_ACTIVO });
+
+    const respuesta = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${login.body.accessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.sessionScope).toBe("holding");
+    expect(respuesta.body.empresaNombre).toBeNull();
+    expect(respuesta.body.empresaColorPrimario).toBeNull();
+    expect(respuesta.body.empresaColorSecundario).toBeNull();
+  });
 });
+
+/**
+ * tema-empresarial-integracion (Parte 2): color de marca real por empresa
+ * (`Empresa.colorPrimario`/`colorSecundario`, columnas nullable) --
+ * `auth.service.ts::resolveEmpresaMarca` extiende la resolución de D0 sin
+ * duplicar el `findById`.
+ */
+describe("GET /api/v1/auth/perfil — color de marca por empresa (tema-empresarial-integracion, Parte 2)", () => {
+  async function loginComoMembresiaDeEmpresa(empresaId: string): Promise<string> {
+    const correoMembresia = `color-membresia-${randomUUID()}@empresa.local`;
+    const passwordMembresia = "clave-color-marca-123";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Titular Color de Marca",
+        correo: `titular-color-${randomUUID()}@integracion.test`,
+        passwordHash: await hashPassword("clave-no-usada-color"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId,
+        rol: "ASESOR",
+        correo: correoMembresia,
+        passwordHash: await hashPassword(passwordMembresia),
+        activa: true,
+      },
+    });
+
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoMembresia, password: passwordMembresia });
+    return login.body.accessToken as string;
+  }
+
+  it("200 con empresaColorPrimario/empresaColorSecundario cuando la Empresa tiene color propio", async () => {
+    const empresaConColor = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa con color ${randomUUID()}`,
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+      },
+    });
+    const accessToken = await loginComoMembresiaDeEmpresa(empresaConColor.id);
+
+    const respuesta = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.sessionScope).toBe("company");
+    expect(respuesta.body.empresaColorPrimario).toBe("#7c2d12");
+    expect(respuesta.body.empresaColorSecundario).toBe("#f97316");
+  });
+
+  it("200 con empresaColorPrimario/empresaColorSecundario en null cuando la Empresa no tiene color propio seteado", async () => {
+    const empresaSinColor = await prisma.empresa.create({
+      data: { nombre: `Empresa sin color ${randomUUID()}` },
+    });
+    const accessToken = await loginComoMembresiaDeEmpresa(empresaSinColor.id);
+
+    const respuesta = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.sessionScope).toBe("company");
+    expect(respuesta.body.empresaColorPrimario).toBeNull();
+    expect(respuesta.body.empresaColorSecundario).toBeNull();
+  });
+});
+

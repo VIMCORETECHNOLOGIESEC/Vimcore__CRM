@@ -2,6 +2,29 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { generarClaveBridge, hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
+import { seedTenant, type UsuarioParaMembresia } from "./seed-tenant.js";
+
+/**
+ * Bloque C (Etapa 3 — fix pre-existente, no relacionado a esta etapa): mismo
+ * id fijo que `tests/fixtures/empresa.ts::EMPRESA_BOOTSTRAP_ID` — la
+ * migración `20260827113454_bloque_c_empresa_id_not_null` (previa a este
+ * cambio) volvió `bridges.empresa_id` NOT NULL pero este script nunca se
+ * actualizó; sin este id, `prisma.bridge.upsert`/`create` fallaban con
+ * "Argument `empresa` is missing" en toda corrida de siembra.
+ */
+const EMPRESA_BOOTSTRAP_ID = "00000000-0000-0000-0000-000000000001";
+
+/**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Datos de
+ * demostración"): dos empresas del mismo tenant holding -- esta instancia no
+ * tiene un modelo `Holding` separado (`schema.prisma::Empresa`), así que
+ * "mismo tenant holding" simplemente significa "dos filas `Empresa` en el
+ * mismo despliegue", sin nada adicional que sembrar para eso. Ids fijos
+ * (mismo patrón que `EMPRESA_BOOTSTRAP_ID` arriba) para que reejecutar el
+ * seed sea idempotente.
+ */
+const EMPRESA_D0_A_ID = "00000000-0000-0000-0000-0000000000a1";
+const EMPRESA_D0_B_ID = "00000000-0000-0000-0000-0000000000b1";
 
 /**
  * D11, D-G: la contraseña de semillas NUNCA está en el código ni en
@@ -50,14 +73,23 @@ async function main(): Promise<void> {
       { nombre: "Vendedor Demo", correo: "vendedor@crm.local", rol: "VENDEDOR" as const },
     ];
 
+    // Bloque B (Fase 5, diseño "seed.ts strategy"): captura los ids/roles
+    // reales de las filas upserteadas (incluida una fila ya existente de una
+    // corrida previa) — `seedTenant` los necesita para el mapeo por usuario.
+    const usuariosParaMembresia: UsuarioParaMembresia[] = [];
     for (const usuario of usuarios) {
       // upsert por correo (idempotente): re-ejecutar el script no duplica.
-      await prisma.usuario.upsert({
+      const fila = await prisma.usuario.upsert({
         where: { correo: usuario.correo },
         update: {},
         create: { ...usuario, passwordHash },
       });
+      usuariosParaMembresia.push({ id: fila.id, rol: fila.rol });
     }
+
+    // Bloque B (Fase 5): Empresa bootstrap + una Membresia por usuario de
+    // demo, mismo mapeo VENDEDOR->ASESOR que el backfill de producción.
+    await seedTenant(prisma, usuariosParaMembresia);
 
     // docs/05-bridges.md §6: bridge de pruebas Google Forms, INACTIVO por
     // defecto — un administrador lo activa explícitamente cuando lo conecte.
@@ -69,6 +101,7 @@ async function main(): Promise<void> {
         nombre: "Google Forms (pruebas)",
         claveApiHash: hashClaveBridge(seedEnv.data.SEED_BRIDGE_CLAVE_API),
         estado: "INACTIVO",
+        empresaId: EMPRESA_BOOTSTRAP_ID,
       },
     });
 
@@ -97,12 +130,196 @@ async function main(): Promise<void> {
           nombre: bridge.nombre,
           claveApiHash: hashClaveBridge(claveApi),
           estado: "INACTIVO",
+          empresaId: EMPRESA_BOOTSTRAP_ID,
         },
       });
       console.log(`Bridge ${bridge.nombre} — X-Bridge-Key: ${claveApi}`);
     }
 
-    console.log(`Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + 3 bridges.`);
+    // Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Datos de
+    // demostración"): dos empresas del mismo tenant holding, cada una con
+    // una credencial de login company-scoped propia (`Membresia.correo` --
+    // dual-login-routing, Bloque B), y un bridge + un lead propios y
+    // distinguibles -- para poder iniciar sesión por separado como Empresa A
+    // / Empresa B y comprobar visualmente que cada sesión solo ve lo suyo.
+    const empresasDemoD0 = [
+      {
+        empresaId: EMPRESA_D0_A_ID,
+        empresaNombre: "Empresa A (demo D0)",
+        usuarioNombre: "Empresa A Demo",
+        usuarioCorreo: "empresa-a-demo@crm.local",
+        membresiaCorreo: "empresa-a@crm.local",
+        membresiaAdminCorreo: "empresa-a-admin@crm.local",
+        usuarioAdminCorreo: "empresa-a-admin-portador@crm.local",
+        usuarioAdminNombre: "Empresa A Admin",
+        bridgeNombre: "Bridge Empresa A (demo D0)",
+        clienteNombre: "Cliente Empresa A (demo D0)",
+        clienteTelefono: "+10000000001",
+        // tema-empresarial-integracion (Parte 2): paleta cálida terracota,
+        // deliberadamente distinta tanto de Empresa B (fría, abajo) como del
+        // default global de la instancia (`CONFIGURACION_EMPRESA_DEFAULT`,
+        // indigo/azul `#1e2a5e`/`#2563eb`) — para poder demostrar el theming
+        // real por empresa al loguearse como cada una.
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+      },
+      {
+        empresaId: EMPRESA_D0_B_ID,
+        empresaNombre: "Empresa B (demo D0)",
+        usuarioNombre: "Empresa B Demo",
+        usuarioCorreo: "empresa-b-demo@crm.local",
+        membresiaCorreo: "empresa-b@crm.local",
+        membresiaAdminCorreo: "empresa-b-admin@crm.local",
+        usuarioAdminCorreo: "empresa-b-admin-portador@crm.local",
+        usuarioAdminNombre: "Empresa B Admin",
+        bridgeNombre: "Bridge Empresa B (demo D0)",
+        clienteNombre: "Cliente Empresa B (demo D0)",
+        clienteTelefono: "+10000000002",
+        // Paleta fría verde esmeralda -- distinta de Empresa A y del default global.
+        colorPrimario: "#065f46",
+        colorSecundario: "#10b981",
+      },
+    ] as const;
+
+    for (const demo of empresasDemoD0) {
+      await prisma.empresa.upsert({
+        where: { id: demo.empresaId },
+        update: { colorPrimario: demo.colorPrimario, colorSecundario: demo.colorSecundario },
+        create: {
+          id: demo.empresaId,
+          nombre: demo.empresaNombre,
+          colorPrimario: demo.colorPrimario,
+          colorSecundario: demo.colorSecundario,
+        },
+      });
+
+      // Usuario "portador" de la membresía company-scoped -- su propio
+      // `Usuario.correo` no se usa para iniciar sesión en esta demo (eso
+      // sería un login holding-wide); el login de Empresa A/B real es
+      // `membresiaCorreo`, resuelto por el segundo camino de
+      // `auth.service.ts::login` (`Membresia.correo`, solo si no matchea
+      // ningún `Usuario.correo` primero).
+      const usuarioDemo = await prisma.usuario.upsert({
+        where: { correo: demo.usuarioCorreo },
+        update: {},
+        create: {
+          nombre: demo.usuarioNombre,
+          correo: demo.usuarioCorreo,
+          passwordHash,
+          rol: "ASESOR",
+        },
+      });
+
+      await prisma.membresia.upsert({
+        where: {
+          usuarioId_empresaId_rol: {
+            usuarioId: usuarioDemo.id,
+            empresaId: demo.empresaId,
+            rol: "ASESOR",
+          },
+        },
+        update: { correo: demo.membresiaCorreo, passwordHash, activa: true },
+        create: {
+          usuarioId: usuarioDemo.id,
+          empresaId: demo.empresaId,
+          rol: "ASESOR",
+          correo: demo.membresiaCorreo,
+          passwordHash,
+          activa: true,
+        },
+      });
+
+      // Membresía ADMINISTRADOR por empresa (gap detectado en verificación
+      // cruzada con test/gpt): el bootstrap legacy single-company solo tiene
+      // `admin@crm.local` sin atar a ninguna empresa -- para probar el shell
+      // autenticado (dashboard/leads/usuarios/bridges) bajo un rol con
+      // permisos administrativos REALES pero scoped a una sola empresa.
+      //
+      // Requiere un usuario portador PROPIO con `Usuario.rol: ADMINISTRADOR`
+      // -- NO se puede reusar `usuarioDemo` (rol `ASESOR`): `auth.service.ts
+      // ::login` exige `rolEquivalente(membresia) === usuarioDeMembresia.rol`
+      // (lib/rol-membresia.ts) como guarda de consistencia entre el rol
+      // legado y el rol real de la membresía; una membresía ADMINISTRADOR
+      // colgada de un usuario ASESOR nunca pasaría esa verificación y el
+      // login fallaría en silencio con "credenciales inválidas" (verificado
+      // en runtime contra `integration-theme` antes de esta corrección).
+      const usuarioAdmin = await prisma.usuario.upsert({
+        where: { correo: demo.usuarioAdminCorreo },
+        update: {},
+        create: {
+          nombre: demo.usuarioAdminNombre,
+          correo: demo.usuarioAdminCorreo,
+          passwordHash,
+          rol: "ADMINISTRADOR",
+        },
+      });
+
+      await prisma.membresia.upsert({
+        where: {
+          usuarioId_empresaId_rol: {
+            usuarioId: usuarioAdmin.id,
+            empresaId: demo.empresaId,
+            rol: "ADMINISTRADOR",
+          },
+        },
+        update: { correo: demo.membresiaAdminCorreo, passwordHash, activa: true },
+        create: {
+          usuarioId: usuarioAdmin.id,
+          empresaId: demo.empresaId,
+          rol: "ADMINISTRADOR",
+          correo: demo.membresiaAdminCorreo,
+          passwordHash,
+          activa: true,
+        },
+      });
+
+      const bridgeExistente = await prisma.bridge.findFirst({
+        where: { nombre: demo.bridgeNombre },
+      });
+      if (!bridgeExistente) {
+        const claveApi = generarClaveBridge();
+        await prisma.bridge.create({
+          data: {
+            redSocial: "GOOGLE_FORMS",
+            nombre: demo.bridgeNombre,
+            claveApiHash: hashClaveBridge(claveApi),
+            estado: "INACTIVO",
+            empresaId: demo.empresaId,
+          },
+        });
+        console.log(`Bridge ${demo.bridgeNombre} — X-Bridge-Key: ${claveApi}`);
+      }
+
+      const cliente = await prisma.cliente.upsert({
+        where: { telefonoNormalizado: demo.clienteTelefono },
+        update: {},
+        create: {
+          nombre: demo.clienteNombre,
+          telefonoOriginal: demo.clienteTelefono,
+          telefonoNormalizado: demo.clienteTelefono,
+          telefonoValido: true,
+        },
+      });
+
+      const leadExistente = await prisma.lead.findFirst({
+        where: { clienteId: cliente.id, empresaId: demo.empresaId },
+      });
+      if (!leadExistente) {
+        await prisma.lead.create({
+          data: {
+            clienteId: cliente.id,
+            empresaId: demo.empresaId,
+            origen: "NUEVO",
+            ingresadoEn: new Date(),
+          },
+        });
+      }
+    }
+
+    console.log(
+      `Semillas aplicadas: ${usuarios.length} usuarios (uno por rol) + ${usuariosParaMembresia.length} membresias (Bloque B) + 3 bridges + ` +
+        `Bloque D0 (${empresasDemoD0.length} empresas demo, ${empresasDemoD0.length} membresías company-scoped, ${empresasDemoD0.length} bridges, ${empresasDemoD0.length} leads).`,
+    );
   } finally {
     await prisma.$disconnect();
   }
@@ -112,3 +329,4 @@ main().catch((error: unknown) => {
   console.error("Error al aplicar semillas:", error);
   process.exit(1);
 });
+

@@ -1,4 +1,4 @@
-import { Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { CircleHelp, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ interface LeadsFiltrosProps {
   /** Oculto para asesor/vendedor: su cartera ya está implícita en el rol (docs/07 F3). */
   mostrarFiltroResponsable: boolean;
   responsables: { id: string; nombre: string }[];
+  onStartTutorial?: () => void;
 }
 
 const ETAPAS: EtapaLead[] = ["NUEVO", "CONTACTADO", "CITA", "VENTA", "NO_VENTA"];
@@ -49,6 +50,7 @@ export function LeadsFiltros({
   campanias,
   mostrarFiltroResponsable,
   responsables,
+  onStartTutorial = () => undefined,
 }: LeadsFiltrosProps) {
   function update<K extends keyof LeadsFiltrosState>(campo: K, valor: LeadsFiltrosState[K]) {
     onChange({ ...filtros, [campo]: valor });
@@ -70,10 +72,12 @@ export function LeadsFiltros({
    * `LeadsFiltrosState` salvo `redSocial`, ya excluido por
    * `buildRedesSocialesCatalogoParams`).
    */
-  const catalogoRedesSocialesParams = useMemo(() => buildRedesSocialesCatalogoParams(filtros), [filtros]);
-  const { data: redesSocialesCatalogo, isLoading: cargandoRedesSociales } = useRedesSocialesCatalogo(
-    catalogoRedesSocialesParams,
+  const catalogoRedesSocialesParams = useMemo(
+    () => buildRedesSocialesCatalogoParams(filtros),
+    [filtros],
   );
+  const { data: redesSocialesCatalogo, isLoading: cargandoRedesSociales } =
+    useRedesSocialesCatalogo(catalogoRedesSocialesParams);
 
   /**
    * Requirement: Red-Social Filter Sourced from Active Bridges. Edge case
@@ -99,33 +103,45 @@ export function LeadsFiltros({
   const hayFiltrosActivos = filtrosActivos.length > 0;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search
-            className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={filtros.busqueda}
-            onChange={(event) => update("busqueda", event.target.value)}
-            placeholder="Buscar por nombre, teléfono o correo…"
-            aria-label="Buscar leads"
-            className="pl-9"
-          />
+    <div className="flex flex-col gap-3 p-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="shrink-0 text-2xl">Gestión de Leads</h2>
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground" onClick={onStartTutorial}>
+            <CircleHelp className="size-4" aria-hidden="true" />
+            Ver tutorial
+          </Button>
         </div>
+        <div className="flex min-w-0 flex-col gap-3 sm:ml-auto sm:w-full sm:max-w-xl sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1" data-tour="leads-search">
+            <Search
+              className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={filtros.busqueda}
+              onChange={(event) => update("busqueda", event.target.value)}
+              placeholder="Buscar por nombre, teléfono o correo…"
+              aria-label="Buscar leads"
+              className="pl-9"
+            />
+          </div>
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2 self-start sm:self-auto">
-              <SlidersHorizontal className="size-4" aria-hidden="true" />
-              Filtros
-              {cantidadFiltrosAvanzados > 0 ? (
-                <Badge variant="secondary">{cantidadFiltrosAvanzados}</Badge>
-              ) : null}
-            </Button>
-          </PopoverTrigger>
-          {/* side="bottom" + collisionPadding.top: el Header de la app es fijo,
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-10 gap-2 rounded-2xl bg-transparent self-start sm:self-auto"
+                data-tour="leads-filters"
+              >
+                <SlidersHorizontal className="size-4" aria-hidden="true" />
+                Filtros
+                {cantidadFiltrosAvanzados > 0 ? (
+                  <Badge variant="secondary">{cantidadFiltrosAvanzados}</Badge>
+                ) : null}
+              </Button>
+            </PopoverTrigger>
+            {/* side="bottom" + collisionPadding.top: el Header de la app es fijo,
               así que se le resta espacio a la zona de arriba para que Radix
               nunca considere voltear el popover hacia "top" (quedaría
               cortado). A diferencia de avoidCollisions={false} (probado
@@ -136,86 +152,93 @@ export function LeadsFiltros({
               pegado al borde derecho de la barra, así que el popover crece
               hacia la izquierda desde ahí, no hacia la derecha (se saldría
               de la pantalla). */}
-          <PopoverContent
-            side="bottom"
-            align="end"
-            sideOffset={8}
-            collisionPadding={{ top: 80 }}
-            className="w-[min(420px,calc(100vw-2rem))]"
-          >
-            <div className="flex flex-col gap-4">
-              <p className="font-medium">Filtros</p>
-              <div className="grid grid-cols-2 gap-3">
-                <CampoSelect
-                  etiqueta="Etapa"
-                  valor={filtros.etapa}
-                  onChange={(v) => update("etapa", v as LeadsFiltrosState["etapa"])}
-                  opciones={ETAPAS.map((e) => ({ valor: e, etiqueta: ETAPA_ETIQUETAS[e] }))}
-                />
-                <CampoSelect
-                  etiqueta="Semáforo"
-                  valor={filtros.semaforo}
-                  onChange={(v) => update("semaforo", v as LeadsFiltrosState["semaforo"])}
-                  opciones={SEMAFOROS.map((s) => ({ valor: s, etiqueta: SEMAFORO_ETIQUETAS[s] }))}
-                />
-                <CampoSelect
-                  etiqueta="Red social"
-                  valor={filtros.redSocial}
-                  onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
-                  opciones={opcionesRedSocial.map((r) => ({ valor: r, etiqueta: RED_SOCIAL_ETIQUETAS[r] }))}
-                  disabled={cargandoRedesSociales}
-                />
-                <CampoSelect
-                  etiqueta="Campaña"
-                  valor={filtros.campaniaId}
-                  onChange={(v) => update("campaniaId", v)}
-                  opciones={campanias.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
-                />
-                {mostrarFiltroResponsable ? (
-                  <ResponsableCombobox
-                    valor={filtros.responsableId}
-                    onChange={(v) => update("responsableId", v)}
-                    responsables={responsables}
-                    etiqueta="Responsable"
-                    ariaLabel="Responsable"
-                    mostrarOpcionTodos
-                    valorOpcionTodos={FILTRO_TODOS}
-                    etiquetaOpcionTodos="Todos los responsables"
-                    placeholderBusqueda="Buscar asesor…"
+            <PopoverContent
+              side="bottom"
+              align="end"
+              sideOffset={8}
+              collisionPadding={{ top: 80 }}
+              className="w-[min(420px,calc(100vw-2rem))]"
+            >
+              <div className="flex flex-col gap-4">
+                <p className="font-medium">Filtros</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <CampoSelect
+                    etiqueta="Etapa"
+                    valor={filtros.etapa}
+                    onChange={(v) => update("etapa", v as LeadsFiltrosState["etapa"])}
+                    opciones={ETAPAS.map((e) => ({ valor: e, etiqueta: ETAPA_ETIQUETAS[e] }))}
                   />
-                ) : null}
-                <CampoSelect
-                  etiqueta="Estado de SLA"
-                  valor={filtros.estadoSla}
-                  onChange={(v) => update("estadoSla", v as LeadsFiltrosState["estadoSla"])}
-                  opciones={ESTADOS_SLA.map((e) => ({ valor: e, etiqueta: ESTADO_SLA_ETIQUETAS[e] }))}
-                />
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="filtro-fecha-desde" className="text-xs text-muted-foreground">
-                    Ingreso desde
-                  </Label>
-                  <Input
-                    id="filtro-fecha-desde"
-                    type="date"
-                    value={filtros.fechaDesde}
-                    onChange={(event) => update("fechaDesde", event.target.value)}
+                  <CampoSelect
+                    etiqueta="Semáforo"
+                    valor={filtros.semaforo}
+                    onChange={(v) => update("semaforo", v as LeadsFiltrosState["semaforo"])}
+                    opciones={SEMAFOROS.map((s) => ({ valor: s, etiqueta: SEMAFORO_ETIQUETAS[s] }))}
                   />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="filtro-fecha-hasta" className="text-xs text-muted-foreground">
-                    Ingreso hasta
-                  </Label>
-                  <Input
-                    id="filtro-fecha-hasta"
-                    type="date"
-                    value={filtros.fechaHasta}
-                    onChange={(event) => update("fechaHasta", event.target.value)}
+                  <CampoSelect
+                    etiqueta="Red social"
+                    valor={filtros.redSocial}
+                    onChange={(v) => update("redSocial", v as LeadsFiltrosState["redSocial"])}
+                    opciones={opcionesRedSocial.map((r) => ({
+                      valor: r,
+                      etiqueta: RED_SOCIAL_ETIQUETAS[r],
+                    }))}
+                    disabled={cargandoRedesSociales}
                   />
+                  <CampoSelect
+                    etiqueta="Campaña"
+                    valor={filtros.campaniaId}
+                    onChange={(v) => update("campaniaId", v)}
+                    opciones={campanias.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+                  />
+                  {mostrarFiltroResponsable ? (
+                    <ResponsableCombobox
+                      valor={filtros.responsableId}
+                      onChange={(v) => update("responsableId", v)}
+                      responsables={responsables}
+                      etiqueta="Responsable"
+                      ariaLabel="Responsable"
+                      mostrarOpcionTodos
+                      valorOpcionTodos={FILTRO_TODOS}
+                      etiquetaOpcionTodos="Todos los responsables"
+                      placeholderBusqueda="Buscar asesor…"
+                    />
+                  ) : null}
+                  <CampoSelect
+                    etiqueta="Estado de SLA"
+                    valor={filtros.estadoSla}
+                    onChange={(v) => update("estadoSla", v as LeadsFiltrosState["estadoSla"])}
+                    opciones={ESTADOS_SLA.map((e) => ({
+                      valor: e,
+                      etiqueta: ESTADO_SLA_ETIQUETAS[e],
+                    }))}
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="filtro-fecha-desde" className="text-xs text-muted-foreground">
+                      Ingreso desde
+                    </Label>
+                    <Input
+                      id="filtro-fecha-desde"
+                      type="date"
+                      value={filtros.fechaDesde}
+                      onChange={(event) => update("fechaDesde", event.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="filtro-fecha-hasta" className="text-xs text-muted-foreground">
+                      Ingreso hasta
+                    </Label>
+                    <Input
+                      id="filtro-fecha-hasta"
+                      type="date"
+                      value={filtros.fechaHasta}
+                      onChange={(event) => update("fechaHasta", event.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {hayFiltrosActivos ? (

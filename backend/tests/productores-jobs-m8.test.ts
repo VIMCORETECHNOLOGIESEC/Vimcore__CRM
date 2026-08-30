@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { SLA_HORAS } from "../src/config/negocio.js";
 import { eventBroker } from "../src/lib/event-broker.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import * as leadEventoRepository from "../src/repositories/lead-evento.repository.js";
 import * as leadRepository from "../src/repositories/lead.repository.js";
 import * as notificationRepository from "../src/repositories/notificacion.repository.js";
@@ -50,12 +51,40 @@ async function createUsuario(rol: "ASESOR" | "VENDEDOR" | "SUPERVISOR" | "ADMINI
   });
 }
 
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure):
+ * `bridge-log.service.ts::registrarBridgeLog` (nivel ERROR) resuelve
+ * `empresaId` desde el `Bridge` (RLS) dentro de su propia transacción — sin
+ * `TenantContext` esa lectura ve 0 filas. Se llama DIRECTO acá (sin HTTP).
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: BOOTSTRAP_EMPRESA_ID }, fn);
+}
+/**
+ * Bloque C (D5): el chokepoint de notificaciones (`findActiveRecipientIds`)
+ * ahora resuelve destinatarios vía `Membresia` (empresaId+rol), no vía un
+ * scan global de `Usuario.rol` — este helper crea la Membresia activa
+ * equivalente para los fixtures de ADMINISTRADOR/SUPERVISOR que dependen del
+ * fan-out real (SLA, `ERROR_BRIDGE`).
+ */
+async function createUsuarioConMembresia(
+  rol: "SUPERVISOR" | "ADMINISTRADOR",
+  activo = true,
+) {
+  const usuario = await createUsuario(rol, activo);
+  await testAdminPrisma.membresia.create({
+    data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol, activa: true },
+  });
+  return usuario;
+}
+
 async function createLead(asesorId?: string) {
   sequence += 1;
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente productor M8 ${sequence}`, telefonoValido: false },
   });
-  return prisma.lead.create({
+  return testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -65,6 +94,7 @@ async function createLead(asesorId?: string) {
       slaInicioEn: asesorId
         ? new Date(Date.now() - (SLA_HORAS * 60 * 60 * 1000 + 60_000))
         : null,
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
 }
@@ -89,13 +119,14 @@ describe("M8 scheduled and bridge producers", () => {
       const cliente = await prisma.cliente.create({
         data: { nombre: `Cliente SLA sin destinatarios ${sequence}`, telefonoValido: false },
       });
-      const lead = await prisma.lead.create({
+      const lead = await testAdminPrisma.lead.create({
         data: {
           clienteId: cliente.id,
           origen: "NUEVO",
           etapa: "CONTACTADO",
           ingresadoEn: new Date("1999-12-01T00:00:00.000Z"),
           slaInicioEn: new Date("1999-12-02T00:00:00.000Z"),
+          empresaId: BOOTSTRAP_EMPRESA_ID,
         },
       });
 
@@ -103,9 +134,9 @@ describe("M8 scheduled and bridge producers", () => {
 
       expect(resultado.eventosCreados).toBe(1);
       expect(
-        await prisma.leadEvento.count({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" } }),
+        await testAdminPrisma.leadEvento.count({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" } }),
       ).toBe(1);
-      expect(await prisma.notificacion.count({ where: { leadId: lead.id } })).toBe(0);
+      expect(await testAdminPrisma.notificacion.count({ where: { leadId: lead.id } })).toBe(0);
     } finally {
       await prisma.usuario.updateMany({
         where: { id: { in: destinatariosActivos.map(({ id }) => id) } },
@@ -116,19 +147,19 @@ describe("M8 scheduled and bridge producers", () => {
 
   it("crea un solo SLA bajo concurrencia y publica a destinatarios normales después del commit", async () => {
     const asesor = await createUsuario("ASESOR");
-    const supervisor = await createUsuario("SUPERVISOR");
-    const administrador = await createUsuario("ADMINISTRADOR");
-    const inactiveSupervisor = await createUsuario("SUPERVISOR", false);
+    const supervisor = await createUsuarioConMembresia("SUPERVISOR");
+    const administrador = await createUsuarioConMembresia("ADMINISTRADOR");
+    const inactiveSupervisor = await createUsuarioConMembresia("SUPERVISOR", false);
     const lead = await createLead(asesor.id);
 
     const received: Array<{ userId: string; leadId: string }> = [];
     const visibilityChecks: Array<Promise<boolean>> = [];
     const subscriptions = [asesor.id, supervisor.id].map((userId) =>
-      eventBroker.subscribe(userId, undefined, ({ data }) => {
+      eventBroker.subscribe(userId, { sessionScope: "company", empresaId: BOOTSTRAP_EMPRESA_ID }, undefined, ({ data }) => {
         const notification = data as { id: string; leadId: string };
         received.push({ userId, leadId: notification.leadId });
         visibilityChecks.push(
-          prisma.notificacion.findUnique({ where: { id: notification.id } }).then(Boolean),
+          testAdminPrisma.notificacion.findUnique({ where: { id: notification.id } }).then(Boolean),
         );
       }),
     );
@@ -136,8 +167,8 @@ describe("M8 scheduled and bridge producers", () => {
     subscriptions.forEach((unsubscribe) => unsubscribe());
 
     expect(resultados.reduce((total, resultado) => total + resultado.eventosCreados, 0)).toBe(1);
-    expect(await prisma.leadEvento.count({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" } })).toBe(1);
-    const notifications = await prisma.notificacion.findMany({
+    expect(await testAdminPrisma.leadEvento.count({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" } })).toBe(1);
+    const notifications = await testAdminPrisma.notificacion.findMany({
       where: { leadId: lead.id, tipo: "LEAD_SIN_ATENDER" },
     });
     expect(notifications.some(({ usuarioId }) => usuarioId === asesor.id)).toBe(true);
@@ -164,12 +195,12 @@ describe("M8 scheduled and bridge producers", () => {
     await detectLeadsAtrasados();
 
     expect(
-      await prisma.notificacion.count({
+      await testAdminPrisma.notificacion.count({
         where: { leadId: leadSupervisor.id, usuarioId: supervisorResponsable.id },
       }),
     ).toBe(1);
     expect(
-      await prisma.notificacion.count({
+      await testAdminPrisma.notificacion.count({
         where: { leadId: leadInactivo.id, usuarioId: responsableInactivo.id },
       }),
     ).toBe(0);
@@ -184,8 +215,8 @@ describe("M8 scheduled and bridge producers", () => {
 
     await expect(detectLeadsAtrasados()).rejects.toThrow("fallo de notificación inyectado");
 
-    expect(await prisma.leadEvento.count({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" } })).toBe(0);
-    expect(await prisma.notificacion.count({ where: { leadId: lead.id } })).toBe(0);
+    expect(await testAdminPrisma.leadEvento.count({ where: { leadId: lead.id, tipo: "SLA_INCUMPLIDO" } })).toBe(0);
+    expect(await testAdminPrisma.notificacion.count({ where: { leadId: lead.id } })).toBe(0);
 
     const lockCall = vi.mocked(leadRepository.findByIdForUpdate).mock.calls.find(([id]) => id === lead.id);
     const currentWindowCall = vi
@@ -212,9 +243,10 @@ describe("M8 scheduled and bridge producers", () => {
   it("claims an appointment reminder once under concurrent executions and publishes only after commit", async () => {
     const vendedor = await createUsuario("VENDEDOR");
     const lead = await createLead();
-    const cita = await prisma.cita.create({
+    const cita = await testAdminPrisma.cita.create({
       data: {
         leadId: lead.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
         usuarioId: vendedor.id,
         programadaPara: new Date(Date.now() + 30 * 60 * 1000),
         modalidad: "VIRTUAL",
@@ -222,98 +254,115 @@ describe("M8 scheduled and bridge producers", () => {
     });
 
     const received: string[] = [];
-    const unsubscribe = eventBroker.subscribe(vendedor.id, undefined, ({ type }) => received.push(type));
+    const unsubscribe = eventBroker.subscribe(
+      vendedor.id,
+      { sessionScope: "company", empresaId: BOOTSTRAP_EMPRESA_ID },
+      undefined,
+      ({ type }) => received.push(type),
+    );
     await Promise.all([enviarRecordatoriosCita(), enviarRecordatoriosCita()]);
     unsubscribe();
 
-    expect(await prisma.notificacion.count({ where: { leadId: lead.id, tipo: "RECORDATORIO_CITA" } })).toBe(1);
-    expect((await prisma.cita.findUniqueOrThrow({ where: { id: cita.id } })).recordatorioEnviado).toBe(true);
+    expect(await testAdminPrisma.notificacion.count({ where: { leadId: lead.id, tipo: "RECORDATORIO_CITA" } })).toBe(1);
+    expect((await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } })).recordatorioEnviado).toBe(true);
     expect(received).toEqual(["notificacion.nueva"]);
   });
 
   it("commits an ERROR bridge log atomically with notifications for active administrators only", async () => {
-    const activeAdmin = await createUsuario("ADMINISTRADOR");
-    const inactiveAdmin = await createUsuario("ADMINISTRADOR", false);
+    const activeAdmin = await createUsuarioConMembresia("ADMINISTRADOR");
+    const inactiveAdmin = await createUsuarioConMembresia("ADMINISTRADOR", false);
     sequence += 1;
-    const bridge = await prisma.bridge.create({
+    const bridge = await testAdminPrisma.bridge.create({
       data: {
         redSocial: "FACEBOOK",
         nombre: `Bridge productor M8 ${sequence}`,
         claveApiHash: `bridge-m8-${sequence}`,
         estado: "ACTIVO",
+        empresaId: BOOTSTRAP_EMPRESA_ID,
       },
     });
 
-    const log = await registrarBridgeLog({
-      bridgeId: bridge.id,
-      nivel: "ERROR",
-      mensaje: "Firma inválida",
-      payload: { reason: "invalid_signature" },
-    });
+    const log = await conContexto(() =>
+      registrarBridgeLog({
+        bridgeId: bridge.id,
+        nivel: "ERROR",
+        mensaje: "Firma inválida",
+        payload: { reason: "invalid_signature" },
+      }),
+    );
 
-    expect(await prisma.bridgeLog.findUnique({ where: { id: log.id } })).not.toBeNull();
-    const notifications = await prisma.notificacion.findMany({ where: { tipo: "ERROR_BRIDGE" } });
+    expect(await testAdminPrisma.bridgeLog.findUnique({ where: { id: log.id } })).not.toBeNull();
+    const notifications = await testAdminPrisma.notificacion.findMany({ where: { tipo: "ERROR_BRIDGE" } });
     expect(notifications.some(({ usuarioId }) => usuarioId === activeAdmin.id)).toBe(true);
     expect(notifications.some(({ usuarioId }) => usuarioId === inactiveAdmin.id)).toBe(false);
   });
 
   it("does not create ERROR_BRIDGE notifications for a committed INFO log", async () => {
-    const before = await prisma.notificacion.count({ where: { tipo: "ERROR_BRIDGE" } });
-    await registrarBridgeLog({ bridgeId: null, nivel: "INFO", mensaje: "Bridge healthy" });
-    expect(await prisma.notificacion.count({ where: { tipo: "ERROR_BRIDGE" } })).toBe(before);
+    const before = await testAdminPrisma.notificacion.count({ where: { tipo: "ERROR_BRIDGE" } });
+    await registrarBridgeLog({
+      bridgeId: null,
+      nivel: "INFO",
+      mensaje: "Bridge healthy",
+      holdingWide: true,
+    });
+    expect(await testAdminPrisma.notificacion.count({ where: { tipo: "ERROR_BRIDGE" } })).toBe(before);
   });
 
   it("runs every registered notification producer without fabricating TOKEN_POR_EXPIRAR when bridges have no expiry lifecycle", async () => {
-    const admin = await createUsuario("ADMINISTRADOR");
+    const admin = await createUsuarioConMembresia("ADMINISTRADOR");
     const asesor = await createUsuario("ASESOR");
     const vendedor = await createUsuario("VENDEDOR");
     const slaLead = await createLead(asesor.id);
     const citaLead = await createLead();
     const ahora = new Date();
-    await prisma.cita.create({
+    await testAdminPrisma.cita.create({
       data: {
         leadId: citaLead.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
         usuarioId: vendedor.id,
         programadaPara: new Date(ahora.getTime() + 30 * 60 * 1000),
         modalidad: "VIRTUAL",
       },
     });
     sequence += 1;
-    const bridge = await prisma.bridge.create({
+    const bridge = await testAdminPrisma.bridge.create({
       data: {
         redSocial: "FACEBOOK",
         nombre: `Bridge sin ciclo de expiración ${sequence}`,
         claveApiHash: `bridge-sin-expiracion-${sequence}`,
         estado: "ACTIVO",
+        empresaId: BOOTSTRAP_EMPRESA_ID,
       },
     });
-    const tokenNotificationsBefore = await prisma.notificacion.count({
+    const tokenNotificationsBefore = await testAdminPrisma.notificacion.count({
       where: { tipo: "TOKEN_POR_EXPIRAR" },
     });
 
-    const bridgeLog = await registrarBridgeLog({
-      bridgeId: bridge.id,
-      nivel: "ERROR",
-      mensaje: "Error real sin metadatos de expiración",
-    });
+    const bridgeLog = await conContexto(() =>
+      registrarBridgeLog({
+        bridgeId: bridge.id,
+        nivel: "ERROR",
+        mensaje: "Error real sin metadatos de expiración",
+      }),
+    );
     const slaResult = await scheduledNotificationProducers.sla(ahora);
-    const appointmentResult = await scheduledNotificationProducers.appointments(ahora);
+    const citaResult = await scheduledNotificationProducers.citas(ahora);
 
     expect(bridgeLog.nivel).toBe("ERROR");
     expect(slaResult.eventosCreados).toBeGreaterThan(0);
-    expect(appointmentResult.recordatoriosMarcados).toBeGreaterThan(0);
+    expect(citaResult.recordatoriosMarcados).toBeGreaterThan(0);
     expect(
-      await prisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "ERROR_BRIDGE" } }),
+      await testAdminPrisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "ERROR_BRIDGE" } }),
     ).toBeGreaterThan(0);
     expect(
-      await prisma.notificacion.count({ where: { leadId: slaLead.id, tipo: "LEAD_SIN_ATENDER" } }),
+      await testAdminPrisma.notificacion.count({ where: { leadId: slaLead.id, tipo: "LEAD_SIN_ATENDER" } }),
     ).toBeGreaterThan(0);
     expect(
-      await prisma.notificacion.count({
+      await testAdminPrisma.notificacion.count({
         where: { leadId: citaLead.id, tipo: "RECORDATORIO_CITA" },
       }),
     ).toBe(1);
-    expect(await prisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } })).toBe(
+    expect(await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } })).toBe(
       tokenNotificationsBefore,
     );
   });

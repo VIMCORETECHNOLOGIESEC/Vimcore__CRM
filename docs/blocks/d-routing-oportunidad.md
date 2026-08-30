@@ -1,15 +1,55 @@
 # Bloque D — Routing, handoff y Oportunidad
 
+> **Diferido a después del despliegue (2026-08-28).** Prioridad del cliente:
+> completar primero lo mínimo visualizable del multi-tenant sin tocar
+> archivos de alto riesgo compartidos con trabajo paralelo sobre el
+> single-company actual (ver `docs/06-modulos-backend.md`
+> §"Archivos de alto riesgo"). El slice previo que sí se ejecuta antes del
+> despliegue es `docs/blocks/d0-visualizacion-multitenant.md`. Todo el
+> contenido de este documento sigue vigente como el plan real de Bloque D —
+> solo se pospone su ejecución, no se descarta. Su ciclo SDD completo
+> (proposal/spec/design/tasks) ya corrió y quedó persistido en Engram
+> (`sdd/bloque-d-routing-oportunidad/{proposal,spec,design,tasks}`,
+> observations #83-#86) — al retomarlo, leer esos artefactos antes de
+> replanificar desde cero. Antes de `apply` se actualizarán únicamente el
+> calendario, las dependencias y cualquier supuesto que haya cambiado; los
+> artefactos no se rehacen.
+
 > Fase 5 de `docs/16-hallazgos-y-preguntas.md` §7 ("Routing y handoff").
 > Cubre Fase 5 de `docs/14-evolucion-multitenant.md` §13 ("Routing y
 > handoff").
 
+## Estado real (2026-08-30)
+
+**Cierre esencial ejecutado.** El corte real corrió sobre `dev-mateo`: el
+módulo `negociacion` (schema `Oportunidad`/`Producto`/`OportunidadEvento`,
+pool D3/D4 vía `Membresia`, autoridad de cierre D7, excepción administrativa
+D9 — completada ADELANTADA respecto al plan original de abajo, no diferida)
+está construido y probado, y el cutover real de `leads.access.ts`/
+`asignacion.service.ts` de `Usuario.rol` a `Membresia` ya se ejecutó:
+`canClose` quedó retirado (`PATCH /leads/:id/etapa` con VENTA/NO_VENTA
+responde 409, cierre exclusivo vía `POST /oportunidades/:id/cerrar`); el
+pool de asignación de `Lead` (asesor de primer contacto) pasó a resolver
+candidatos por `Membresia` scopeada por empresa, cerrando de paso un gap de
+aislamiento que no existía filtrado antes. `canReassign`/`canTransfer`/
+`canEdit` de `Lead` quedan intactos a propósito — sin equivalente todavía en
+`Oportunidad`, documentado como gap de decisión de producto, no como bug.
+`Lead` conserva físicamente sus columnas de negociación (sombra primero,
+corte de columnas después, en una migración de limpieza separada aún no
+programada). Precondición de diseño resuelta: `Oportunidad` se crea
+**manual**, nunca automática al ingresar un `Lead` — `ingesta.service.ts`
+queda sin tocar.
+
+**Diferido, sin arrancar todavía**: `CanalManual` y el catálogo dinámico de
+canales sin bridge.
+
 ## Alcance
 
-Activar el pool de asignación scopeado por empresa, la matriz de
-competencia asesor/venta, el canal de ingreso manual de leads, y separar
-`Lead` (contacto) de `Oportunidad` (negociación) para permitir varias
-negociaciones paralelas del mismo cliente en la misma empresa.
+Después del despliegue, activar el pool de asignación scopeado por empresa,
+la matriz esencial de competencia asesor/venta y separar `Lead` (contacto)
+de `Oportunidad` (negociación) para permitir varias negociaciones paralelas
+del mismo cliente en la misma empresa. El canal manual y las excepciones D9
+permanecen como entregables diferidos independientes.
 
 ### Esencial vs. diferido
 
@@ -20,12 +60,11 @@ sola vez:
   de asignación scopeado por empresa (D3/D4), autoridad de cierre (D7),
   split `Lead`/`Oportunidad` (D13), y la decisión registrada del riesgo de
   invariante `asesorId` (abajo).
-- **Diferido** (módulo de catálogo, con mock — ver "Contratos mock para
-  módulos dependientes" más abajo): el canal de ingreso manual
-  (`CanalManual`, más abajo) y las excepciones auditadas de
-  Administrador/Supervisor (D9). Ninguno de los dos bloquea que el
-  aislamiento y el routing esencial funcionen; se integran cuando este
-  bloque cierre, contra el shape ya especificado acá.
+- **Diferido** (no bloquea el cierre esencial): el canal de ingreso manual
+  (`CanalManual`) y las excepciones auditadas de Administrador/Supervisor
+  (D9). Sus contratos mock pueden prepararse de forma independiente, pero su
+  integración real tendrá criterios de cierre propios; no se presume incluida
+  en el cierre esencial de D.
 
 ## Requiere cerrado
 
@@ -53,15 +92,83 @@ sola vez:
 - **D14 — Efecto cascada de D13 sobre D2/D3/D7/D8/D9**: catálogo `Producto`
   por empresa, reglas de dedup/pool/SLA de Oportunidad.
 
-## Riesgo de diseño a resolver en este bloque (movido desde `docs/16` §8.1)
+## Hallazgo: `/usuarios` sin aislamiento por empresa (agregado 2026-08-29)
 
-**Invariante de `Lead.asesorId`/`Oportunidad.asesorId` en riesgo.** D3 asume
-que los candidatos del pool son usuarios con rol Asesor. Si Administrador se
-autoasigna vía la excepción de D9 usando el mismo campo `asesorId`, cualquier
-cálculo de carga (D3) o de rendimiento de asesor (Bloque E, D10) que asuma
-esa invariante se corrompe en silencio. Decidir antes de implementar si
-Administrador puede ocupar `asesorId` directamente o si necesita un marcador
-separado (ej. `gestionadoPorAdmin`) para excluirse de esos cálculos.
+Verificado en código, no es una hipótesis: `usuarios.service.ts::buildWhere`
+(consumido por `GET /usuarios`) no filtra por `empresaId` ni consulta
+`Membresia` en ningún punto — solo `busqueda`/`rol`/`activo`. Cualquier
+usuario con `Usuario.rol = ADMINISTRADOR` ve el listado completo de usuarios
+de **toda la instancia**, cruzando empresas. `usuarios` tampoco está en el
+inventario RLS de Bloque C (`leads`/`bridges`/`citas`/`lead_eventos`/
+`notificaciones`), así que no hay red de contención a nivel Postgres.
+
+Más grave que la lectura: `usuarios.service.ts::updateUsuario(id, input)`
+tampoco valida que el usuario objetivo pertenezca a la empresa del actor —
+solo opera por `id`. Un Administrador de Empresa A que obtiene el `id` de un
+usuario de Empresa B (vía el mismo listado sin aislar) puede cambiarle
+`nombre`/`correo`/`rol`/`activo` y **resetear su contraseña**
+(`input.password` → `passwordHash` directo). No es solo fuga de datos, es
+control de cuenta cruzando la frontera de empresa.
+
+Esto contradice directamente D5 (`docs/16` §8, resuelto 2026-08-25):
+"Administrador de empresa: ... Sin acceso a otras empresas del holding." El
+gate de acceso real (`requireRole` backend, `hasRoleAccess` frontend) compara
+contra `Usuario.rol` legacy, no `Membresia.rol` — el módulo de usuarios nunca
+tuvo el cutover a membresía que sí tuvieron login (D0) y parte de leads
+(Bloque C). Existe `shadowAuthorizationService.compareRequireRole` corriendo
+en sombra sobre este mismo middleware (mismo patrón que B/C) — la decisión
+correcta ya se calcula en paralelo, solo falta aplicarla.
+
+No estaba cubierto por el alcance original de este documento (`leads.access.ts`/
+`asignacion.service.ts`, ver "Enfoque de implementación" abajo) — se agrega acá
+como gap nuevo. **Sin clasificar todavía** si es esencial o diferido; queda
+pendiente esa decisión, igual que la precondición de diseño de "Momento de
+apertura de la Oportunidad" más abajo en este documento.
+
+## Estructura de usuarios para el holding — membresía por empresa, incluidas futuras (agregado 2026-08-29)
+
+Confirmado en `docs/16` §8, D5/D6 (resuelto 2026-08-25): el modelo de dos
+niveles ya está documentado, no es una decisión nueva —
+
+- **Administrador/Supervisor de holding**: pueden "ingresar a cada empresa
+  individualmente para revisar" (D5) — dashboards y CRM de cada empresa del
+  holding.
+- **Administrador/Supervisor de empresa**: acceso únicamente a la empresa
+  bajo la que fueron creados/registrados.
+
+Lo que **sí es nuevo** (no documentado en ningún lugar del árbol `docs/`,
+confirmado por barrido completo): el mecanismo de implementación. La premisa
+es que un usuario holding-scoped debe tener una `Membresia` real en **cada**
+empresa del holding — incluidas las que se creen después, no solo las
+existentes al momento de su alta. `docs/16` §8.2 ya confirma que el schema lo
+permite ("un usuario sí puede tener varias membresías activas en distintas
+empresas"); lo que falta es el auto-provisioning: crear la fila `Membresia`
+correspondiente cada vez que (a) se da de alta un usuario holding-scoped, y
+(b) se crea una `Empresa` nueva bajo un holding que ya tiene usuarios
+holding-scoped.
+
+`c-aislamiento.md` (líneas 84-90) ya había señalado este hueco como "diseño
+futuro de D6, no implementado por Bloque C" — sin nombrar el mecanismo. Esta
+nota lo completa, pero no lo implementa todavía.
+
+**Hueco sin resolver, no cubierto por este mecanismo:** crear la *primera*
+empresa de un holding. El super-admin de holding no puede tener una
+`Membresia` en una `Empresa` que todavía no existe — ese bootstrap necesita
+quedar como una excepción real a nivel holding (flag o mecanismo aparte), no
+derivable de membresía. Ver referencia cruzada en
+`docs/blocks/f-retiro-legacy.md` — este mecanismo es candidato a resolver la
+precondición bloqueante de Bloque F para todo lo que ya se evalúa por
+membresía, pero el caso de bootstrap queda fuera de esa resolución.
+
+## Decisión de invariante `asesorId` (artefactos Engram #83-#86)
+
+Quien ocupe `Lead.asesorId`, `Oportunidad.asesorId` o
+`Oportunidad.vendedorId` debe tener una `Membresia` real con rol `ASESOR` en
+la empresa del lead. No se agrega un marcador `gestionadoPorAdmin`: una
+persona con excepción D9 deberá tener también la membresía ASESOR
+correspondiente. La validación específica del camino D9 y el join de
+`metricas.repository.ts::getPorAsesorConSla` se implementan cuando aterrice
+D9; no bloquean el núcleo esencial.
 
 ## Esquema Prisma — Oportunidad y Producto (movido desde `docs/16` §8, D13/D14)
 
@@ -69,7 +176,9 @@ separado (ej. `gestionadoPorAdmin`) para excluirse de esos cálculos.
 model Oportunidad {
   id                String     @id @default(uuid()) @db.Uuid
   leadId            String     @map("lead_id") @db.Uuid
+  empresaId         String     @map("empresa_id") @db.Uuid
   productoId        String?    @map("producto_id") @db.Uuid
+  version           Int        @default(0)
   etapa             EtapaLead  @default(NUEVO)
   semaforo          Semaforo?
   puntuacion        Int?
@@ -83,10 +192,12 @@ model Oportunidad {
   creadaEn          DateTime   @default(now()) @map("creada_en") @db.Timestamptz(6)
 
   lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   producto Producto? @relation(fields: [productoId], references: [id])
   asesor   Usuario? @relation("OportunidadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
   vendedor Usuario? @relation("OportunidadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
 
+  @@index([empresaId])
   @@map("oportunidades")
 }
 
@@ -124,6 +235,26 @@ la Oportunidad ya está habilitado para venta, se autoasigna al instante
 (`backend/src/services/sla.calculator.ts`), con `Empresa.slaOportunidadHoras`
 como configuración por empresa. D7 no cambia: la autoridad de cierre está
 anclada al responsable vigente, sin importar cómo llegó a serlo.
+
+### Momento de apertura de la Oportunidad (reformulado — `etapa` ya no vive en `Lead`)
+
+`docs/16` §8 (D14) describe el momento de apertura como "en cualquier etapa
+del Lead". Con el esquema de arriba, `etapa` deja de existir en `Lead` (pasa
+a `Oportunidad` desde su creación), así que esa frase ya no puede leerse
+literal. Reformulación compatible con D13/D14: la apertura de una Oportunidad
+ocurre desde el contacto/detalle del Lead **en cualquier momento** de su
+gestión — no depende de un campo `etapa` del Lead, porque ese campo ya no
+existe ahí. `Oportunidad.etapa` arranca en `NUEVO` al crearse,
+independientemente de cuánto avanzó la gestión del Lead que la originó.
+
+> **Precondición de diseño pendiente (no resuelta acá):** una vez que `etapa`
+> vive solo en `Oportunidad`, falta definir cómo preservar o representar el
+> estado de gestión previo del Lead mientras **todavía no existe ninguna
+> Oportunidad** para él (por ejemplo, un Lead contactado pero sin negociación
+> abierta todavía). Este documento no inventa un campo o mecanismo nuevo para
+> cubrir ese hueco — queda señalado como diseño abierto a resolver antes de
+> implementar el split `Lead`/`Oportunidad`, no como parte del cierre esencial
+> ya descrito arriba.
 
 ## Canal de ingreso manual y catálogo dinámico (movido desde `docs/16` §8.4)
 
@@ -210,7 +341,8 @@ real cuando se agregue el endpoint.
 
 ## Migración (de `docs/14` §13, Fase 5)
 
-- Activar elegibilidad por fuente (D4).
+- Activar elegibilidad por membresía de empresa completa (D4), sin sub-filtro
+  por red social.
 - Migrar `ultimaAsignacionEn` al scope de membresía/pool empresarial.
 - Implementar precedencia de routing y fallback.
 - Persistir primer contacto y estado de handoff.
@@ -219,12 +351,90 @@ real cuando se agregue el endpoint.
 
 ## Criterios de salida
 
-- El pool de asignación y el catálogo de canal manual operan scopeados por
-  empresa, verificado con datos de al menos dos empresas.
-- `Oportunidad`/`Producto` existen en el esquema y las dashboards de Bloque E
-  ya pueden consumirlos.
-- El riesgo de invariante de `asesorId` (arriba) tiene decisión registrada,
-  no solo señalada.
+### Cierre esencial de Bloque D
+
+- El pool de asignación opera scopeado por empresa, verificado con datos de
+  al menos dos empresas del mismo tenant holding.
+- La autoridad de cierre usa `Membresia` y `habilitadoParaVenta` según D7;
+  no depende de `Usuario.rol` para esa decisión.
+- `Oportunidad`/`Producto` existen en el esquema y Bloque E puede consumirlos.
+- El split Lead→Oportunidad, el handoff D8 y las reglas D13/D14 esenciales
+  tienen pruebas observables.
+- El riesgo de invariante de `asesorId` tiene decisión registrada, no solo
+  señalada.
+- La precondición de diseño pendiente sobre el estado previo del Lead sin
+  Oportunidad (ver "Momento de apertura de la Oportunidad" arriba) tiene
+  decisión registrada antes de implementar el split `Lead`/`Oportunidad`.
+
+### Criterios diferidos, no bloqueantes
+
+- `CanalManual` y los orígenes manual/recomendación tienen implementación y
+  pruebas cuando se active ese módulo.
+- Las excepciones auditadas de Administrador/Supervisor (D9) se implementan
+  con motivo, auditoría y el guard de membresía acordado.
+
+La ausencia de estos dos entregables diferidos no impide cerrar el núcleo
+post-despliegue de D ni habilitar la dependencia técnica de Bloque E.
+
+## Enfoque de implementación — capas existentes, sin reestructuración
+
+Directiva vigente (2026-08-28): implementar como edición de lógica dentro de
+la estructura de capas ya usada por Bloques A/B/C, nunca moviendo/renombrando
+carpetas ni introduciendo un patrón nuevo. Otros developers (`dev-back`,
+`dev-front`) siguen trabajando sobre el layout físico actual perfeccionando
+el single-company — reestructurar rompería sus imports; editar contenido de
+archivos ya existentes es un costo de coordinación aceptado.
+
+**Archivos existentes que se editan (inevitable, no se puede evitar tocarlos
+para D3/D7/D13):**
+
+- `backend/src/services/leads.access.ts` — cutover esencial de `canClose`/
+  `canReassign`/`canTransfer` de `Usuario.rol` a
+  `Membresia.rol`/`habilitadoParaVenta`; `canRead`/`canEdit` quedan fuera de
+  los artefactos #83-#86 y deberán resolverse antes de F. Ya señalado en
+  `docs/06-modulos-backend.md` como archivo de alto
+  riesgo "reescrito tanto por Bloque C como por Bloque D" — bajo esta
+  directiva pasa de "evitar" a "coordinar antes de editar": avisar al equipo
+  antes del PR, no diferirlo a un archivo nuevo paralelo (dividiría la
+  autoridad de cierre en dos fuentes de verdad).
+- `backend/src/services/asignacion.service.ts` — pool D3 scopeado por
+  empresa; reescribe `selectResponsable`/`applyAsignacion` para operar sobre
+  `Oportunidad` en vez de `Lead`. Mismo criterio: coordinar, no evitar.
+- `backend/src/repositories/usuario.repository.ts` (`findActivosPorRol`) y
+  `backend/src/repositories/lead.repository.ts`
+  (`countCargaActivaPorResponsable`) — filtro de candidatos y cálculo de
+  carga migran a `Membresia`/`Oportunidad`.
+- `backend/prisma/schema.prisma` — agrega `Oportunidad`/`Producto` (y
+  `CanalManual` si se activa el diferido). Es el mismo archivo único que
+  Bloques A/B/C ya extendieron así; no es infraestructura nueva, es la
+  convención ya establecida del repo. Conflicto de merge es de contenido
+  (resoluble), no de estructura.
+
+**Archivos nuevos — todos dentro de carpetas ya existentes, ningún directorio
+de primer nivel nuevo:**
+
+- `backend/src/services/oportunidad.service.ts`,
+  `backend/src/repositories/oportunidad.repository.ts`,
+  `backend/src/repositories/producto.repository.ts`,
+  `backend/src/controllers/oportunidad.controller.ts`,
+  `backend/src/routes/oportunidad.routes.ts`,
+  `backend/src/schemas/oportunidad.schema.ts` — siguen exactamente el mismo
+  patrón `routes/ → controllers/ → services/ → repositories/` que ya usan
+  `leads.*`/`bridges.*`.
+- Frontend: nuevo módulo `frontend/src/funcionalidades/oportunidades/` (al
+  mismo nivel que `leads/`, `dashboard/`, `usuarios/` ya existentes) con
+  `oportunidad.api.ts`, `useOportunidades.ts`, componentes `.tsx` — mismo
+  patrón flat que ya usa `frontend/src/funcionalidades/leads/`. No es una
+  carpeta de arquitectura nueva, es un módulo de negocio nuevo dentro del
+  patrón de módulos ya existente (mismo criterio que agregar `bridges/` o
+  `notificaciones/` en su momento).
+- Reemplazo de los mocks ya construidos (`CierreVentaForm.tsx`,
+  `useAutorizacionLead`, ver "Contratos mock" arriba) por su fuente real —
+  edición de archivos ya existentes, no archivos nuevos.
+
+Ningún directorio se mueve ni se renombra. `routes/`, `controllers/`,
+`services/`, `repositories/` (backend) y `funcionalidades/<módulo>/`
+(frontend) quedan exactamente como están hoy.
 
 ## Siguiente bloque
 

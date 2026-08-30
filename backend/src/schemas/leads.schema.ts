@@ -1,5 +1,6 @@
 import { EtapaLead, FormaPago, RedSocial, Semaforo } from "@prisma/client";
 import { z } from "zod";
+import { finDiaUTC } from "../lib/rango-fechas.js";
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
@@ -31,6 +32,17 @@ export const patchEtapaBodySchema = z.discriminatedUnion("etapa", [
 const ESTADOS_SLA = ["a_tiempo", "en_riesgo", "atrasado", "sin_iniciar"] as const;
 
 /**
+ * M-hardening Bloque A (WU9, spec lead-listing, D8): whitelist explícita —
+ * cualquier `limite` fuera de este conjunto se rechaza en vez de tolerarse
+ * silenciosamente. Se mantiene `ListLeadsQuery["limite"]` inferido como
+ * `number` plano (D8): narrowing a `10|25|50|100` rompería los fixtures
+ * armados a mano de `leads.service.test.ts` (`limite: 20`) que bypasean el
+ * schema intencionalmente, sin ganar seguridad real en runtime — el límite
+ * ya se aplica en el borde (este `.refine`), no en el tipo.
+ */
+const LIMITES_PERMITIDOS = [10, 25, 50, 100] as const;
+
+/**
  * spec ("Filtros, paginación y orden del listado"): DD5 — este schema NO
  * expone `asesorId`/`vendedorId`. `z.object` descarta cualquier clave
  * desconocida del query string, así un cliente que envíe `?asesorId=...`
@@ -51,14 +63,58 @@ export const listLeadsQuerySchema = z.object({
   // Filtro explícito por responsable operativo, solo útil para
   // Admin/Supervisor (D4) — para Asesor/Vendedor el where de rol ya acota.
   responsableId: z.uuid().optional(),
+  // M-hardening Bloque A (WU8, spec lead-listing): "activos" → cerradoEn
+  // null; "cerrados" → cerradoEn no nulo; omitido → sin filtro (comportamiento
+  // sin cambios).
+  vista: z.enum(["activos", "cerrados"]).optional(),
   desde: z.coerce.date().optional(),
-  hasta: z.coerce.date().optional(),
+  // M-hardening Bloque A (WU6, spec lead-listing): un `hasta` de solo fecha
+  // (p. ej. "2026-08-20") normaliza a fin de día UTC — mismo patrón
+  // `finDiaUTC` que `metricas.schema.ts` — así un lead ingresado a las
+  // 18:00 UTC ese mismo día queda incluido, en vez de excluido por comparar
+  // contra medianoche.
+  hasta: z.coerce
+    .date()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : finDiaUTC(v))),
   estadoSla: z.enum(ESTADOS_SLA).optional(),
   pagina: z.coerce.number().int().min(1).default(1),
-  limite: z.coerce.number().int().min(1).max(100).default(20),
+  limite: z.coerce
+    .number()
+    .int()
+    .refine((v) => (LIMITES_PERMITIDOS as readonly number[]).includes(v), {
+      message: "limite debe ser 10, 25, 50 o 100",
+    })
+    .default(25),
   // spec: "orden por al menos ingresadoEn" — único campo ordenable del MVP.
   direccion: z.enum(["asc", "desc"]).default("desc"),
-});
+})
+  // M-hardening Bloque A (WU6): `desde > hasta` es un rango vacío/inválido —
+  // se rechaza explícitamente en vez de devolver una lista vacía silenciosa.
+  // `.superRefine` convierte el schema en `ZodEffects` (pierde
+  // `.shape`/`.extend`/`.partial`) — único consumidor verificado:
+  // `listLeadsQuerySchema.safeParse` en `leads.controller.ts:36,:54`, ambos
+  // sobreviven sin cambios.
+  .superRefine((data, ctx) => {
+    if (data.desde && data.hasta && data.desde > data.hasta) {
+      ctx.addIssue({
+        code: "custom",
+        message: "desde no puede ser posterior a hasta",
+        path: ["desde"],
+      });
+    }
+    // D7 (WU8): `buildWhere` ya fuerza `cerradoEn = null` para `estadoSla`
+    // (leads.service.ts) — `vista=cerrados` + `estadoSla` silenciosamente
+    // devolvería leads abiertos, contradiciendo la intención del filtro. Se
+    // rechaza explícito en vez de dejar que uno gane en silencio.
+    if (data.vista === "cerrados" && data.estadoSla) {
+      ctx.addIssue({
+        code: "custom",
+        message: "estadoSla solo aplica a leads activos",
+        path: ["estadoSla"],
+      });
+    }
+  });
 
 /**
  * spec ("Recalificación sin cambio de etapa", D16): solo `respuestas` — la

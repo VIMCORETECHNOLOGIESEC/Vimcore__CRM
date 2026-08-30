@@ -267,3 +267,81 @@ The user controls receipt-driven development with a switch: `gentle-ai review mo
 - Delivery under a disabled switch follows ordinary repository policy and reports `disabled/unmanaged`, never a fabricated approval.
 - Never enable receipt-driven development on the user's behalf unless the user explicitly asks for it.
 <!-- /gentle-ai:agent-routing -->
+
+## UI/UX Skill Stack — mocks e interfaces del CRM Multi-Tenant
+
+Instalado 2026-08-26. Fuente: repo público verificado `anthropics/skills` (GitHub, org `anthropics`, 171k+ stars), mirror local en el marketplace oficial `anthropics/claude-plugins-official` ya registrado en esta máquina. Sin dependencias extra (son guías en Markdown, no código a ejecutar). Instalado solo en este worktree (`dev-front`), copiado en `.claude/skills/frontend-design/` desde `~/.claude/plugins/marketplaces/claude-plugins-official/plugins/frontend-design/skills/frontend-design/`.
+
+`design-dashboards` sumado 2026-08-26, fuente externa verificada `github.com/dastoyan/skills` (MIT, atribución en `.claude/skills/design-dashboards/NOTICE.md`), copiado completo (`SKILL.md` + `references/dashboard-design-principles.md` + `README.md` + `NOTICE.md`) en `.claude/skills/design-dashboards/`. Instalado solo en este worktree (`dev-front`).
+
+**Antes de proponer, generar o revisar cualquier pantalla/mock/variante visual del CRM** (incluyendo trabajo tipo `docs/mockups/*`), cargar explícitamente estos skills en este orden — la regla "Contextual Skill Loading" del CLAUDE.md base ya obliga a chequear esto antes de cada respuesta, esta sección solo fija el orden y el rol de cada uno para este tipo de tarea:
+
+0. **`design-dashboards`** (nuevo) — crítica/estrategia del Dashboard del CRM (no toca estilo visual): valida audiencia, decisión que soporta cada KPI/gráfico, contexto de comparación, antes de tocar layout. Usar primero cuando se audite, rediseñe o especifique el Dashboard (7 KPIs + 6 gráficos ya fijados en `docs/mockups/2026-08-26-propuestas-visuales-multitenant.md` y `.interface-design/system.md` — este skill no reabre esos hechos de negocio, solo valida si el tratamiento visual/orden sirve a la decisión real). `disable-model-invocation: true` en su frontmatter: invocar siempre explícito, nunca automático.
+1. **`frontend-design`** (nuevo) — dirección estética: paleta, tipografía, evitar el "look genérico de IA" (fondo crema + serif, negro + acento ácido, broadsheet), tomar un riesgo estético justificado por el brief. Usar primero, antes de tocar código, para fijar la dirección de cada propuesta (A/B/C).
+2. **`interface-design`** — craft de producto: dashboards, paneles, jerarquía visual, tokens, estados. Es el skill correcto para pantallas de datos como Dashboard/Kanban del CRM (no para landing pages).
+3. **`transitions-dev`** + **`transitions-polish`** — animaciones/microinteracciones (hover, stagger, modales, badges) con escala de tokens de motion; usar cuando la propuesta pida "animaciones, elementos modernos" (ej. Propuesta C).
+4. **`baseline-ui`** — pasada de limpieza anti-slop (espaciado, jerarquía, tipografía) antes de dar por terminada una pantalla.
+5. **`better-layout`** — estructura, agrupación, breakpoints responsive.
+6. **`shadcn`** — componentes reales del proyecto (`frontend/` ya usa shadcn/ui v3, ver `docs/09-linea-grafica-frontend.md`); usar al convertir cualquier propuesta ganadora a código real.
+7. **`accessibility`** / **`better-accessibility`** / **`fixing-accessibility`** — contraste, foco, ARIA; crítico en la Propuesta C (glassmorphism oscuro) por su riesgo de contraste ya documentado en `docs/mockups/2026-08-26-propuestas-visuales-multitenant.md`.
+8. **`dataviz`** — gráficos del Dashboard (embudo de leads, KPIs).
+9. **`vercel-react-best-practices`** — patrones de performance React/Next al implementar en código real.
+10. **`harden`** — estados vacíos/error/carga cuando la pantalla pase de mock a producción.
+
+**Skills con `disable-model-invocation: true` (ej. `design-dashboards`)**: ningún agente de este proyecto — yo mismo, `crm-frontend`, `crm-backend`, o cualquier subagente delegado — puede disparar estas skills vía tool `Skill`; el intento devuelve un error explícito del harness ("cannot be used with Skill tool due to disable-model-invocation"). Verificado 2026-08-26 contra `design-dashboards`. Cuando el flujo de trabajo necesite ese skill y la auto-invocación falle:
+
+1. **No replicar el workflow del skill "a mano"** leyendo su `SKILL.md`/`references/*` y actuando por fuera del framework — eso viola la misma restricción que invocarlo directo (el propio `design-dashboards` lo prohíbe explícitamente: "Do not replicate this skill's workflow by other means").
+2. **Indicarle al usuario, en texto plano de la respuesta, el comando slash exacto** que debe tipear él mismo (ej. `/design-dashboards`) y la razón (el skill exige invocación explícita por diseño, no es un bug ni una skill rota).
+3. **Detenerse en ese punto** — no continuar la parte del trabajo que dependía de ese skill hasta que el usuario lo ejecute y comparta el resultado.
+
+Esta regla aplica a cualquier skill futura que se instale con el mismo flag, no solo a `design-dashboards`.
+
+**No instalados / evaluados y descartados para esta tarea** (mismo repo oficial `anthropics/skills`): `theme-factory` (pensado para slide decks/presentaciones, no para UI de producto — no aplica) y `web-artifacts-builder` (toolchain React+Vite+shadcn completo para artifacts de claude.ai; útil si en el futuro se quiere prototipar variantes interactivas en vez de estáticos de Stitch, pero no requerido para el alcance actual — instalar solo si se pide explícitamente).
+
+**Evaluadas y descartadas 2026-08-26** (pedido explícito del usuario, 3 fuentes externas de dashboard): `kpi-dashboard-design` (`secondsky/claude-skills`, espejo de `mcpmarket.com/.../kpi-dashboard-designer-1`) — genérica, sus KPIs y colores de semáforo de ejemplo (`#22c55e`/`#f59e0b`/`#ef4444`) chocan con los ya fijados acá (`#16A34A`/`#D97706`/`#DC2626`/`#94A3B8`), riesgo de drift sin aportar nada no cubierto ya. `housegarofalo/claude-code-base` → `dashboard-design` (mirror en `lobehub.com`) — repo de origen en GitHub devolvió 404 al verificar (fuente inverificable), y por descripción de terceros es un skill genérico de design-system (Tailwind/cards/forms) ya cubierto por `interface-design` + `baseline-ui` + `better-layout`, no específico de dashboards. No reintentar sin pedido explícito y sin poder verificar el contenido real primero.
+
+`ui-skills.com/skills` no pudo verificarse (bloqueó el acceso, HTTP 403) — no se documenta nada de ese catálogo por no poder confirmarlo de forma independiente.
+
+## Graphify — Architecture-level graph for this project (MANDATORY, project-specific)
+
+Graphify is installed locally (`uv tool install graphifyy`) and indexed for this repo
+(`graphify-out/graph.json`, gitignored, local per-worktree — never committed or merged).
+This is a project-specific tool, separate from the globally mandatory CodeGraph policy —
+they do not compete, they answer different altitudes of question.
+
+**When to use CodeGraph (unchanged, still the hard first stop)**: single-symbol lookups,
+call paths, blast radius on a known function/component — anything CodeGraph's global
+policy already covers.
+
+**When to use Graphify instead/in addition**:
+- Orientation before starting work on a module or bloque you haven't touched yet
+  ("what are the architectural hubs here", "what modules/communities exist",
+  "what connects to X across services") — `graphify query "..."`, `graphify god-nodes`,
+  `graphify explain "X"`.
+- Anything spanning **Prisma SQL migrations/schema** (tables, foreign keys) — SQL support
+  is installed (`tree-sitter-sql`); CodeGraph does not index `.sql` files.
+- The user wants a **visual** exploration — open `graphify-out/graph.html` in a browser
+  (`xdg-open graphify-out/graph.html`) or read `graphify-out/GRAPH_REPORT.md`. This is
+  for humans; CodeGraph has no equivalent.
+
+**Update discipline (token cost)**:
+- Code re-extraction is 100% local/free and safe to run anytime after real code changes:
+  `graphify extract . --code-only` (or `--force` if a previous run left files unparsed,
+  e.g. after adding a new tree-sitter grammar).
+- Never run `graphify extract ./docs` or `cluster-only` **without** `--no-label` unless
+  explicitly asked — those steps call an LLM backend and cost real tokens. Doc/SDD-artifact
+  extraction is reserved for SDD archive checkpoints (per bloque, once specs/design are
+  final), not continuous re-runs on drafts.
+- "Communities" = Leiden-clustered groups of densely-interconnected symbols, computed for
+  free by graph topology alone. Naming them with a human label is a separate, optional,
+  LLM-costing step (`cluster-only` / `label` without `--no-label`) — never do this
+  automatically.
+
+**No auth required for local use**: `graphify-mcp` (stdio transport, what an agent uses
+locally) has no login/API-key requirement. `--api-key` only applies if this project's
+graph is later exposed over `--transport http` for team-wide MCP access — that is an
+opt-in choice, not a default.
+
+**Never run** `graphify install` / `graphify claude install` — those auto-write into
+CLAUDE.md and PreToolUse hooks and would conflict with the gentle-ai-managed blocks above.
+This section is the only sanctioned integration point.

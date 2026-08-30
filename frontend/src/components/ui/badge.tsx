@@ -15,6 +15,26 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
         outline: "text-foreground",
+        // Estado genérico (no semáforo de lead) -- ej. bridge activo/pausado,
+        // conteo de filtros avanzados. Reutiliza los tokens --success/--warning
+        // ya definidos en index.css, separados a propósito de --semaforo-*
+        // (ver la nota de esos tokens en index.css).
+        success: "border-transparent bg-success text-success-foreground shadow hover:bg-success/80",
+        warning: "border-transparent bg-warning text-warning-foreground shadow hover:bg-warning/80",
+        neutral: "border-border bg-secondary text-muted-foreground",
+        // Semáforo de lead: color + etiqueta de texto SIEMPRE juntos (docs/07,
+        // criterios transversales -- nunca solo color). Esta variante no
+        // agrega el texto por sí sola, el llamador sigue debiendo pasar la
+        // etiqueta como children (ver SemaforoBadge.tsx, que además antepone
+        // un punto de color). Colores literales -- no los tokens
+        // semaforo-frio/tibio/caliente de tailwind.config.js -- por la misma
+        // razón ya documentada en SemaforoBadge.tsx: esos tokens usan la
+        // metáfora de temperatura visual con polaridad invertida respecto a
+        // la lectura comercial "caliente/tibio/frío" de docs/04 §2.
+        semaforoVerde: "border-green-200 bg-green-50 text-green-800",
+        semaforoAmbar: "border-amber-200 bg-amber-50 text-amber-800",
+        semaforoRojo: "border-red-200 bg-red-50 text-red-800",
+        semaforoGris: "border-border bg-secondary text-muted-foreground",
       },
     },
     defaultVariants: {

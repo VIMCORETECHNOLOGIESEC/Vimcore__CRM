@@ -1,19 +1,26 @@
 import { Navigate, Outlet, useLocation } from "react-router";
-import type { RolUsuario } from "@/tipos/usuario";
-import { useAuth } from "./AuthContext";
-import { hasRoleAccess } from "./permissions";
+import type { RolUsuario, SessionScope } from "@/tipos/usuario";
+import { useAuth } from "./authContext";
+import { hasRoleAccess, hasScopeAccess } from "./permissions";
 
 interface ProtectedRouteProps {
   /** Sin especificar, cualquier usuario autenticado puede acceder. */
   allowedRoles?: readonly RolUsuario[];
+  /**
+   * Filtro por scope de sesión (`docs/blocks/d0-visualizacion-multitenant.md`,
+   * PASO 8) -- mismo patrón que `allowedRoles`, para pantallas exclusivas de
+   * sesión `holding` (ej. "gestor de empresas") o `company` (ej. apariencia
+   * self-service). Sin especificar, cualquier scope puede acceder.
+   */
+  allowedScopes?: readonly SessionScope[];
 }
 
 /**
- * Guarda de rutas por sesión y, opcionalmente, por rol. Recordatorio de
- * AGENTS.md §6: esto es control de acceso cosmético en el cliente, el
+ * Guarda de rutas por sesión y, opcionalmente, por rol y/o scope. Recordatorio
+ * de AGENTS.md §6: esto es control de acceso cosmético en el cliente, el
  * backend es quien autoriza de verdad en cada endpoint.
  */
-export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+export function ProtectedRoute({ allowedRoles, allowedScopes }: ProtectedRouteProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
@@ -32,7 +39,7 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
     return <Navigate to="/iniciar-sesion" replace state={{ desde: location.pathname }} />;
   }
 
-  if (!hasRoleAccess(user?.rol, allowedRoles)) {
+  if (!hasRoleAccess(user?.rol, allowedRoles) || !hasScopeAccess(user?.sessionScope, allowedScopes)) {
     return <Navigate to="/panel" replace />;
   }
 

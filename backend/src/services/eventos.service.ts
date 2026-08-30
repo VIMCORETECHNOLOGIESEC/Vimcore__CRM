@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { eventBroker, type BrokerEvent, type EventBroker } from "../lib/event-broker.js";
+import { eventBroker, type BrokerEvent, type EventBroker, type EventScope } from "../lib/event-broker.js";
 
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
@@ -11,6 +11,7 @@ export function openEventStream(
   req: Pick<Request, "headers" | "once">,
   res: Pick<Response, "setHeader" | "flushHeaders" | "write" | "once">,
   userId: string,
+  scope: EventScope,
   broker: EventBroker = eventBroker,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
 ): void {
@@ -21,7 +22,7 @@ export function openEventStream(
 
   const rawLastEventId = req.headers["last-event-id"];
   const lastEventId = Array.isArray(rawLastEventId) ? rawLastEventId[0] : rawLastEventId;
-  const unsubscribe = broker.subscribe(userId, lastEventId, (event) => {
+  const unsubscribe = broker.subscribe(userId, scope, lastEventId, (event) => {
     res.write(serializeEvent(event));
   });
   const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), heartbeatIntervalMs);

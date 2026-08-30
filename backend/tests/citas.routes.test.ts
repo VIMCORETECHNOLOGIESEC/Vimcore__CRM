@@ -3,11 +3,19 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
 
 let contador = 0;
+
+// Bloque C follow-up (D2 gap closure): ASESOR/VENDEDOR sin Membresia activa
+// ya no pueden autenticarse (TenantContext irresoluble se rechaza, D2) — solo
+// esos dos roles la necesitan (ADMINISTRADOR/SUPERVISOR resuelven
+// holding-wide incondicionalmente, sin leer Membresia).
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+const ROLES_CON_MEMBRESIA = new Set(["ASESOR", "VENDEDOR"]);
 
 async function crearUsuarioConToken(
   rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR",
@@ -22,6 +30,17 @@ async function crearUsuarioConToken(
       activo: true,
     },
   });
+  if (ROLES_CON_MEMBRESIA.has(rol)) {
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: true,
+      },
+    });
+  }
   const login = await request(app)
     .post("/api/v1/auth/login")
     .send({ correo: usuario.correo, password: PASSWORD });
@@ -39,7 +58,7 @@ async function crearLead(
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente citas AR ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -47,6 +66,7 @@ async function crearLead(
       asesorId: overrides.asesorId ?? null,
       vendedorId: overrides.vendedorId ?? null,
       ingresadoEn: new Date(),
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
   return { id: lead.id };

@@ -2,10 +2,15 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { prisma } from "../src/lib/prisma.js";
-import { verificarTokensVigentes } from "../src/services/verificacion-token.service.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
+import {
+  produceAlertaTokenPorExpirar,
+  verifyTokensVigentes,
+} from "../src/services/verificacion-token.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
- * `verificarTokensVigentes` (docs/05-bridges.md §3, "Trabajo programado:
+ * `verifyTokensVigentes` (docs/05-bridges.md §3, "Trabajo programado:
  * verificación diaria de token vigente por Página vía `/debug_token`"),
  * mismo estilo de fixtures que `bridge-mudo.job.test.ts` y mismo mocking de
  * `fetch` que `meta-webhook.worker.test.ts`.
@@ -17,14 +22,15 @@ function mockFetchJson(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
 }
 
-async function crearBridge(): Promise<{ id: string }> {
+async function crearBridge(empresaId: string = EMPRESA_BOOTSTRAP_ID): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge verificacion-token ${contador}`,
       claveApiHash: hashClaveBridge(`clave-verificacion-token-${contador}`),
       estado: "ACTIVO",
+      empresaId,
     },
   });
   return { id: bridge.id };
@@ -35,7 +41,7 @@ async function crearCuentaConToken(
   overrides: { tokenCifrado?: string | null; tokenExpiraEn?: Date | null } = {},
 ): Promise<{ id: string }> {
   contador += 1;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId,
       idExterno: `page-verificacion-token-${contador}`,
@@ -55,19 +61,19 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("verificacion-token.service — verificarTokensVigentes", () => {
+describe("verificacion-token.service — verifyTokensVigentes", () => {
   it("token inválido/revocado: marca TOKEN_EXPIRADO y registra bridge_logs ERROR", async () => {
     const { id: bridgeId } = await crearBridge();
     const { id: cuentaId } = await crearCuentaConToken(bridgeId);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: false } })));
 
-    const resultado = await verificarTokensVigentes(new Date());
+    const resultado = await verifyTokensVigentes(new Date());
 
     expect(resultado.candidatos).toBeGreaterThanOrEqual(1);
     expect(resultado.invalidados).toBeGreaterThanOrEqual(1);
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("TOKEN_EXPIRADO");
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -87,26 +93,26 @@ describe("verificacion-token.service — verificarTokensVigentes", () => {
     // abajo), que se re-marca TOKEN_EXPIRADO en cada tick sin relación con
     // esta cuenta. Lo que importa acá es el resultado scopeado a ESTA cuenta
     // y a ESTE bridge, verificado abajo.
-    await verificarTokensVigentes(new Date());
+    await verifyTokensVigentes(new Date());
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
-    const log = await prisma.bridgeLog.findFirst({ where: { bridgeId } });
+    const log = await testAdminPrisma.bridgeLog.findFirst({ where: { bridgeId } });
     expect(log).toBeNull();
   });
 
   it("token válido con expires_at nuevo: actualiza tokenExpiraEn sin volver a cifrar", async () => {
     const { id: bridgeId } = await crearBridge();
     const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: null });
-    const filaAntes = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const filaAntes = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true, expires_at: 1_900_000_000 } })),
     );
 
-    await verificarTokensVigentes(new Date());
+    await verifyTokensVigentes(new Date());
 
-    const filaDespues = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const filaDespues = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(filaDespues.tokenExpiraEn).toEqual(new Date(1_900_000_000 * 1000));
     expect(filaDespues.tokenCifrado).toBe(filaAntes.tokenCifrado);
   });
@@ -117,12 +123,12 @@ describe("verificacion-token.service — verificarTokensVigentes", () => {
     // token en la misma base compartida, así que no se puede afirmar
     // `fetchMock` nunca llamado en términos absolutos — se mide en delta.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true } })));
-    const antes = await verificarTokensVigentes(new Date());
+    const antes = await verifyTokensVigentes(new Date());
 
     const { id: bridgeId } = await crearBridge();
     await crearCuentaConToken(bridgeId, { tokenCifrado: null });
 
-    const despues = await verificarTokensVigentes(new Date());
+    const despues = await verifyTokensVigentes(new Date());
 
     expect(despues.candidatos).toBe(antes.candidatos);
     // Delta contra `antes`, no un `toBe(0)` absoluto: una cuenta con
@@ -153,7 +159,7 @@ describe("verificacion-token.service — verificarTokensVigentes", () => {
     await crearCuentaConToken(bridgeId, { tokenCifrado: null });
     await crearCuentaConToken(bridgeId, { tokenCifrado: encrypt(tokenEnClaro) });
 
-    await verificarTokensVigentes(new Date());
+    await verifyTokensVigentes(new Date());
 
     const llamadasParaEstaCuenta = fetchMock.mock.calls.filter(([url]) =>
       String(url).includes(encodeURIComponent(tokenEnClaro)),
@@ -169,13 +175,13 @@ describe("verificacion-token.service — verificarTokensVigentes", () => {
     const { id: cuentaSanaId } = await crearCuentaConToken(bridgeId);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true } })));
 
-    const resultado = await verificarTokensVigentes(new Date());
+    const resultado = await verifyTokensVigentes(new Date());
 
     expect(resultado.invalidados).toBeGreaterThanOrEqual(1);
 
-    const filaCorrupta = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaCorruptaId } });
+    const filaCorrupta = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaCorruptaId } });
     expect(filaCorrupta.estadoToken).toBe("TOKEN_EXPIRADO");
-    const log = await prisma.bridgeLog.findFirst({
+    const log = await testAdminPrisma.bridgeLog.findFirst({
       where: { bridgeId, nivel: "ERROR" },
       orderBy: { ocurridoEn: "desc" },
     });
@@ -185,7 +191,162 @@ describe("verificacion-token.service — verificarTokensVigentes", () => {
     // La otra cuenta del mismo tick se verifica igual — el fallo de una
     // cuenta no interrumpe el resto del loop (`listConTokenCargado` no
     // garantiza orden, así que esto cubre cualquier posición relativa).
-    const filaSana = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaSanaId } });
+    const filaSana = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaSanaId } });
     expect(filaSana.estadoToken).toBe("VALIDO");
+  });
+});
+
+describe("verificacion-token.service — produceAlertaTokenPorExpirar (M-hardening Bloque A, WU5, spec token-expiry-alerting)", () => {
+  const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+  /**
+   * Bloque C (D5/D8): el chokepoint de notificaciones (`findActiveRecipientIds`)
+   * ahora resuelve destinatarios vía `Membresia` (empresaId+rol) — se crea la
+   * Membresia activa equivalente para que este fixture siga recibiendo la
+   * alerta `TOKEN_POR_EXPIRAR`.
+   */
+  async function crearAdministrador(): Promise<{ id: string }> {
+    contador += 1;
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: `Admin WU5 ${contador}`,
+        correo: `admin-wu5-${contador}@test.local`,
+        passwordHash: "unused",
+        rol: "ADMINISTRADOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ADMINISTRADOR",
+        activa: true,
+      },
+    });
+    return usuario;
+  }
+
+  it("Scenario 'Token expiring within 7 days, not yet alerted': crea TOKEN_POR_EXPIRAR y setea alertaExpiracionParaEn", async () => {
+    const admin = await crearAdministrador();
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEn = new Date("2026-09-06T00:00:00.000Z"); // 5 días
+    const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
+
+    const resultado = await produceAlertaTokenPorExpirar(ahora);
+
+    expect(resultado.alertadas).toBeGreaterThanOrEqual(1);
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    expect(fila.alertaExpiracionParaEn).toEqual(expiraEn);
+    expect(
+      await testAdminPrisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "TOKEN_POR_EXPIRAR" } }),
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("Scenario 'Idempotent — same expiry already alerted': no duplica la notificación en un segundo tick", async () => {
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEn = new Date("2026-09-06T00:00:00.000Z");
+    const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
+
+    await produceAlertaTokenPorExpirar(ahora);
+    const notificacionesTrasPrimerTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+
+    const resultadoSegundoTick = await produceAlertaTokenPorExpirar(ahora);
+
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    expect(fila.alertaExpiracionParaEn).toEqual(expiraEn);
+    expect(await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } })).toBe(
+      notificacionesTrasPrimerTick,
+    );
+    // No aserta 0 en términos absolutos (universo completo, sin filtro por
+    // bridge) — solo que ESTA cuenta ya alertada no vuelve a sumar.
+    expect(resultadoSegundoTick.alertadas).toBeLessThan(1 + notificacionesTrasPrimerTick);
+  });
+
+  it("Scenario 'Token renewed with a new expiry re-arms the alert': tokenExpiraEn distinto vuelve a notificar", async () => {
+    const admin = await crearAdministrador();
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEnOriginal = new Date("2026-09-06T00:00:00.000Z");
+    const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEnOriginal });
+    await produceAlertaTokenPorExpirar(ahora);
+
+    const expiraEnRenovado = new Date("2026-09-07T12:00:00.000Z");
+    await testAdminPrisma.cuentaPublicitaria.update({
+      where: { id: cuentaId },
+      data: { tokenExpiraEn: expiraEnRenovado },
+    });
+
+    await produceAlertaTokenPorExpirar(ahora);
+
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    expect(fila.alertaExpiracionParaEn).toEqual(expiraEnRenovado);
+    expect(
+      await testAdminPrisma.notificacion.count({ where: { usuarioId: admin.id, tipo: "TOKEN_POR_EXPIRAR" } }),
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Scenario 'Outside the 7-day window': tokenExpiraEn a 10 días no notifica ni marca alertaExpiracionParaEn", async () => {
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEnLejos = new Date("2026-09-11T00:00:00.000Z"); // 10 días
+    const { id: cuentaId } = await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEnLejos });
+
+    await produceAlertaTokenPorExpirar(ahora);
+
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    expect(fila.alertaExpiracionParaEn).toBeNull();
+  });
+
+  it("TRIANGULACION: dos ticks consecutivos sin cambio de tokenExpiraEn siguen sin duplicar más allá del primero (idempotencia mas alla del segundo tick)", async () => {
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEn = new Date("2026-09-06T00:00:00.000Z");
+    await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
+
+    await produceAlertaTokenPorExpirar(ahora);
+    const trasPrimerTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+    await produceAlertaTokenPorExpirar(ahora);
+    const trasSegundoTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+    await produceAlertaTokenPorExpirar(ahora);
+    const trasTercerTick = await testAdminPrisma.notificacion.count({ where: { tipo: "TOKEN_POR_EXPIRAR" } });
+
+    expect(trasSegundoTick).toBe(trasPrimerTick);
+    expect(trasTercerTick).toBe(trasPrimerTick);
+  });
+
+  it("Bloque C (D5/D8, task 2.11): la alerta TOKEN_POR_EXPIRAR nunca mezcla empresas — un administrador de otra empresa NO la recibe", async () => {
+    const empresaB = (
+      await prisma.empresa.create({ data: { nombre: `Empresa B verificacion-token ${contador}` } })
+    ).id;
+
+    const adminBootstrap = await crearAdministrador();
+    contador += 1;
+    const adminEmpresaB = await prisma.usuario.create({
+      data: {
+        nombre: `Admin B WU5 ${contador}`,
+        correo: `admin-b-wu5-${contador}@test.local`,
+        passwordHash: "unused",
+        rol: "ADMINISTRADOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: { usuarioId: adminEmpresaB.id, empresaId: empresaB, rol: "ADMINISTRADOR", activa: true },
+    });
+
+    const { id: bridgeId } = await crearBridge();
+    const ahora = new Date("2026-09-01T00:00:00.000Z");
+    const expiraEn = new Date("2026-09-06T00:00:00.000Z");
+    await crearCuentaConToken(bridgeId, { tokenExpiraEn: expiraEn });
+
+    await produceAlertaTokenPorExpirar(ahora);
+
+    const destinatarios = (
+      await testAdminPrisma.notificacion.findMany({ where: { tipo: "TOKEN_POR_EXPIRAR" }, select: { usuarioId: true } })
+    ).map((n) => n.usuarioId);
+    expect(destinatarios).toContain(adminBootstrap.id);
+    expect(destinatarios).not.toContain(adminEmpresaB.id);
   });
 });

@@ -42,10 +42,10 @@ la fecha de entrega del núcleo.
 
 | Elemento | Razón de la exclusión | ¿Se prepara el terreno? |
 |---|---|---|
-| Multi-tenant y panel matriz | Se despliega una instancia aislada por empresa; no hay tiempo de desarrollo para el sistema matriz | No. Introducirlo después será una migración de esquema, y es la decisión correcta: agregar `tenant_id` "por si acaso" contamina cada consulta del MVP sin beneficio |
+| Multi-tenant y panel matriz | La fundación A-C ya está implementada en esquema compartido; panel matriz, routing por empresa, autoridad por membresía y dashboards jerárquicos siguen fuera del baseline funcional | Sí. `Empresa`/`Membresia`, ownership obligatorio, RLS, `TenantContext` y CAS ya existen; D0 hace visible la separación pre-despliegue, D/E completan el comportamiento post-despliegue y F retira el legado al final |
 | Personalización de formularios y puntuación | Recorte explícito por tiempo y personal disponible | Sí. Los formularios y la rúbrica viven en un módulo aislado (`config/formularios.ts`) para que la migración a base de datos configurable no toque el resto |
 | Módulo de remarketing | Definido como desarrollo futuro | Sí. No se elimina ni anonimiza ningún dato de lead, y la ventana de reingreso ya queda modelada |
-| Exportación Excel / PDF | No requerido actualmente | Sí. Los servicios de consulta del dashboard devuelven estructuras serializables; solo faltaría la capa de formato |
+| Exportación Excel / PDF | Incorporada posteriormente al MVP | Sí. El panel genera ambos formatos con los filtros activos, gráficos, resumen, conclusión y listado de leads |
 | Calendarios externos | Solo se requiere registro interno | No |
 | Correo / SMS / WhatsApp | Solo notificación in-app confirmada | Sí. La tabla `notificaciones` incluye columna `canal` con un único valor válido en el MVP |
 | App móvil nativa | Se confirmó web responsive únicamente | No aplica |
@@ -64,17 +64,20 @@ la fecha de entrega del núcleo.
 R4 y R6 tenían como fecha límite original las fases `apply` y M6, pero esas
 fases ya se ejecutaron sin una confirmación documentada del cliente en su
 momento. El código AS-IS conserva los supuestos adoptados entonces; las
-decisiones ya fueron resueltas en `docs/16` §8 (D5, D7, D8, D9) y siguen
-pendientes solo de migrarse a esquema y código antes de producción.
+decisiones ya fueron resueltas en `docs/16` §8 (D5, D7, D8, D9). La fundación
+A-C ya implementó esquema, membresías, ownership y aislamiento; D0 solo expone
+esa separación antes del despliegue. El corte funcional de autoridad, handoff y
+routing queda en D post-despliegue, los dashboards en E y el retiro legacy en F,
+según la priorización aprobada en `3e8c70a`.
 
 | # | Riesgo | Impacto | Acción sugerida |
 |---|---|---|---|
 | R1 | **X no ofrece API de formularios de lead nativos.** Sus Lead Generation Cards fueron descontinuadas; la captación en X se hace hoy hacia un formulario propio | El bridge de X no puede ser una integración de API oficial equivalente a la de Meta | Implementarlo como ingesta genérica con endpoint propio + atribución vía X Pixel/CAPI. Confirmar la expectativa con el cliente antes de comprometer la funcionalidad |
 | R2 | LinkedIn Lead Gen Forms exige app aprobada en el LinkedIn Marketing Developer Platform, con proceso de revisión que puede tardar semanas | Bloquea la certificación del bridge de LinkedIn, no su desarrollo | Iniciar la solicitud de acceso **el primer día del proyecto**, en paralelo al desarrollo |
 | R3 | Meta exige App Review con permisos `leads_retrieval` y `pages_manage_ads` | Igual que R2 | Iniciar App Review en paralelo; desarrollar contra cuentas de prueba mientras tanto |
-| R4 | La regla de traspaso asesor→vendedor no fue definida con precisión por el cliente | M6 implementa un supuesto no confirmado; cambiarlo exige coordinar reglas, código y tests | **Resuelto en `docs/16` §8:** autoridad de cierre (D7), handoff automático (D8) y excepciones de reasignación (D9). El AS-IS vigente sigue descrito en `02-reglas-negocio.md` §5; falta migrar el código a lo ya decidido antes de producción |
+| R4 | La regla de traspaso asesor→vendedor no fue definida con precisión por el cliente | M6 implementa un supuesto no confirmado; cambiarlo exige coordinar reglas, código y tests | **Resuelto en `docs/16` §8:** autoridad de cierre (D7), handoff automático (D8) y excepciones de reasignación (D9). El AS-IS vigente sigue descrito en `02-reglas-negocio.md` §5; el corte funcional quedó diferido a D post-despliegue |
 | R5 | La rúbrica de puntuación del semáforo se construyó sobre práctica estándar de embudos comerciales, no sobre reglas dictadas por el cliente | Los umbrales pueden no reflejar su realidad comercial | Los umbrales viven en constantes aisladas. Revisar con el cliente tras las primeras dos semanas de uso real |
-| R6 | Una persona puede necesitar actuar como asesor y vendedor, incluso con responsabilidades distintas por empresa; `RolUsuario` único no lo representa | El modelo AS-IS no expresa roles múltiples ni alcance por empresa y puede producir autoasignaciones ambiguas | **Resuelto en `docs/16` §8 (D5):** `rolSecundario` queda descartado; el modelo aprobado es la jerarquía de membresías usuario↔empresa↔rol (`docs/16` §8.2), pendiente de implementar en Prisma |
+| R6 | Una persona puede necesitar actuar como asesor y vendedor, incluso con responsabilidades distintas por empresa; `RolUsuario` único no lo representa | `Membresia` ya expresa alcance y capacidades por empresa, pero la autoridad funcional aún depende de `Usuario.rol` y puede producir autoasignaciones ambiguas | **Resuelto en `docs/16` §8 (D5):** `rolSecundario` queda descartado y `Membresia` ya está implementada; falta el cutover funcional desde `Usuario.rol` en D y su retiro legacy en F |
 
 ---
 

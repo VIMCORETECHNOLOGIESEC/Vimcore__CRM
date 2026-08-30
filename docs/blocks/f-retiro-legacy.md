@@ -6,9 +6,9 @@
 
 ## Alcance
 
-Cerrar la migración multi-tenant: convertir a `NOT NULL` el ownership por
-empresa que Bloque B introdujo como nullable, retirar la compatibilidad
-legacy (`Usuario.rol`), y fijar la regla de credenciales por bridge cuando
+Cerrar la migración multi-tenant: retirar la compatibilidad legacy que aún
+queda, especialmente `Usuario.rol`/`RolUsuario` y sus referencias asociadas,
+y fijar la regla de credenciales por bridge cuando
 una misma cuenta publicitaria de Meta se comparte entre empresas del mismo
 holding.
 
@@ -16,6 +16,98 @@ holding.
 
 - **Bloques B, C, D y E** — este bloque retira la compatibilidad temporal
   que esos bloques dejaron activa; retirarla antes rompería el rollback.
+
+## Estado real (2026-08-30)
+
+**Precondición de autoridad holding-wide resuelta de forma aditiva** — ver
+sección siguiente para el detalle histórico de la decisión, esto documenta
+el resultado real ya implementado sobre `dev-mateo`: `RolUsuario` ganó dos
+valores nuevos, `SUPERVISOR_HOLDING` y `SUPER_ADMIN`, con el mismo alcance
+máximo entre los dos (acceso total holding-wide, sin restricción de
+`empresaId`, capacidad de asignación manual) — migración aditiva, ningún
+valor existente se tocó. El bypass está conectado en un solo punto
+(`require-role.middleware.ts`), cubriendo todas las rutas gateadas por rol
+fijo sin tocar los ~17-19 archivos que referencian `RolUsuario` hoy, más el
+bypass equivalente en los chequeos de "acceso total" reescritos por el
+corte de Bloque D (`leads.access.ts`, `oportunidad.access.ts`,
+`oportunidad.service.ts`, `asignacion.service.ts`) y en
+`metricas.access.ts`.
+
+**Esto NO cierra Bloque F.** Es solo la parte aditiva — resuelve la
+precondición de que exista un mecanismo de autoridad holding-wide antes de
+poder retirar el legacy. El retiro real (`Usuario.rol`/`enum RolUsuario`
+fuera del esquema y del código) sigue sin arrancar.
+
+**Segunda precondición — congelamiento de `dev-back`/`dev-front` — confirmada
+satisfecha (2026-08-30).** Decisión de producto: ambas ramas quedaron
+congeladas a propósito por la prontitud del desarrollo, sin plan de
+retomarlas ni mergearlas — no es un descuido. Evidencia: `dev-back` último
+commit 2026-08-27 (103 commits detrás de `test/gpt`, sin PR ni plan de
+merge); `dev-front` último commit 2026-08-28 (97 commits detrás, misma
+situación). Las únicas ramas activas de desarrollo son `dev-mateo` (backend)
+y `test/gpt` (integración/frontend), ninguna de las dos escribe sobre
+`Usuario.rol` en paralelo al legacy single-company que motivaba este
+bloqueo.
+
+**Con las dos precondiciones de este documento satisfechas, el retiro real
+de `Usuario.rol` queda HABILITADO para arrancar como su propio bloque
+cuando se priorice.** Esto no es un inicio de ese trabajo: no se generaron
+tasks ni se tocó ninguno de los ~17-19 archivos listados en "Enfoque de
+implementación" — sigue siendo un batch de limpieza diferido a propósito,
+no bloqueado por falta de decisión ni por algo roto.
+
+## Precondición bloqueante — autoridad holding-wide sustituta (resuelta de forma aditiva — ver "Estado real" arriba)
+
+> **Reconciliado 2026-08-30** (hallazgo real, no cosmético, reportado por el
+> equipo de `test/gpt`): esta sección quedó con el encabezado y el cierre
+> originales ("sin resolver", "diseñada, aprobada, implementada y
+> verificada") sin actualizar cuando se agregó "Estado real" arriba —
+> contradicción real entre dos secciones del mismo documento, no solo texto
+> viejo inofensivo. El resto de esta sección (candidato considerado,
+> discusión del problema) queda como registro histórico de cómo se llegó a
+> la decisión; el cierre al final de la sección ya está actualizado al
+> resultado real.
+
+`Usuario.rol` legacy es hoy la **única** autoridad holding-wide implementada
+(super admin de holding, administrador de holding, supervisor de holding —
+D5/D6, `docs/16` §8). `Membresia.empresaId` es `NOT NULL` desde Bloque B/C:
+no existe una membresía holding-wide, y esa restricción **no cubre** el caso
+de autoridad a nivel holding — cubre solo el scope por empresa.
+
+Retirar `Usuario.rol` sin haber implementado antes un reemplazo funcional
+para ese scope holding-wide dejaría sin autoridad implementada a super
+admin/administrador/supervisor de holding. Esta nota **no propone** ese
+reemplazo — sería una decisión de producto/esquema que nadie tomó todavía
+(D5/D6 registran el rol de negocio, no el mecanismo de autoridad que lo
+reemplace).
+
+**Candidato a reemplazo, sin decidir todavía (agregado 2026-08-29, ver
+`docs/blocks/d-routing-oportunidad.md` §"Estructura de usuarios para el
+holding"):** un usuario holding-scoped con `Membresia` real auto-provisionada
+en cada empresa del holding (incluidas las que se creen después) reduce
+"autoridad holding-wide" a "suma de autoridad por empresa", evaluable sin
+`Usuario.rol` para todo lo que ya se decide por membresía (visibilidad de
+leads, bridges, usuarios dentro de empresa). Plausible resolución de esta
+precondición para esos casos — **no** para todos: crear la primera `Empresa`
+de un holding no puede depender de una `Membresia` en una empresa que
+todavía no existe, ese bootstrap queda como hueco sin cubrir por este
+mecanismo. Sigue sin ser una decisión tomada — necesita diseño, aprobación e
+implementación igual que cualquier otra alternativa, esta nota solo registra
+que existe un candidato concreto donde antes no había ninguno.
+
+**Actualización 2026-08-30 — esta precondición ya está cumplida.** La
+autoridad holding-wide sustituta quedó diseñada, aprobada e implementada de
+forma aditiva (`SUPERVISOR_HOLDING`/`SUPER_ADMIN`, ver "Estado real" arriba)
+y verificada con tests (`require-role.middleware.test.ts`, describe del
+bypass de Bloque F). No es la alternativa "Membresia auto-provisionada" que
+se discutía arriba como candidato — se optó por la más simple (valores
+nuevos del enum) porque resolvía el caso real sin el hueco de bootstrap que
+esa otra alternativa dejaba sin cubrir.
+
+La OTRA precondición de este documento (congelar/mergear `dev-back`/
+`dev-front`) también quedó confirmada satisfecha — ver "Estado real" arriba.
+Con las dos precondiciones cumplidas, el retiro real de `Usuario.rol` queda
+habilitado para arrancar como su propio bloque cuando se priorice.
 
 ## Decisión que implementa (ver rationale completo en `docs/16` §8 — no se repite acá)
 
@@ -28,8 +120,8 @@ holding.
 
 No hace falta ningún cambio de esquema adicional a lo ya introducido en
 Bloque B: `CuentaPublicitaria` ya tiene `@@unique([bridgeId, idExterno])`
-— único por bridge, no globalmente por `idExterno`. Una vez que `Bridge`
-tenga `empresaId` NOT NULL (cierre de este bloque), el mismo `idExterno` de
+— único por bridge, no globalmente por `idExterno`. Como `Bridge.empresaId`
+ya es `NOT NULL` desde Bloque C, el mismo `idExterno` de
 Meta puede registrarse en más de una fila (una por empresa) sin conflicto.
 Cada empresa configura su propio `tokenCifrado` para "su copia" de esa
 cuenta; si el token se renueva, hay que actualizarlo en cada fila por
@@ -39,8 +131,9 @@ empresas, mismo criterio que las credenciales de login por empresa
 
 ## Migración (de `docs/14` §13, Fase 7)
 
-- Convertir `Bridge.empresaId`, `Lead.empresaId` y el resto del ownership
-  aditivo de Bloque B a `NOT NULL`.
+- Inventariar las referencias legacy todavía existentes al iniciar el bloque;
+  no volver a incluir `Bridge.empresaId` ni `Lead.empresaId`, ambos ya
+  `NOT NULL` desde Bloque C.
 - Retirar `Usuario.rol`, el `enum RolUsuario` y cualquier relación de
   responsabilidad no scopeada por empresa que haya quedado como
   compatibilidad temporal.
@@ -53,13 +146,58 @@ empresas, mismo criterio que las credenciales de login por empresa
 
 ## Criterios de salida
 
-- Ninguna columna de ownership multi-empresa queda nullable por
-  compatibilidad.
+- La precondición bloqueante de arriba está cumplida: existe autoridad
+  holding-wide sustituta diseñada, aprobada, implementada y verificada.
 - `Usuario.rol` no existe más en el esquema ni en el código de autorización.
+- No quedan referencias de código, tipos, fixtures o contratos HTTP que
+  dependan de `RolUsuario` como autoridad legacy.
 - Backup, rollback y migración de producción verificados con evidencia, no
   solo planificados.
 - `docs/00-estado-documentacion.md` refleja el esquema multi-tenant como
   AS-IS vigente, no como TO-BE.
+
+## Enfoque de implementación — capas existentes, sin reestructuración
+
+Directiva vigente (2026-08-28): mismo criterio de capas que Bloques D/E —
+sin embargo, este bloque tiene una **incompatibilidad estructural real**
+con la premisa de "no afectar al resto de devs", no solo un riesgo de
+archivo compartido.
+
+**Incompatibilidad de secuencia, no de arquitectura.** El alcance de este
+bloque es retirar `Usuario.rol`/`enum RolUsuario` — verificado: 17 archivos
+backend todavía lo referencian hoy (`rg -l "RolUsuario|usuario\.rol"
+backend/src`). Mientras otros developers (`dev-back`) sigan
+"perfeccionando el funcionamiento actual del single" usando esa misma
+autoridad de rol, retirarla no es un cambio de contenido coordinable como
+en D/E — es quitarles el suelo bajo los pies: cualquier código nuevo que
+escriban contra `Usuario.rol` dejaría de compilar o de tener efecto en
+cuanto este bloque se mergee. No hay forma de "avisar antes del PR" que
+resuelva esto, porque no es un conflicto de merge, es una dependencia dura
+de secuencia.
+
+**Regla de secuencia explícita:** Bloque F solo puede ejecutarse después de
+que el trabajo de `dev-back`/`dev-front` sobre el single-company legacy
+quede congelado o ya mergeado a la rama de integración — nunca en paralelo.
+Esto ya era cierto por diseño (`docs/16` §8 documenta el corte de
+`Usuario.rol` como el cierre final de la migración), pero esta sección lo
+deja explícito como bloqueante de proceso, no solo de arquitectura.
+
+**Cuando llegue su momento, dentro de las capas existentes:**
+
+- Editar los 17 archivos backend que referencian `RolUsuario`/`usuario.rol`
+  (no crear una capa de compatibilidad nueva ni un archivo puente) —
+  reemplazo directo por `Membresia.rol`/`habilitadoParaVenta`, ya cutover
+  funcionalmente por Bloque D en `leads.access.ts` y el pool de asignación.
+- `backend/prisma/schema.prisma` — se retira `enum RolUsuario` y la columna
+  `Usuario.rol`; `Bridge.empresaId`/`Lead.empresaId` no cambian porque ya son
+  `NOT NULL` desde Bloque C.
+  Mismo archivo único ya extendido por A/B/C/D/E.
+- `backend/src/lib/jwt.ts` + middlewares de rol — listado como alto riesgo
+  en `docs/06` por ser transversal a toda ruta protegida; acá no es
+  "coordinar", es el punto final del cutover, se edita una sola vez cuando
+  el resto del código ya no depende de `Usuario.rol`.
+- Sin archivos nuevos de primer nivel: este bloque es retiro de código
+  dentro de archivos ya existentes, no adición.
 
 ## Bloque anterior
 

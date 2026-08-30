@@ -76,6 +76,7 @@ async function registrarLogRechazoFirmaSeguro(): Promise<void> {
   try {
     await registrarBridgeLog({
       bridgeId: null,
+      holdingWide: true,
       nivel: "ERROR",
       mensaje: "Firma X-Hub-Signature-256 inválida o ausente en webhook de Meta",
     });

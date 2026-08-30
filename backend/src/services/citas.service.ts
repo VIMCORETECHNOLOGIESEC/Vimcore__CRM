@@ -121,6 +121,7 @@ export async function scheduleCita(
       const cita = await citaRepository.createCita(
         {
           leadId,
+          empresaId: lead.empresaId,
           usuarioId,
           programadaPara: body.programadaPara,
           modalidad: body.modalidad,
@@ -132,6 +133,7 @@ export async function scheduleCita(
       await leadEventoRepository.createEvento(
         {
           leadId,
+          empresaId: lead.empresaId,
           tipo: "CITA_AGENDADA",
           usuarioId: usuario.id,
           detalle: {
@@ -239,6 +241,7 @@ export async function rescheduleCita(
       await leadEventoRepository.createEvento(
         {
           leadId: cita.leadId,
+          empresaId: lead.empresaId,
           tipo: "CITA_REPROGRAMADA",
           usuarioId: usuario.id,
           detalle: {

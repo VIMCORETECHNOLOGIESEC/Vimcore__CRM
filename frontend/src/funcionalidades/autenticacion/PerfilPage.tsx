@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { RolUsuario } from "@/tipos/usuario";
-import { useAuth } from "./AuthContext";
+import { useAuth } from "./authContext";
 import { changePasswordApi } from "./autenticacion.api";
 
 const ETIQUETAS_ROL: Record<RolUsuario, string> = {

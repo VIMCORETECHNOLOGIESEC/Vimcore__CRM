@@ -3,12 +3,46 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 
 const app = createApp();
 const PASSWORD = "clave-de-prueba-123456";
 const VEINTICINCO_HORAS_MS = 25 * 60 * 60 * 1000;
 
 let contador = 0;
+
+// Bloque C follow-up (D2 gap closure): ASESOR/VENDEDOR sin Membresia activa
+// ya no pueden autenticarse (TenantContext irresoluble se rechaza, D2) — solo
+// esos dos roles la necesitan (ADMINISTRADOR/SUPERVISOR resuelven
+// holding-wide incondicionalmente, sin leer Membresia).
+const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
+const ROLES_CON_MEMBRESIA = new Set(["ASESOR", "VENDEDOR"]);
+
+/**
+ * Bloque D (batch de negociación, punto 2/3 — cutover del pool de `Lead`):
+ * el algoritmo de asignación (`asignacion.service.ts::
+ * selectResponsableEnEmpresa`) ahora resuelve candidatos vía `Membresia`,
+ * no `Usuario.rol` — `RolMembresia` no tiene un valor `VENDEDOR` propio, así
+ * que un `Usuario.rol: "VENDEDOR"` con `Membresia(rol: ASESOR, activa:
+ * true)` creado por OTRO archivo de prueba (p. ej. `auth.routes.test.ts`,
+ * que nunca desactiva sus fixtures) sigue siendo un candidato ASESOR válido
+ * aunque `updateMany({ where: { rol: "ASESOR" } })` no lo toque — la suite
+ * corre secuencial contra la misma BD real sin truncar entre archivos
+ * (`tests/setup.ts::globalSetup` trunca una sola vez, al principio de toda
+ * la corrida). Desactivar solo por `Usuario.rol` legado ya NO garantiza
+ * "ningún otro candidato"; hay que cortar también por `Membresia`, la
+ * fuente de verdad real del pool.
+ */
+async function desactivarPoolAsesores(): Promise<void> {
+  await prisma.usuario.updateMany({
+    where: { rol: { in: ["ASESOR", "VENDEDOR"] } },
+    data: { activo: false },
+  });
+  await testAdminPrisma.membresia.updateMany({
+    where: { empresaId: BOOTSTRAP_EMPRESA_ID, rol: "ASESOR" },
+    data: { activa: false },
+  });
+}
 
 async function crearUsuarioConToken(
   rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR",
@@ -24,6 +58,17 @@ async function crearUsuarioConToken(
       activo,
     },
   });
+  if (ROLES_CON_MEMBRESIA.has(rol)) {
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: BOOTSTRAP_EMPRESA_ID,
+        rol: "ASESOR",
+        habilitadoParaVenta: rol === "VENDEDOR",
+        activa: true,
+      },
+    });
+  }
   const login = await request(app)
     .post("/api/v1/auth/login")
     .send({ correo: usuario.correo, password: PASSWORD });
@@ -43,7 +88,7 @@ async function crearLead(
   const cliente = await prisma.cliente.create({
     data: { nombre: `Cliente AR ${contador}`, telefonoValido: false },
   });
-  const lead = await prisma.lead.create({
+  const lead = await testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,
       origen: "NUEVO",
@@ -53,6 +98,7 @@ async function crearLead(
       vendedorId: overrides.vendedorId ?? null,
       slaInicioEn: overrides.slaInicioEn === undefined ? null : overrides.slaInicioEn,
       ingresadoEn: new Date(),
+      empresaId: BOOTSTRAP_EMPRESA_ID,
     },
   });
   return { id: lead.id };
@@ -64,7 +110,7 @@ afterAll(async () => {
 
 describe("POST /api/v1/leads/:id/asignar — prueba obligatoria 9 (D8): restringido a Admin/Supervisor", () => {
   it("403: un asesor no puede usar /asignar", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesorActor = await crearUsuarioConToken("ASESOR");
     const lead = await crearLead();
 
@@ -77,7 +123,7 @@ describe("POST /api/v1/leads/:id/asignar — prueba obligatoria 9 (D8): restring
   });
 
   it("200: un supervisor puede usar /asignar y el lead queda asignado por el algoritmo", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const supervisor = await crearUsuarioConToken("SUPERVISOR");
     const asesorDestino = await crearUsuarioConToken("ASESOR");
     const lead = await crearLead();
@@ -93,7 +139,7 @@ describe("POST /api/v1/leads/:id/asignar — prueba obligatoria 9 (D8): restring
   });
 
   it("200: un administrador puede indicar destinatario explícito en /asignar", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const admin = await crearUsuarioConToken("ADMINISTRADOR");
     await crearUsuarioConToken("ASESOR");
     const asesorElegido = await crearUsuarioConToken("ASESOR");
@@ -120,12 +166,12 @@ describe("POST /api/v1/leads/:id/reasignar — prueba obligatoria 3 (D8/DD6): se
       .send({});
 
     expect(respuesta.status).toBe(403);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.asesorId).toBe(asesor.id);
   });
 
   it("200: el asesor titular puede reasignar su propio lead con semáforo rojo", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesorTitular = await crearUsuarioConToken("ASESOR");
     const asesorDestino = await crearUsuarioConToken("ASESOR");
     const lead = await crearLead({ asesorId: asesorTitular.id, semaforo: "ROJO" });
@@ -142,7 +188,7 @@ describe("POST /api/v1/leads/:id/reasignar — prueba obligatoria 3 (D8/DD6): se
 
 describe("POST /api/v1/leads/:id/reasignar — prueba obligatoria 7 (D3): reinicia el reloj de SLA", () => {
   it("200: un lead atrasado vuelve a a_tiempo inmediatamente después de reasignarse", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesorTitular = await crearUsuarioConToken("ASESOR");
     await crearUsuarioConToken("ASESOR");
     const lead = await crearLead({
@@ -172,12 +218,12 @@ describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 10 (D9): compu
       .send({});
 
     expect(respuesta.status).toBe(409);
-    const sinCambios = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const sinCambios = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(sinCambios.vendedorId).toBeNull();
   });
 
   it("200: desde CONTACTADO, sin destinatario explícito, el vendedor lo elige el algoritmo", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "VENDEDOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesorTitular = await crearUsuarioConToken("ASESOR");
     const vendedorDestino = await crearUsuarioConToken("VENDEDOR");
     const lead = await crearLead({ asesorId: asesorTitular.id, etapa: "CONTACTADO" });
@@ -195,7 +241,7 @@ describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 10 (D9): compu
 
 describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 13 (D13, regresión M5)", () => {
   it("tras traspaso: el asesor origen conserva GET (200) pero pierde PATCH etapa (403)", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "VENDEDOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesorTitular = await crearUsuarioConToken("ASESOR");
     await crearUsuarioConToken("VENDEDOR");
     const lead = await crearLead({ asesorId: asesorTitular.id, etapa: "CONTACTADO" });
@@ -221,7 +267,7 @@ describe("POST /api/v1/leads/:id/traspasar — prueba obligatoria 13 (D13, regre
 
 describe("POST /api/v1/leads/asignar-lote — asignación masiva (design D-A1)", () => {
   it("200: lote mixto (válido + inexistente + cerrado) reporta exitosos[] y fallidos[] con codigo, sin bloquear el lote", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const supervisor = await crearUsuarioConToken("SUPERVISOR");
     const asesorDestino = await crearUsuarioConToken("ASESOR");
     const leadValido = await crearLead();
@@ -240,12 +286,12 @@ describe("POST /api/v1/leads/asignar-lote — asignación masiva (design D-A1)",
     expect(codigos).toEqual(["lead_cerrado", "lead_no_encontrado"]);
     expect(respuesta.body.resumen).toEqual({ solicitados: 3, exitosos: 1, fallidos: 2 });
 
-    const leadValidoActualizado = await prisma.lead.findUniqueOrThrow({ where: { id: leadValido.id } });
+    const leadValidoActualizado = await testAdminPrisma.lead.findUniqueOrThrow({ where: { id: leadValido.id } });
     expect(leadValidoActualizado.asesorId).toBe(asesorDestino.id);
   });
 
   it("200: un lead inválido en un lote de 20 no bloquea la asignación de los otros 19", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const supervisor = await crearUsuarioConToken("SUPERVISOR");
     const asesorDestino = await crearUsuarioConToken("ASESOR");
     const leadsValidos = await Promise.all(Array.from({ length: 19 }, () => crearLead()));
@@ -264,14 +310,14 @@ describe("POST /api/v1/leads/asignar-lote — asignación masiva (design D-A1)",
     expect(respuesta.body.fallidos).toHaveLength(1);
     expect(respuesta.body.fallidos[0].leadId).toBe(leadCerrado.id);
 
-    const asignados = await prisma.lead.count({
+    const asignados = await testAdminPrisma.lead.count({
       where: { id: { in: leadsValidos.map((l) => l.id) }, asesorId: asesorDestino.id },
     });
     expect(asignados).toBe(19);
   });
 
   it("403: un ASESOR no puede usar el lote (misma barrera que /asignar individual)", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const asesorActor = await crearUsuarioConToken("ASESOR");
     const lead = await crearLead();
 
@@ -331,7 +377,7 @@ describe("POST /api/v1/leads/:id/asignar|reasignar|traspasar — casos de error 
   });
 
   it("409 sin_candidatos: reasignar sin ningún otro asesor activo disponible", async () => {
-    await prisma.usuario.updateMany({ where: { rol: "ASESOR" }, data: { activo: false } });
+    await desactivarPoolAsesores();
     const admin = await crearUsuarioConToken("ADMINISTRADOR");
     const asesorUnico = await crearUsuarioConToken("ASESOR");
     const lead = await crearLead({ asesorId: asesorUnico.id, semaforo: "ROJO" });

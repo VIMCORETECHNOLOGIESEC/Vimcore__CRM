@@ -12,6 +12,8 @@ export interface ApplyFormularioLead {
   id: string;
   etapa: EtapaLead;
   semaforo: Semaforo | null;
+  /** Bloque C (Etapa 3, D4): requerido por `lead_eventos.empresa_id` (NOT NULL). */
+  empresaId: string;
 }
 
 export interface ApplyFormularioResult {
@@ -90,6 +92,7 @@ export async function applyFormulario(
         const evento = await leadEventoRepository.createEvento(
           {
             leadId: lead.id,
+            empresaId: lead.empresaId,
             tipo: "CAMBIO_SEMAFORO",
             semaforoAnterior: lead.semaforo,
             semaforoNuevo: semaforo,

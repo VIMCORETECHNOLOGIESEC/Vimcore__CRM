@@ -1,19 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { RolUsuario } from "@/tipos/usuario";
+import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { ProtectedRoute } = await import("@/funcionalidades/autenticacion/ProtectedRoute");
 
 const useAuthMock = vi.mocked(useAuth);
 
 function renderWithRoute(opciones: {
   allowedRoles?: readonly RolUsuario[];
+  allowedScopes?: readonly SessionScope[];
   initialEntry?: string;
 } = {}) {
   const router = createMemoryRouter(
@@ -21,7 +22,9 @@ function renderWithRoute(opciones: {
       { path: "/iniciar-sesion", element: <div>Pantalla de inicio de sesión</div> },
       { path: "/panel", element: <div>Panel</div> },
       {
-        element: <ProtectedRoute allowedRoles={opciones.allowedRoles} />,
+        element: (
+          <ProtectedRoute allowedRoles={opciones.allowedRoles} allowedScopes={opciones.allowedScopes} />
+        ),
         children: [{ path: "/privado", element: <div>Contenido privado</div> }],
       },
     ],
@@ -89,6 +92,59 @@ describe("ProtectedRoute", () => {
     });
 
     renderWithRoute();
+
+    expect(await screen.findByText("Contenido privado")).toBeInTheDocument();
+  });
+
+  it("redirige a /panel cuando hay sesión pero el scope no tiene acceso (PASO 8)", async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "u1",
+        nombre: "Ana",
+        correo: "ana@crm.test",
+        rol: "ADMINISTRADOR",
+        sessionScope: "company",
+        empresaId: "e1",
+        empresaNombre: "Empresa A",
+        empresaColorPrimario: null,
+        empresaColorSecundario: null,
+        empresaLogoUrl: null,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: vi.fn(),
+    });
+
+    renderWithRoute({ allowedScopes: ["holding"] });
+
+    expect(await screen.findByText("Panel")).toBeInTheDocument();
+    expect(screen.queryByText("Contenido privado")).not.toBeInTheDocument();
+  });
+
+  it("renderiza el contenido protegido cuando el scope de la sesión tiene acceso", async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "u1",
+        nombre: "Ana",
+        correo: "ana@crm.test",
+        rol: "ADMINISTRADOR",
+        sessionScope: "holding",
+        empresaId: null,
+        empresaNombre: null,
+        empresaColorPrimario: null,
+        empresaColorSecundario: null,
+        empresaLogoUrl: null,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: vi.fn(),
+    });
+
+    renderWithRoute({ allowedScopes: ["holding"] });
 
     expect(await screen.findByText("Contenido privado")).toBeInTheDocument();
   });

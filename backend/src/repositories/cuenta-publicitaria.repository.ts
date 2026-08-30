@@ -110,9 +110,10 @@ export async function updateToken(
  */
 export async function listConTokenCargado(
   client: PrismaClientOrTransaction = prisma,
-): Promise<CuentaPublicitaria[]> {
+): Promise<CuentaPublicitariaConEmpresa[]> {
   return client.cuentaPublicitaria.findMany({
     where: { tokenCifrado: { not: null } },
+    include: { bridge: { select: { empresaId: true } } },
   });
 }
 
@@ -129,4 +130,67 @@ export async function updateTokenExpiraEn(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<CuentaPublicitaria> {
   return client.cuentaPublicitaria.update({ where: { id }, data: { tokenExpiraEn } });
+}
+
+/**
+ * M-hardening Bloque A (WU4, spec lead-attribution, D6): primer paso del
+ * lookup de dos pasos de `atribucion.service.ts::resolverAtribucion` — mismo
+ * criterio que `@@unique([bridgeId, idExterno])`. `null` es un resultado
+ * válido (degradación silenciosa); el llamador nunca lanza por un miss.
+ */
+export async function findByBridgeEIdExterno(
+  bridgeId: string,
+  idExterno: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria | null> {
+  return client.cuentaPublicitaria.findUnique({
+    where: { bridgeId_idExterno: { bridgeId, idExterno } },
+  });
+}
+
+/**
+ * M-hardening Bloque A (WU5, spec token-expiry-alerting): universo de
+ * cuentas con `tokenExpiraEn` dentro de la ventana (`ahora`, `ahora +
+ * fronteraDias`] — el filtro de ventana temporal es expresable en SQL vía
+ * Prisma. El filtro de idempotencia ("¿ya se alertó ESTE `tokenExpiraEn`
+ * exacto?") NO lo es: Prisma no soporta comparar dos columnas de la misma
+ * fila en un `where` sin SQL crudo, así que `produceAlertaTokenPorExpirar`
+ * (el servicio) hace esa comparación en memoria sobre este universo —
+ * suficientemente acotado por la ventana de 7 días para no justificar SQL
+ * crudo.
+ */
+/**
+ * Bloque C (D5/D8, spec "Per-job isolation decisions" — `verificacion-token`):
+ * `include: { bridge: { select: { empresaId } } }` — `produceAlertaTokenPorExpirar`
+ * necesita el `empresaId` del bridge para cerrar el chokepoint de la alerta
+ * `TOKEN_POR_EXPIRAR` sin una consulta extra por cuenta dentro del loop.
+ */
+export type CuentaPublicitariaConEmpresa = CuentaPublicitaria & {
+  bridge: { empresaId: string };
+};
+
+export async function listPorExpirar(
+  ahora: Date,
+  fronteraDias: number,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitariaConEmpresa[]> {
+  const limite = new Date(ahora.getTime() + fronteraDias * 24 * 60 * 60 * 1000);
+  return client.cuentaPublicitaria.findMany({
+    where: { tokenExpiraEn: { not: null, gt: ahora, lte: limite } },
+    include: { bridge: { select: { empresaId: true } } },
+  });
+}
+
+/**
+ * M-hardening Bloque A (WU5): marca el `tokenExpiraEn` exacto ya alertado —
+ * la única escritura del marcador de idempotencia (D-autorearme: nunca hay
+ * un "reseteo" separado, solo se vuelve a escribir cuando `tokenExpiraEn`
+ * cambia).
+ */
+export async function updateAlertaExpiracionParaEn(
+  id: string,
+  alertaExpiracionParaEn: Date,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<CuentaPublicitaria> {
+  return client.cuentaPublicitaria.update({ where: { id }, data: { alertaExpiracionParaEn } });
 }

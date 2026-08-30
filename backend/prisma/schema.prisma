@@ -14,8 +14,35 @@ enum RolUsuario {
   SUPERVISOR
   ASESOR
   VENDEDOR
+  // Bloque F (aditivo, decisión cerrada con el usuario): mismo alcance
+  // máximo entre los dos — acceso total holding-wide, sin restricción de
+  // `empresaId`, con capacidad de asignación manual — tratados como bypass
+  // total en cualquier chequeo de autoridad "acceso total" ya existente
+  // (mismo criterio que ADMINISTRADOR hoy, sin atarse a una empresa). El
+  // retiro del enum legacy (`ADMINISTRADOR`/`SUPERVISOR`/`ASESOR`/`VENDEDOR`)
+  // en los 17-19 archivos que lo usan NO es parte de este batch — bloqueado
+  // por coordinación con otro equipo.
+  SUPERVISOR_HOLDING
+  SUPER_ADMIN
 
   @@map("rol_usuario")
+}
+
+// Bloque B (tenant-empresa-membresia-schema): rol dentro de una `Empresa`,
+// distinto de `RolUsuario` (holding-wide, sin cambios). Sin `VENDEDOR` propio
+// — el mapeo de backfill fija `VENDEDOR` legado a `ASESOR` con
+// `habilitadoParaVenta = true` (spec membership-backfill).
+enum RolMembresia {
+  ADMINISTRADOR
+  SUPERVISOR
+  ASESOR
+
+  @@map("rol_membresia")
+}
+
+enum SessionScope {
+  COMPANY
+  HOLDING
 }
 
 enum TipoNotificacion {
@@ -27,6 +54,17 @@ enum TipoNotificacion {
   ERROR_BRIDGE
   TOKEN_POR_EXPIRAR
   INTERACCION_REPETIDA
+  // M-hardening Bloque A (WU7, spec bridge-log-notifications): un log de
+  // bridge ADVERTENCIA por datos incompletos notifica a los SUPERVISOR
+  // activos, uno por lead, sin agregación.
+  LEAD_DATO_INCOMPLETO
+  // Bloque C (Etapa 3, spec "Exhaustion notifies actor and supervisor"):
+  // agregado AL FINAL, mismo criterio que SIN_ASIGNAR/ASIGNACION_FALLIDA
+  // arriba en `TipoEventoLead` — un `ADD VALUE` sin BEFORE/AFTER lo anexa al
+  // final del orden físico de PG. Notifica agotamiento del CAS de asignación
+  // (3 intentos, sin backoff) al usuario que intentó reasignar y a su
+  // supervisor de empresa.
+  ASIGNACION_CONFLICTO
 
   @@map("tipo_notificacion")
 }
@@ -59,8 +97,152 @@ model Usuario {
   // M7: citas donde este usuario es el responsable (`usuario_id`, "Responsable").
   citas                Cita[]
   notificaciones       Notificacion[]
+  // Bloque B (tenant-empresa-membresia-schema): backfillado 1:1 por la
+  // migración de este cambio (una `Membresia` bootstrap por `Usuario`
+  // existente); `Usuario.rol` sigue siendo la ÚNICA fuente de autorización
+  // en producción (shadow, no cutover).
+  membresias           Membresia[]
+  // LinkedIn Lead Sync (TO-BE): el administrador que inicia OAuth queda como
+  // dueño auditado de la conexión/state. No implica multi-tenant nuevo; el
+  // alcance de empresa sigue viniendo del `Bridge.empresaId` vigente.
+  conexionesLinkedInAutorizadas LinkedInConexion[]
+  oauthStatesLinkedIn            LinkedInOAuthState[]
+  // whatsappMessages: `conversacionesAsignadas` es el puntero ACTUAL
+  // (`Conversacion.asesorId`), `conversacionEventos`/`mensajesEnviados` son
+  // historial -- mismo criterio de nombrado que `leadsComoAsesor`/`leadEventos`.
+  conversacionesAsignadas Conversacion[]
+  conversacionEventos     ConversacionEvento[]
+  mensajesEnviados        Mensaje[]
+  oauthStatesWhatsApp     WhatsAppOAuthState[]
+  // metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+  // campañas Meta"): mismo criterio de nombrado que `oauthStatesWhatsApp` --
+  // el administrador que inicia el diálogo OAuth de la cuenta de anuncios
+  // queda como dueño auditado del state efímero.
+  oauthStatesCuentaAnuncios CuentaAnunciosOAuthState[]
+  conexionesCuentaAnunciosAutorizadas CuentaAnunciosConexion[]
+  // negociacion (Bloque D): mismo criterio de nombrado que
+  // leadsComoAsesor/leadsComoVendedor -- dos relaciones nombradas porque
+  // ambas apuntan a Usuario.
+  oportunidadesComoAsesor   Oportunidad[]       @relation("OportunidadAsesor")
+  oportunidadesComoVendedor Oportunidad[]       @relation("OportunidadVendedor")
+  oportunidadEventos        OportunidadEvento[]
+  // reportes (Bloque E, exportación PDF/XLSX): un `ReporteJob` siempre tiene
+  // un `usuarioId` solicitante -- ver comentario del modelo `ReporteJob` para
+  // el criterio de scope empresarial (derivado de `Membresia`, no de una FK
+  // propia acá).
+  reporteJobs               ReporteJob[]
 
   @@map("usuarios")
+}
+
+// Bloque B (tenant-empresa-membresia-schema): unidad de tenant. Nace con una
+// fila bootstrap de id fijo (migración de este cambio, backfill Fase 1) —
+// ninguna `Empresa` real se crea todavía por código de aplicación en este
+// cambio.
+model Empresa {
+  id       String   @id @default(uuid()) @db.Uuid
+  nombre   String   @db.Text
+  creadoEn DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  // tema-empresarial-integracion (Parte 2): color de marca REAL por empresa
+  // individual -- decisión explícita del usuario que reemplaza, solo para
+  // este propósito, la restricción previa de D0 de no tocar
+  // `schema.prisma`/migraciones (docs/blocks/d0-visualizacion-multitenant.md,
+  // "Archivos permitidos y límites de riesgo"). `ConfiguracionEmpresa`
+  // (branding global de la instancia) sigue siendo la fuente para el boot
+  // pre-login y para cualquier empresa sin color propio -- NULLABLE a
+  // propósito: toda `Empresa` existente antes de este cambio no tiene esto
+  // seteado y el frontend hace el fallback (`LoginPage.tsx`), nunca el
+  // backend. Mismo formato hex `#RRGGBB` que `ConfiguracionEmpresa`
+  // (`configuracion-empresa.schema.ts::hexColorSchema`); sin validación Zod
+  // propia en este cambio porque ningún endpoint escribe estos campos
+  // todavía (solo seed/lectura).
+  colorPrimario   String? @map("color_primario") @db.VarChar(7)
+  colorSecundario String? @map("color_secundario") @db.VarChar(7)
+  // tema-empresarial-integracion (PASO 6): isotipo (símbolo, no wordmark) de
+  // marca -- un solo asset por Empresa, URL pegada a mano por el admin (sin
+  // subsistema de upload, decisión explícita del usuario). Nullable, mismo
+  // criterio que colorPrimario/colorSecundario arriba -- ninguna `Empresa`
+  // existente antes de este cambio tiene esto seteado.
+  logoUrl String? @map("logo_url") @db.Text
+
+  membresias     Membresia[]
+  bridges        Bridge[]
+  leads          Lead[]
+  // Bloque C (Etapa 3, D4 — RLS de Postgres): denormalizado desde `Lead` en
+  // `Cita`/`LeadEvento`/`Notificacion` (ver esos modelos abajo) para que la
+  // política RLS de esas tablas compare `empresa_id` directo, sin un join a
+  // `leads` por fila.
+  citas          Cita[]
+  leadEventos    LeadEvento[]
+  notificaciones Notificacion[]
+  bridgeLogs     BridgeLog[]
+  // whatsappMessages: un solo número de WhatsApp por empresa (D-mensajería,
+  // "un solo número por empresa"), por eso es opcional y no un arreglo.
+  whatsappConexion       WhatsAppConexion?
+  conversacionesWhatsapp Conversacion[]
+  conversacionesWhatsappEventos ConversacionEvento[]
+  // Fix de sintaxis Prisma (batch whatsappMessages): `WhatsAppOAuthState.empresa`
+  // ya declaraba su lado de la relación pero le faltaba esta relación opuesta
+  // — sin ella `prisma generate` falla con P1012 ("missing an opposite
+  // relation field"). Mismo nombre que ya usa `Usuario.oauthStatesWhatsApp`
+  // para la relación análoga por `usuarioId`.
+  oauthStatesWhatsApp WhatsAppOAuthState[]
+  // metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+  // campañas Meta"): una sola cuenta de anuncios de Meta por empresa (D-mensajería,
+  // "un solo número por empresa" -- mismo criterio), por eso es opcional y no
+  // un arreglo. Cubre Facebook e Instagram a la vez -- Instagram no tiene
+  // cuenta de anuncios propia, sus campañas corren en la misma cuenta
+  // `act_<id>` y se distinguen por `publisher_platform` en la Insights API.
+  cuentaAnunciosConexion    CuentaAnunciosConexion?
+  oauthStatesCuentaAnuncios CuentaAnunciosOAuthState[]
+  // negociacion (Bloque D): Oportunidad/Producto/OportunidadEvento son
+  // aditivos -- Lead conserva sus columnas de negociación sin tocar (ver
+  // comentario del modelo Oportunidad).
+  productos           Producto[]
+  oportunidades       Oportunidad[]
+  oportunidadEventos  OportunidadEvento[]
+  // reportes (Bloque E): `null` = configuración default holding-wide
+  // (`ConfiguracionReporte.empresaId` nullable, ver ese modelo). `ReporteJob`
+  // deliberadamente NO tiene relación acá -- no declara `empresaId` propio
+  // (ver comentario de ese modelo).
+  configuracionesReporte ConfiguracionReporte[]
+
+  @@map("empresas")
+}
+
+// Bloque B (tenant-empresa-membresia-schema): pertenencia de un `Usuario` a
+// una `Empresa` con un `RolMembresia` propio. `correo`/`passwordHash`
+// habilitan un segundo camino de login (dual-login-routing) — ambos quedan
+// NULL en todo backfill (spec membership-backfill); ningún código de este
+// cambio los escribe todavía. `@@unique([usuarioId, empresaId, rol])`
+// (spec, "Duplicate membership rejected"): rechaza la tripleta repetida.
+// `activa=false` es la baja lógica — la fila nunca se borra (spec, "Removal
+// is a soft toggle").
+model Membresia {
+  id                  String       @id @default(uuid()) @db.Uuid
+  usuarioId           String       @map("usuario_id") @db.Uuid
+  empresaId           String       @map("empresa_id") @db.Uuid
+  rol                 RolMembresia
+  // Backfill: `true` solo para `VENDEDOR` legado (mapeado a `ASESOR`);
+  // `false` para todo el resto, incluidos los `ASESOR` legados (spec
+  // membership-backfill).
+  habilitadoParaVenta Boolean      @default(false) @map("habilitado_para_venta")
+  correo              String?      @unique @db.Citext
+  passwordHash        String?      @map("password_hash") @db.Text
+  activa              Boolean      @default(true)
+  creadoEn            DateTime     @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn       DateTime     @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  usuario       Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@unique([usuarioId, empresaId, rol])
+  // Fase 2 (diseño, shadow authorizer hot path): "active memberships for
+  // this usuarioId", no empresa-scoped.
+  @@index([usuarioId, activa])
+  @@index([empresaId, rol])
+  @@map("membresias")
 }
 
 // D-A: `jti` (UUID v4 generado en la emisión) es la PK — el 100% de los
@@ -76,8 +258,16 @@ model RefreshToken {
   expiraEn   DateTime  @map("expira_en") @db.Timestamptz(6)
   revocadoEn DateTime? @map("revocado_en") @db.Timestamptz(6)
   creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  sessionScope SessionScope @map("session_scope")
+  // Bloque B (dual-login-routing): nulo para toda sesión emitida antes de
+  // este cambio (spec, "Active session after migration") y para toda sesión
+  // emitida vía `Usuario.correo` (camino holding-wide, sin membresía).
+  // SetNull (no Cascade, mismo criterio que `Lead.asesor`/`vendedor`): dar de
+  // baja una `Membresia` nunca debe invalidar sesiones vigentes.
+  membresiaId String?  @map("membresia_id") @db.Uuid
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  membresia Membresia? @relation(fields: [membresiaId], references: [id], onDelete: Restrict)
 
   @@index([usuarioId, revocadoEn])
   @@map("refresh_tokens")
@@ -125,6 +315,7 @@ enum TipoEventoLead {
   // sobrecargar SIN_ASIGNAR ocultaría el incidente y dispararía una
   // notificación falsa. Ver docs/06-modulos-backend.md §M6.
   ASIGNACION_FALLIDA
+  ASIGNACION_CONFLICTO
 
   @@map("tipo_evento_lead")
 }
@@ -139,6 +330,14 @@ model Cliente {
 
   correos CorreoCliente[]
   leads   Lead[]
+  // Bloque B (Fase 3, dedup shadow): cola de revisión no invasiva — ver
+  // `LeadAbiertoRevisionPendiente` abajo. Vacía en producción hasta que el
+  // comparador en sombra detecte la primera colisión cross-empresa.
+  revisionesPendientes LeadAbiertoRevisionPendiente[]
+  // whatsappMessages: un Cliente puede tener conversaciones de WhatsApp sin
+  // nunca haber tenido un Lead -- por eso cuelga de Cliente, no de Lead
+  // (decisión de la exploración: mensajes ≠ leads).
+  conversacionesWhatsapp Conversacion[]
 
   @@map("clientes")
 }
@@ -215,19 +414,65 @@ model Lead {
   productoServicio  String?    @map("producto_servicio") @db.Text
   formaPago         FormaPago? @map("forma_pago")
 
+  // M-hardening Bloque A (WU4, spec lead-attribution, D6/D9): atribución
+  // canónica resuelta por `atribucion.service.ts::resolverAtribucion` en
+  // ingesta (lookup de dos pasos: cuenta primero, campaña después — D6).
+  // Ambas FKs son nullable y degradan a `null` en silencio cuando no hay
+  // match (nunca fallan la ingesta); los 3 escalares crudos se persisten
+  // siempre, con o sin match canónico.
+  cuentaPublicitariaId String?  @map("cuenta_publicitaria_id") @db.Uuid
+  campaniaId           String?  @map("campania_id") @db.Uuid
+  idExternoCuenta      String?  @map("id_externo_cuenta") @db.Text
+  idExternoCampania    String?  @map("id_externo_campania") @db.Text
+  nombreCampania       String?  @map("nombre_campania") @db.Text
+
+  // Bloque B (Fase 3, lead-empresa-derivation): derivado desde
+  // `Bridge.empresaId` en ingesta (`resolverEmpresaIdDesdeBridge`).
+  // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): NOT NULL desde esta
+  // migración — confirmado sin datos de producción (memoria #102), así que
+  // el cutover no requiere backfill/quarantine/deny. `Bridge.empresaId`
+  // (abajo en este mismo archivo) migra NOT NULL en la misma migración por
+  // la misma razón: un `Bridge` sin empresa es la única vía por la que un
+  // `Lead.empresaId` podría volver a quedar huérfano.
+  empresaId            String   @map("empresa_id") @db.Uuid
+  // Bloque C (Etapa 3, spec "Optimistic concurrency on lead assignment"):
+  // versión monotónica Lead-wide (R-C, spec) — cualquier escritura vía
+  // `assignResponsable`/`assignResponsableBulk` hace CAS sobre esta columna
+  // y la incrementa en 1 al ganar. Arranca en 0 para todo lead existente
+  // (backfill implícito del default de columna).
+  version              Int      @default(0)
+
   cliente              Cliente               @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   // M5 (D1): SetNull — un usuario dado de baja (`activo = false`) nunca se
   // borra, y un lead no debe quedar bloqueado por la baja de su asesor.
   asesor               Usuario?              @relation("LeadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
   vendedor             Usuario?              @relation("LeadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
+  // M-hardening Bloque A (WU4): SetNull, mismo criterio que asesor/vendedor
+  // arriba — borrar una cuenta/campaña nunca debe bloquear al lead que la
+  // referencia.
+  cuentaPublicitaria   CuentaPublicitaria?   @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: SetNull)
+  campania             Campania?             @relation(fields: [campaniaId], references: [id], onDelete: SetNull)
   eventos              LeadEvento[]
   leadsRecibidos       LeadRecibido[]
   respuestasFormulario RespuestaFormulario[]
   citas                Cita[]
   notificaciones       Notificacion[]
+  // Bloque C (D4, Fase 2/Stage 2): Restrict, no SetNull — `empresaId` es
+  // NOT NULL ahora (arriba); `SetNull` violaría esa restricción al borrar
+  // una `Empresa`. Mismo criterio de mandatory-FK que `cliente` arriba.
+  empresa              Empresa               @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  // Bloque B (Fase 3, dedup shadow): filas de la cola de revisión donde este
+  // lead es el "lead abierto" en colisión — ver `LeadAbiertoRevisionPendiente`.
+  revisionesPendientes LeadAbiertoRevisionPendiente[]
+  // negociacion (Bloque D, D13): aditivo -- Lead todavía no cede sus campos
+  // de negociación (etapa/semaforo/asesorId/etc, arriba) a Oportunidad en
+  // este cambio. Esa migración de corte es un paso aparte, deliberadamente
+  // no mezclado acá (ver docs/blocks/d-routing-oportunidad.md).
+  oportunidades        Oportunidad[]
 
   @@index([clienteId, etapa])
   @@index([clienteId, cerradoEn(sort: Desc)])
+  @@index([empresaId], map: "idx_leads_empresa")
   // D11 (docs/03-modelo-datos.md §leads): el listado filtrado es el endpoint
   // más caliente del sistema — índices desde el primer día. El índice
   // parcial `idx_leads_sla` (`WHERE cerrado_en IS NULL`) no es expresable en
@@ -237,7 +482,128 @@ model Lead {
   @@index([vendedorId, etapa], map: "idx_leads_vendedor_etapa")
   @@index([etapa, ingresadoEn(sort: Desc)], map: "idx_leads_etapa_ingreso")
   @@index([redSocial], map: "idx_leads_red_social")
+  @@index([campaniaId], map: "idx_leads_campania")
+  @@index([cuentaPublicitariaId], map: "idx_leads_cuenta_publicitaria")
   @@map("leads")
+}
+
+// ---------------------------------------------------------------------------
+// negociacion (Bloque D, D13): split Lead (contacto) / Oportunidad
+// (negociación) -- un mismo Cliente puede tener varias negociaciones en
+// paralelo dentro de la misma empresa (docs/16-hallazgos-y-preguntas.md,
+// D13). Aditivo en este cambio: Lead conserva sus columnas de negociación
+// (etapa/semaforo/asesorId/etc) sin tocar -- el corte que se las retira y
+// reescribe cada consumidor (leads.access.ts, asignacion.service.ts) es un
+// paso deliberadamente aparte, ver docs/blocks/d-routing-oportunidad.md.
+// ---------------------------------------------------------------------------
+
+// Catálogo de productos por empresa (D14) -- selector, no texto libre: más
+// simple para un usuario sin experiencia en CRM, y habilita reporting
+// agregado por producto sin normalizar strings a mano.
+model Producto {
+  id        String   @id @default(uuid()) @db.Uuid
+  empresaId String   @map("empresa_id") @db.Uuid
+  nombre    String   @db.Text
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa       Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  oportunidades Oportunidad[]
+
+  @@unique([empresaId, nombre])
+  @@map("productos")
+}
+
+// Una negociación puntual sobre un Lead+Producto. Reusa los enums de
+// negociación ya existentes (EtapaLead/Semaforo/FormaPago) -- misma
+// semántica de embudo, ahora por Oportunidad en vez de por Lead.
+// `empresaId` denormalizado desde `Lead.empresaId` (mismo patrón RLS que
+// Cita/LeadEvento/Notificacion/Conversacion) para que la política compare
+// empresa_id directo, sin join.
+model Oportunidad {
+  id                String     @id @default(uuid()) @db.Uuid
+  leadId            String     @map("lead_id") @db.Uuid
+  empresaId         String     @map("empresa_id") @db.Uuid
+  productoId        String?    @map("producto_id") @db.Uuid
+  etapa             EtapaLead  @default(NUEVO)
+  semaforo          Semaforo?
+  puntuacion        Int?
+  asesorId          String?    @map("asesor_id") @db.Uuid
+  vendedorId        String?    @map("vendedor_id") @db.Uuid
+  montoVenta        Decimal?   @map("monto_venta") @db.Decimal(12, 2)
+  observacionCierre String?    @map("observacion_cierre") @db.Text
+  formaPago         FormaPago? @map("forma_pago")
+  slaInicioEn       DateTime?  @map("sla_inicio_en") @db.Timestamptz(6)
+  cerradaEn         DateTime?  @map("cerrada_en") @db.Timestamptz(6)
+  creadaEn          DateTime   @default(now()) @map("creada_en") @db.Timestamptz(6)
+  // Bloque C (CAS optimista en asignación): mismo mecanismo que ya usa
+  // `Lead.version` -- cualquier escritura de reasignación hace CAS acá.
+  version           Int        @default(0)
+
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  producto Producto? @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  asesor   Usuario?  @relation("OportunidadAsesor", fields: [asesorId], references: [id], onDelete: SetNull)
+  vendedor Usuario?  @relation("OportunidadVendedor", fields: [vendedorId], references: [id], onDelete: SetNull)
+  eventos  OportunidadEvento[]
+
+  // D14: sin ventana de reingreso (a diferencia de Cliente/Lead, 90 días) --
+  // una Oportunidad nueva del mismo producto se bloquea solo si ya existe
+  // una ABIERTA (fuera de VENTA/NO_VENTA) para el mismo (leadId, productoId);
+  // el índice/constraint exacto de esa regla vive en la migración (parcial,
+  // no expresable en el DSL de Prisma), no acá.
+  @@index([leadId])
+  @@index([empresaId], map: "idx_oportunidades_empresa")
+  @@index([asesorId, etapa], map: "idx_oportunidades_asesor_etapa")
+  @@index([productoId], map: "idx_oportunidades_producto")
+  @@map("oportunidades")
+}
+
+enum TipoEventoOportunidad {
+  // Asignación por el algoritmo automático normal (menor carga + FIFO) --
+  // cuenta para el rendimiento del asesor sin excepción, sea quien sea.
+  ASIGNADA_POOL
+  // Excepción D9 puntual (Administrador/Supervisor toma la negociación fuera
+  // del pool). Única etiqueta que el dashboard (Bloque E) segmenta aparte --
+  // la distinción vive en el EVENTO, nunca en la Membresia ni en un campo
+  // fijo de Oportunidad, para no congelar "excepción" en algo que después
+  // se vuelve rutina (ej. admin polifuncional de una empresa chica).
+  ASIGNADA_EXCEPCION_ADMINISTRATIVA
+  // Mismo criterio que TipoEventoLead.SIN_ASIGNAR: no había ningún candidato
+  // en el pool (Membresia rol:ASESOR activa) al crear la Oportunidad --
+  // queda con asesorId null, visible, nunca falla la creación (mismo
+  // razonamiento que Lead: la negociación es real aunque no haya quién la
+  // atienda todavía). La salida es la excepción D9 de arriba, no un
+  // reintento automático.
+  SIN_ASIGNAR
+  REASIGNADA_TRASPASO
+  ETAPA_CAMBIADA
+  CERRADA
+
+  @@map("tipo_evento_oportunidad")
+}
+
+// Mirror exacto de LeadEvento/ConversacionEvento: log de eventos
+// append-only, nunca una tabla de vigencias con fecha desde/hasta.
+model OportunidadEvento {
+  id               String                 @id @default(uuid()) @db.Uuid
+  oportunidadId    String                 @map("oportunidad_id") @db.Uuid
+  usuarioId        String?                @map("usuario_id") @db.Uuid
+  tipo             TipoEventoOportunidad
+  etapaAnterior    EtapaLead?             @map("etapa_anterior")
+  etapaNueva       EtapaLead?             @map("etapa_nueva")
+  detalle          Json?                  @db.JsonB
+  ocurridoEn       DateTime               @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  empresaId        String                 @map("empresa_id") @db.Uuid
+
+  oportunidad Oportunidad @relation(fields: [oportunidadId], references: [id], onDelete: Cascade)
+  usuario     Usuario?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@index([oportunidadId, ocurridoEn], map: "idx_oportunidad_eventos_oportunidad")
+  @@index([tipo, ocurridoEn], map: "idx_oportunidad_eventos_tipo")
+  @@index([empresaId], map: "idx_oportunidad_eventos_empresa")
+  @@map("oportunidad_eventos")
 }
 
 // M5: `semaforo_anterior`/`semaforo_nuevo` (D17 — una fila `CAMBIO_SEMAFORO`
@@ -254,12 +620,19 @@ model LeadEvento {
   semaforoNuevo    Semaforo?      @map("semaforo_nuevo")
   detalle          Json?          @db.JsonB
   ocurridoEn       DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  // Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId` en la
+  // migración de este cambio (backfill vía join por `leadId`). NOT NULL —
+  // todo `LeadEvento` cuelga de un `Lead`, que ya es NOT NULL en `empresaId`
+  // (cutover Bloque C, Fase 2/Stage 2).
+  empresaId        String         @map("empresa_id") @db.Uuid
 
   lead    Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@index([leadId, ocurridoEn])
   @@index([tipo, ocurridoEn])
+  @@index([empresaId], map: "idx_lead_eventos_empresa")
   @@map("lead_eventos")
 }
 
@@ -296,12 +669,21 @@ model Notificacion {
   leadId    String?           @map("lead_id") @db.Uuid
   leidaEn   DateTime?         @map("leida_en") @db.Timestamptz(6)
   creadaEn  DateTime          @default(now()) @map("creada_en") @db.Timestamptz(6)
+  // Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId` cuando
+  // `leadId` está presente (backfill vía join); NULL para notificaciones
+  // holding-wide (mismo convenio ya existente en
+  // `notificacion.repository.ts::findActiveRecipientIds`, `empresaId: null` =
+  // sin restricción). La política RLS de `notificaciones` deja pasar
+  // `empresa_id IS NULL` como parte del mismo `OR` de contexto unrestricted.
+  empresaId String?           @map("empresa_id") @db.Uuid
 
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: SetNull)
 
   @@index([usuarioId, creadaEn(sort: Desc)], map: "idx_notificaciones_usuario_creada")
   @@index([leadId])
+  @@index([empresaId], map: "idx_notificaciones_empresa")
   @@map("notificaciones")
 }
 
@@ -351,6 +733,11 @@ model Cita {
   notas               String?       @db.Text
   recordatorioEnviado Boolean       @default(false) @map("recordatorio_enviado")
   creadoEn            DateTime      @default(now()) @map("creado_en") @db.Timestamptz(6)
+  // Bloque C (Etapa 3, D4 — RLS): denormalizado desde `Lead.empresaId` en la
+  // migración de este cambio (backfill vía join por `leadId`). NOT NULL —
+  // toda `Cita` cuelga de un `Lead`, que ya es NOT NULL en `empresaId`
+  // (cutover Bloque C, Fase 2/Stage 2).
+  empresaId           String        @map("empresa_id") @db.Uuid
 
   lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   // Restrict (no SetNull): a diferencia de `Lead.asesorId`/`vendedorId`
@@ -358,8 +745,10 @@ model Cita {
   // modelo de datos (docs/03) — mismo criterio que
   // `RespuestaFormulario.usuario` (M5), que también es requerido.
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@index([leadId])
+  @@index([empresaId], map: "citas_empresa_id_idx")
   // M7: forma de consulta del trabajo de recordatorio (`estado = AGENDADA`,
   // `recordatorioEnviado = false`, `programadaPara` en la ventana de 1h) —
   // volumen de `citas` muy por debajo de `leads`, así que un índice compuesto
@@ -375,6 +764,14 @@ enum RedSocial {
   X
   LINKEDIN
   GOOGLE_FORMS
+  // bridgeApi: pull genérico vía GET + X-Api-Key, mapeo de campos
+  // configurable por bridge (`Bridge.configuracionJson`) en vez de un
+  // adaptador nuevo por proveedor.
+  API_EXTERNA
+  // whatsappMessages: solo para clasificar el ORIGEN de un `Lead` auto-creado
+  // desde una `Conversacion` (ver `Lead.redSocial`) -- WhatsApp NUNCA tiene un
+  // `Bridge` propio (mensajes ≠ leads, ver `WhatsAppConexion` más abajo).
+  WHATSAPP
 
   @@map("red_social")
 }
@@ -420,6 +817,40 @@ enum EstadoTokenCuenta {
   @@map("estado_token_cuenta")
 }
 
+enum EstadoConexionLinkedIn {
+  ACTIVA
+  TOKEN_EXPIRADO
+  REVOCADA
+  ERROR
+
+  @@map("estado_conexion_linkedin")
+}
+
+enum TipoFuenteLinkedIn {
+  SPONSORED_ACCOUNT
+  ORGANIZATION
+
+  @@map("tipo_fuente_linkedin")
+}
+
+enum TipoLeadLinkedIn {
+  SPONSORED
+  EVENT
+  COMPANY
+  ORGANIZATION_PRODUCT
+
+  @@map("tipo_lead_linkedin")
+}
+
+enum EstadoSuscripcionLinkedIn {
+  PENDIENTE
+  ACTIVA
+  ERROR
+  REVOCADA
+
+  @@map("estado_suscripcion_linkedin")
+}
+
 // Conexión con una red social (docs/05-bridges.md §1, §7). El cifrado de
 // token (`CuentaPublicitaria.tokenCifrado`/`secretoWebhook`) se añade en el
 // módulo que lo consume (adaptador Meta, M4) — ver `CuentaPublicitaria` abajo.
@@ -440,10 +871,40 @@ model Bridge {
   // cada tick de 15 min mientras el bridge sigue mudo.
   // `touchUltimoLeadEn` la resetea a `false` cuando llega un lead nuevo.
   advertenciaMudoEnviada Boolean @default(false) @map("advertencia_mudo_enviada")
+  // Bloque B (Fase 3, lead-empresa-derivation): resuelto por
+  // `atribucion.service.ts::resolverEmpresaIdDesdeBridge` en ingesta.
+  // Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): NOT NULL desde esta
+  // migración — un `Bridge` sin empresa era la única vía por la que
+  // `Lead.empresaId` podía quedar huérfano; cerrar este hueco en el origen
+  // hace innecesaria cualquier guarda downstream. `POST /bridges` ahora
+  // exige `empresaId` en el body (`bridges.schema.ts`).
+  empresaId String @map("empresa_id") @db.Uuid
+
+  // bridgeApi (RedSocial.API_EXTERNA): NULL en Meta/Google Forms/etc.
+  // Forma: `ConfiguracionBridgeApi`
+  // (`types/bridgeApi/configuracion-bridge-api.ts`) — url, parametroFecha
+  // opcional, mapeoCampos (clave externa -> campo fijo de LeadEntrante).
+  // Validado en el borde por `bridges.schema.ts`, no acá.
+  configuracionJson Json? @map("configuracion_json") @db.JsonB
+
+  // bridgeApi: API key del sistema EXTERNO, cifrada AES-256-GCM vía
+  // `lib/cifrado-token.ts` (mismo mecanismo que
+  // `CuentaPublicitaria.tokenCifrado`). No es `claveApiHash`: esa es un hash
+  // irreversible de una key que NOSOTROS emitimos y solo verificamos; esta
+  // hay que poder descifrarla para reenviarla en el header `X-Api-Key` de
+  // cada poll.
+  credencialExternaCifrada String? @map("credencial_externa_cifrada") @db.Text
 
   bridgeLogs          BridgeLog[]
   leadsRecibidos      LeadRecibido[]
   cuentasPublicitarias CuentaPublicitaria[]
+  // LinkedIn OAuth: una conexión vigente por bridge y states efímeros de
+  // autorización. Los tokens viven cifrados en `LinkedInConexion`, no en
+  // `CuentaPublicitaria.tokenCifrado` porque esa columna es Meta-céntrica.
+  linkedinConexion     LinkedInConexion?
+  linkedinOAuthStates  LinkedInOAuthState[]
+  // Bloque C (D4): Restrict, no SetNull — `empresaId` es NOT NULL ahora.
+  empresa              Empresa              @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@map("bridges")
 }
@@ -477,9 +938,20 @@ model CuentaPublicitaria {
   tokenCifrado  String?           @map("token_cifrado") @db.Text
   tokenExpiraEn DateTime?         @map("token_expira_en") @db.Timestamptz(6)
   secretoWebhook String?          @map("secreto_webhook") @db.Text
+  // M-hardening Bloque A (WU5, spec token-expiry-alerting): marcador de
+  // idempotencia — guarda el ÚLTIMO `tokenExpiraEn` ya alertado. Nullable,
+  // NO booleano: un token renovado mueve `tokenExpiraEn`, así que la alerta
+  // se autorearma sin necesitar una escritura de reseteo separada (a
+  // diferencia de `Bridge.advertenciaMudoEnviada`).
+  alertaExpiracionParaEn DateTime? @map("alerta_expiracion_para_en") @db.Timestamptz(6)
 
   bridge    Bridge     @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
   campanias Campania[]
+  leads     Lead[]
+  // LinkedIn sponsored accounts pueden reutilizar `CuentaPublicitaria` para
+  // atribución canónica. Organizaciones LinkedIn quedan como fuente sin cuenta
+  // publicitaria asociada.
+  linkedinFuentes LinkedInFuente[]
 
   @@unique([bridgeId, idExterno])
   @@map("cuentas_publicitarias")
@@ -491,16 +963,368 @@ model CuentaPublicitaria {
 // se fusionan nombres homónimos entre plataformas.
 model Campania {
   id                   String    @id @default(uuid()) @db.Uuid
-  cuentaPublicitariaId String    @map("cuenta_publicitaria_id") @db.Uuid
+  cuentaPublicitariaId String?   @map("cuenta_publicitaria_id") @db.Uuid
+  cuentaAnunciosConexionId String? @map("cuenta_anuncios_conexion_id") @db.Uuid
   idExterno            String    @map("id_externo") @db.Text
   nombre               String    @db.Text
   redSocial            RedSocial @map("red_social")
   activa               Boolean   @default(true)
 
-  cuentaPublicitaria CuentaPublicitaria @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+  cuentaPublicitaria      CuentaPublicitaria?      @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: Cascade)
+  cuentaAnunciosConexion  CuentaAnunciosConexion?  @relation(fields: [cuentaAnunciosConexionId], references: [id], onDelete: Cascade)
+  leads              Lead[]
+  metricasDiarias    CampaniaMetricaDiaria[]
 
+  // Un CHECK a nivel de fila (campanias_exactly_one_owner_check, en la
+  // migración) garantiza que exactamente una de las dos FK sea NOT NULL --
+  // por eso ninguno de estos dos @@unique necesita ser parcial: Postgres ya
+  // trata NULL como distinto en un índice único normal, así que una fila con
+  // `cuentaPublicitariaId: null` nunca choca con otra por esa columna.
   @@unique([cuentaPublicitariaId, idExterno])
+  @@unique([cuentaAnunciosConexionId, idExterno])
   @@map("campanias")
+}
+
+// Conexión OAuth de LinkedIn Lead Sync. Guarda credenciales del miembro que
+// autorizó la aplicación, cifradas con `TOKEN_ENCRYPTION_KEY`. Una conexión
+// puede descubrir y activar varias fuentes (`LinkedInFuente`).
+model LinkedInConexion {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  bridgeId               String                 @unique @map("bridge_id") @db.Uuid
+  autorizadoPorUsuarioId String                 @map("autorizado_por_usuario_id") @db.Uuid
+  memberUrn              String?                @map("member_urn") @db.Text
+  accessTokenCifrado     String                 @map("access_token_cifrado") @db.Text
+  refreshTokenCifrado    String?                @map("refresh_token_cifrado") @db.Text
+  accessTokenExpiraEn    DateTime               @map("access_token_expira_en") @db.Timestamptz(6)
+  refreshTokenExpiraEn   DateTime?              @map("refresh_token_expira_en") @db.Timestamptz(6)
+  scopes                 String[]
+  estado                 EstadoConexionLinkedIn @default(ACTIVA)
+  revocadoEn             DateTime?              @map("revocado_en") @db.Timestamptz(6)
+  creadoEn               DateTime               @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn          DateTime               @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  bridge         Bridge           @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  autorizadoPor  Usuario          @relation(fields: [autorizadoPorUsuarioId], references: [id], onDelete: Restrict)
+  fuentes        LinkedInFuente[]
+
+  @@index([estado, accessTokenExpiraEn], map: "idx_linkedin_conexiones_estado_access_expira")
+  @@map("linkedin_conexiones")
+}
+
+// State efímero anti-CSRF para OAuth LinkedIn. Solo se persiste el hash del
+// state y se consume una vez; el valor plano nunca queda en base de datos.
+model LinkedInOAuthState {
+  id        String    @id @default(uuid()) @db.Uuid
+  stateHash String    @unique @map("state_hash") @db.Text
+  bridgeId  String    @map("bridge_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  bridge  Bridge  @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([expiraEn], map: "idx_linkedin_oauth_states_expira")
+  @@index([bridgeId, usuarioId], map: "idx_linkedin_oauth_states_bridge_usuario")
+  @@map("linkedin_oauth_states")
+}
+
+// Fuente LinkedIn seleccionable después del OAuth. Una misma autorización puede
+// tener varias fuentes activas; cada fuente representa un owner + tipo de lead.
+model LinkedInFuente {
+  id                         String                    @id @default(uuid()) @db.Uuid
+  conexionId                 String                    @map("conexion_id") @db.Uuid
+  cuentaPublicitariaId       String?                   @map("cuenta_publicitaria_id") @db.Uuid
+  tipo                       TipoFuenteLinkedIn
+  ownerUrn                   String                    @map("owner_urn") @db.Text
+  nombre                     String                    @db.Text
+  tipoLead                   TipoLeadLinkedIn          @map("tipo_lead")
+  activa                     Boolean                   @default(false)
+  estadoSuscripcion          EstadoSuscripcionLinkedIn @default(PENDIENTE) @map("estado_suscripcion")
+  subscriptionId             String?                   @map("subscription_id") @db.Text
+  ultimaSincronizacionEn     DateTime?                 @map("ultima_sincronizacion_en") @db.Timestamptz(6)
+  creadoEn                   DateTime                  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn              DateTime                  @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  conexion           LinkedInConexion    @relation(fields: [conexionId], references: [id], onDelete: Cascade)
+  cuentaPublicitaria CuentaPublicitaria? @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: SetNull)
+  formularios        LinkedInFormulario[]
+
+  @@unique([conexionId, ownerUrn, tipoLead], map: "linkedin_fuentes_conexion_owner_tipo_lead_key")
+  @@index([activa, estadoSuscripcion], map: "idx_linkedin_fuentes_activa_estado_suscripcion")
+  @@index([ownerUrn], map: "idx_linkedin_fuentes_owner_urn")
+  @@map("linkedin_fuentes")
+}
+
+// Snapshot del formulario/version usado para mapear respuestas por
+// `questionId`/`predefinedField`, nunca por el texto visible de la pregunta.
+model LinkedInFormulario {
+  id                   String   @id @default(uuid()) @db.Uuid
+  fuenteId             String   @map("fuente_id") @db.Uuid
+  versionedFormUrn     String   @map("versioned_form_urn") @db.Text
+  nombre               String?  @db.Text
+  contenido            Json     @db.JsonB
+  activo               Boolean  @default(true)
+  sincronizadoEn       DateTime @map("sincronizado_en") @db.Timestamptz(6)
+
+  fuente LinkedInFuente @relation(fields: [fuenteId], references: [id], onDelete: Cascade)
+
+  @@unique([fuenteId, versionedFormUrn], map: "linkedin_formularios_fuente_versioned_form_key")
+  @@map("linkedin_formularios")
+}
+
+// ---------------------------------------------------------------------------
+// whatsappMessages: mensajería WhatsApp Business Platform (Cloud API).
+// Deliberadamente NO extiende Bridge/RedSocial -- un mensaje no es un lead
+// (decisión de la exploración de diseño: Bridge está modelado 1:1 con "fuente
+// de leads", forzar WhatsApp ahí cambiaría esa semántica para todo el resto
+// del código que ya la asume). `RedSocial.WHATSAPP` solo clasifica el origen
+// de un `Lead` auto-creado desde una `Conversacion`, nunca un `Bridge.redSocial`.
+// ---------------------------------------------------------------------------
+
+enum EstadoConexionWhatsApp {
+  ACTIVA
+  TOKEN_EXPIRADO
+  ERROR
+  INACTIVA
+
+  @@map("estado_conexion_whatsapp")
+}
+
+// Un solo número de WhatsApp Business por empresa (decisión de producto) --
+// `empresaId` es @unique, no una FK cualquiera. Solo un rol con acceso
+// holding-wide (empresaId: null, mismo criterio que ADMINISTRADOR/SUPERVISOR
+// en el resto del sistema) puede ver los números de más de una empresa.
+model WhatsAppConexion {
+  id               String                 @id @default(uuid()) @db.Uuid
+  empresaId        String                 @unique @map("empresa_id") @db.Uuid
+  numeroTelefonoId String                 @unique @map("numero_telefono_id") @db.Text
+  numeroDisplay    String                 @map("numero_display") @db.Text
+  wabaId           String                 @map("waba_id") @db.Text
+  // AES-256-GCM vía lib/cifrado-token.ts -- mismo mecanismo que
+  // CuentaPublicitaria.tokenCifrado y LinkedInConexion, nunca en claro.
+  tokenCifrado     String?                @map("token_cifrado") @db.Text
+  tokenExpiraEn    DateTime?              @map("token_expira_en") @db.Timestamptz(6)
+  estado           EstadoConexionWhatsApp @default(INACTIVA)
+  creadoEn         DateTime               @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa        Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  conversaciones Conversacion[]
+
+  @@map("whatsapp_conexiones")
+}
+
+// State efímero anti-CSRF para el OAuth de WhatsApp -- mismo patrón que
+// LinkedInOAuthState (solo el hash del state, nunca en claro). A diferencia
+// de LinkedIn, no cuelga de un Bridge -- todavía no existe ninguna fila de
+// conexión en el momento en que se genera el state (se descubre el
+// número/WABA recién en el callback), así que cuelga directo de empresa+usuario.
+model WhatsAppOAuthState {
+  id        String    @id @default(uuid()) @db.Uuid
+  stateHash String    @unique @map("state_hash") @db.Text
+  empresaId String    @map("empresa_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([expiraEn], map: "idx_whatsapp_oauth_states_expira")
+  @@index([empresaId, usuarioId], map: "idx_whatsapp_oauth_states_empresa_usuario")
+  @@map("whatsapp_oauth_states")
+}
+
+// ---------------------------------------------------------------------------
+// metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
+// campañas Meta") -- conexión OAuth a la Marketing/Insights API de una cuenta
+// de anuncios de Meta (`act_<id>`). Distinto de `CuentaPublicitaria`: esa
+// tabla representa una Page de Facebook (leadgen, Page Access Token scopeado
+// a webhooks), esta representa la cuenta publicitaria (`ads_read`, scopeada a
+// Marketing/Insights API). Una sola conexión cubre Facebook E Instagram a la
+// vez -- Instagram no tiene cuenta de anuncios propia, sus campañas corren en
+// la misma cuenta `act_<id>` y se distinguen por `publisher_platform` en
+// Insights, así que no hace falta una fila por plataforma. El job de
+// sincronización de `CampaniaMetricaDiaria` que consume este token es su
+// propia etapa de trabajo (docs/blocks/e-dashboards.md, "no como un job
+// más"), NO parte de este módulo.
+// ---------------------------------------------------------------------------
+
+enum EstadoConexionCuentaAnuncios {
+  ACTIVA
+  TOKEN_EXPIRADO
+  ERROR
+  INACTIVA
+
+  @@map("estado_conexion_cuenta_anuncios")
+}
+
+// Un solo actor de anuncios de Meta conectado por empresa (decisión de
+// producto, mismo criterio que `WhatsAppConexion`) -- `empresaId` es
+// `@unique`, no una FK cualquiera. `cuentaAnunciosIdExterno` NO es unique
+// global: D12 permite que distintas empresas conecten el mismo `act_<id>` con
+// credenciales propias. Facebook e Instagram se separan por `publisher_platform`
+// en `CampaniaMetricaDiaria`, no por cuentas distintas.
+model CuentaAnunciosConexion {
+  id                      String                       @id @default(uuid()) @db.Uuid
+  empresaId               String                       @unique @map("empresa_id") @db.Uuid
+  autorizadoPorUsuarioId  String                       @map("autorizado_por_usuario_id") @db.Uuid
+  cuentaAnunciosIdExterno String                       @map("cuenta_anuncios_id_externo") @db.Text
+  nombre                  String                       @map("nombre") @db.Text
+  moneda                  String?                      @db.Text
+  zonaHoraria             String?                      @map("zona_horaria") @db.Text
+  // AES-256-GCM vía lib/cifrado-token.ts -- mismo mecanismo que
+  // WhatsAppConexion.tokenCifrado/CuentaPublicitaria.tokenCifrado, nunca en claro.
+  tokenCifrado            String?                      @map("token_cifrado") @db.Text
+  tokenExpiraEn           DateTime?                    @map("token_expira_en") @db.Timestamptz(6)
+  estado                  EstadoConexionCuentaAnuncios @default(INACTIVA)
+  ultimaSincronizacionEn  DateTime?                    @map("ultima_sincronizacion_en") @db.Timestamptz(6)
+  ultimoError             String?                      @map("ultimo_error") @db.Text
+  creadoEn                DateTime                     @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn           DateTime                     @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  empresa       Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  autorizadoPor Usuario    @relation(fields: [autorizadoPorUsuarioId], references: [id], onDelete: Restrict)
+  campanias     Campania[]
+
+  @@unique([empresaId, cuentaAnunciosIdExterno], map: "cuentas_anuncios_conexiones_empresa_act_key")
+  @@index([cuentaAnunciosIdExterno], map: "idx_cuentas_anuncios_conexiones_act")
+  @@index([estado, ultimaSincronizacionEn], map: "idx_cuentas_anuncios_conexiones_sync")
+  @@map("cuentas_anuncios_conexiones")
+}
+
+model CampaniaMetricaDiaria {
+  id          String    @id @default(uuid()) @db.Uuid
+  campaniaId  String    @map("campania_id") @db.Uuid
+  fecha       DateTime  @db.Date
+  redSocial   RedSocial @map("red_social")
+  gasto       Decimal   @default(0) @db.Decimal(14, 2)
+  impresiones Int       @default(0)
+  clics       Int       @default(0)
+  alcance     Int       @default(0)
+  moneda      String    @db.Text
+  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  campania Campania @relation(fields: [campaniaId], references: [id], onDelete: Cascade)
+
+  @@unique([campaniaId, fecha, redSocial], map: "campania_metricas_diarias_campania_fecha_red_key")
+  @@index([fecha], map: "idx_campania_metricas_diarias_fecha")
+  @@map("campania_metricas_diarias")
+}
+
+// State efímero anti-CSRF para el OAuth de la cuenta de anuncios de Meta --
+// mirror exacto de `WhatsAppOAuthState` (solo el hash del state, nunca en
+// claro). Cuelga directo de empresa+usuario -- todavía no existe ninguna fila
+// de conexión en el momento en que se genera el state (se descubren las
+// cuentas recién en el callback).
+model CuentaAnunciosOAuthState {
+  id        String    @id @default(uuid()) @db.Uuid
+  stateHash String    @unique @map("state_hash") @db.Text
+  empresaId String    @map("empresa_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  expiraEn  DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn   DateTime? @map("usado_en") @db.Timestamptz(6)
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([expiraEn], map: "idx_cuentas_anuncios_oauth_states_expira")
+  @@index([empresaId, usuarioId], map: "idx_cuentas_anuncios_oauth_states_empresa_usuario")
+  @@map("cuentas_anuncios_oauth_states")
+}
+
+// Un hilo por (cliente, conexión) -- @@unique evita duplicar la conversación
+// si llegan mensajes del mismo cliente en distintos webhooks. `asesorId` es
+// el puntero de ruteo ACTUAL (a quién le llega el próximo mensaje), igual
+// que `Lead.asesorId` -- el historial de cómo llegó a ser ese vive en
+// `ConversacionEvento`, nunca acá.
+model Conversacion {
+  id              String    @id @default(uuid()) @db.Uuid
+  clienteId       String    @map("cliente_id") @db.Uuid
+  conexionId      String    @map("conexion_id") @db.Uuid
+  // Denormalizado desde WhatsAppConexion.empresaId (mismo patrón RLS que
+  // Cita/LeadEvento/Notificacion) para que la política compare empresa_id
+  // directo, sin join.
+  empresaId       String    @map("empresa_id") @db.Uuid
+  asesorId        String?   @map("asesor_id") @db.Uuid
+  ultimoMensajeEn DateTime? @map("ultimo_mensaje_en") @db.Timestamptz(6)
+  creadaEn        DateTime  @default(now()) @map("creada_en") @db.Timestamptz(6)
+
+  cliente  Cliente          @relation(fields: [clienteId], references: [id])
+  conexion WhatsAppConexion @relation(fields: [conexionId], references: [id])
+  empresa  Empresa          @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+  asesor   Usuario?         @relation(fields: [asesorId], references: [id], onDelete: SetNull)
+  mensajes Mensaje[]
+  eventos  ConversacionEvento[]
+
+  @@unique([clienteId, conexionId])
+  @@index([empresaId], map: "idx_conversaciones_whatsapp_empresa")
+  @@index([asesorId], map: "idx_conversaciones_whatsapp_asesor")
+  @@map("conversaciones_whatsapp")
+}
+
+enum TipoEventoConversacion {
+  ASIGNADA
+  REASIGNADA_TRASPASO_LEAD
+  REASIGNADA_SLA_VENCIDO
+
+  @@map("tipo_evento_conversacion")
+}
+
+// Mirror exacto de LeadEvento: log de eventos append-only, nunca una tabla de
+// vigencias con fecha desde/hasta. "Quién estaba a cargo cuando llegó el
+// mensaje X" se resuelve con el último evento anterior a `mensaje.enviadoEn`,
+// no con una columna en `Mensaje`.
+model ConversacionEvento {
+  id             String                  @id @default(uuid()) @db.Uuid
+  conversacionId String                  @map("conversacion_id") @db.Uuid
+  // El asesor asignado A PARTIR de este evento; null si se libera sin reasignar.
+  usuarioId      String?                 @map("usuario_id") @db.Uuid
+  tipo           TipoEventoConversacion
+  ocurridoEn     DateTime                @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  empresaId      String                  @map("empresa_id") @db.Uuid
+
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  usuario      Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  empresa      Empresa      @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@index([conversacionId, ocurridoEn], map: "idx_conversaciones_whatsapp_eventos_conversacion")
+  @@index([empresaId], map: "idx_conversaciones_whatsapp_eventos_empresa")
+  @@map("conversaciones_whatsapp_eventos")
+}
+
+enum DireccionMensaje {
+  ENTRANTE
+  SALIENTE
+
+  @@map("direccion_mensaje")
+}
+
+// `idExternoMensaje` (wamid de Meta) + @@unique es la idempotencia contra
+// reintentos de webhook -- mismo idioma que
+// LeadRecibido.@@unique([bridgeId, idExternoLead]). `usuarioId` acá es quién
+// ESCRIBIÓ este mensaje (solo aplica a SALIENTE) -- no confundir con
+// ConversacionEvento.usuarioId (quién estaba a cargo, historial de ruteo).
+model Mensaje {
+  id               String           @id @default(uuid()) @db.Uuid
+  conversacionId   String           @map("conversacion_id") @db.Uuid
+  direccion        DireccionMensaje
+  idExternoMensaje String           @map("id_externo_mensaje") @db.Text
+  texto            String?          @db.Text
+  payloadOriginal  Json?            @map("payload_original") @db.JsonB
+  usuarioId        String?          @map("usuario_id") @db.Uuid
+  enviadoEn        DateTime         @map("enviado_en") @db.Timestamptz(6)
+
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  usuario      Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@unique([conversacionId, idExternoMensaje])
+  @@index([conversacionId, enviadoEn], map: "idx_mensajes_whatsapp_conversacion")
+  @@map("mensajes_whatsapp")
 }
 
 // Bitácora de errores/eventos por bridge (docs/05-bridges.md §8). Se escribe
@@ -513,10 +1337,13 @@ model BridgeLog {
   mensaje    String         @db.Text
   payload    Json?          @db.JsonB
   ocurridoEn DateTime       @default(now()) @map("ocurrido_en") @db.Timestamptz(6)
+  empresaId  String?        @map("empresa_id") @db.Uuid
 
   bridge Bridge? @relation(fields: [bridgeId], references: [id], onDelete: SetNull)
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Restrict)
 
   @@index([bridgeId, ocurridoEn(sort: Desc)])
+  @@index([empresaId], map: "idx_bridge_logs_empresa")
   @@map("bridge_logs")
 }
 
@@ -551,4 +1378,128 @@ model LeadRecibido {
   @@unique([bridgeId, idExternoLead])
   @@index([estado, disponibleEn], map: "idx_leads_recibidos_estado_disponible")
   @@map("leads_recibidos")
+}
+
+// Configuración de instancia (integración tema-empresarial): nombre visible +
+// colores de marca para personalizar la pantalla de bienvenida post-login.
+// Singleton — sin relación con `Usuario` ni ninguna otra tabla; el
+// repositorio siempre opera sobre la primera fila que exista (`findFirst`) y
+// la crea con valores por defecto si no hay ninguna (lazy init en el GET, sin
+// seed obligatorio). NO es un concepto de tenant/empresa-scoping — esta
+// instancia sigue siendo single-tenant (AGENTS.md §1); es la personalización
+// visual de la única empresa dueña del despliegue.
+model ConfiguracionEmpresa {
+  id              String   @id @default(uuid()) @db.Uuid
+  nombre          String   @db.Text
+  colorPrimario   String   @map("color_primario") @db.VarChar(7)
+  colorSecundario String   @map("color_secundario") @db.VarChar(7)
+  // tema-empresarial-integracion (PASO 6): isotipo del holding -- mismo
+  // criterio que `Empresa.logoUrl` (URL pegada a mano, sin subsistema de
+  // upload). Nullable -- a diferencia de nombre/colores de este modelo, no
+  // hay un valor de fábrica para un logo (no existe un isotipo genérico).
+  logoUrl         String?  @map("logo_url") @db.Text
+  actualizadoEn   DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("configuracion_empresa")
+}
+
+// Bloque B (Fase 3, diseño "Ambiguity persistence (NEW)"): cola de revisión
+// del comparador en sombra `(cliente, empresa)` de "lead abierto"
+// (`shadow-lead-scope.service.ts::compararLeadAbiertoScope`). Puramente
+// observacional — ningún código de este cambio lee `resuelto` para decidir
+// nada; queda para un futuro Bloque C. `empresaLeadId`/`empresaIngestaId`
+// son escalares planos (sin FK a `Empresa`): una foto denormalizada de la
+// colisión, deliberadamente desacoplada del ciclo de vida de `Empresa`.
+// `@@unique([clienteId, leadAbiertoId, empresaIngestaId])`: upsert
+// idempotente — una segunda repetición desde la MISMA empresa foránea sobre
+// el MISMO lead abierto no duplica la fila.
+model LeadAbiertoRevisionPendiente {
+  id               String    @id @default(uuid()) @db.Uuid
+  clienteId        String    @map("cliente_id") @db.Uuid
+  leadAbiertoId    String    @map("lead_abierto_id") @db.Uuid
+  empresaLeadId    String    @map("empresa_lead_id") @db.Uuid
+  empresaIngestaId String    @map("empresa_ingesta_id") @db.Uuid
+  detectadoEn      DateTime  @default(now()) @map("detectado_en") @db.Timestamptz(6)
+  resuelto         Boolean   @default(false)
+  resueltoEn       DateTime? @map("resuelto_en") @db.Timestamptz(6)
+
+  cliente     Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  leadAbierto Lead    @relation(fields: [leadAbiertoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, leadAbiertoId, empresaIngestaId])
+  @@index([resuelto])
+  @@map("leads_abiertos_revision_pendiente")
+}
+
+// reportes (Bloque E, docs/blocks/e-dashboards.md "Exportación PDF/XLSX"):
+// esquema copiado tal cual del documento aprobado -- no se reinventa acá.
+// Módulo con carpeta propia (`services/reportes/`, `repositories/reportes/`,
+// `controllers/reportes/`, `routes/reportes/`, `schemas/reportes/`), decisión
+// de esta sesión que reemplaza el layout de "archivos sueltos" que describía
+// la sección "Enfoque de implementación" del documento -- mismo criterio de
+// carpeta que `negociacion`/`whatsappMessages`.
+//
+// `empresaId` nullable = configuración default holding-wide (doc, "null =
+// default holding"). CAVEAT no resuelto por este batch (documentado, no
+// corregido -- el esquema es el aprobado tal cual): Postgres no trata dos
+// filas con `empresa_id IS NULL` como duplicado de un `UNIQUE`, así que
+// `@@unique([empresaId])` no impide más de una fila default holding a nivel
+// de base de datos. Sin código de este batch que inserte filas de
+// `ConfiguracionReporte` (sin endpoint propio, ver `reporte-generacion.job.ts`
+// que solo LEE), el riesgo es latente, no activado.
+model ConfiguracionReporte {
+  id            String   @id @default(uuid()) @db.Uuid
+  empresaId     String?  @map("empresa_id") @db.Uuid // null = default holding
+  secciones     Json     @db.JsonB
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId])
+  @@map("configuraciones_reporte")
+}
+
+enum EstadoReporteJob {
+  PENDIENTE
+  PROCESANDO
+  LISTO
+  ERROR
+
+  @@map("estado_reporte_job")
+}
+
+// Scope empresarial de `ReporteJob` -- SIEMPRE derivado server-side (doc,
+// "Scope empresarial de ReporteJob"): deliberadamente SIN `empresaId` propio
+// acá. El alcance se resuelve en `services/reportes/reportes.access.ts::
+// resolverEmpresaIdReporte` a partir de `usuarioId` y sus `Membresia`
+// activas, nunca desde `parametros` (JSON) enviado por el cliente -- aplica a
+// la creación del job, `GET /reportes/jobs/activo` y la descarga del archivo
+// (`archivoUrl`). Por la misma razón, esta tabla NO lleva política RLS de
+// tenant (a diferencia de `ConfiguracionReporte`, que sí tiene `empresaId`):
+// no hay columna `empresa_id` que una política pueda comparar: el aislamiento
+// vive enteramente en la capa de aplicación, filtrando siempre por
+// `usuarioId` (mismo patrón ya usado por `notificacion.repository.ts::
+// listByUsuario`, tabla tampoco acotada por RLS de usuario).
+model ReporteJob {
+  id           String           @id @default(uuid()) @db.Uuid
+  usuarioId    String           @map("usuario_id") @db.Uuid
+  tipo         String           // "pdf" | "xlsx"
+  parametros   Json             @db.JsonB
+  estado       EstadoReporteJob @default(PENDIENTE)
+  // NOMBRE del blob en el contenedor privado de Azure Blob Storage
+  // (`AZURE_STORAGE_CONTAINER_REPORTES`, `lib/azure-blob-storage.ts::
+  // uploadReporteArchivo`), NO una URL pública ni una ruta de disco local --
+  // el contenedor es privado (sin `access: "blob"`, a diferencia del isotipo
+  // de empresa), así que una URL no serviría de nada sin un SAS token. `GET
+  // /reportes/jobs/:id/descargar` usa este valor para que el backend
+  // descargue el blob con sus propias credenciales y lo streamee de vuelta.
+  archivoUrl   String?          @map("archivo_url")
+  error        String?          @db.Text
+  creadoEn     DateTime         @default(now()) @map("creado_en") @db.Timestamptz(6)
+  finalizadoEn DateTime?        @map("finalizado_en") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, estado])
+  @@map("reporte_jobs")
 }

@@ -59,6 +59,8 @@ function toBridgeDetalleDto(bridge: BridgeConCuentas): BridgeDetalleDto {
 export interface CreateBridgeInput {
   redSocial: RedSocial;
   nombre: string;
+  // Bloque C (D4, Fase 2/Stage 2): obligatorio, ver `bridges.schema.ts`.
+  empresaId: string;
 }
 
 export interface ClaveApiResult {
@@ -78,6 +80,7 @@ export async function createBridge(input: CreateBridgeInput): Promise<ClaveApiRe
     redSocial: input.redSocial,
     nombre: input.nombre,
     claveApiHash: hashClaveBridge(claveApi),
+    empresaId: input.empresaId,
   });
   return { bridge: toBridgeDto(bridge), claveApi };
 }
@@ -212,13 +215,29 @@ export async function regenerateClave(id: string): Promise<ClaveApiResult> {
  */
 const RED_SOCIAL_IMPLEMENTACION: Record<
   RedSocial,
-  { implementado: boolean; mecanismo: "webhook-meta" | "generico" | "polling-linkedin" }
+  { implementado: boolean; mecanismo: "webhook-meta" | "generico" | "polling-linkedin" | "polling-api-generica" }
 > = {
   FACEBOOK: { implementado: true, mecanismo: "webhook-meta" },
   INSTAGRAM: { implementado: false, mecanismo: "webhook-meta" },
   GOOGLE_FORMS: { implementado: true, mecanismo: "generico" },
   X: { implementado: false, mecanismo: "generico" },
   LINKEDIN: { implementado: false, mecanismo: "polling-linkedin" },
+  // bridgeApi: adapter + job de polling + endpoints de config ya existen
+  // (jobs/bridgeApi/poll.job.ts) -- implementado de verdad, no un enum
+  // reservado para después.
+  API_EXTERNA: { implementado: true, mecanismo: "polling-api-generica" },
+  // whatsappMessages: fix mecánico requerido por el nuevo valor de enum del
+  // schema aprobado (`RedSocial.WHATSAPP`) -- sin esta entrada,
+  // `RED_SOCIAL_IMPLEMENTACION` deja de ser un `Record<RedSocial, ...>`
+  // válido y el build entero falla. `implementado: false`: WhatsApp
+  // deliberadamente NUNCA es un tipo de Bridge creable vía `POST /bridges`
+  // (ver el comentario del schema, "WhatsApp NUNCA tiene un Bridge propio")
+  // -- se conecta por su propio flujo OAuth (`GET /whatsapp/conectar`) y
+  // webhook dedicado (`POST /webhooks/whatsapp`), nunca por este catálogo.
+  // `mecanismo: "webhook-meta"` solo describe el transporte subyacente
+  // (mismo criterio que INSTAGRAM arriba, también `implementado: false`),
+  // no una promesa de que se pueda crear un Bridge de este tipo.
+  WHATSAPP: { implementado: false, mecanismo: "webhook-meta" },
 };
 
 /**

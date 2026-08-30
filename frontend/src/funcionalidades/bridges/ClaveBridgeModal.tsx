@@ -50,6 +50,7 @@ export function ClaveBridgeModal({ open, bridgeNombre, claveApi, onClose }: Clav
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        className="max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] overflow-x-hidden overflow-y-auto sm:max-w-lg"
         onInteractOutside={(evento) => {
           if (!confirmed) evento.preventDefault();
         }}
@@ -58,16 +59,26 @@ export function ClaveBridgeModal({ open, bridgeNombre, claveApi, onClose }: Clav
         }}
       >
         <DialogHeader>
-          <DialogTitle>Clave de API de {bridgeNombre}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="pr-8 break-words [overflow-wrap:anywhere]">
+            Clave de API de {bridgeNombre}
+          </DialogTitle>
+          <DialogDescription className="text-pretty">
             Esta es la única vez que se muestra la clave completa. Copiala y guardala en un lugar
             seguro: el sistema solo guarda su hash irreversible y no puede volver a mostrarla.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted p-2">
-          <code className="scrollbar-themed flex-1 overflow-x-auto text-sm">{claveApi}</code>
-          <Button type="button" variant="outline" size="sm" onClick={() => void copyClave()}>
+        <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-muted p-2">
+          <code className="scrollbar-themed min-w-0 flex-1 overflow-x-auto text-sm whitespace-nowrap">
+            {claveApi}
+          </code>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => void copyClave()}
+          >
             {copied ? (
               <Check className="size-4" aria-hidden="true" />
             ) : (
@@ -77,19 +88,22 @@ export function ClaveBridgeModal({ open, bridgeNombre, claveApi, onClose }: Clav
           </Button>
         </div>
 
-        <div className="flex items-start gap-2">
+        <div className="flex min-w-0 items-start gap-2">
           <Checkbox
             id="clave-bridge-confirmacion"
             checked={confirmed}
             onCheckedChange={(valor) => setConfirmed(valor === true)}
           />
-          <Label htmlFor="clave-bridge-confirmacion" className="text-sm font-normal">
+          <Label
+            htmlFor="clave-bridge-confirmacion"
+            className="min-w-0 text-sm font-normal break-words [overflow-wrap:anywhere]"
+          >
             Ya copié la clave y la guardé en un lugar seguro
           </Label>
         </div>
 
-        <DialogFooter>
-          <Button type="button" disabled={!confirmed} onClick={onClose}>
+        <DialogFooter className="gap-2">
+          <Button type="button" className="w-full sm:w-auto" disabled={!confirmed} onClick={onClose}>
             Entendido, cerrar
           </Button>
         </DialogFooter>

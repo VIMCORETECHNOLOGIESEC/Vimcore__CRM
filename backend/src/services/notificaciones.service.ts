@@ -9,15 +9,56 @@ export interface NotificationInput {
   leadId?: string | null;
 }
 const UNASSIGNED_RECIPIENT_ROLES: readonly RolUsuario[] = ["SUPERVISOR", "ADMINISTRADOR"];
+/**
+ * Bloque C (D5): `empresaId` es un parámetro NUEVO, opcional (default
+ * `null` = holding-wide) para no romper los call sites existentes que
+ * todavía no resuelven una empresa en esta etapa (`asignacion.service.ts`,
+ * `ingesta.service.ts` — fuera del alcance de Fase 1 / Stage 1, ver
+ * `sdd/bloque-c-aislamiento`). Los 4 callers en alcance
+ * (`bridge-log.service.ts`, `sla-atrasado.service.ts`,
+ * `verificacion-token.service.ts`, y este mismo chokepoint) sí pasan el
+ * `empresaId` real del recurso que disparó la notificación.
+ */
 export async function createForActiveRoles(
+  roles: readonly RolUsuario[],
+  input: NotificationInput,
+  empresaId: string,
+  client: PrismaClientOrTransaction = prisma,
+) {
+  if (!empresaId) {
+    throw new AppError(
+      "contexto_empresa_no_resuelto",
+      422,
+      "La notificación requiere una empresa de origen",
+    );
+  }
+  const recipientIds = await notificationRepository.findActiveRecipientIds(roles, empresaId, client);
+  const created = [];
+  for (const usuarioId of recipientIds) {
+    created.push(
+      await notificationRepository.createNotificacion(
+        { usuarioId, ...input, empresaId },
+        client,
+      ),
+    );
+  }
+  return created;
+}
+
+export async function createHoldingForActiveRoles(
   roles: readonly RolUsuario[],
   input: NotificationInput,
   client: PrismaClientOrTransaction = prisma,
 ) {
-  const recipientIds = await notificationRepository.findActiveRecipientIds(roles, client);
+  const recipientIds = await notificationRepository.findActiveRecipientIds(roles, null, client);
   const created = [];
   for (const usuarioId of recipientIds) {
-    created.push(await notificationRepository.createNotificacion({ usuarioId, ...input }, client));
+    created.push(
+      await notificationRepository.createNotificacion(
+        { usuarioId, ...input, empresaId: null },
+        client,
+      ),
+    );
   }
   return created;
 }
@@ -35,15 +76,29 @@ export async function markAllNotificationsRead(usuarioId: string): Promise<void>
 }
 export async function createForActiveSupervisorsAndAdmins(
   input: NotificationInput,
+  empresaId: string,
   client: PrismaClientOrTransaction = prisma,
 ) {
+  if (!empresaId) {
+    throw new AppError(
+      "contexto_empresa_no_resuelto",
+      422,
+      "La notificación requiere una empresa de origen",
+    );
+  }
   const recipientIds = await notificationRepository.findActiveRecipientIds(
     UNASSIGNED_RECIPIENT_ROLES,
+    empresaId,
     client,
   );
   const created = [];
   for (const usuarioId of recipientIds) {
-    created.push(await notificationRepository.createNotificacion({ usuarioId, ...input }, client));
+    created.push(
+      await notificationRepository.createNotificacion(
+        { usuarioId, ...input, empresaId },
+        client,
+      ),
+    );
   }
   return created;
 }

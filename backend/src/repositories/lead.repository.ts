@@ -3,6 +3,25 @@ import { EtapaLead, Prisma } from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 
 /**
+ * Group 3 (Bloque C, Etapa 3, design D6): definida ACÁ (no en
+ * `asignacion.service.ts`, aunque el diseño la agrupe conceptualmente con
+ * `withCasRetry`) para evitar un import circular —
+ * `asignacion.service.ts` ya importa este archivo (`import * as
+ * leadRepository from "../repositories/lead.repository.js"`), así que
+ * `lead.repository.ts` no puede importar de vuelta desde
+ * `asignacion.service.ts`. `asignacion.service.ts` la re-exporta
+ * (`export { VersionConflictError } from "../repositories/lead.repository.js"`)
+ * para que los callers sigan pudiendo importarla desde ahí, como indica el
+ * diseño.
+ */
+export class VersionConflictError extends Error {
+  constructor(public readonly leadId: string) {
+    super(`Version conflict al asignar el lead ${leadId} — otro escritor ganó la carrera CAS`);
+    this.name = "VersionConflictError";
+  }
+}
+
+/**
  * §2 (docs/02-reglas-negocio.md): un lead está "abierto" mientras su etapa
  * no sea una etapa de cierre. `VENTA`/`NO_VENTA` son las dos únicas etapas
  * de cierre — cualquier otra cuenta como abierta.
@@ -71,6 +90,28 @@ export interface CreateLeadData {
   redSocial?: Lead["redSocial"];
   payloadOriginal?: Prisma.InputJsonValue;
   camposDinamicos?: Prisma.InputJsonValue;
+  /**
+   * M-hardening Bloque A (WU4, spec lead-attribution, D6): atribución
+   * canónica resuelta por `atribucion.service.ts::resolverAtribucion`.
+   * Mismo criterio de opcionalidad que `redSocial` arriba — un llamador que
+   * no las provee (p. ej. pruebas que no simulan un `LeadEntrante`
+   * atribuido) deja las 5 columnas en `null`/`undefined`, sin romper.
+   */
+  cuentaPublicitariaId?: Lead["cuentaPublicitariaId"];
+  campaniaId?: Lead["campaniaId"];
+  idExternoCuenta?: Lead["idExternoCuenta"];
+  idExternoCampania?: Lead["idExternoCampania"];
+  nombreCampania?: Lead["nombreCampania"];
+  /**
+   * Bloque B (Fase 3, spec lead-empresa-derivation): derivado de
+   * `Bridge.empresaId` (`atribucion.service.ts::resolverEmpresaIdDesdeBridge`).
+   * Bloque C (D4, Fase 2/Stage 2 — cutover bloqueante): OBLIGATORIO desde
+   * que `Lead.empresaId` es NOT NULL — ya no hay un valor "sin romper" que
+   * dejar en `null`. `deduplicacion.service.ts::deduplicateLead` resuelve el
+   * valor antes de llamar a `createLead` y rechaza la ingesta si no puede
+   * resolverlo.
+   */
+  empresaId: Lead["empresaId"];
 }
 
 export async function createLead(
@@ -236,15 +277,25 @@ function groupByRowsToCountMap<K extends string>(
   return mapa;
 }
 
+/**
+ * Bloque D (batch de negociación, punto 2/3): NO se migra en el lugar
+ * (deviation deliberada, ver `countCargaActivaPorResponsableEnEmpresa`
+ * abajo) — firma/comportamiento preservados sin cambios porque
+ * `asignacion.service.ts::selectResponsable` la sigue usando tal cual desde
+ * `whatsappMessages/whatsapp-sla.service.ts` (prohibido tocar) y desde
+ * `usuarios.service.ts::deactivateUsuario` (fuera del alcance nombrado de
+ * este batch); cambiar su contrato rompería ambos call sites.
+ */
 export async function countCargaActivaPorResponsable(
   pool: PoolAsignacion,
   candidatoIds: readonly string[],
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Map<string, number>> {
   if (candidatoIds.length === 0) return new Map();
+  const lead = client.lead as Prisma.TransactionClient["lead"];
 
   if (pool === "ASESOR") {
-    const filas = await client.lead.groupBy({
+    const filas = await lead.groupBy({
       by: ["asesorId"],
       where: { asesorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
       _count: { _all: true },
@@ -252,9 +303,53 @@ export async function countCargaActivaPorResponsable(
     return groupByRowsToCountMap(filas, "asesorId");
   }
 
-  const filas = await client.lead.groupBy({
+  const filas = await lead.groupBy({
     by: ["vendedorId"],
     where: { vendedorId: { in: [...candidatoIds] }, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+    _count: { _all: true },
+  });
+  return groupByRowsToCountMap(filas, "vendedorId");
+}
+
+/**
+ * Bloque D (batch de negociación, punto 2/3 — cutover del pool de `Lead`):
+ * variante NUEVA con `empresaId` OBLIGATORIO, usada exclusivamente por el
+ * pool `Membresia`-based (`usuario.repository.ts::findActivosPorRolMembresia`,
+ * D3/D4) — sin este filtro, la carga de un candidato se contaría GLOBAL
+ * (todas sus empresas), no solo la de la empresa del lead que se está
+ * asignando, dando un desempate incorrecto bajo multi-tenant. Función NUEVA
+ * y separada de `countCargaActivaPorResponsable` (arriba) por la misma razón
+ * documentada ahí (call sites prohibidos/fuera de alcance).
+ */
+export async function countCargaActivaPorResponsableEnEmpresa(
+  pool: PoolAsignacion,
+  candidatoIds: readonly string[],
+  empresaId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Map<string, number>> {
+  if (candidatoIds.length === 0) return new Map();
+  const lead = client.lead as Prisma.TransactionClient["lead"];
+
+  if (pool === "ASESOR") {
+    const filas = await lead.groupBy({
+      by: ["asesorId"],
+      where: {
+        asesorId: { in: [...candidatoIds] },
+        etapa: { notIn: [...ETAPAS_CERRADAS] },
+        empresaId,
+      },
+      _count: { _all: true },
+    });
+    return groupByRowsToCountMap(filas, "asesorId");
+  }
+
+  const filas = await lead.groupBy({
+    by: ["vendedorId"],
+    where: {
+      vendedorId: { in: [...candidatoIds] },
+      etapa: { notIn: [...ETAPAS_CERRADAS] },
+      empresaId,
+    },
     _count: { _all: true },
   });
   return groupByRowsToCountMap(filas, "vendedorId");
@@ -328,18 +423,45 @@ export async function findByIdForUpdate(
  * `vendedorId` según `pool` más el reinicio de `slaInicioEn`, nunca ambos
  * campos de responsable a la vez.
  */
+/**
+ * Group 3 (Bloque C, Etapa 3, design D6): CAS por `version` — el `updateMany`
+ * solo afecta la fila si `version` sigue siendo exactamente
+ * `expectedVersion` (leída por el llamador antes de decidir el receptor);
+ * cualquier escritor concurrente que ya haya escrito el lead mueve
+ * `version` y hace que este `updateMany` afecte 0 filas. `count === 0` lanza
+ * `VersionConflictError` — el llamador (`withCasRetry`, `asignacion.
+ * service.ts`) decide si reintenta. `updateMany` (a diferencia de `update`)
+ * no devuelve la fila, así que se relee tras un CAS exitoso.
+ *
+ * DEVIATION (deliberada, distinta de la lectura literal de la tarea):
+ * `expectedVersion` es un parámetro PROPIO de esta función, no un campo de
+ * `AssignResponsableData` — esa interfaz sigue siendo compartida con
+ * `assignResponsableBulk` (abajo), que escribe VARIOS leads a la vez y no
+ * tiene sentido gatear con un único version escalar (cada lead del lote
+ * puede estar en una version distinta). Solo esta función singular —
+ * la única que Group 3/D6 realmente envuelve en `withCasRetry`
+ * (`assignLead`/`reassignLead`/`transferLead`) — hace CAS real;
+ * `assignResponsableBulk` sigue incrementando `version` en cada escritura
+ * (mantiene el contador Lead-wide monotónico, spec R-C) pero sin gatear
+ * contra un `expectedVersion`, porque nunca se reintenta.
+ */
 export async function assignResponsable(
   id: string,
   data: AssignResponsableData,
+  expectedVersion: number,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Lead> {
-  return client.lead.update({
-    where: { id },
+  const resultado = await client.lead.updateMany({
+    where: { id, version: expectedVersion },
     data:
       data.pool === "ASESOR"
-        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn }
-        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn },
+        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn, version: { increment: 1 } }
+        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn, version: { increment: 1 } },
   });
+  if (resultado.count === 0) {
+    throw new VersionConflictError(id);
+  }
+  return client.lead.findUniqueOrThrow({ where: { id } });
 }
 
 /**
@@ -387,7 +509,7 @@ export async function assignResponsableBulk(
     where: { id: { in: [...leadIds] } },
     data:
       data.pool === "ASESOR"
-        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn }
-        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn },
+        ? { asesorId: data.responsableId, slaInicioEn: data.slaInicioEn, version: { increment: 1 } }
+        : { vendedorId: data.responsableId, slaInicioEn: data.slaInicioEn, version: { increment: 1 } },
   });
 }

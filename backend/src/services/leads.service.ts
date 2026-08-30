@@ -6,12 +6,24 @@ import * as leadRepository from "../repositories/lead.repository.js";
 import type { LeadConRelaciones } from "../repositories/lead.repository.js";
 import type { ListLeadsQuery, PatchEtapaBody } from "../schemas/leads.schema.js";
 import { applyFormulario } from "./formularios.service.js";
-import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import { aplicarFiltroEmpresa, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 import { calculateEstadoSla, type EstadoSla, slaFilterBoundaries } from "./sla.calculator.js";
 import { publishCommittedEvents } from "./committed-events.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+/**
+ * Bloque F (aditivo, decisión cerrada con el usuario): mismo criterio que
+ * `oportunidad.access.ts`/`asignacion.service.ts` — constante LOCAL de este
+ * archivo (usada solo por `buildWhere` para el scoping de listado, nunca por
+ * `canEdit`/`canRead`, que viven en `leads.access.ts`), así que agregar los
+ * dos roles nuevos acá no toca ninguna autorización fuera de este archivo.
+ */
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
 const ETAPAS_TERMINALES: readonly EtapaLead[] = ["VENTA", "NO_VENTA"];
 
 /**
@@ -54,9 +66,16 @@ function withEstadoSla<T extends Lead>(lead: T, ahora: Date): T & { estadoSla: E
  * DD5 (diseño M5): el `where` de rol se construye aquí a partir de
  * `req.user`, nunca desde el query string — spec "Query param no sobrescribe
  * el filtro de rol".
+ *
+ * Bloque C (Fase 2/Stage 2, D4/spec "Blocking empresa scoping on lead
+ * paths"): `usuario.empresaId === null` (holding-wide, D2) no agrega
+ * restricción; cualquier otro valor filtra por esa empresa exacta,
+ * independiente del rol — vía `leads.access.ts::aplicarFiltroEmpresa`
+ * (task 2.12 REFACTOR: mismo helper que `metricas.access.ts::resolveAlcanceBase`,
+ * antes duplicado).
  */
 function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date): Prisma.LeadWhereInput {
-  const where: Prisma.LeadWhereInput = {};
+  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario);
 
   if (!ROLES_ACCESO_TOTAL.includes(usuario.rol)) {
     where.OR = [{ asesorId: usuario.id }, { vendedorId: usuario.id }];
@@ -89,6 +108,18 @@ function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date):
       ...(query.desde ? { gte: query.desde } : {}),
       ...(query.hasta ? { lte: query.hasta } : {}),
     };
+  }
+
+  // M-hardening Bloque A (WU8, spec lead-listing): aplicado ANTES del bloque
+  // `estadoSla` de abajo — ese bloque también escribe `cerradoEn` (siempre
+  // `null` para cualquier valor de `estadoSla`, D6 de M6), así que el orden
+  // determina cuál gana si ambos coexistieran. El schema (`D7`,
+  // `leads.schema.ts`) ya rechaza `vista=cerrados` + `estadoSla` antes de
+  // llegar acá, así que en la práctica nunca compiten por la misma escritura.
+  if (query.vista === "activos") {
+    where.cerradoEn = null;
+  } else if (query.vista === "cerrados") {
+    where.cerradoEn = { not: null };
   }
 
   // DD6: fronteras precomputadas, comparadas contra `sla_inicio_en`, nunca
@@ -178,11 +209,19 @@ export async function findLeadById(usuario: UsuarioAcceso, id: string): Promise<
  * `Lead`, e inserción en `lead_eventos` (D3). Solo `canEdit` puede ejecutarla
  * (D4); una etapa terminal ya cerrada nunca se reabre (D5).
  *
- * VENTA/NO_VENTA (D6): el semáforo se fija directo (VERDE/ROJO) sin invocar
- * el motor de puntuación — `applyFormulario` (PR2) rechaza estas etapas por
- * diseño (ver `formularios.service.ts`). NUEVO/CONTACTADO/CITA sí pasan por
- * `applyFormulario`, que ya emite su propio `CAMBIO_SEMAFORO` (D17) dentro de
- * la misma `tx` cuando el color cambia — este servicio no lo duplica.
+ * VENTA/NO_VENTA (D6, RETIRADO — batch de negociación Bloque D): este
+ * endpoint YA NO cierra negociaciones. `canClose`/`leads.access.ts` quedan
+ * SUPERSEDIDOS por `oportunidad.access.ts::canCerrarOportunidad` (D7) —
+ * criterio de salida esencial de Bloque D ("la autoridad de cierre usa
+ * Membresia... no depende de Usuario.rol"). Ver el `throw` explícito dentro
+ * de la rama VENTA/NO_VENTA más abajo, que reemplaza por completo el cierre
+ * que este comentario describía. GAP DE FRONTEND (reportado, no resuelto en
+ * este batch — fuera de alcance backend): el formulario real de cierre en
+ * frontend puede seguir apuntando a este endpoint; debe migrar a
+ * `POST /oportunidades/:id/cerrar` antes de desplegar este cambio.
+ * NUEVO/CONTACTADO/CITA sí pasan por `applyFormulario`, que ya emite su
+ * propio `CAMBIO_SEMAFORO` (D17) dentro de la misma `tx` cuando el color
+ * cambia — este servicio no lo duplica. Sin cambios en esa rama.
  */
 export async function transitionEtapa(
   usuario: UsuarioAcceso,
@@ -212,41 +251,31 @@ export async function transitionEtapa(
         );
       }
 
+      if (body.etapa === "VENTA" || body.etapa === "NO_VENTA") {
+        // Bloque D (batch de negociación, decisión documentada): RETIRADO.
+        // Este endpoint ya no cierra negociaciones — la autoridad de cierre
+        // vive en `POST /oportunidades/:id/cerrar` (D7), la única fuente de
+        // verdad de aquí en adelante. `canClose`/`compareCanClose` ya no se
+        // invocan desde esta rama (ver comentario de cabecera de
+        // `transitionEtapa` y de `leads.access.ts::canClose`).
+        throw new AppError(
+          "cierre_via_oportunidad",
+          409,
+          "El cierre de una negociación ya no se gestiona desde /leads/:id/etapa — usa POST /oportunidades/:id/cerrar sobre la Oportunidad correspondiente",
+        );
+      }
+
       const datosEtapa: Parameters<typeof leadRepository.updateEtapa>[1] = { etapa: body.etapa };
 
-      if (body.etapa === "VENTA" || body.etapa === "NO_VENTA") {
-        const semaforoNuevo = body.etapa === "VENTA" ? "VERDE" : "ROJO";
-        await leadRepository.updateSemaforo(id, { semaforo: semaforoNuevo }, tx);
-        if (lead.semaforo !== semaforoNuevo) {
-          await leadEventoRepository.createEvento(
-            {
-              leadId: id,
-              tipo: "CAMBIO_SEMAFORO",
-              semaforoAnterior: lead.semaforo,
-              semaforoNuevo,
-            },
-            tx,
-          );
-        }
-
-        datosEtapa.cerradoEn = new Date();
-        if (body.etapa === "VENTA") {
-          datosEtapa.montoVenta = body.montoVenta;
-          datosEtapa.productoServicio = body.productoServicio;
-          datosEtapa.formaPago = body.formaPago;
-        } else {
-          datosEtapa.observacionCierre = body.observacionCierre;
-        }
-      } else {
-        // NUEVO/CONTACTADO/CITA: calificable — DD4, seam compuesto de PR2.
-        await applyFormulario(lead, body.respuestas, usuario.id, tx);
-      }
+      // NUEVO/CONTACTADO/CITA: calificable — DD4, seam compuesto de PR2.
+      await applyFormulario(lead, body.respuestas, usuario.id, tx);
 
       const leadActualizado = await leadRepository.updateEtapa(id, datosEtapa, tx);
 
       await leadEventoRepository.createEvento(
         {
           leadId: id,
+          empresaId: lead.empresaId,
           tipo: "CAMBIO_ETAPA",
           etapaAnterior: lead.etapa,
           etapaNueva: body.etapa,
@@ -255,7 +284,15 @@ export async function transitionEtapa(
       );
 
       const recipients = [...new Set([leadActualizado.asesorId, leadActualizado.vendedorId].filter((id): id is string => id !== null))];
-      return { lead: leadActualizado, events: recipients.map((userId) => ({ userId, type: "lead.etapa-cambiada" as const, data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa } })) };
+      return {
+        lead: leadActualizado,
+        events: recipients.map((userId) => ({
+          userId,
+          empresaId: lead.empresaId,
+          type: "lead.etapa-cambiada" as const,
+          data: { leadId: id, etapaAnterior: lead.etapa, etapaNueva: body.etapa },
+        })),
+      };
     },
     GESTION_LEAD_TRANSACTION_BOUNDS,
   );

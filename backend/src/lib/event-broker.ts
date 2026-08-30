@@ -5,13 +5,30 @@ export type EventType =
   | "lead.asignado"
   | "lead.etapa-cambiada"
   | "sincronizacion.requerida"
-  | "metricas.actualizadas";
+  | "metricas.actualizadas"
+  // whatsappMessages: mensaje entrante o saliente nuevo sobre una
+  // conversación con asesor asignado.
+  | "whatsapp.mensaje-nuevo"
+  // whatsappMessages: `Conversacion.asesorId` cambió (primera asignación,
+  // ruteo hacia un Lead ya asignado, o reasignación por SLA vencido).
+  | "whatsapp.conversacion-reasignada"
+  // reportes (Bloque E, "Exportación PDF/XLSX"): progreso de un `ReporteJob`
+  // en background (`jobs/reportes/reporte-generacion.job.ts`). Flujo UI:
+  // botón "Generar" -> "reporte.iniciado" -> "Generando…" -> "reporte.listo"
+  // (con `archivoUrl` de descarga) o "reporte.error" (con `error`).
+  | "reporte.iniciado"
+  | "reporte.listo"
+  | "reporte.error";
 
 export interface BrokerEvent {
   id: string;
   type: EventType;
   data: unknown;
 }
+
+export type EventScope =
+  | { sessionScope: "company"; empresaId: string }
+  | { sessionScope: "holding"; empresaId: null };
 
 type EventSink = (event: BrokerEvent) => void;
 
@@ -34,26 +51,40 @@ export class EventBroker {
     this.capacity = options.capacity ?? DEFAULT_CAPACITY;
   }
 
-  publish(userId: string, type: EventType, data: unknown): BrokerEvent {
+  publish(userId: string, type: EventType, data: unknown, empresaId: string | null): BrokerEvent {
     const event = this.createEvent(type, data);
-    const retained = this.retained.get(userId) ?? [];
-    retained.push(event);
-    if (retained.length > this.capacity) retained.shift();
-    this.retained.set(userId, retained);
+    const targetKeys = empresaId === null
+      ? [this.scopeKey(userId, { sessionScope: "holding", empresaId: null })]
+      : [
+          this.scopeKey(userId, { sessionScope: "company", empresaId }),
+          this.scopeKey(userId, { sessionScope: "holding", empresaId: null }),
+        ];
+    for (const key of targetKeys) {
+      const retained = this.retained.get(key) ?? [];
+      retained.push(event);
+      if (retained.length > this.capacity) retained.shift();
+      this.retained.set(key, retained);
 
-    for (const sink of this.connections.get(userId) ?? []) {
-      try {
-        sink(event);
-      } catch {
-        this.removeConnection(userId, sink);
+      for (const sink of this.connections.get(key) ?? []) {
+        try {
+          sink(event);
+        } catch {
+          this.removeConnection(key, sink);
+        }
       }
     }
     return event;
   }
 
-  subscribe(userId: string, lastEventId: string | undefined, sink: EventSink): () => void {
+  subscribe(
+    userId: string,
+    scope: EventScope,
+    lastEventId: string | undefined,
+    sink: EventSink,
+  ): () => void {
+    const key = this.scopeKey(userId, scope);
     if (lastEventId) {
-      const retained = this.retained.get(userId) ?? [];
+      const retained = this.retained.get(key) ?? [];
       const cursorIndex = retained.findIndex((event) => event.id === lastEventId);
       if (cursorIndex === -1) {
         sink(this.createEvent("sincronizacion.requerida", { motivo: "cursor_no_disponible" }));
@@ -62,14 +93,14 @@ export class EventBroker {
       }
     }
 
-    const connections = this.connections.get(userId) ?? new Set<EventSink>();
+    const connections = this.connections.get(key) ?? new Set<EventSink>();
     connections.add(sink);
-    this.connections.set(userId, connections);
-    return () => this.removeConnection(userId, sink);
+    this.connections.set(key, connections);
+    return () => this.removeConnection(key, sink);
   }
 
-  connectionCount(userId: string): number {
-    return this.connections.get(userId)?.size ?? 0;
+  connectionCount(userId: string, scope: EventScope): number {
+    return this.connections.get(this.scopeKey(userId, scope))?.size ?? 0;
   }
 
   /**
@@ -85,8 +116,15 @@ export class EventBroker {
    * dependa de eventos perdidos durante la desconexión.
    */
   broadcastAll(type: EventType, data: unknown): void {
-    for (const userId of this.connections.keys()) {
-      this.publish(userId, type, data);
+    for (const [key, sinks] of this.connections) {
+      const event = this.createEvent(type, data);
+      for (const sink of sinks) {
+        try {
+          sink(event);
+        } catch {
+          this.removeConnection(key, sink);
+        }
+      }
     }
   }
 
@@ -95,10 +133,16 @@ export class EventBroker {
     return { id: `${this.bootNonce}:${this.counter}`, type, data };
   }
 
-  private removeConnection(userId: string, sink: EventSink): void {
-    const connections = this.connections.get(userId);
+  private scopeKey(userId: string, scope: EventScope): string {
+    return scope.sessionScope === "holding"
+      ? `${userId}\u0000holding`
+      : `${userId}\u0000company\u0000${scope.empresaId}`;
+  }
+
+  private removeConnection(key: string, sink: EventSink): void {
+    const connections = this.connections.get(key);
     connections?.delete(sink);
-    if (connections?.size === 0) this.connections.delete(userId);
+    if (connections?.size === 0) this.connections.delete(key);
   }
 }
 

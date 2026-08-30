@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { EtapaLead, Lead, Notificacion, Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
-import { ASIGNACION_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { ASIGNACION_TRANSACTION_BOUNDS, prisma, runAsBypassJob, runInTransaction, runWithTenantContext } from "../lib/prisma.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
+import { VersionConflictError } from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import type {
@@ -15,6 +16,7 @@ import type {
   TraspasarBody,
 } from "../schemas/leads.schema.js";
 import { canReassign, canTransfer, type MotivoDenegacion, type UsuarioAcceso } from "./leads.access.js";
+import * as shadowAuthorizationService from "./shadow-authorization.service.js";
 import type { LeadConSla } from "./leads.service.js";
 import { calculateEstadoSla } from "./sla.calculator.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
@@ -24,7 +26,136 @@ import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export type { PoolAsignacion } from "../repositories/lead.repository.js";
 
-const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+/**
+ * Bloque F (aditivo, decisión cerrada con el usuario): constante LOCAL de
+ * este archivo (no compartida con `leads.access.ts`) -- agregar los dos
+ * roles nuevos acá no afecta `canEdit`/`canRead`, fuera de alcance de F.
+ */
+const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
+  "ADMINISTRADOR",
+  "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
+];
+
+/**
+ * Group 3 (Bloque C, Etapa 3, design D6): señal interna de "perdí el CAS" —
+ * `lead.repository.ts::assignResponsable` la lanza cuando `updateMany({
+ * where: { id, version: expectedVersion }, ... })` afecta 0 filas (otro
+ * escritor ganó la carrera). NUNCA llega al llamador HTTP directamente:
+ * `withCasRetry` la atrapa y, si agota los intentos, la traduce a un
+ * `AppError("asignacion_conflicto", 409, ...)` explícito (spec §4, "No
+ * silent loss on exhaustion"). Definida en `lead.repository.ts` (evita un
+ * import circular, ver comentario ahí) y re-exportada acá para que los
+ * callers la importen desde este archivo, como indica el diseño.
+ */
+export { VersionConflictError };
+
+/** D6 (diseño, decisión del usuario): 3 intentos totales, sin backoff. */
+const CAS_MAX_INTENTOS = 3;
+
+/**
+ * D6 (diseño): envuelve ÚNICAMENTE los tres caminos manuales de asignación
+ * (`assignLead`/`reassignLead`/`transferLead`) — nunca `assignAutomatically`
+ * (ya tiene su propia guarda de idempotencia + reintento de infraestructura
+ * en `assignAfterCommit`, D-A2 revisión 2). Cada intento re-ejecuta `fn`
+ * completo — normalmente una transacción nueva que relee el lead con su
+ * versión ACTUAL, no solo reintenta la escritura aislada — así que un
+ * conflicto real (otro escritor cambió el lead) se resuelve contra el
+ * estado vigente, no contra uno obsoleto.
+ *
+ * Group 4 (spec §4, "Exhaustion notifies actor and supervisor") todavía no
+ * está implementado: por ahora, agotar los 3 intentos falla explícitamente
+ * (`AppError 409`, nunca éxito silencioso ni aplicación parcial — spec §4
+ * "No silent loss on exhaustion"), sin la notificación — ese paso se agrega
+ * en Group 4, sin tocar esta función de nuevo (el punto de extensión es el
+ * `catch` final, antes del `throw`).
+ */
+export async function withCasRetry<T>(
+  fn: () => Promise<T>,
+  onExhausted?: (conflict: VersionConflictError) => Promise<void>,
+): Promise<T> {
+  let ultimoConflicto: VersionConflictError | undefined;
+  for (let intento = 1; intento <= CAS_MAX_INTENTOS; intento += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!(error instanceof VersionConflictError)) throw error;
+      ultimoConflicto = error;
+    }
+  }
+  if (ultimoConflicto && onExhausted) {
+    await onExhausted(ultimoConflicto);
+  } else {
+    logger.warn(
+      { event: "asignacion_conflicto_cas_agotado", leadId: ultimoConflicto?.leadId, intentos: CAS_MAX_INTENTOS },
+      "asignacion: se agotaron los intentos de CAS — conflicto de versión sin resolver",
+    );
+  }
+  throw new AppError(
+    "asignacion_conflicto",
+    409,
+    "No se pudo completar la asignación tras varios intentos — otro usuario modificó el lead al mismo tiempo. Intenta nuevamente.",
+  );
+}
+
+export async function correctCasExhaustion(leadId: string, actorId: string): Promise<void> {
+  const committed = await runInTransaction(
+    undefined,
+    async (tx) => {
+      const lead = await leadRepository.findById(leadId, tx);
+      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+
+      await leadEventoRepository.createEvento(
+        {
+          leadId,
+          empresaId: lead.empresaId,
+          tipo: "ASIGNACION_CONFLICTO",
+          usuarioId: actorId,
+          detalle: { intentos: CAS_MAX_INTENTOS },
+        },
+        tx,
+      );
+
+      const supervisorIds = await notificacionRepository.findActiveRecipientIds(
+        ["SUPERVISOR"],
+        lead.empresaId,
+        tx,
+      );
+      const recipientIds = new Set([actorId, ...supervisorIds]);
+      const notifications = [];
+      for (const usuarioId of recipientIds) {
+        notifications.push(
+          await notificacionRepository.createNotificacion(
+            {
+              usuarioId,
+              tipo: "ASIGNACION_CONFLICTO",
+              titulo: "Conflicto de asignación",
+              mensaje: "La asignación no pudo completarse porque el lead cambió durante el proceso",
+              leadId,
+              empresaId: lead.empresaId,
+            },
+            tx,
+          ),
+        );
+      }
+      return { empresaId: lead.empresaId, events: notifications.flatMap(notificationEvents) };
+    },
+    ASIGNACION_TRANSACTION_BOUNDS,
+  );
+
+  publishCommittedEvents(committed.events);
+  logger.warn(
+    {
+      event: "cas_exhausted_corrected",
+      leadId,
+      empresaId: committed.empresaId,
+      actorId,
+      intentos: CAS_MAX_INTENTOS,
+    },
+    "asignacion: agotamiento CAS corregido con evento y notificaciones",
+  );
+}
 
 /**
  * M6 (diseño, "Cálculo de menor carga activa"): re-tipada localmente para
@@ -86,6 +217,11 @@ export function chooseCandidato(
  * nunca es su propio candidato) → `countCargaActivaPorResponsable` →
  * `cargaActiva = mapa.get(id) ?? 0` (DD8) → `chooseCandidato`. Siempre dentro
  * del `tx` del llamador.
+ *
+ * Bloque D (batch de negociación, punto 2/3): NO se migra en el lugar
+ * (deviation deliberada, ver `selectResponsableEnEmpresa` abajo) — firma
+ * preservada sin cambios porque `whatsappMessages/whatsapp-sla.service.ts`
+ * (prohibido tocar en este batch) llama a esta función tal cual.
  */
 export async function selectResponsable(
   pool: PoolAsignacion,
@@ -101,6 +237,43 @@ export async function selectResponsable(
   const cargas = await leadRepository.countCargaActivaPorResponsable(
     pool,
     candidatosElegibles.map((u) => u.id),
+    tx,
+  );
+
+  const candidatos: CandidatoAsignacion[] = candidatosElegibles.map((u) => ({
+    id: u.id,
+    ultimaAsignacionEn: u.ultimaAsignacionEn,
+    cargaActiva: cargas.get(u.id) ?? 0,
+  }));
+
+  return chooseCandidato(candidatos);
+}
+
+/**
+ * Bloque D (batch de negociación, punto 2 — cutover del pool de `Lead`,
+ * D3/D4): variante NUEVA y scopeada por empresa de `selectResponsable`
+ * (arriba), consumida por `assignAutomatically`/`resolveReceptor` — los
+ * caminos que este batch SÍ migra (asignación automática de "primer
+ * contacto" y las tres rutas manuales `asignar`/`reasignar`/`traspasar`).
+ * `whatsappMessages/whatsapp-sla.service.ts` sigue usando la versión vieja,
+ * sin cambios (prohibido tocar ese archivo en este batch).
+ */
+export async function selectResponsableEnEmpresa(
+  pool: PoolAsignacion,
+  empresaId: string,
+  tx: Prisma.TransactionClient,
+  excluirId?: string,
+): Promise<CandidatoAsignacion | null> {
+  const activos = await usuarioRepository.findActivosPorRolMembresia(pool, empresaId, tx);
+  const candidatosElegibles =
+    excluirId === undefined ? activos : activos.filter((u) => u.id !== excluirId);
+
+  if (candidatosElegibles.length === 0) return null;
+
+  const cargas = await leadRepository.countCargaActivaPorResponsableEnEmpresa(
+    pool,
+    candidatosElegibles.map((u) => u.id),
+    empresaId,
     tx,
   );
 
@@ -155,6 +328,14 @@ interface ApplyAsignacionInput {
   /** `null` en el camino automático (D5) — nadie lo ejecutó a mano. */
   ejecutadoPorId: string | null;
   ahora: Date;
+  /**
+   * Group 3 (design D6): `version` del lead leída por el llamador ANTES de
+   * resolver el receptor — pasada tal cual a `leadRepository.
+   * assignResponsable`'s CAS. Todo caller de `applyAsignacion` ya tiene el
+   * lead en mano (lo releyó para validar autorización/etapa), así que esto
+   * nunca implica una lectura extra.
+   */
+  expectedVersion: number;
 }
 
 /**
@@ -177,6 +358,7 @@ export async function applyAsignacion(
   const lead = await leadRepository.assignResponsable(
     input.leadId,
     { pool: input.pool, responsableId: input.receptorId, slaInicioEn: input.ahora },
+    input.expectedVersion,
     tx,
   );
 
@@ -194,6 +376,7 @@ export async function applyAsignacion(
   await leadEventoRepository.createEvento(
     {
       leadId: input.leadId,
+      empresaId: lead.empresaId,
       tipo: input.tipoEvento,
       usuarioId: input.ejecutadoPorId ?? undefined,
       detalle: detalle as unknown as Prisma.InputJsonValue,
@@ -202,7 +385,7 @@ export async function applyAsignacion(
   );
 
   const tipo = input.tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
-  const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId }, tx);
+  const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId, empresaId: lead.empresaId }, tx);
   // M9 (docs/08-dashboard-kpis.md §5): "asignación" — el hook de métricas NO
   // se llama acá: `applyAsignacion` corre dentro de la `tx` del llamador y
   // esa transacción puede todavía hacer rollback (p. ej. dentro del loop de
@@ -210,16 +393,29 @@ export async function applyAsignacion(
   // un paso posterior de la misma transacción falla). `scheduleMetricasBroadcast`
   // se llama en cada CALLER externo de `applyAsignacion`, después del commit,
   // en el mismo lugar donde cada uno ya llama `publishCommittedEvents`.
-  return { lead, events: [...notificationEvents(notification), { userId: input.receptorId, type: "lead.asignado", data: { leadId: input.leadId, responsableId: input.receptorId } }] };
+  return {
+    lead,
+    events: [
+      ...notificationEvents(notification),
+      {
+        userId: input.receptorId,
+        empresaId: lead.empresaId,
+        type: "lead.asignado",
+        data: { leadId: input.leadId, responsableId: input.receptorId },
+      },
+    ],
+  };
 }
 
-export interface ApplyAsignacionesEnLoteEntrada {
+export interface ApplyAsignacionesEnLoteInput {
   leadId: string;
+  /** Bloque C (Etapa 3, D4): denormalizado a `lead_eventos`/`notificaciones`. */
+  empresaId: string;
   receptorId: string;
   responsableAnteriorId: string | null;
 }
 
-interface ApplyAsignacionesEnLoteOpciones {
+interface ApplyAsignacionesEnLoteOptions {
   pool: PoolAsignacion;
   tipoEvento: "ASIGNACION" | "REASIGNACION" | "TRASPASO";
   motivo: MotivoAsignacion;
@@ -242,8 +438,8 @@ interface ApplyAsignacionesEnLoteOpciones {
  * `applyAsignacion` una vez por entrada).
  */
 export async function applyAsignacionesEnLote(
-  entradas: readonly ApplyAsignacionesEnLoteEntrada[],
-  opciones: ApplyAsignacionesEnLoteOpciones,
+  entradas: readonly ApplyAsignacionesEnLoteInput[],
+  opciones: ApplyAsignacionesEnLoteOptions,
   tx: Prisma.TransactionClient,
 ): Promise<CommittedEvent[]> {
   if (entradas.length === 0) return [];
@@ -285,6 +481,7 @@ export async function applyAsignacionesEnLote(
     };
     return {
       leadId: entrada.leadId,
+      empresaId: entrada.empresaId,
       tipo: tipoEvento,
       usuarioId: ejecutadoPorId ?? undefined,
       detalle: detalle as unknown as Prisma.InputJsonValue,
@@ -302,6 +499,7 @@ export async function applyAsignacionesEnLote(
     titulo: tituloNotificacion,
     mensaje: "Tenés un nuevo lead a cargo",
     leadId: entrada.leadId,
+    empresaId: entrada.empresaId,
     canal: "IN_APP",
     creadaEn: ahora,
   }));
@@ -317,6 +515,7 @@ export async function applyAsignacionesEnLote(
       titulo: notificacionData.titulo,
       mensaje: notificacionData.mensaje,
       leadId: notificacionData.leadId ?? null,
+      empresaId: notificacionData.empresaId ?? null,
       leidaEn: null,
       creadaEn: notificacionData.creadaEn,
     };
@@ -324,6 +523,7 @@ export async function applyAsignacionesEnLote(
       ...notificationEvents(notification),
       {
         userId: entrada.receptorId,
+        empresaId: entrada.empresaId,
         type: "lead.asignado",
         data: { leadId: entrada.leadId, responsableId: entrada.receptorId },
       },
@@ -360,7 +560,10 @@ export async function assignAutomatically(
   const leadActual = await leadRepository.findById(leadId, tx);
   if (leadActual === null || leadActual.asesorId !== null) return [];
 
-  const candidato = await selectResponsable("ASESOR", tx);
+  // Bloque D (batch de negociación, punto 2 -- D3): pool scopeado a la
+  // empresa del lead, ya no global (`selectResponsableEnEmpresa`, no la
+  // `selectResponsable` original -- ver comentario de esa función).
+  const candidato = await selectResponsableEnEmpresa("ASESOR", leadActual.empresaId, tx);
 
   if (candidato === null) {
     const detalle: DetalleEventoAsignacion = {
@@ -374,12 +577,25 @@ export async function assignAutomatically(
     await leadEventoRepository.createEvento(
       {
         leadId,
+        empresaId: leadActual.empresaId,
         tipo: "SIN_ASIGNAR",
         detalle: detalle as unknown as Prisma.InputJsonValue,
       },
       tx,
     );
-    const notifications = await createForActiveSupervisorsAndAdmins({ tipo: "LEAD_SIN_ASIGNAR", titulo: "Lead sin asignar", mensaje: "No hay asesores activos disponibles", leadId }, tx);
+    // Bloque C (D5, Fase 2/Stage 2 — cutover bloqueante): `leadActual.empresaId`
+    // es el `empresaId` real del lead (`Lead.empresaId` es NOT NULL, D4) — ya
+    // no hay ningún seguimiento pendiente para este call site.
+    const notifications = await createForActiveSupervisorsAndAdmins(
+      {
+        tipo: "LEAD_SIN_ASIGNAR",
+        titulo: "Lead sin asignar",
+        mensaje: "No hay asesores activos disponibles",
+        leadId,
+      },
+      leadActual.empresaId,
+      tx,
+    );
     return notifications.flatMap(notificationEvents);
   }
 
@@ -393,6 +609,11 @@ export async function assignAutomatically(
       motivo: "automatica",
       ejecutadoPorId: null,
       ahora,
+      // D6: assignAutomatically NUNCA se envuelve en withCasRetry — su
+      // propia guarda de idempotencia (arriba) + el reintento de
+      // infraestructura de assignAfterCommit ya convergen a un no-op limpio
+      // ante una carrera real (ver nota de la función).
+      expectedVersion: leadActual.version,
     },
     tx,
   );
@@ -449,10 +670,24 @@ export async function assignAfterCommit(leadId: string, ahora: Date): Promise<vo
 
   for (let intento = 1; intento <= ASIGNACION_POST_COMMIT_MAX_INTENTOS; intento++) {
     try {
-      const events = await runInTransaction(
-        undefined,
-        (tx) => assignAutomatically(leadId, ahora, tx),
+      // Bloque C (Etapa 3, D1): `assignAfterCommit` corre desde el webhook de
+      // ingesta (`require-bridge-key.middleware.ts`, nunca
+      // `requireAuthentication`) — sin `AsyncLocalStorage` de tenant activo.
+      // `runAsBypassJob` (2 de 2 call sites documentados, spec "Bypass usage
+      // is enumerated and documented") es el único seam que puede ver/escribir
+      // el lead bajo `crm_bypass_jobs`.
+      const leadScope = await runAsBypassJob(
+        "post-commit-assignment",
+        (tx) => leadRepository.findById(leadId, tx),
         ASIGNACION_TRANSACTION_BOUNDS,
+      );
+      if (!leadScope) return;
+      const events = await runWithTenantContext(
+        { empresaId: leadScope.empresaId },
+        () => prisma.$transaction(
+          (tx) => assignAutomatically(leadId, ahora, tx),
+          ASIGNACION_TRANSACTION_BOUNDS,
+        ),
       );
       publishCommittedEvents(events);
       // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
@@ -487,6 +722,7 @@ async function recordAssignmentDegradation(
   ultimoError: unknown,
 ): Promise<void> {
   const errorFinal = ultimoError instanceof Error ? ultimoError.message : "Error desconocido";
+  let lead: Lead | null = null;
 
   try {
     const detalle: DetalleEventoAsignacionFallida = {
@@ -496,11 +732,30 @@ async function recordAssignmentDegradation(
       intentos,
       errorFinal,
     };
-    await leadEventoRepository.createEvento({
-      leadId,
-      tipo: "ASIGNACION_FALLIDA",
-      detalle: detalle as unknown as Prisma.InputJsonValue,
-    });
+    // Bloque C (Etapa 3, D1): corre fuera de cualquier request HTTP —mismo
+    // origen (post-commit, background) que `assignAutomatically`/
+    // `assignAfterCommit`— así que resuelve `empresaId` y escribe bajo
+    // `crm_bypass_jobs`, nunca bajo un `AsyncLocalStorage` de request que ya
+    // terminó (RLS lo dejaría en 0 filas, fail-closed).
+    lead = await runAsBypassJob(
+      "assignment-degradation",
+      (tx) => leadRepository.findById(leadId, tx),
+      ASIGNACION_TRANSACTION_BOUNDS,
+    );
+    if (lead) {
+      const scopedLead = lead;
+      await runWithTenantContext({ empresaId: scopedLead.empresaId }, () =>
+        prisma.$transaction((tx) => leadEventoRepository.createEvento(
+        {
+          leadId,
+          empresaId: scopedLead.empresaId,
+          tipo: "ASIGNACION_FALLIDA",
+          detalle: detalle as unknown as Prisma.InputJsonValue,
+        },
+        tx,
+        ), ASIGNACION_TRANSACTION_BOUNDS),
+      );
+    }
   } catch (error) {
     logger.error({ err: error, leadId }, "asignacion: fallo al registrar evento ASIGNACION_FALLIDA");
   }
@@ -508,6 +763,8 @@ async function recordAssignmentDegradation(
   try {
     await registrarBridgeLog({
       bridgeId: null,
+      empresaId: lead?.empresaId,
+      ...(lead ? {} : { holdingWide: true as const }),
       nivel: "ERROR",
       mensaje: `Asignación automática post-commit agotó ${intentos} intentos para el lead ${leadId}`,
       payload: { leadId, intentos, errorFinal },
@@ -517,7 +774,7 @@ async function recordAssignmentDegradation(
   }
 
   logger.error(
-    { leadId, intentos, errorFinal },
+    { leadId, empresaId: lead?.empresaId, intentos, errorFinal },
     "asignacion: agotados los reintentos de asignación automática post-commit",
   );
 }
@@ -565,6 +822,7 @@ function throwForMotivoDenegacion(motivo: MotivoDenegacion): never {
  */
 async function resolveReceptor(
   pool: PoolAsignacion,
+  empresaId: string,
   tx: Prisma.TransactionClient,
   excluirId: string | undefined,
   destinoId: string | undefined,
@@ -577,7 +835,9 @@ async function resolveReceptor(
         "El destinatario no puede ser el responsable actual",
       );
     }
-    const activos = await usuarioRepository.findActivosPorRol(pool, tx);
+    // Bloque D (punto 2): pool/validación de destino scopeados por empresa
+    // (Membresia), no la variante vieja de `usuario.repository.ts`.
+    const activos = await usuarioRepository.findActivosPorRolMembresia(pool, empresaId, tx);
     const esValido = activos.some((candidato) => candidato.id === destinoId);
     if (!esValido) {
       throw new AppError("destinatario_invalido", 409, "El destinatario indicado no es válido");
@@ -585,7 +845,7 @@ async function resolveReceptor(
     return destinoId;
   }
 
-  const candidato = await selectResponsable(pool, tx, excluirId);
+  const candidato = await selectResponsableEnEmpresa(pool, empresaId, tx, excluirId);
   if (candidato === null) {
     throw new AppError("sin_candidatos", 409, "No hay candidatos disponibles para la asignación");
   }
@@ -603,34 +863,47 @@ export async function assignLead(
   leadId: string,
   body: AsignarBody,
 ): Promise<LeadConSla> {
-  const result = await runInTransaction(
-    undefined,
-    async (tx) => {
-      const ahora = new Date();
-      const lead = await leadRepository.findById(leadId, tx);
-      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
-      assertLeadAbierto(lead);
+  // Group 3 (design D6): `withCasRetry` envuelve la transacción COMPLETA —
+  // cada intento relee el lead (y su `version` vigente) desde cero, así que
+  // un conflicto real se resuelve contra el estado actual, nunca uno stale.
+  const result = await withCasRetry(
+    () => runInTransaction(
+      undefined,
+      async (tx) => {
+        const ahora = new Date();
+        const lead = await leadRepository.findById(leadId, tx);
+        if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+        assertLeadAbierto(lead);
 
-      const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
-      const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
+        const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
+        const receptorId = await resolveReceptor(
+          "ASESOR",
+          lead.empresaId,
+          tx,
+          lead.asesorId ?? undefined,
+          destino,
+        );
 
-      const assigned = await applyAsignacion(
-        {
-          leadId,
-          pool: "ASESOR",
-          receptorId,
-          responsableAnteriorId: lead.asesorId,
-          tipoEvento: "ASIGNACION",
-          motivo: "manual",
-          ejecutadoPorId: usuario.id,
-          ahora,
-        },
-        tx,
-      );
+        const assigned = await applyAsignacion(
+          {
+            leadId,
+            pool: "ASESOR",
+            receptorId,
+            responsableAnteriorId: lead.asesorId,
+            tipoEvento: "ASIGNACION",
+            motivo: "manual",
+            ejecutadoPorId: usuario.id,
+            ahora,
+            expectedVersion: lead.version,
+          },
+          tx,
+        );
 
-      return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
-    },
-    ASIGNACION_TRANSACTION_BOUNDS,
+        return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
+      },
+      ASIGNACION_TRANSACTION_BOUNDS,
+    ),
+    () => correctCasExhaustion(leadId, usuario.id),
   );
   publishCommittedEvents(result.events);
   // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
@@ -639,20 +912,20 @@ export async function assignLead(
   return result.lead;
 }
 
-export interface ResultadoLoteExitoso {
+export interface LoteResultSuccessful {
   leadId: string;
   asesorId: string;
 }
 
-export interface ResultadoLoteFallido {
+export interface LoteResultFailed {
   leadId: string;
   codigo: string;
   mensaje: string;
 }
 
-export interface ResultadoAsignacionLote {
-  exitosos: ResultadoLoteExitoso[];
-  fallidos: ResultadoLoteFallido[];
+export interface AsignacionLoteResult {
+  exitosos: LoteResultSuccessful[];
+  fallidos: LoteResultFailed[];
   resumen: { solicitados: number; exitosos: number; fallidos: number };
 }
 
@@ -675,9 +948,9 @@ export interface ResultadoAsignacionLote {
 export async function assignLeadsBatch(
   usuario: UsuarioAcceso,
   body: AsignarLoteBody,
-): Promise<ResultadoAsignacionLote> {
-  const exitosos: ResultadoLoteExitoso[] = [];
-  const fallidos: ResultadoLoteFallido[] = [];
+): Promise<AsignacionLoteResult> {
+  const exitosos: LoteResultSuccessful[] = [];
+  const fallidos: LoteResultFailed[] = [];
 
   for (const leadId of body.leadIds) {
     try {
@@ -709,41 +982,59 @@ export async function reassignLead(
   leadId: string,
   body: ReasignarBody,
 ): Promise<LeadConSla> {
-  const result = await runInTransaction(
-    undefined,
-    async (tx) => {
-      const ahora = new Date();
-      const lead = await leadRepository.findById(leadId, tx);
-      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
-      assertLeadAbierto(lead);
+  // Group 3 (design D6): mismo criterio que `assignLead` — `withCasRetry`
+  // envuelve la transacción completa, cada intento relee el lead vigente.
+  const result = await withCasRetry(
+    () => runInTransaction(
+      undefined,
+      async (tx) => {
+        const ahora = new Date();
+        const lead = await leadRepository.findById(leadId, tx);
+        if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+        assertLeadAbierto(lead);
 
-      const motivoDenegacion = canReassign(usuario, {
-        asesorId: lead.asesorId,
-        vendedorId: lead.vendedorId,
-        semaforo: lead.semaforo,
-      });
-      if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
+        const leadReasignacion = {
+          asesorId: lead.asesorId,
+          vendedorId: lead.vendedorId,
+          empresaId: lead.empresaId,
+          semaforo: lead.semaforo,
+        };
+        const motivoDenegacion = canReassign(usuario, leadReasignacion);
+        // Bloque B (Fase 2, "Shadow authorizer call sites"): fire-and-forget,
+        // corre para ambos desenlaces (permitido y denegado), nunca bloquea ni
+        // demora esta transacción.
+        void shadowAuthorizationService.compareCanReassign(usuario.id, leadReasignacion, motivoDenegacion);
+        if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
-      const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
-      const receptorId = await resolveReceptor("ASESOR", tx, lead.asesorId ?? undefined, destino);
+        const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.asesorId : undefined;
+        const receptorId = await resolveReceptor(
+          "ASESOR",
+          lead.empresaId,
+          tx,
+          lead.asesorId ?? undefined,
+          destino,
+        );
 
-      const assigned = await applyAsignacion(
-        {
-          leadId,
-          pool: "ASESOR",
-          receptorId,
-          responsableAnteriorId: lead.asesorId,
-          tipoEvento: "REASIGNACION",
-          motivo: "reasignacion",
-          ejecutadoPorId: usuario.id,
-          ahora,
-        },
-        tx,
-      );
+        const assigned = await applyAsignacion(
+          {
+            leadId,
+            pool: "ASESOR",
+            receptorId,
+            responsableAnteriorId: lead.asesorId,
+            tipoEvento: "REASIGNACION",
+            motivo: "reasignacion",
+            ejecutadoPorId: usuario.id,
+            ahora,
+            expectedVersion: lead.version,
+          },
+          tx,
+        );
 
-      return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
-    },
-    ASIGNACION_TRANSACTION_BOUNDS,
+        return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
+      },
+      ASIGNACION_TRANSACTION_BOUNDS,
+    ),
+    () => correctCasExhaustion(leadId, usuario.id),
   );
   publishCommittedEvents(result.events);
   // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que
@@ -762,41 +1053,59 @@ export async function transferLead(
   leadId: string,
   body: TraspasarBody,
 ): Promise<LeadConSla> {
-  const result = await runInTransaction(
-    undefined,
-    async (tx) => {
-      const ahora = new Date();
-      const lead = await leadRepository.findById(leadId, tx);
-      if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
-      assertLeadAbierto(lead);
+  // Group 3 (design D6): mismo criterio que `assignLead`/`reassignLead` —
+  // `withCasRetry` envuelve la transacción completa, cada intento relee el
+  // lead vigente.
+  const result = await withCasRetry(
+    () => runInTransaction(
+      undefined,
+      async (tx) => {
+        const ahora = new Date();
+        const lead = await leadRepository.findById(leadId, tx);
+        if (!lead) throw new AppError("lead_no_encontrado", 404, "El lead no existe");
+        assertLeadAbierto(lead);
 
-      const motivoDenegacion = canTransfer(usuario, {
-        asesorId: lead.asesorId,
-        vendedorId: lead.vendedorId,
-        etapa: lead.etapa,
-      });
-      if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
+        const leadTraspaso = {
+          asesorId: lead.asesorId,
+          vendedorId: lead.vendedorId,
+          empresaId: lead.empresaId,
+          etapa: lead.etapa,
+        };
+        const motivoDenegacion = canTransfer(usuario, leadTraspaso);
+        // Bloque B (Fase 2, "Shadow authorizer call sites"): fire-and-forget,
+        // corre para ambos desenlaces, nunca bloquea ni demora esta transacción.
+        void shadowAuthorizationService.compareCanTransfer(usuario.id, leadTraspaso, motivoDenegacion);
+        if (motivoDenegacion !== null) throwForMotivoDenegacion(motivoDenegacion);
 
-      const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
-      const receptorId = await resolveReceptor("VENDEDOR", tx, lead.vendedorId ?? undefined, destino);
+        const destino = ROLES_ACCESO_TOTAL.includes(usuario.rol) ? body.vendedorId : undefined;
+        const receptorId = await resolveReceptor(
+          "VENDEDOR",
+          lead.empresaId,
+          tx,
+          lead.vendedorId ?? undefined,
+          destino,
+        );
 
-      const assigned = await applyAsignacion(
-        {
-          leadId,
-          pool: "VENDEDOR",
-          receptorId,
-          responsableAnteriorId: lead.vendedorId,
-          tipoEvento: "TRASPASO",
-          motivo: "traspaso",
-          ejecutadoPorId: usuario.id,
-          ahora,
-        },
-        tx,
-      );
+        const assigned = await applyAsignacion(
+          {
+            leadId,
+            pool: "VENDEDOR",
+            receptorId,
+            responsableAnteriorId: lead.vendedorId,
+            tipoEvento: "TRASPASO",
+            motivo: "traspaso",
+            ejecutadoPorId: usuario.id,
+            ahora,
+            expectedVersion: lead.version,
+          },
+          tx,
+        );
 
-      return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
-    },
-    ASIGNACION_TRANSACTION_BOUNDS,
+        return { lead: withEstadoSla(assigned.lead, ahora), events: assigned.events };
+      },
+      ASIGNACION_TRANSACTION_BOUNDS,
+    ),
+    () => correctCasExhaustion(leadId, usuario.id),
   );
   publishCommittedEvents(result.events);
   // M9 (docs/08-dashboard-kpis.md §5): post-commit, mismo lugar que

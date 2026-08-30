@@ -15,6 +15,97 @@ import { asignarLoteBodySchema, listLeadsQuerySchema } from "../src/schemas/lead
  * `tests/**\/*.test.ts` — se sigue la convención real del repo (test
  * colocado en `backend/tests/`), no la ruta aspiracional de la tarea.
  */
+describe("schemas/leads — listLeadsQuerySchema.hasta/desde (M-hardening Bloque A, WU6, spec lead-listing)", () => {
+  it("Scenario 'hasta incluye leads creados mas tarde ese mismo dia': hasta=2026-08-20 normaliza a 23:59:59.999Z UTC", () => {
+    const resultado = listLeadsQuerySchema.parse({ hasta: "2026-08-20" });
+
+    expect(resultado.hasta).toEqual(new Date("2026-08-20T23:59:59.999Z"));
+  });
+
+  it("Scenario 'desde posterior a hasta es rechazado'", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ desde: "2026-08-20", hasta: "2026-08-10" });
+
+    expect(resultado.success).toBe(false);
+  });
+
+  it("TRIANGULACION: desde === hasta (mismo dia) es aceptado (frontera inclusiva)", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ desde: "2026-08-20", hasta: "2026-08-20" });
+
+    expect(resultado.success).toBe(true);
+  });
+
+  it("hasta ausente no falla y no normaliza nada", () => {
+    const resultado = listLeadsQuerySchema.parse({});
+
+    expect(resultado.hasta).toBeUndefined();
+  });
+});
+
+describe("schemas/leads — listLeadsQuerySchema.vista (M-hardening Bloque A, WU8, spec lead-listing)", () => {
+  it("acepta vista=activos y vista=cerrados", () => {
+    expect(listLeadsQuerySchema.safeParse({ vista: "activos" }).success).toBe(true);
+    expect(listLeadsQuerySchema.safeParse({ vista: "cerrados" }).success).toBe(true);
+  });
+
+  it("omite vista sin error cuando no viene en el query", () => {
+    const resultado = listLeadsQuerySchema.parse({});
+    expect(resultado.vista).toBeUndefined();
+  });
+
+  it("D7: vista=cerrados + estadoSla se rechaza (contradicción — estadoSla solo aplica a leads activos)", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ vista: "cerrados", estadoSla: "atrasado" });
+
+    expect(resultado.success).toBe(false);
+  });
+
+  it("TRIANGULACION: vista=activos + estadoSla es compatible (la contradicción solo aplica a 'cerrados')", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ vista: "activos", estadoSla: "atrasado" });
+
+    expect(resultado.success).toBe(true);
+  });
+
+  it("rechaza un valor de vista fuera del enum", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ vista: "todos" });
+
+    expect(resultado.success).toBe(false);
+  });
+});
+
+describe("schemas/leads — listLeadsQuerySchema.limite (M-hardening Bloque A, WU9, spec lead-listing)", () => {
+  it("Scenario 'Default applies when omitted': limite omitido resuelve a 25", () => {
+    const resultado = listLeadsQuerySchema.parse({});
+
+    expect(resultado.limite).toBe(25);
+  });
+
+  it("Scenario 'Non-whitelisted value rejected': limite=20 falla la validación", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ limite: "20" });
+
+    expect(resultado.success).toBe(false);
+  });
+
+  it("limite=101 (fuera de whitelist) también falla", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ limite: "101" });
+
+    expect(resultado.success).toBe(false);
+  });
+
+  it.each([10, 25, 50, 100])(
+    "Scenario 'Whitelisted values accepted': limite=%i pasa con ese valor exacto",
+    (valor) => {
+      const resultado = listLeadsQuerySchema.parse({ limite: String(valor) });
+
+      expect(resultado.limite).toBe(valor);
+    },
+  );
+
+  it("TRIANGULACION: limite=25.5 (no entero) sigue rechazado tras el refine (el .int() previo no queda anulado)", () => {
+    const resultado = listLeadsQuerySchema.safeParse({ limite: "25.5" });
+
+    expect(resultado.success).toBe(false);
+  });
+});
+
 describe("schemas/leads — listLeadsQuerySchema.busqueda (spec: Búsqueda libre sobre datos de cliente)", () => {
   it("acepta busqueda como string opcional y la deja pasar tal cual", () => {
     const resultado = listLeadsQuerySchema.safeParse({ busqueda: "3001234567" });

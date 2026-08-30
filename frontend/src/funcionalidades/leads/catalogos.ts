@@ -15,6 +15,7 @@ export const RED_SOCIAL_ETIQUETAS: Record<RedSocial, string> = {
   X: "X",
   LINKEDIN: "LinkedIn",
   GOOGLE_FORMS: "Google Forms",
+  API_EXTERNA: "API externa",
 };
 
 /**
@@ -26,9 +27,9 @@ export const RED_SOCIAL_ETIQUETAS: Record<RedSocial, string> = {
  * tokens `semaforo-frio/tibio/caliente` de `tailwind.config.js` para esto.
  */
 export const SEMAFORO_ETIQUETAS: Record<SemaforoLead, string> = {
-  VERDE: "Verde · Lead caliente",
-  AMARILLO: "Amarillo · Lead tibio",
-  ROJO: "Rojo · Lead frío",
+  VERDE: "Lead caliente",
+  AMARILLO: "Lead tibio",
+  ROJO: "Lead frío",
 };
 
 export const ESTADO_SLA_ETIQUETAS: Record<EstadoSla, string> = {

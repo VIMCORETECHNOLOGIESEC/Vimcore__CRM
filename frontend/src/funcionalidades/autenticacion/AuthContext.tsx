@@ -1,36 +1,46 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getRefreshToken, restoreSession, setOnSessionExpired, setTokens } from "@/api/httpClient";
 import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
 import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
-
-interface AuthContextValue {
-  user: AuthenticatedUser | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (correo: string, password: string) => Promise<AuthenticatedUser>;
-  logout: () => Promise<void>;
-  hasRole: (allowedRoles?: readonly RolUsuario[]) => boolean;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import { AuthContext, type AuthContextValue } from "./authContext";
 
 /**
  * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver
  * `autenticacion.api.ts#getPerfilApi` y `backend/src/controllers/auth.controller.ts`).
  * Si el backend cambia la forma de esa respuesta, hay que mantener
  * sincronizado el tipo `AuthenticatedUser` en `@/tipos/usuario`.
+ *
+ * Exportada (tema-empresarial-integracion, Tarea 3): `useUpdateEmpresaApariencia`
+ * (`funcionalidades/empresa-apariencia/useEmpresaApariencia.ts`) invalida esta
+ * misma query tras restaurar el color propio de la empresa, para que el
+ * cambio se refleje sin esperar un login nuevo -- sin duplicar el literal
+ * `["auth", "perfil"]` en dos módulos.
  */
-const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
+export const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
+
+/**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, tabla de estados
+ * de `AuthContext`, fila "Perfil incompleto o inconsistente"): guarda
+ * defensiva del lado cliente, independiente de que el backend ya falle
+ * cerrado (`auth.controller.ts::resolveEmpresaNombre`) ante una `Empresa`
+ * irresoluble. Cubre el caso en que la respuesta de `GET /auth/perfil` es
+ * un 200 bien formado pero semánticamente inconsistente (p. ej. drift de
+ * contrato entre frontend y backend): una sesión `company` sin
+ * `empresaId`/`empresaNombre` resueltos, o una sesión `holding` que sí trae
+ * una empresa atribuida. No es tolerancia -- ninguna combinación fuera de
+ * estas dos formas válidas hidrata la sesión.
+ */
+function esPerfilConsistente(perfil: AuthenticatedUser): boolean {
+  if (perfil.sessionScope === "company") {
+    return typeof perfil.empresaId === "string" && typeof perfil.empresaNombre === "string";
+  }
+  if (perfil.sessionScope === "holding") {
+    return perfil.empresaId === null && perfil.empresaNombre === null;
+  }
+  return false;
+}
 
 /**
  * Termina el estado de sesión reactivo y purga cualquier otro dato
@@ -112,7 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!restaurada) {
           return null;
         }
-        return await getPerfilApi();
+        const perfil = await getPerfilApi();
+        return esPerfilConsistente(perfil) ? perfil : null;
       } catch {
         return null;
       }
@@ -137,8 +148,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const response = await loginApi(correo, password);
         setTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken });
-        queryClient.setQueryData(PERFIL_QUERY_KEY, response.user);
-        return response.user;
+
+        // Bloque D0 ("Secuencia obligatoria"): `POST /auth/login` no
+        // devuelve `sessionScope`/`empresaId`/`empresaNombre` (decisión
+        // explícita de no ampliarlo) -- el estado autenticado se construye
+        // ÚNICAMENTE con `GET /auth/perfil`, igual que la rehidratación de
+        // arranque de arriba. `response.user` (`PublicUser`) nunca alimenta
+        // la sesión.
+        const perfil = await getPerfilApi();
+        if (!esPerfilConsistente(perfil)) {
+          // Fila "Perfil incompleto o inconsistente": fallo cerrado. Los
+          // tokens del login válido se conservan -- la autenticación en sí
+          // fue correcta, solo la hidratación del scope falló -- para
+          // permitir reintentar el perfil sin forzar un login nuevo.
+          throw new Error("perfil_inconsistente");
+        }
+        queryClient.setQueryData(PERFIL_QUERY_KEY, perfil);
+        return perfil;
       } finally {
         setIsLoginPending(false);
       }
@@ -179,12 +205,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth debe usarse dentro de <AuthProvider>");
-  }
-  return context;
 }

@@ -1,8 +1,19 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { decrypt, encrypt } from "../src/lib/cifrado-token.js";
 import { hashClaveBridge } from "../src/lib/clave-bridge.js";
-import { prisma } from "../src/lib/prisma.js";
+import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
+import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import { cargarToken, probarConexion } from "../src/services/cuenta-publicitaria.service.js";
+import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
+
+/**
+ * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `cargarToken`/
+ * `probarConexion` resuelven el `Bridge` (RLS) internamente sin `client`
+ * swappable — se llaman DIRECTO acá (sin HTTP).
+ */
+function conContexto<T>(fn: () => Promise<T>): Promise<T> {
+  return runWithTenantContext({ empresaId: EMPRESA_BOOTSTRAP_ID }, fn);
+}
 
 /**
  * `cargarToken`/`probarConexion` (docs/05-bridges.md §7): mismo estilo de
@@ -18,12 +29,13 @@ function mockFetchJson(status: number, body: unknown): Response {
 
 async function crearBridge(): Promise<{ id: string }> {
   contador += 1;
-  const bridge = await prisma.bridge.create({
+  const bridge = await testAdminPrisma.bridge.create({
     data: {
       redSocial: "FACEBOOK",
       nombre: `Bridge token-service ${contador}`,
       claveApiHash: hashClaveBridge(`clave-token-service-${contador}`),
       estado: "ACTIVO",
+      empresaId: EMPRESA_BOOTSTRAP_ID,
     },
   });
   return { id: bridge.id };
@@ -31,7 +43,7 @@ async function crearBridge(): Promise<{ id: string }> {
 
 async function crearCuenta(bridgeId: string, overrides: { tokenCifrado?: string | null } = {}): Promise<{ id: string }> {
   contador += 1;
-  const cuenta = await prisma.cuentaPublicitaria.create({
+  const cuenta = await testAdminPrisma.cuentaPublicitaria.create({
     data: {
       bridgeId,
       idExterno: `page-token-service-${contador}`,
@@ -59,14 +71,14 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const dto = await cargarToken(bridgeId, cuentaId, "page-access-token-en-claro");
+    const dto = await conContexto(() => cargarToken(bridgeId, cuentaId, "page-access-token-en-claro"));
 
     expect(dto).not.toHaveProperty("tokenCifrado");
     expect(JSON.stringify(dto)).not.toContain("page-access-token-en-claro");
     expect(dto.estadoToken).toBe("VALIDO");
     expect(dto.tokenExpiraEn).toEqual(new Date(1_900_000_000 * 1000));
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
     expect(fila.tokenCifrado).not.toBeNull();
     expect(decrypt(fila.tokenCifrado as string)).toBe("page-access-token-en-claro");
@@ -81,12 +93,12 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(cargarToken(bridgeId, cuentaId, "token-malo")).rejects.toMatchObject({
+    await expect(conContexto(() => cargarToken(bridgeId, cuentaId, "token-malo"))).rejects.toMatchObject({
       code: "meta_token_invalido",
       statusHttp: 422,
     });
 
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.tokenCifrado).toBeNull();
     expect(fila.estadoToken).toBe("VALIDO"); // default, sin cambios
   });
@@ -96,7 +108,9 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      cargarToken("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", "token"),
+      conContexto(() =>
+        cargarToken("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001", "token"),
+      ),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -108,7 +122,7 @@ describe("cuenta-publicitaria.service — cargarToken (docs/05-bridges.md §7, c
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(cargarToken(bridgeB, cuentaDeA, "token")).rejects.toMatchObject({
+    await expect(conContexto(() => cargarToken(bridgeB, cuentaDeA, "token"))).rejects.toMatchObject({
       code: "cuenta_publicitaria_no_encontrada",
       statusHttp: 404,
     });
@@ -124,12 +138,12 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     });
     const fetchMock = vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: true } }));
     vi.stubGlobal("fetch", fetchMock);
-    const antes = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const antes = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
 
-    const resultado = await probarConexion(bridgeId, cuentaId);
+    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
 
     expect(resultado).toEqual({ ok: true, mensaje: "Conexión verificada correctamente." });
-    const despues = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const despues = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(despues).toEqual(antes);
   });
 
@@ -141,10 +155,10 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const fetchMock = vi.fn().mockResolvedValue(mockFetchJson(200, { data: { is_valid: false } }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await probarConexion(bridgeId, cuentaId);
+    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO");
   });
 
@@ -154,7 +168,7 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await probarConexion(bridgeId, cuentaId);
+    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -162,7 +176,9 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
 
   it("con un bridge inexistente lanza bridge_no_encontrado (404)", async () => {
     await expect(
-      probarConexion("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
+      conContexto(() =>
+        probarConexion("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
+      ),
     ).rejects.toMatchObject({ code: "bridge_no_encontrado", statusHttp: 404 });
   });
 
@@ -174,13 +190,13 @@ describe("cuenta-publicitaria.service — probarConexion (docs/05-bridges.md §7
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const resultado = await probarConexion(bridgeId, cuentaId);
+    const resultado = await conContexto(() => probarConexion(bridgeId, cuentaId));
 
     expect(resultado.ok).toBe(false);
     expect(typeof resultado.mensaje).toBe("string");
     expect(resultado.mensaje.length).toBeGreaterThan(0);
     expect(fetchMock).not.toHaveBeenCalled();
-    const fila = await prisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
+    const fila = await testAdminPrisma.cuentaPublicitaria.findUniqueOrThrow({ where: { id: cuentaId } });
     expect(fila.estadoToken).toBe("VALIDO"); // puramente diagnóstica, nunca persiste
   });
 });
