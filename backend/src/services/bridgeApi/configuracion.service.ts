@@ -134,7 +134,9 @@ export async function probarConexion(bridgeId: string): Promise<ResultadoPruebaC
     return { ok: false, mensaje: "No se pudo descifrar la credencial guardada. Volvé a cargarla." };
   }
 
-  const resultado = await consultarLeadsExternos(configuracion, credencial);
+  // Mismo angostamiento inline que poll.job.ts::pollUnBridge -- el guard de
+  // arriba angosta `configuracion.url` a `string`, no el objeto entero.
+  const resultado = await consultarLeadsExternos({ ...configuracion, url: configuracion.url }, credencial);
   if (!resultado.ok) {
     return resultado;
   }

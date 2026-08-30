@@ -70,7 +70,11 @@ async function pollUnBridge(bridge: Bridge): Promise<void> {
     ? new Date(bridge.ultimoLeadEn.getTime() - MARGEN_SOLAPAMIENTO_MS)
     : undefined;
 
-  const resultado = await consultarLeadsExternos(configuracion, credencial, desde);
+  // El guard de arriba angosta `configuracion.url` a `string`, pero no el
+  // tipo del objeto `configuracion` en sí (limitacion conocida de TS con
+  // `Partial<T>` pasado entero a una funcion) -- reconstruir `url` inline
+  // sí conserva el angostamiento en esta misma expresion.
+  const resultado = await consultarLeadsExternos({ ...configuracion, url: configuracion.url }, credencial, desde);
   if (!resultado.ok) {
     await registrarLogSeguro(bridge, "ERROR", `bridgeApi: fallo el poll -- ${resultado.mensaje}`);
     return;
