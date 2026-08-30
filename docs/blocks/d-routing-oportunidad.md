@@ -441,9 +441,19 @@ de primer nivel nuevo:**
   carpeta de arquitectura nueva, es un módulo de negocio nuevo dentro del
   patrón de módulos ya existente (mismo criterio que agregar `bridges/` o
   `notificaciones/` en su momento).
-- Reemplazo de los mocks ya construidos (`CierreVentaForm.tsx`,
-  `useAutorizacionLead`, ver "Contratos mock" arriba) por su fuente real —
-  edición de archivos ya existentes, no archivos nuevos.
+- **Actualización (2026-08-30, tras `0a0ab91`)**: la implementación real no
+  editó `CierreVentaForm.tsx`/`useAutorizacionLead` de `leads/` in situ como
+  preveía este plan — creó un flujo de cierre real separado bajo
+  `oportunidades/detalle/CierreVentaForm.tsx`. El formulario de cierre a
+  nivel `Lead` en `LeadDetallePage.tsx` sigue montado y funcionando sin
+  cambios. Esto **no es un mock sin reemplazar**: es la coexistencia
+  deliberada y temporal prevista por el criterio de no-regresión del propio
+  módulo de Oportunidad ("confirmar que crear/asignar/cerrar un `Lead`
+  normal sigue funcionando exactamente igual que antes de este módulo"),
+  hasta que se ejecute el "corte" de `Lead` (retirarle sus columnas de
+  negociación) como fase separada, todavía no arrancada y sujeta a
+  confirmación aparte — ver `docs/claude-negociacion-estado-actual.md`,
+  sección "Siguiente fase".
 
 Ningún directorio se mueve ni se renombra. `routes/`, `controllers/`,
 `services/`, `repositories/` (backend) y `funcionalidades/<módulo>/`

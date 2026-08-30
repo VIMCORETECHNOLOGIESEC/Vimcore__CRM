@@ -272,10 +272,15 @@ y CAS optimista. La infraestructura **ya no es single-tenant**. Lo que las
 secciones 1 a 9 describen es el **comportamiento funcional** todavía no
 scopeado por empresa: asignación por pool global (no por membresía), autoridad
 de cierre por `Usuario.rol` legacy (no por membresía/`habilitadoParaVenta`) y
-un único `Lead` sin `Oportunidad` separada. Ese cutover funcional queda para
-Bloques D (post-despliegue) y F (retiro final de `Usuario.rol`). No deben
-interpretarse las secciones 1 a 9 como el contrato definitivo para la
-evolución hacia holdings con varias empresas.
+un único `Lead` sin `Oportunidad` separada. **Precisión (2026-08-30):** el
+módulo `Oportunidad` ya existe (backend y frontend, `0a0ab91`) como entidad
+de negociación separada del `Lead` de captación — lo que queda pendiente es
+específicamente el "corte" de `Lead` (retirarle sus columnas de negociación
+y migrar los flujos que todavía lo usan), fase separada sin arrancar, ver
+`docs/claude-negociacion-estado-actual.md` sección "Siguiente fase". Ese
+cutover funcional queda para Bloques D (post-despliegue) y F (retiro final
+de `Usuario.rol`). No deben interpretarse las secciones 1 a 9 como el
+contrato definitivo para la evolución hacia holdings con varias empresas.
 
 Las decisiones D1–D14 (límite de seguridad entre tenant, holding y empresa;
 membresías y capacidades por empresa; elegibilidad por membresía de empresa
