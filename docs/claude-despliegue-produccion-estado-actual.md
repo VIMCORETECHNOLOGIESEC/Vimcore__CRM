@@ -137,11 +137,31 @@ Un `git fetch origin` normal NO actualiza el ref local `origin/main` —
 para chequear el estado real de `main` en el remoto hace falta
 `git ls-remote origin main` en vez de confiar en `origin/main` local.
 
+## Bridges sociales en producción — qué está listo para probarse
+
+Verificado el 2026-08-30 contra las variables reales del Container App
+(`az containerapp show`), no contra código ni suposición:
+
+- **LinkedIn: SÍ, probarlo.** Las 4 variables núcleo están configuradas en
+  producción con valores reales — `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`,
+  `LINKEDIN_API_VERSION`, `LINKEDIN_REDIRECT_URI`. El flujo OAuth de conexión
+  de una empresa (`GET /api/v1/bridges/:id/linkedin/oauth/iniciar` →
+  callback) puede probarse de punta a punta contra la API real de LinkedIn.
+  `LINKEDIN_API_BASE_URL` queda sin setear a propósito — es opcional y usa
+  el endpoint real de LinkedIn por default.
+- **WhatsApp: TODAVÍA NO.** Solo `WHATSAPP_OAUTH_REDIRECT_URI` está
+  configurada; no tiene credenciales de app propias más allá de eso. El
+  código existe y está montado en las rutas
+  (`backend/src/{controllers,services,repositories,routes}/whatsappMessages/`),
+  pero no hay nada real detrás para que un flujo de conexión funcione en
+  producción todavía. No pedirle a nadie que pruebe WhatsApp hasta que se
+  complete esa configuración.
+
 ## Pendiente / gaps conocidos
 
 - Frontend todavía no desplegado (va a un VPS aparte) — `CORS_ORIGIN` sigue
   en `*` temporalmente, cambiar al dominio real del frontend en cuanto
   exista.
-- `LINKEDIN_API_BASE_URL` quedó sin usar (opcional, default al endpoint real
-  de LinkedIn) — LinkedIn sí está configurado y activo
-  (`LINKEDIN_CLIENT_ID`/`SECRET`/`API_VERSION`/`REDIRECT_URI` reales).
+- WhatsApp: falta terminar de configurar sus credenciales de app en
+  producción antes de que el bridge sea probable de verdad (ver sección
+  arriba).
