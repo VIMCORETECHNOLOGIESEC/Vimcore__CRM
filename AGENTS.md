@@ -204,7 +204,14 @@ archivos versionados — ver `sdd-init/crm_comercial` y el ejemplo de
 - Componentes funcionales, hooks, sin componentes de clase.
 - Estado de servidor con **TanStack Query**; estado local con `useState`/`useReducer`.
   No introduzcas Redux.
-- Formularios con **React Hook Form + Zod**, reutilizando los esquemas del backend.
+- Formularios con **React Hook Form + Zod**, reutilizando los esquemas del backend
+  cuando existe un paquete Zod compartido (hoy: `loginBodySchema`,
+  `logoUrlSchema`). Los módulos sin esa infraestructura (p. ej. formularios de
+  `bridges/*`, cuyos schemas viven solo en `backend/src/schemas/bridges.schema.ts`,
+  fuera de cualquier paquete compartido) duplican localmente las reglas de
+  validación en un schema Zod propio del componente, documentando la fuente
+  que replican en un comentario — precedente ya establecido en
+  `NuevoBridgeDialog.tsx::crearBridgeSchema`.
 - Tailwind con clases utilitarias directas. Sin CSS-in-JS.
 
 ### Nomenclatura

@@ -455,6 +455,56 @@ describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
   });
 });
 
+describe("BridgesPage — alta de bridge API_EXTERNA (arregla el flujo mock: creación real antes del asistente de configuración)", () => {
+  it("elegir «API externa» crea el bridge de verdad (mismo POST /bridges genérico), muestra su clave una vez y luego abre el asistente con el bridgeId real", async () => {
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
+    createBridgeApiMock.mockResolvedValue({
+      bridge: bridgeFake({
+        id: "bridge-api-externa-1",
+        redSocial: "API_EXTERNA",
+        nombre: "Sistema de reservas",
+        estado: "INACTIVO",
+        cuentasPublicitarias: [],
+      }),
+      claveApi: "brg_clave-api-externa-1",
+    });
+    const user = userEvent.setup();
+    renderBridgesPage();
+    await screen.findByText("Todavía no hay bridges configurados");
+
+    await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
+    const dialogAlta = await screen.findByRole("dialog");
+    await user.click(within(dialogAlta).getByRole("combobox", { name: "Red social" }));
+    await user.click(await screen.findByRole("option", { name: "API externa" }));
+    await user.type(within(dialogAlta).getByLabelText("Nombre"), "Sistema de reservas");
+    await user.click(within(dialogAlta).getByRole("button", { name: "Configurar API" }));
+
+    // Ya no alcanza con guardar el nombre localmente: tiene que crear el
+    // bridge real, con el mismo endpoint genérico que cualquier otra red
+    // social -- si esto no se llama, `ApiExternaSetupDialog` nunca tendría un
+    // `bridgeId` real para sus 3 pasos siguientes.
+    await waitFor(() =>
+      expect(createBridgeApiMock).toHaveBeenCalledWith({
+        redSocial: "API_EXTERNA",
+        nombre: "Sistema de reservas",
+      }),
+    );
+
+    // La clave devuelta por POST /bridges se muestra una única vez, igual
+    // que para cualquier otro bridge, antes de encadenar el asistente.
+    expect(await screen.findByText("brg_clave-api-externa-1")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("checkbox", { name: "Ya copié la clave y la guardé en un lugar seguro" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Entendido, cerrar" }));
+
+    // El asistente de configuración se abre recién ahora, con el bridgeId
+    // real devuelto por la creación (no un placeholder ni el nombre solo).
+    const dialogSetup = await screen.findByRole("dialog");
+    expect(within(dialogSetup).getByText("Configurar Sistema de reservas")).toBeInTheDocument();
+  });
+});
+
 describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and Reactivate, Hard Delete Only Without Leads)", () => {
   it("un bridge que nunca recibió leads: advierte eliminación permanente y llama a deleteBridgeApi al confirmar", async () => {
     fetchBridgesApiMock.mockResolvedValue(

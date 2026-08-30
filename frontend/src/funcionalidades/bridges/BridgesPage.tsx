@@ -33,6 +33,18 @@ const BRIDGES_POR_PAGINA = 10;
 interface ClaveModalState {
   bridgeNombre: string;
   claveApi: string;
+  /**
+   * Presente solo cuando el bridge recién creado es `API_EXTERNA` -- al
+   * cerrar `ClaveBridgeModal` se encadena `ApiExternaSetupDialog` con este
+   * id real (`POST /bridges` ya lo creó; los 3 endpoints siguientes cargan
+   * configuración SOBRE este bridge, ver `ApiExternaSetupDialog.tsx`).
+   */
+  apiExternaBridgeId?: string;
+}
+
+interface ApiExternaBridgeState {
+  bridgeId: string;
+  nombre: string;
 }
 
 /**
@@ -79,7 +91,7 @@ export function BridgesPage() {
   const [dialogAltaAbierto, setDialogAltaAbierto] = useState(false);
   const [claveModal, setClaveModal] = useState<ClaveModalState | null>(null);
   const [bridgeParaBaja, setBridgeParaBaja] = useState<Bridge | null>(null);
-  const [apiExternaNombre, setApiExternaNombre] = useState<string | null>(null);
+  const [apiExternaBridge, setApiExternaBridge] = useState<ApiExternaBridgeState | null>(null);
 
   function updateFiltros(nuevos: BridgesFiltrosState) {
     setFiltros(nuevos);
@@ -164,8 +176,26 @@ export function BridgesPage() {
           }}
           enviando={crear.isPending}
           onApiExterna={(nombre) => {
-            setDialogAltaAbierto(false);
-            setApiExternaNombre(nombre);
+            // Antes de esta integración, este callback solo guardaba el
+            // nombre y abría `ApiExternaSetupDialog` sin bridge real -- sus 3
+            // pasos siguientes (`PATCH .../conexion`, `.../mapeo`,
+            // `POST .../probar-conexion`) necesitan un `bridgeId` real.
+            // `POST /bridges` es el mismo endpoint genérico de siempre
+            // (`redSocial: "API_EXTERNA"`), así que se dispara la misma
+            // mutación `crear` que usa cualquier otro alta.
+            crear.mutate(
+              { redSocial: "API_EXTERNA", nombre },
+              {
+                onSuccess: (respuesta) => {
+                  setDialogAltaAbierto(false);
+                  setClaveModal({
+                    bridgeNombre: respuesta.bridge.nombre,
+                    claveApi: respuesta.claveApi,
+                    apiExternaBridgeId: respuesta.bridge.id,
+                  });
+                },
+              },
+            );
           }}
           onSubmit={(valores) =>
             crear.mutate(valores, {
@@ -178,8 +208,13 @@ export function BridgesPage() {
         />
       ) : null}
 
-      {apiExternaNombre ? (
-        <ApiExternaSetupDialog open nombre={apiExternaNombre} onClose={() => setApiExternaNombre(null)} />
+      {apiExternaBridge ? (
+        <ApiExternaSetupDialog
+          open
+          bridgeId={apiExternaBridge.bridgeId}
+          nombre={apiExternaBridge.nombre}
+          onClose={() => setApiExternaBridge(null)}
+        />
       ) : null}
 
       {claveModal ? (
@@ -187,7 +222,17 @@ export function BridgesPage() {
           open
           bridgeNombre={claveModal.bridgeNombre}
           claveApi={claveModal.claveApi}
-          onClose={() => setClaveModal(null)}
+          onClose={() => {
+            // `POST /bridges` siempre devuelve `claveApi` (incluso para
+            // API_EXTERNA, catalogado `CLAVE_API` en
+            // `catalogos.ts::ESTILO_AUTENTICACION_POR_RED`) -- se muestra UNA
+            // sola vez igual que cualquier otro bridge antes de encadenar el
+            // asistente de configuración, en vez de descartarla en silencio.
+            if (claveModal.apiExternaBridgeId) {
+              setApiExternaBridge({ bridgeId: claveModal.apiExternaBridgeId, nombre: claveModal.bridgeNombre });
+            }
+            setClaveModal(null);
+          }}
         />
       ) : null}
 
