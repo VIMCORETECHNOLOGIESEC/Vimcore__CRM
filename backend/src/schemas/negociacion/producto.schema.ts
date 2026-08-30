@@ -19,7 +19,14 @@ export const crearProductoBodySchema = z.object({
 
 export const listProductosQuerySchema = z.object({
   empresaId: z.uuid().optional(),
-  activo: z.coerce.boolean().optional(),
+  // Hallazgo real corregido (no cosmetico): `z.coerce.boolean()` usa
+  // semántica de `Boolean(valor)` -- cualquier string no vacío, incluido el
+  // literal "false", coerciona a `true`. Mismo criterio ya establecido en
+  // `usuarios.schema.ts::listUsuariosQuerySchema`.
+  activo: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
 });
 
 export type IdParam = z.infer<typeof idParamSchema>;

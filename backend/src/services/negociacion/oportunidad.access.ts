@@ -93,7 +93,14 @@ export async function canCerrarOportunidad(
   oportunidad: OportunidadAcceso,
   client: PrismaClientOrTransaction,
 ): Promise<boolean> {
-  if (usuario.rol !== "ASESOR") return false;
+  // Hallazgo real corregido (no cosmetico): un `if (usuario.rol !== "ASESOR")
+  // return false` acá cortaba ANTES de llegar al chequeo por `Membresia` de
+  // abajo -- un Administrador/Supervisor que toma la Oportunidad via D9
+  // nunca cambia su `Usuario.rol`, asi que ese corte lo dejaba sin poder
+  // cerrar NUNCA la Oportunidad que la propia excepcion le dio, contradiciendo
+  // el comentario de cabecera de esta funcion ("satisface esta misma regla
+  // como cualquier asesor"). El chequeo por Membresia de abajo YA es la
+  // fuente correcta -- no hace falta ningun filtro por Usuario.rol antes.
   if (usuario.id !== oportunidad.asesorId) return false;
 
   const membresia = await membresiaPoolRepository.findMembresiaAsesorHabilitada(

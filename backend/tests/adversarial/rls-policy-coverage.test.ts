@@ -28,6 +28,12 @@ const TABLAS_TENANT_SCOPED = [
   "cuentas_anuncios_conexiones",
   "cuentas_anuncios_oauth_states",
   "campania_metricas_diarias",
+  // negociacion (Bloque D): faltaban en esta lista desde su migracion
+  // original -- hallazgo real (no cosmetico) detectado escribiendo los
+  // tests del modulo, ver 20260830020000_negociacion_rls_tenant_isolation.
+  "productos",
+  "oportunidades",
+  "oportunidad_eventos",
 ] as const;
 
 afterAll(async () => {
