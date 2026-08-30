@@ -29,6 +29,12 @@ const usuarioBodyShapeSchema = z.object({
 
 export const createUsuarioBodySchema = usuarioBodyShapeSchema;
 
+export const createEmpresaAdministradorBodySchema = z.object({
+  nombre: z.string().trim().min(1).max(120),
+  correo: z.string().trim().pipe(z.email()),
+  password: passwordPolicySchema,
+});
+
 /**
  * `activo` reactiva/desactiva por este mismo endpoint — mismo patrón que
  * `bridges.schema.ts::updateBridgeBodySchema` con `estado: "ACTIVO"`. Solo
@@ -45,6 +51,7 @@ export const updateUsuarioBodySchema = usuarioBodyShapeSchema
   .refine((v) => Object.keys(v).length > 0, "Debes enviar al menos un campo");
 
 export const idParamSchema = z.object({ id: z.uuid() });
+export const empresaIdParamSchema = z.object({ empresaId: z.uuid() });
 
 /**
  * F7 (admin de usuarios): mismo patrón de `leads.schema.ts::listLeadsQuerySchema`
@@ -98,7 +105,9 @@ export const listResponsablesQuerySchema = z.object({
 });
 
 export type CreateUsuarioBody = z.infer<typeof createUsuarioBodySchema>;
+export type CreateEmpresaAdministradorBody = z.infer<typeof createEmpresaAdministradorBodySchema>;
 export type UpdateUsuarioBody = z.infer<typeof updateUsuarioBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
+export type EmpresaIdParam = z.infer<typeof empresaIdParamSchema>;
 export type ListUsuariosQuery = z.infer<typeof listUsuariosQuerySchema>;
 export type ListResponsablesQuery = z.infer<typeof listResponsablesQuerySchema>;

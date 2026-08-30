@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
@@ -57,7 +58,7 @@ async function crearLead(
   }> = {},
 ): Promise<{ id: string; clienteNombre: string }> {
   contador += 1;
-  const clienteNombre = `Cliente LR ${contador}`;
+  const clienteNombre = `Cliente LR ${contador} ${randomUUID()}`;
   const cliente = await prisma.cliente.create({
     data: { nombre: clienteNombre, telefonoValido: false },
   });

@@ -136,6 +136,23 @@ async function crearSuperAdminHoldingWide(): Promise<{ id: string; token: string
   return { id: usuario.id, token: login.body.accessToken as string };
 }
 
+async function crearUsuarioHoldingWide(rol: "ADMINISTRADOR" | "SUPERVISOR"): Promise<{ id: string; token: string }> {
+  const usuario = await testAdminPrisma.usuario.create({
+    data: {
+      nombre: `${rol} holding-wide adversarial ${crypto.randomUUID()}`,
+      correo: `${rol.toLowerCase()}-holding-adversarial-${crypto.randomUUID()}@test.local`,
+      passwordHash: await hashPassword(PASSWORD),
+      rol,
+      activo: true,
+    },
+  });
+  const login = await request(app)
+    .post("/api/v1/auth/login")
+    .send({ correo: usuario.correo, password: PASSWORD });
+  expect(login.status, `login holding-wide ${rol}`).toBe(200);
+  return { id: usuario.id, token: login.body.accessToken as string };
+}
+
 async function crearCita(empresaId: string, usuarioId: string, leadId: string): Promise<{ id: string }> {
   const cita = await testAdminPrisma.cita.create({
     data: {
@@ -605,6 +622,213 @@ describe("adversarial/http-cross-company — POST /usuarios (bug de seguridad, e
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.code).toBe("empresa_requerida");
+  });
+});
+
+describe("adversarial/http-cross-company — POST /empresas/:empresaId/administradores", () => {
+  it("201: un ADMINISTRADOR holding-wide provisiona un administrador company-scoped sin filtrar passwordHash", async () => {
+    const [empresa, adminHolding] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `Empresa admin endpoint ${crypto.randomUUID()}` } }),
+      crearUsuarioHoldingWide("ADMINISTRADOR"),
+    ]);
+    const correo = `admin-empresa-endpoint-${crypto.randomUUID()}@test.local`;
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({ nombre: "Administradora Company Scoped", correo, password: PASSWORD });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.administrador.membresia).toMatchObject({
+      empresaId: empresa.id,
+      rol: "ADMINISTRADOR",
+      activa: true,
+      correo,
+    });
+    expect(respuesta.body.administrador.usuario).toMatchObject({
+      rol: "ADMINISTRADOR",
+      activo: true,
+    });
+    expect(JSON.stringify(respuesta.body)).not.toContain("passwordHash");
+
+    const usuarioPortador = await testAdminPrisma.usuario.findUniqueOrThrow({
+      where: { id: respuesta.body.administrador.usuario.id },
+    });
+    expect(usuarioPortador.rol).toBe("ADMINISTRADOR");
+    expect(usuarioPortador.correo).not.toBe(correo);
+  });
+
+  it("el portador no autentica con la clave enviada y el correo de Membresia inicia sesión company-scoped", async () => {
+    const [empresa, adminHolding] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `Empresa admin login ${crypto.randomUUID()}` } }),
+      crearUsuarioHoldingWide("ADMINISTRADOR"),
+    ]);
+    const correo = `admin-empresa-login-${crypto.randomUUID()}@test.local`;
+
+    const provision = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({ nombre: "Admin Login Company", correo, password: PASSWORD });
+    expect(provision.status).toBe(201);
+
+    const usuarioPortador = await testAdminPrisma.usuario.findUniqueOrThrow({
+      where: { id: provision.body.administrador.usuario.id },
+    });
+    const loginPortador = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: usuarioPortador.correo, password: PASSWORD });
+    expect(loginPortador.status).toBe(401);
+    expect(loginPortador.body).toMatchObject({ code: "credenciales_invalidas" });
+    expect(loginPortador.body.accessToken).toBeUndefined();
+
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo, password: PASSWORD });
+    expect(login.status).toBe(200);
+
+    const perfil = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${login.body.accessToken}`);
+    expect(perfil.status).toBe(200);
+    expect(perfil.body).toMatchObject({
+      sessionScope: "company",
+      empresaId: empresa.id,
+      rol: "ADMINISTRADOR",
+      membresiaId: provision.body.administrador.membresia.id,
+    });
+  });
+
+  it("403: un administrador company-scoped no puede provisionar administradores de empresa", async () => {
+    const [target, adminEmpresa] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `Empresa admin denied ${crypto.randomUUID()}` } }),
+      crearAdminDeEmpresa("admin-provision-denied"),
+    ]);
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${target.id}/administradores`)
+      .set("Authorization", `Bearer ${adminEmpresa.token}`)
+      .send({
+        nombre: "Admin Rechazado",
+        correo: `admin-rechazado-${crypto.randomUUID()}@test.local`,
+        password: PASSWORD,
+      });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("403: un SUPERVISOR holding-wide no puede provisionar administradores de empresa", async () => {
+    const [empresa, supervisorHolding] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `Empresa admin supervisor denied ${crypto.randomUUID()}` } }),
+      crearUsuarioHoldingWide("SUPERVISOR"),
+    ]);
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .set("Authorization", `Bearer ${supervisorHolding.token}`)
+      .send({
+        nombre: "Admin Rechazado Por Rol",
+        correo: `admin-rol-rechazado-${crypto.randomUUID()}@test.local`,
+        password: PASSWORD,
+      });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("401: rechaza una petición sin autenticación", async () => {
+    const empresa = await testAdminPrisma.empresa.create({
+      data: { nombre: `Empresa admin sin auth ${crypto.randomUUID()}` },
+    });
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .send({
+        nombre: "Admin Sin Auth",
+        correo: `admin-sin-auth-${crypto.randomUUID()}@test.local`,
+        password: PASSWORD,
+      });
+
+    expect(respuesta.status).toBe(401);
+  });
+
+  it("400: rechaza empresaId inválido o body inválido", async () => {
+    const adminHolding = await crearUsuarioHoldingWide("ADMINISTRADOR");
+    const empresa = await testAdminPrisma.empresa.create({
+      data: { nombre: `Empresa admin invalid body ${crypto.randomUUID()}` },
+    });
+
+    const pathInvalido = await request(app)
+      .post("/api/v1/empresas/no-es-uuid/administradores")
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({ nombre: "Admin Path", correo: `admin-path-${crypto.randomUUID()}@test.local`, password: PASSWORD });
+    expect(pathInvalido.status).toBe(400);
+
+    const bodyInvalido = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({ nombre: "Admin Body", correo: "correo-invalido", password: PASSWORD });
+    expect(bodyInvalido.status).toBe(400);
+  });
+
+  it("404: rechaza una empresa inexistente", async () => {
+    const adminHolding = await crearUsuarioHoldingWide("ADMINISTRADOR");
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${crypto.randomUUID()}/administradores`)
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({
+        nombre: "Admin Empresa Inexistente",
+        correo: `admin-empresa-inexistente-${crypto.randomUUID()}@test.local`,
+        password: PASSWORD,
+      });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it("409: rechaza colisión de correo con Usuario o Membresia existentes", async () => {
+    const [empresa, adminHolding] = await Promise.all([
+      testAdminPrisma.empresa.create({ data: { nombre: `Empresa admin collision ${crypto.randomUUID()}` } }),
+      crearUsuarioHoldingWide("ADMINISTRADOR"),
+    ]);
+    const usuarioExistente = await testAdminPrisma.usuario.create({
+      data: {
+        nombre: "Usuario con correo existente",
+        correo: `correo-usuario-existente-${crypto.randomUUID()}@test.local`,
+        passwordHash: await hashPassword(PASSWORD),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    const portadorMembresiaExistente = await testAdminPrisma.usuario.create({
+      data: {
+        nombre: "Portador membresia existente",
+        correo: `portador-membresia-existente-${crypto.randomUUID()}@test.local`,
+        passwordHash: await hashPassword(PASSWORD),
+        rol: "ADMINISTRADOR",
+        activo: true,
+      },
+    });
+    const membresiaExistente = await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: portadorMembresiaExistente.id,
+        empresaId: empresa.id,
+        rol: "ADMINISTRADOR",
+        correo: `correo-membresia-existente-${crypto.randomUUID()}@test.local`,
+        passwordHash: await hashPassword(PASSWORD),
+        activa: true,
+      },
+    });
+
+    const colisionUsuario = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({ nombre: "Admin Colision Usuario", correo: usuarioExistente.correo, password: PASSWORD });
+    expect(colisionUsuario.status).toBe(409);
+
+    const colisionMembresia = await request(app)
+      .post(`/api/v1/empresas/${empresa.id}/administradores`)
+      .set("Authorization", `Bearer ${adminHolding.token}`)
+      .send({ nombre: "Admin Colision Membresia", correo: membresiaExistente.correo, password: PASSWORD });
+    expect(colisionMembresia.status).toBe(409);
   });
 });
 

@@ -1,7 +1,9 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { hashPassword } from "../lib/password.js";
 import { runInTransaction, USUARIOS_TRANSACTION_BOUNDS, type PrismaClientOrTransaction } from "../lib/prisma.js";
+import * as empresaRepository from "../repositories/empresa.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
@@ -28,6 +30,10 @@ function userNotFound(): AppError {
 
 function emailAlreadyInUse(): AppError {
   return new AppError("correo_en_uso", 409, "El correo ya está en uso");
+}
+
+function empresaNotFound(): AppError {
+  return new AppError("empresa_no_encontrada", 404, "Empresa no encontrada");
 }
 
 /**
@@ -104,6 +110,37 @@ export interface UpdateUsuarioInput {
   password?: string;
   rol?: RolUsuario;
   activo?: boolean;
+}
+
+export interface CreateEmpresaAdministradorInput {
+  nombre: string;
+  correo: string;
+  password: string;
+}
+
+export interface EmpresaAdministradorView {
+  usuario: {
+    id: string;
+    nombre: string;
+    rol: "ADMINISTRADOR";
+    activo: boolean;
+  };
+  membresia: {
+    id: string;
+    usuarioId: string;
+    empresaId: string;
+    rol: "ADMINISTRADOR";
+    activa: boolean;
+    correo: string;
+  };
+}
+
+function correoPortadorAdministrador(empresaId: string, correoMembresia: string): string {
+  const digest = createHash("sha256")
+    .update(`${empresaId}:${correoMembresia.trim().toLowerCase()}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `portador-admin-${empresaId}-${digest}@no-login.crm.local`;
 }
 
 /**
@@ -187,6 +224,81 @@ export async function createUsuario(
         }
 
         return usuario;
+      },
+      USUARIOS_TRANSACTION_BOUNDS,
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw emailAlreadyInUse();
+    }
+    throw error;
+  }
+}
+
+/**
+ * Provisiona un administrador company-scoped sin cambiar `POST /usuarios`:
+ * el correo de login vive en `Membresia.correo`; el `Usuario` es solo el
+ * portador legado requerido por la sesión y la autorización existentes.
+ */
+export async function createEmpresaAdministrador(
+  empresaId: string,
+  input: CreateEmpresaAdministradorInput,
+): Promise<EmpresaAdministradorView> {
+  const membresiaPasswordHash = await hashPassword(input.password);
+  const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
+  const usuarioCorreo = correoPortadorAdministrador(empresaId, input.correo);
+
+  try {
+    return await runInTransaction(
+      undefined,
+      async (tx) => {
+        const empresa = await empresaRepository.findById(empresaId, tx);
+        if (!empresa) {
+          throw empresaNotFound();
+        }
+
+        await membresiaRepository.assertCorreoDisponible(input.correo, tx);
+        await membresiaRepository.assertCorreoDisponible(usuarioCorreo, tx);
+
+        const usuario = await usuarioRepository.createUsuario(
+          {
+            nombre: input.nombre,
+            correo: usuarioCorreo,
+            // Invariantes: rol ADMINISTRADOR para que el login por Membresia pase;
+            // password no expuesta para que Usuario.correo no autentique holding-wide.
+            passwordHash: usuarioPasswordHash,
+            rol: "ADMINISTRADOR",
+          },
+          tx,
+        );
+        const membresia = await membresiaRepository.createMembresiaConCredencial(
+          {
+            usuarioId: usuario.id,
+            empresaId,
+            rol: "ADMINISTRADOR",
+            habilitadoParaVenta: false,
+            correo: input.correo,
+            passwordHash: membresiaPasswordHash,
+          },
+          tx,
+        );
+
+        return {
+          usuario: {
+            id: usuario.id,
+            nombre: usuario.nombre,
+            rol: "ADMINISTRADOR",
+            activo: usuario.activo,
+          },
+          membresia: {
+            id: membresia.id,
+            usuarioId: membresia.usuarioId,
+            empresaId: membresia.empresaId,
+            rol: "ADMINISTRADOR",
+            activa: membresia.activa,
+            correo: membresia.correo as string,
+          },
+        };
       },
       USUARIOS_TRANSACTION_BOUNDS,
     );

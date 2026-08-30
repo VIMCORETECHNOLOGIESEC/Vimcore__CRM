@@ -4,6 +4,7 @@ import {
   getUsuarioById,
   getUsuarios,
   getUsuariosResponsables,
+  postEmpresaAdministrador,
   patchUsuario,
   postUsuario,
 } from "../controllers/usuarios.controller.js";
@@ -18,6 +19,12 @@ usuariosRouter.post(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   postUsuario,
+);
+usuariosRouter.post(
+  "/empresas/:empresaId/administradores",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postEmpresaAdministrador,
 );
 usuariosRouter.get(
   "/usuarios",

@@ -7,7 +7,13 @@ import * as leadEventoRepository from "../src/repositories/lead-evento.repositor
 import * as leadRepository from "../src/repositories/lead.repository.js";
 import * as notificacionRepository from "../src/repositories/notificacion.repository.js";
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
-import { createUsuario, deactivateUsuario, findResponsables, findUsuarioById } from "../src/services/usuarios.service.js";
+import {
+  createEmpresaAdministrador,
+  createUsuario,
+  deactivateUsuario,
+  findResponsables,
+  findUsuarioById,
+} from "../src/services/usuarios.service.js";
 import type { AuthenticatedUser } from "../src/types/authenticated-user.js";
 import type { EtapaLead, RolUsuario } from "@prisma/client";
 
@@ -228,6 +234,41 @@ describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure
       const membresia = await testAdminPrisma.membresia.findFirst({ where: { usuarioId: creado.id } });
       expect(membresia?.empresaId).toBe(BOOTSTRAP_EMPRESA_ID);
       expect(membresia?.empresaId).not.toBe(empresaAjena.id);
+    }));
+});
+
+describe("usuarios.service — createEmpresaAdministrador", () => {
+  it("crea un administrador de empresa con Usuario portador ADMINISTRADOR y Membresia ADMINISTRADOR activa sin filtrar passwordHash", () =>
+    sinRestriccion(async () => {
+      const empresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa admin service ${randomUUID()}` },
+      });
+      const correo = `admin-empresa-service-${randomUUID()}@integracion.test`;
+
+      const resultado = await createEmpresaAdministrador(empresa.id, {
+        nombre: "Administradora de Empresa Service",
+        correo,
+        password: "clave-admin-empresa-123456",
+      });
+
+      expect(resultado.membresia).toMatchObject({
+        empresaId: empresa.id,
+        rol: "ADMINISTRADOR",
+        activa: true,
+        correo,
+      });
+      expect(resultado.usuario).toMatchObject({
+        nombre: "Administradora de Empresa Service",
+        rol: "ADMINISTRADOR",
+        activo: true,
+      });
+      expect(JSON.stringify(resultado)).not.toContain("passwordHash");
+
+      const usuarioPersistido = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: resultado.usuario.id },
+      });
+      expect(usuarioPersistido.rol).toBe("ADMINISTRADOR");
+      expect(usuarioPersistido.correo).not.toBe(correo);
     }));
 });
 

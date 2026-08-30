@@ -2,13 +2,16 @@ import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
+  createEmpresaAdministradorBodySchema,
   createUsuarioBodySchema,
+  empresaIdParamSchema,
   idParamSchema,
   listResponsablesQuerySchema,
   listUsuariosQuerySchema,
   updateUsuarioBodySchema,
 } from "../schemas/usuarios.schema.js";
 import {
+  createEmpresaAdministrador,
   createUsuario,
   deactivateUsuario,
   findResponsables,
@@ -25,6 +28,18 @@ function invalidIdParam(): AppError {
   return new AppError("validacion_invalida", 400, "El identificador de usuario es inválido");
 }
 
+function invalidEmpresaIdParam(): AppError {
+  return new AppError("validacion_invalida", 400, "El identificador de la empresa es inválido");
+}
+
+function forbiddenHoldingScope(): AppError {
+  return new AppError(
+    "solo_sesion_holding",
+    403,
+    "Esta acción es exclusiva de una sesión de holding",
+  );
+}
+
 export async function postUsuario(req: Request, res: Response): Promise<void> {
   const usuario = assertAuthenticated(req);
 
@@ -35,6 +50,26 @@ export async function postUsuario(req: Request, res: Response): Promise<void> {
 
   const user = await createUsuario(usuario, parsed.data);
   res.status(201).json({ user });
+}
+
+export async function postEmpresaAdministrador(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  if (usuario.sessionScope !== "holding" || usuario.empresaId !== null) {
+    throw forbiddenHoldingScope();
+  }
+
+  const parsedParams = empresaIdParamSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidEmpresaIdParam();
+  }
+
+  const parsedBody = createEmpresaAdministradorBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw zodValidationError();
+  }
+
+  const administrador = await createEmpresaAdministrador(parsedParams.data.empresaId, parsedBody.data);
+  res.status(201).json({ administrador });
 }
 
 export async function getUsuarios(req: Request, res: Response): Promise<void> {
