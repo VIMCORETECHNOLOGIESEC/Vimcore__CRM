@@ -149,19 +149,47 @@ Verificado el 2026-08-30 contra las variables reales del Container App
   callback) puede probarse de punta a punta contra la API real de LinkedIn.
   `LINKEDIN_API_BASE_URL` queda sin setear a propósito — es opcional y usa
   el endpoint real de LinkedIn por default.
-- **WhatsApp: TODAVÍA NO.** Solo `WHATSAPP_OAUTH_REDIRECT_URI` está
-  configurada; no tiene credenciales de app propias más allá de eso. El
-  código existe y está montado en las rutas
-  (`backend/src/{controllers,services,repositories,routes}/whatsappMessages/`),
-  pero no hay nada real detrás para que un flujo de conexión funcione en
-  producción todavía. No pedirle a nadie que pruebe WhatsApp hasta que se
-  complete esa configuración.
+- **WhatsApp: probable en modo prueba, no en producción real todavía.**
+  Actualizado 2026-08-30, verificado contra el Container App real (`az
+  containerapp show -n arcano-crm -g documents`): `META_APP_ID`,
+  `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_OAUTH_REDIRECT_URI`
+  y `META_ADS_OAUTH_REDIRECT_URI` ya tienen valor real (antes solo estaba el
+  redirect URI). Webhooks configurados en el panel de Meta (`leadgen` en
+  objeto Página, y el webhook de mensajería de WhatsApp), casos de uso
+  agregados (WhatsApp, Marketing API — medir rendimiento y captar clientes
+  potenciales).
+  La app de Meta sigue en **modo Development** y el Business Portfolio
+  todavía no pasó Verificación de Negocio — mientras tanto: (a) solo cuentas
+  agregadas como Admin/Developer/Tester en el panel de la app pueden
+  completar el flujo OAuth de conexión (`/api/v1/whatsapp/conectar`,
+  `/api/v1/meta-ads/conectar`); (b) los mensajes de WhatsApp solo funcionan
+  contra los hasta 5 números agregados como destinatarios de prueba en
+  WhatsApp Manager, no con clientes reales sin agregar; (c) ninguna empresa
+  cliente externa puede autoconectarse todavía. Suficiente para demos
+  controladas con cuentas propias, no para uso productivo multi-tenant real.
+- Mensajería de WhatsApp (Parte 2 — bandeja de conversaciones,
+  envío/recepción real) ya está en `main` (commit `4e94a2f`), no es código
+  pendiente — lo que falta para producción real es exclusivamente la
+  configuración de Meta de arriba (App Review + modo Live + Verificación de
+  Negocio), no backend.
 
 ## Pendiente / gaps conocidos
 
 - Frontend todavía no desplegado (va a un VPS aparte) — `CORS_ORIGIN` sigue
   en `*` temporalmente, cambiar al dominio real del frontend en cuanto
   exista.
-- WhatsApp: falta terminar de configurar sus credenciales de app en
-  producción antes de que el bridge sea probable de verdad (ver sección
-  arriba).
+- WhatsApp/Meta Ads: falta App Review + modo Live + Verificación de Negocio
+  del Business Portfolio para uso productivo con clientes reales (ver
+  sección arriba) — la config técnica (env vars, webhooks, casos de uso) ya
+  está lista.
+- Leads de Facebook Ads vía Página (`CuentaPublicitaria`, bridge legacy con
+  Page Access Token pegado a mano): sigue sin migrar a OAuth. Requiere
+  además "instalar la app en la Página" (`POST /{page-id}/subscribed_apps
+  ?subscribed_fields=leadgen`) por cada Página conectada — paso manual
+  aparte de suscribir el campo `leadgen` en el panel de Webhooks.
+- Fix de seguridad multitenant (scope por empresa en `/usuarios` y
+  `/bridges` + 4 gaps relacionados) — commit `dd2c1da` en `main`,
+  verificado con 107/107 tests reales en verde. Punto 3 del roadmap
+  original (endpoint para crear administrador de empresa,
+  `Membresia(rol: ADMINISTRADOR)`) y `empresaId` opcional en
+  `metricasQuerySchema` todavía no arrancaron — próximos en la cola.
