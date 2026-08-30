@@ -274,9 +274,22 @@ de modificar código, datos o despliegue:
   WhatsApp (`WhatsAppChat`) con historial y mensajes **hardcodeados/mock**
   — no envía ni recibe mensajes reales, no hay integración con la API de
   WhatsApp de por medio. Es UI de demo/venta, aprobada para el despliegue
-  vigente por decisión del usuario. Cualquier integración REAL con
-  WhatsApp (envío/recepción de mensajes de verdad) sigue fuera de alcance
-  y requiere su propio bloque SDD.
+  vigente por decisión del usuario.
+  **Ampliación de alcance documentada (2026-08-30):** por indicación
+  directa del usuario, la integración REAL de WhatsApp Business (Embedded
+  Signup de Meta) entra en el alcance del despliegue vigente, como parte
+  del mismo conjunto de funcionalidades recientes del proyecto — deja de
+  aplicar la restricción "fuera de alcance" únicamente para el flujo de
+  **conexión** (`funcionalidades/whatsapp/`: `ConectarWhatsAppCard.tsx`,
+  `WhatsAppCallbackPage.tsx`, `useWhatsApp.ts`, `whatsapp.api.ts`,
+  `whatsapp.utils.ts`, `tipos/whatsapp.ts`, ruta pública
+  `/whatsapp/callback` en `router.tsx`) — Embedded Signup, callback OAuth
+  y persistencia de la conexión (`GET /whatsapp/conectar`,
+  `GET /whatsapp/callback`, `POST /whatsapp/conexion`), ver
+  `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3. El envío
+  y recepción real de mensajes de WhatsApp (lo que el panel
+  `WhatsAppChat` sigue simulando con datos mock) **no** está cubierto por
+  esta ampliación y sigue fuera de alcance salvo que se decida aparte.
 - App móvil nativa
 - Bridges de TikTok y sitio web propio (no implementados ni modelados como
   canales; el endpoint genérico actual registra el origen como `GOOGLE_FORMS`)

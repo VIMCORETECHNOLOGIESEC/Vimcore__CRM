@@ -15,6 +15,17 @@ vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
   fetchRedesSocialesSoportadasApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// `BridgesPage` monta `ConectarWhatsAppCard` de forma aditiva (flujo de
+// conexión de WhatsApp Business, ver `funcionalidades/whatsapp/`), que
+// necesita `useAuth()` -- mockeado acá con una sesión `company` estable
+// (mismo patrón que `tests/layouts/SalirVistaEmpresaButton.test.tsx`) para
+// no exigir un `<AuthProvider>` real en estos tests, que nunca interactúan
+// con esa tarjeta. `whatsapp.api`/`whatsapp.utils` quedan sin mockear a
+// propósito: ningún test de este archivo hace click en "Conectar WhatsApp",
+// así que su `useMutation` nunca dispara una llamada real.
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+  useAuth: () => ({ user: { sessionScope: "company", rol: "ADMINISTRADOR" } }),
+}));
 
 const bridgesApi = await import("@/funcionalidades/bridges/bridges.api");
 const { toast } = await import("sonner");

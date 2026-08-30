@@ -7,6 +7,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
+import { ConectarWhatsAppCard } from "@/funcionalidades/whatsapp/ConectarWhatsAppCard";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { Bridge } from "@/tipos/bridge";
 import { BridgesFiltros } from "./BridgesFiltros";
@@ -48,6 +49,15 @@ interface ClaveModalState {
  * bridge no escalaba con varios bridges problemáticos a la vez) -- ahora es
  * un ícono por fila con popover, ver `BridgesTable.tsx`/
  * `AvisoBridgeIndicador.tsx`.
+ *
+ * `ConectarWhatsAppCard` (flujo de conexión de WhatsApp Business,
+ * `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3) se monta
+ * ADITIVAMENTE al final, fuera de la tabla de bridges -- WhatsApp NO es un
+ * `Bridge` en el modelo de datos (un mensaje no es un lead), pero
+ * conceptualmente es otro canal de comunicación de la empresa, de ahí
+ * compartir esta pantalla en vez de agregar una entrada nueva al sidebar. Ya
+ * reusa `empresaVistaId` de arriba (`useVistaEmpresa`) internamente, sin
+ * necesitar props.
  */
 export function BridgesPage() {
   usePageHeader({ title: "Bridges" });
@@ -143,6 +153,8 @@ export function BridgesPage() {
           </div>
         </div>
       )}
+
+      <ConectarWhatsAppCard />
 
       {dialogAltaAbierto ? (
         <NuevoBridgeDialog

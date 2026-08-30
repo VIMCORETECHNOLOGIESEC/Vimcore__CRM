@@ -13,6 +13,7 @@ import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
 import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage";
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
+import { WhatsAppCallbackPage } from "@/funcionalidades/whatsapp/WhatsAppCallbackPage";
 import { AppLayout } from "@/layouts/AppLayout";
 import { FlujoIntegracionDemo } from "@/temas/variante-empresarial/FlujoIntegracionDemo";
 import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
@@ -42,6 +43,17 @@ import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
  * en `layouts/navigation.ts` a propósito: no debe aparecer en el sidebar de
  * producción ni compilarse en un build de producción.
  *
+ * `/whatsapp/callback`: Paso 2 del flujo de conexión de WhatsApp Business
+ * (`docs/contrato-frontend-whatsapp-api_mat_04.md`, secciones 1-3) --
+ * pública a propósito, como `/iniciar-sesion`: Meta redirige ahí el
+ * navegador del administrador de verdad, sin JWT (`GET /whatsapp/callback`
+ * no exige `Authorization`, la identidad se recupera del `state`). Mismo
+ * criterio que las rutas públicas ya existentes: fuera del árbol de
+ * `ProtectedRoute`, sin guard adicional. El Paso 1 (botón "Conectar
+ * WhatsApp") vive dentro de `BridgesPage.tsx` (`ConectarWhatsAppCard.tsx`),
+ * ruta protegida ADMINISTRADOR ya existente -- no se agregó una ruta nueva
+ * solo para eso.
+ *
  * `apariencia-empresa`: self-service de la propia `Empresa`
  * (`docs/blocks/d0-visualizacion-multitenant.md`, PASO 8) -- grupo de
  * `ProtectedRoute` separado del resto de rutas `ADMINISTRADOR` porque además
@@ -58,6 +70,10 @@ export const router = createBrowserRouter([
   {
     path: "/iniciar-sesion",
     element: <LoginPage />,
+  },
+  {
+    path: "/whatsapp/callback",
+    element: <WhatsAppCallbackPage />,
   },
   ...(import.meta.env.DEV
     ? [
