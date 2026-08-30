@@ -138,18 +138,26 @@ export function createLinkedInTokenService(
     }
 
     const issuedAt = dependencies.now();
-    const rotateData: RotateTokensData = {
+    const baseRotateData = {
       accessTokenCifrado: dependencies.encryptToken(parsedBody.access_token),
       accessTokenExpiraEn: new Date(issuedAt.getTime() + parsedBody.expires_in * 1_000),
-      ...(parsedBody.refresh_token !== undefined
+    };
+    // Union discriminado de RotateTokensData: un spread condicional parcial
+    // (`...(cond ? {...} : {})`) infiere `refreshTokenCifrado?: string |
+    // undefined`, que no matchea contra NINGUNA de las dos variantes exactas
+    // del union (ni la que lo exige `string`, ni la que lo exige `never`).
+    // El ternario completo de nivel superior sí permite que TS matchee cada
+    // rama contra su variante exacta.
+    const rotateData: RotateTokensData =
+      parsedBody.refresh_token !== undefined
         ? {
+            ...baseRotateData,
             refreshTokenCifrado: dependencies.encryptToken(parsedBody.refresh_token),
             refreshTokenExpiraEn: parsedBody.refresh_token_expires_in === undefined
               ? null
               : new Date(issuedAt.getTime() + parsedBody.refresh_token_expires_in * 1_000),
           }
-        : {}),
-    };
+        : baseRotateData;
 
     await dependencies.rotateTokens(conexion.id, rotateData);
     return parsedBody.access_token;
