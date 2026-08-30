@@ -19,8 +19,9 @@ al final, sujeto además a su dependencia dura de secuencia (ver
 > **Autoridad:** mapa de confianza documental; no sustituye al código ni a las
 > reglas de negocio aprobadas.
 >
-> **Baseline documental reconciliado:** rama `test/gpt`, HEAD `3e8c70a`,
-> 2026-08-28.
+> **Baseline documental reconciliado:** rama `test/gpt`, HEAD `9a76e42`
+> (= `origin/test/gpt`), 2026-08-30 — barrido ampliado sobre toda la
+> documentación, no solo este documento y `docs/23`.
 >
 > **Evidencia técnica de cierre A-C:** commit `052e811`, 894/894 tests.
 

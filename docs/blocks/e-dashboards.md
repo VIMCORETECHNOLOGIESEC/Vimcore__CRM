@@ -12,7 +12,16 @@
 
 ## Estado real (2026-08-30)
 
-**Backend cerrado, frontend pendiente.** Las tres piezas de backend están
+**Backend cerrado. Frontend de "Extensiones de dashboard" ya construido y
+pusheado; frontend de reportes y de conexión de Meta Ads sigue pendiente.**
+Commit `e1f2dca` en `origin/test/gpt` conecta `GraficoEmbudoOportunidad.tsx`,
+`GraficoPorProducto.tsx`, `CascadaLeadOportunidad.tsx` y
+`GraficoRankingProductosPorEmpresa.tsx` a los 4 endpoints `/metricas/*` ya
+estables — items 1-4 de "Extensiones de dashboard" (abajo) completos; el
+ítem 5 (ranking por empresa) también está conectado, pero muestra un aviso
+visible en sesión holding-wide en vez de datos, mientras el gap E5 de abajo
+siga sin resolverse en backend. Ver `docs/23-alcance-funcional-manual-tecnico.md`
+ítem 13. Las tres piezas de backend están
 construidas y probadas sobre `dev-mateo`: extensiones de dashboard
 (embudo de Oportunidad, rendimiento por producto, cascada Lead→Oportunidad→
 Venta, eficiencia de habilitados para venta D8, ranking de productos, todo
@@ -27,10 +36,11 @@ de productos por empresa (ítem 5 de "Extensiones de dashboard" abajo) tiene
 un test en rojo tras el merge a `test/gpt` — ver "Hallazgo (2026-08-30)" más
 abajo, no cuenta todavía como cerrado.
 
-**Pendiente, fuera de este backend**: los componentes de frontend
-(`GraficoEmbudoOportunidad.tsx`, `GraficoPorProducto.tsx`, UI de reportes,
-UI de conexión de Meta Ads) — ver `docs/contrato-frontend-general.md`
-(distribuido aparte, no vive en el repo). Desglose por empresa en reportes
+**Pendiente, fuera de este backend**: `GraficoEmbudoOportunidad.tsx` y
+`GraficoPorProducto.tsx` ya se conectaron (commit `e1f2dca`, ver nota arriba);
+siguen pendientes la UI de reportes y la UI de conexión de Meta Ads — ver
+`docs/contrato-frontend-general.md` (distribuido aparte, no vive en el
+repo). Desglose por empresa en reportes
 holding-wide (el PDF/XLSX, `pdf-reporte.ts`) sigue como TODO explícito en el
 código, no implementado — distinto del hallazgo de abajo, que es sobre el
 ranking de productos, no sobre el módulo de reportes.

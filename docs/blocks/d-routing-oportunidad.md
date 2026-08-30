@@ -43,6 +43,19 @@ queda sin tocar.
 **Diferido, sin arrancar todavía**: `CanalManual` y el catálogo dinámico de
 canales sin bridge.
 
+**Frontend del módulo `negociacion` — construido y pusheado (commit
+`0a0ab91`, `origin/test/gpt`):** nuevo módulo
+`frontend/src/funcionalidades/oportunidades/` (listado filtrable, detalle,
+alta desde un lead, avance de etapa, cierre VENTA/NO_VENTA con autoridad D7,
+reasignación D9, catálogo de productos) consume los endpoints reales listados
+abajo. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30) para
+adelantar este frontend antes del resto del despliegue — ver
+`docs/23-alcance-funcional-manual-tecnico.md` ítem 17 para el detalle
+funcional completo. Esto no cambia el estado del corte de `Lead` (columnas de
+negociación) ni del cutover de `leads.access.ts`/`asignacion.service.ts`
+descrito arriba, que sigue siendo trabajo de `dev-mateo` pendiente de
+confirmar/mergear.
+
 ## Alcance
 
 Después del despliegue, activar el pool de asignación scopeado por empresa,
