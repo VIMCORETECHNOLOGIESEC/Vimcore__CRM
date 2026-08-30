@@ -114,6 +114,16 @@ Reglas para los agentes:
 - Salida de red restringida: solo el registro de paquetes y las APIs de las
   plataformas publicitarias necesarias. Si una tarea requiere alcanzar un
   dominio nuevo, decláralo en el artefacto SDD en lugar de abrir el acceso.
+  **Excepción documentada (2026-08-30):** `backend/src/lib/azure-blob-storage.ts`
+  (commit `3ac03ed`, rama de Mateo, ya mergeado a `test/gpt`) agrega salida
+  de red a Azure Blob Storage (`*.blob.core.windows.net`) para persistir el
+  isotipo subido por el administrador de cada empresa/holding —
+  `AZURE_STORAGE_CONNECTION_STRING`, opcional (503 sin ella, no bloquea el
+  arranque). Dependencia nueva (`@azure/storage-blob`) y dominio nuevo,
+  ambos aprobados para el despliegue vigente por decisión del usuario, sin
+  artefacto SDD formal por la prontitud del batch — este párrafo cumple ese
+  rol retroactivamente. En desarrollo local corre contra Azurite (emulador
+  oficial, sin salida de red real), ver `docs/contrato-azurite-isotipo.md`.
 - Las credenciales entran por variables de entorno desde un `.env` **no
   versionado**. Nunca escribas un token, clave o contraseña real en el
   repositorio, ni siquiera en un archivo de ejemplo.

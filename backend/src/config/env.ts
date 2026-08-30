@@ -123,6 +123,17 @@ const envSchema = z.object({
   // razonable -- a diferencia de la cadena de conexión, este valor no es un
   // secreto y no hay motivo para exigirlo explícitamente en cada entorno.
   AZURE_STORAGE_CONTAINER_ISOTIPOS: z.string().min(1).default("isotipos"),
+  // SOLO Azurite local (docs/contrato-azurite-isotipo.md): la connection
+  // string usa el hostname de red interna de Docker Compose
+  // (`azurite:10000`), necesario para que el backend LLEGUE al emulador --
+  // pero ese hostname no resuelve desde el navegador del host, que necesita
+  // `localhost:10000` para poder mostrar el isotipo subido (`<img src>`).
+  // Cuando esta variable está seteada, `uploadImage` reescribe solo el
+  // origin de la URL devuelta (protocolo+host+puerto), sin tocar el path.
+  // DEBE quedar SIN SETEAR en producción real contra Azure: la Storage
+  // Account real ya expone una URL pública única, igual de resoluble desde
+  // el backend y desde el navegador -- no hay split que resolver ahí.
+  AZURE_STORAGE_PUBLIC_BASE_URL: optionalEnvString,
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,
