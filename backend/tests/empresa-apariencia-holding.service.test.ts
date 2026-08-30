@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { AppError } from "../src/lib/app-error.js";
 import { prisma } from "../src/lib/prisma.js";
-import { listEmpresas, updateAparienciaHolding } from "../src/services/empresa-apariencia.service.js";
+import {
+  createEmpresa,
+  getEmpresaHolding,
+  listEmpresas,
+  updateAparienciaHolding,
+} from "../src/services/empresa-apariencia.service.js";
 
 /**
  * empresa-apariencia-holding (tema-empresarial-integracion, PASO 8): admin
@@ -79,6 +84,111 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
     await expect(
       updateAparienciaHolding(randomUUID(), { nombre: "No importa" }),
     ).rejects.toMatchObject<Partial<AppError>>({ statusHttp: 404, code: "empresa_no_encontrada" });
+  });
+});
+
+/**
+ * tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
+ * exclusivo sessionScope holding -- shape idéntico a
+ * `EmpresaAparienciaHoldingView` (el mismo tipo que ya devuelve
+ * `updateAparienciaHolding`), consumido por `GET /empresas`.
+ *
+ * Gap de paginación (478 filas reales sin límite ni filtro en este entorno):
+ * `listEmpresas` ahora exige `page`/`pageSize` y devuelve `{ items, total }`
+ * -- cada test usa `search` para acotar el resultado a la Empresa que crea,
+ * ya que sin filtro la paginación por defecto podría dejarla fuera de página.
+ */
+describe("services/empresa-apariencia — listEmpresas", () => {
+  it("incluye una Empresa recién creada con el shape de EmpresaAparienciaHoldingView", async () => {
+    const nombre = `Empresa service listado ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre,
+ * `GET /empresas/:empresaId` (pedido explícito de frontend, `EmpresaDetallePage
+ * .tsx`): mismo shape `EmpresaAparienciaHoldingView` que `updateAparienciaHolding`
+ * arriba, mismo criterio de 404.
+ */
+describe("services/empresa-apariencia — getEmpresaHolding", () => {
+  it("resuelve una Empresa existente con su apariencia completa", async () => {
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa service detalle ${randomUUID()}`,
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+        logoUrl: "https://cdn.miempresa.com/logo.svg",
+      },
+    });
+
+    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre });
+
+    const resultado = await getEmpresaHolding(empresa.id);
+
+    expect(resultado).toEqual({
+      id: empresa.id,
+      nombre: empresa.nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+  });
+
+  it("lanza AppError 404 cuando la empresa no existe", async () => {
+    await expect(getEmpresaHolding(randomUUID())).rejects.toMatchObject<Partial<AppError>>({
+      statusHttp: 404,
+      code: "empresa_no_encontrada",
+    });
+  });
+});
+
+/**
+ * `POST /empresas` (alta de empresa nueva): sin auto-provisioning de
+ * `Membresia` -- ver `services/empresa-apariencia.service.ts::createEmpresa`.
+ * Mismo shape `EmpresaAparienciaHoldingView` que el resto del módulo.
+ */
+describe("services/empresa-apariencia — createEmpresa", () => {
+  it("crea una Empresa nueva con nombre y apariencia", async () => {
+    const nombre = `Empresa service alta ${randomUUID()}`;
+
+    const resultado = await createEmpresa({
+      nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+
+    expect(resultado).toEqual({
+      id: resultado.id,
+      nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+
+    const enBd = await prisma.empresa.findUnique({ where: { id: resultado.id } });
+    expect(enBd?.nombre).toBe(nombre);
+  });
+
+  it("crea una Empresa nueva solo con nombre (apariencia queda null)", async () => {
+    const nombre = `Empresa service alta minima ${randomUUID()}`;
+
+    const resultado = await createEmpresa({ nombre });
+
+    expect(resultado).toEqual({
+      id: resultado.id,
+      nombre,
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+  });
+
+  it("no crea ninguna Membresia (bypass por Usuario.rol, sin auto-provisioning)", async () => {
+    const nombre = `Empresa service alta sin membresia ${randomUUID()}`;
+
+    const resultado = await createEmpresa({ nombre });
+
+    const membresias = await prisma.membresia.findMany({ where: { empresaId: resultado.id } });
+    expect(membresias).toHaveLength(0);
   });
 });
 

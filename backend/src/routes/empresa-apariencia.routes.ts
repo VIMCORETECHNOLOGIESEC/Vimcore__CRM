@@ -1,8 +1,10 @@
 import { Router } from "express";
 import {
+  getEmpresa,
   getEmpresas,
   patchEmpresaApariencia,
   patchEmpresaAparienciaHolding,
+  postEmpresa,
   postEmpresaAparienciaLogo,
 } from "../controllers/empresa-apariencia.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
@@ -71,4 +73,30 @@ empresaAparienciaRouter.get(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   getEmpresas,
+);
+
+/**
+ * Alta de empresa nueva -- mismo criterio de autorización que `GET /empresas`
+ * de arriba (`requireRole("ADMINISTRADOR")` + guard de `sessionScope` en el
+ * controller): solo holding-wide puede crear una `Empresa`.
+ */
+empresaAparienciaRouter.post(
+  "/empresas",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postEmpresa,
+);
+
+/**
+ * `GET /empresas/:empresaId` (pedido explícito de frontend, ver controller):
+ * registrada DESPUÉS de `POST /empresas`/`GET /empresas` de arriba, aunque el
+ * orden entre ambas no afecta el matching de Express -- son shapes de ruta
+ * distintos (`/empresas` de 1 segmento vs. `/empresas/:empresaId` de 2).
+ * Mismo criterio de autorización que el resto de este bloque holding-wide.
+ */
+empresaAparienciaRouter.get(
+  "/empresas/:empresaId",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  getEmpresa,
 );

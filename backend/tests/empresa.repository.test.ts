@@ -177,3 +177,43 @@ describe("empresa.repository::findAll", () => {
     expect(items[0]?.nombre).toContain(marca);
   });
 });
+
+// POST /empresas (alta de empresa nueva): mismo `select` que `findAll`/
+// `findById`, así que `create` devuelve el mismo shape `EmpresaListItem`.
+describe("empresa.repository::create", () => {
+  it("crea la Empresa con nombre y apariencia completa", async () => {
+    const nombre = `Empresa repo alta ${randomUUID()}`;
+
+    const creada = await empresaRepository.create({
+      nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+
+    expect(creada).toEqual({
+      id: creada.id,
+      nombre,
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo.svg",
+    });
+
+    const enBd = await prisma.empresa.findUnique({ where: { id: creada.id } });
+    expect(enBd?.nombre).toBe(nombre);
+  });
+
+  it("crea la Empresa solo con nombre (apariencia queda null)", async () => {
+    const nombre = `Empresa repo alta minima ${randomUUID()}`;
+
+    const creada = await empresaRepository.create({ nombre });
+
+    expect(creada).toEqual({
+      id: creada.id,
+      nombre,
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+  });
+});
