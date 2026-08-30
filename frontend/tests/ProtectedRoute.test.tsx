@@ -3,11 +3,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { RolUsuario } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { ProtectedRoute } = await import("@/funcionalidades/autenticacion/ProtectedRoute");
 
 const useAuthMock = vi.mocked(useAuth);

@@ -44,8 +44,24 @@ export function GraficoEmbudo({ datos }: GraficoEmbudoProps) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      <ol className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Detalle de caídas del embudo">
+        {filas.map((fila, indice) => (
+          <li key={fila.etapa} className="rounded-md border border-border/80 bg-muted/30 px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground">Paso {indice + 1}</p>
+            <div className="mt-1 flex items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold text-foreground text-pretty">{fila.etiqueta}</span>
+              <span className="text-base font-semibold text-foreground tabular-nums">{fila.total}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground text-pretty">
+              {fila.caidaPct === null
+                ? "Punto de partida"
+                : `${formatearCaida(fila.caidaPct)} vs. ${filas[indice - 1]?.etiqueta ?? "paso anterior"}`}
+            </p>
+          </li>
+        ))}
+      </ol>
       <p className="text-xs text-muted-foreground">
-        No Venta (fuera del embudo, es una salida): {datos.noVenta} leads
+        <span className="font-medium text-foreground">No Venta</span> (fuera del embudo, es una salida): {datos.noVenta} leads
       </p>
     </div>
   );
@@ -65,8 +81,14 @@ function TooltipEmbudo({
       <p className="font-medium text-foreground">{fila.etiqueta}</p>
       <p className="text-muted-foreground">{fila.total} leads</p>
       <p className="text-muted-foreground">
-        {fila.caidaPct === null ? "Primer paso del embudo" : `Caída vs. paso anterior: ${fila.caidaPct} %`}
+        {fila.caidaPct === null ? "Primer paso del embudo" : `${formatearCaida(fila.caidaPct)} vs. paso anterior`}
       </p>
     </div>
   );
+}
+
+function formatearCaida(caidaPct: number): string {
+  if (caidaPct < 0) return `Aumento: ${Math.abs(caidaPct)} %`;
+  if (caidaPct === 0) return "Sin variación";
+  return `Caída: ${caidaPct} %`;
 }

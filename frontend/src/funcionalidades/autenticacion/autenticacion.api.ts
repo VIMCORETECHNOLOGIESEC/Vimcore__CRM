@@ -1,10 +1,13 @@
 import { httpClient } from "@/api/httpClient";
-import type { AuthenticatedUser } from "@/tipos/usuario";
+import type { AuthenticatedUser, PublicUser } from "@/tipos/usuario";
 
 interface LoginResponse {
   accessToken: string;
   refreshToken: string;
-  user: AuthenticatedUser;
+  // Bloque D0: `PublicUser`, no `AuthenticatedUser` -- `POST /auth/login` no
+  // se amplía (docs/blocks/d0-visualizacion-multitenant.md). `AuthContext`
+  // ignora este campo para hidratar sesión; ver `AuthContext.tsx::login`.
+  user: PublicUser;
 }
 
 interface RefreshResponse {

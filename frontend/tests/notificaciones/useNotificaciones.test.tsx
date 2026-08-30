@@ -12,7 +12,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: () => ({
     user: { id: "u1", nombre: "Ana", correo: "ana@crm.test", rol: "ASESOR" },
   }),

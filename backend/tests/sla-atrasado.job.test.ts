@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { SLA_HORAS } from "../src/config/negocio.js";
 import { startSlaAtrasadoJob } from "../src/jobs/sla-atrasado.job.js";
 import { prisma } from "../src/lib/prisma.js";
@@ -55,6 +55,12 @@ function fronteraAtrasadaHace(msExtra: number): Date {
 
 afterAll(async () => {
   await prisma.$disconnect();
+});
+
+beforeEach(async () => {
+  // La suite comparte la BD de Compose entre archivos. Neutraliza ventanas SLA
+  // creadas por pruebas previas para que esta prueba procese solo sus fixtures.
+  await prisma.lead.updateMany({ data: { slaInicioEn: null } });
 });
 
 describe("sla-atrasado.job — detectLeadsAtrasados (M6, D2/D4)", () => {

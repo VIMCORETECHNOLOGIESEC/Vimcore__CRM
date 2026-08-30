@@ -102,7 +102,7 @@ paleta y nunca se usaban de forma decorativa):
 | Semáforo — Tibio | `#D97706` + etiqueta de texto | |
 | Semáforo — Caliente | `#DC2626` + etiqueta de texto | |
 
-Tipografía: Inter en toda la interfaz (headline y body), tamaño base 13-16px
+Tipografía: Montserrat en toda la interfaz (headline y body), tamaño base 13-16px
 según densidad de la vista, escala corta para no fragmentar la jerarquía
 entre las 8 pantallas. Roundness moderado (8px).
 

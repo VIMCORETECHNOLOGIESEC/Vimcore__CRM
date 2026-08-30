@@ -38,7 +38,7 @@ export function DashboardFiltros({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-3">
+    <div className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-border/70 bg-background/40 p-3 sm:grid-cols-3">
       <CampoSelect
         etiqueta="Red social"
         valor={filtros.redSocial}
@@ -77,7 +77,7 @@ interface CampoSelectProps {
 
 function CampoSelect({ etiqueta, valor, onChange, opciones }: CampoSelectProps) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <Label className="text-xs text-muted-foreground">{etiqueta}</Label>
       <Select value={valor} onValueChange={onChange}>
         <SelectTrigger aria-label={etiqueta}>

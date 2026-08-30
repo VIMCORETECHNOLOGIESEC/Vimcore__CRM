@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -287,6 +288,95 @@ describe("GET /api/v1/auth/perfil — matriz docs/06 L45", () => {
       .set("Authorization", `Bearer ${tokenExpirado}`);
 
     expect(respuesta.status).toBe(401);
+  });
+
+  it("empresaNombre y los dos colores de marca vienen null en una sesión holding", async () => {
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoActivo, password: PASSWORD_ACTIVO });
+
+    const respuesta = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${login.body.accessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.sessionScope).toBe("holding");
+    expect(respuesta.body.empresaNombre).toBeNull();
+    expect(respuesta.body.empresaColorPrimario).toBeNull();
+    expect(respuesta.body.empresaColorSecundario).toBeNull();
+  });
+});
+
+/**
+ * tema-empresarial-integracion (Parte 2): color de marca real por empresa
+ * (`Empresa.colorPrimario`/`colorSecundario`, columnas nullable) --
+ * `auth.service.ts::resolveEmpresaMarca` extiende la resolución de D0 sin
+ * duplicar el `findById`.
+ */
+describe("GET /api/v1/auth/perfil — color de marca por empresa (tema-empresarial-integracion, Parte 2)", () => {
+  async function loginComoMembresiaDeEmpresa(empresaId: string): Promise<string> {
+    const correoMembresia = `color-membresia-${randomUUID()}@empresa.local`;
+    const passwordMembresia = "clave-color-marca-123";
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: "Titular Color de Marca",
+        correo: `titular-color-${randomUUID()}@integracion.test`,
+        passwordHash: await hashPassword("clave-no-usada-color"),
+        rol: "ASESOR",
+        activo: true,
+      },
+    });
+    await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId,
+        rol: "ASESOR",
+        correo: correoMembresia,
+        passwordHash: await hashPassword(passwordMembresia),
+        activa: true,
+      },
+    });
+
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoMembresia, password: passwordMembresia });
+    return login.body.accessToken as string;
+  }
+
+  it("200 con empresaColorPrimario/empresaColorSecundario cuando la Empresa tiene color propio", async () => {
+    const empresaConColor = await prisma.empresa.create({
+      data: {
+        nombre: `Empresa con color ${randomUUID()}`,
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+      },
+    });
+    const accessToken = await loginComoMembresiaDeEmpresa(empresaConColor.id);
+
+    const respuesta = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.sessionScope).toBe("company");
+    expect(respuesta.body.empresaColorPrimario).toBe("#7c2d12");
+    expect(respuesta.body.empresaColorSecundario).toBe("#f97316");
+  });
+
+  it("200 con empresaColorPrimario/empresaColorSecundario en null cuando la Empresa no tiene color propio seteado", async () => {
+    const empresaSinColor = await prisma.empresa.create({
+      data: { nombre: `Empresa sin color ${randomUUID()}` },
+    });
+    const accessToken = await loginComoMembresiaDeEmpresa(empresaSinColor.id);
+
+    const respuesta = await request(app)
+      .get("/api/v1/auth/perfil")
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.sessionScope).toBe("company");
+    expect(respuesta.body.empresaColorPrimario).toBeNull();
+    expect(respuesta.body.empresaColorSecundario).toBeNull();
   });
 });
 

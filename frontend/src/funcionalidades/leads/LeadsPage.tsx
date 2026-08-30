@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
-import { useAuth } from "@/funcionalidades/autenticacion/AuthContext";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
+import { useLeadsNavigationTutorial } from "./tutorial/LeadsNavigationTutorial";
 import { AccionesMasivas } from "./AccionesMasivas";
 import { getCatalogoCampanias, getCatalogoResponsables } from "./leads.api";
 import { FILTROS_LEADS_VACIOS, buildLeadsQueryParams, type LeadsFiltrosState } from "./leads.utils";
@@ -28,9 +30,10 @@ const LEADS_POR_PAGINA = 10;
  * integración exacto con el backend real (M5/M6).
  */
 export function LeadsPage() {
-  usePageHeader({ title: "Leads" });
+  usePageHeader({ title: "Gestión de Leads" });
 
   const { hasRole } = useAuth();
+  const { startTour, startTourIfNeeded } = useLeadsNavigationTutorial();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
 
   const [filtros, setFiltros] = useState<LeadsFiltrosState>(FILTROS_LEADS_VACIOS);
@@ -88,6 +91,12 @@ export function LeadsPage() {
   const desde = total === 0 ? 0 : (pagina - 1) * LEADS_POR_PAGINA + 1;
   const hasta = Math.min(pagina * LEADS_POR_PAGINA, total);
 
+  const primerLeadId = data?.datos[0]?.id;
+  const iniciarTutorialPendiente = useEffectEvent((leadId: string) => startTourIfNeeded(leadId));
+  useEffect(() => {
+    if (primerLeadId) iniciarTutorialPendiente(primerLeadId);
+  }, [primerLeadId]);
+
   return (
     <div className="flex flex-col gap-4">
       {/*
@@ -106,6 +115,9 @@ export function LeadsPage() {
         campanias={campanias}
         mostrarFiltroResponsable={esGestorDeCartera}
         responsables={responsables}
+        onStartTutorial={() => {
+          if (primerLeadId) startTour(primerLeadId);
+        }}
       />
 
       {esGestorDeCartera ? (
@@ -118,7 +130,7 @@ export function LeadsPage() {
       ) : null}
 
       {isLoading ? (
-        <LoadingState rows={LEADS_POR_PAGINA} rowHeight="h-12" />
+        <LoadingState rows={LEADS_POR_PAGINA} rowHeight="h-10" />
       ) : isError ? (
         <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
       ) : !data || data.datos.length === 0 ? (
@@ -127,7 +139,7 @@ export function LeadsPage() {
           description="Probá ajustar o limpiar los filtros combinados."
         />
       ) : (
-        <>
+        <div className="flex flex-col">
           <LeadsTable
             leads={data.datos}
             mostrarColumnaResponsable={esGestorDeCartera}
@@ -137,33 +149,61 @@ export function LeadsPage() {
             onToggleSeleccionTodos={toggleSeleccionTodos}
           />
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
             <span>
               Mostrando {desde}–{hasta} de {total} leads
             </span>
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
+                disabled={pagina <= 1}
+                onClick={() => setPagina(1)}
+                aria-label="Primera página"
+                title="Primera página"
+              >
+                <ChevronsLeft aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
                 disabled={pagina <= 1}
                 onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                aria-label="Página anterior"
+                title="Página anterior"
               >
-                Anterior
+                <ChevronLeft aria-hidden="true" />
               </Button>
               <span>
                 Página {pagina} de {totalPaginas}
               </span>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
                 disabled={pagina >= totalPaginas}
                 onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                aria-label="Página siguiente"
+                title="Página siguiente"
               >
-                Siguiente
+                <ChevronRight aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent"
+                disabled={pagina >= totalPaginas}
+                onClick={() => setPagina(totalPaginas)}
+                aria-label="Última página"
+                title="Última página"
+              >
+                <ChevronsRight aria-hidden="true" />
               </Button>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

@@ -35,30 +35,35 @@ export function AccionesMasivas({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-accent px-3 py-2">
-      <span className="text-sm font-medium text-foreground">
-        {cantidadSeleccionada} lead{cantidadSeleccionada === 1 ? "" : "s"} seleccionado
-        {cantidadSeleccionada === 1 ? "" : "s"}
-      </span>
-      <Select value={responsableId} onValueChange={setResponsableId}>
-        <SelectTrigger className="w-56" aria-label="Nuevo responsable">
-          <SelectValue placeholder="Elegir responsable…" />
-        </SelectTrigger>
-        <SelectContent>
-          {responsables.map((responsable) => (
-            <SelectItem key={responsable.id} value={responsable.id}>
-              {responsable.nombre}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        size="sm"
-        disabled={!responsableId || assigning}
-        onClick={() => onAssign(responsableId)}
-      >
-        {assigning ? "Asignando…" : "Asignar"}
-      </Button>
+    // Es una superficie independiente de la tabla: `LeadsPage` la monta por
+    // encima del panel desplazable para que nunca invada filas ni paginación.
+    <div className="bulk-actions-bar shrink-0 px-4">
+      <div className="bulk-actions-content mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-3 rounded-2xl border border-border bg-white px-4 py-3 shadow-xl">
+        <span className="text-sm font-semibold text-foreground" aria-live="polite">
+          {cantidadSeleccionada} lead{cantidadSeleccionada === 1 ? "" : "s"} seleccionado
+          {cantidadSeleccionada === 1 ? "" : "s"}
+        </span>
+        <Select value={responsableId} onValueChange={setResponsableId}>
+          <SelectTrigger className="h-10 w-56 rounded-2xl" aria-label="Nuevo responsable">
+            <SelectValue placeholder="Elegir responsable…" />
+          </SelectTrigger>
+          <SelectContent>
+            {responsables.map((responsable) => (
+              <SelectItem key={responsable.id} value={responsable.id}>
+                {responsable.nombre}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          size="sm"
+          className="h-10 rounded-2xl px-6"
+          disabled={!responsableId || assigning}
+          onClick={() => onAssign(responsableId)}
+        >
+          {assigning ? "Asignando…" : "Asignar"}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -4,9 +4,10 @@
 >
 > Guía operativa de instalación, extracción y actualización de Graphify en
 > este repositorio. Complementa, no reemplaza, la política obligatoria de
-> `.claude/CLAUDE.md` (sección `## Graphify`), que define cuándo usar
-> Graphify frente a CodeGraph. Este documento cubre el **cómo**: instalar,
-> generar el grafo por primera vez y mantenerlo actualizado.
+> `.claude/CLAUDE.md` y `AGENTS.md` (secciones `## Graphify`), que definen
+> cuándo usar Graphify frente a CodeGraph en Claude Code y OpenCode. Este
+> documento cubre el **cómo**: instalar, generar el grafo por primera vez y
+> mantenerlo actualizado.
 >
 > Graphify es una herramienta **local, por worktree, no versionada en git**
 > (`graphify-out/` está en `.gitignore`). No hay watcher ni auto-sync: la
@@ -40,8 +41,8 @@ toque migraciones/esquema SQL, y exploración visual.
 
 | Requisito | Verificación |
 |---|---|
-| `uv` instalado (gestor de paquetes Python) | `uv --version` |
-| Acceso a `pacman`/gestor del sistema si `uv` no está | Arch/CachyOS: `sudo pacman -Syu` (sync completo, nunca upgrade parcial) antes de `sudo pacman -S uv` |
+| `uv` disponible dentro del contenedor o VM | `uv --version` |
+| Entorno aislado autorizado | Confirmar que la terminal no ejecuta instalaciones directamente en el host |
 | Repo en un worktree git real (no `/tmp`) | `git rev-parse --show-toplevel` |
 
 No hace falta API key para uso local: `graphify-mcp` (transporte `stdio`,
@@ -51,18 +52,29 @@ default y no está configurado en este proyecto.
 
 ---
 
-## 3. Instalación (una sola vez por worktree)
+## 3. Instalación (una sola vez por entorno aislado)
+
+La instalación del CLI se comparte dentro del contenedor o VM; lo que es local
+por worktree es exclusivamente `graphify-out/`. La política de `AGENTS.md` §2.2
+prohíbe instalar o reparar herramientas en el host. Un agente solo puede
+ejecutar los comandos siguientes dentro del entorno aislado aprobado. Si el
+binario ya existe en el host, puede auditarlo, pero no modificar su entorno.
 
 ```bash
-# 1. Instalar el binario (entorno aislado, no toca el resto del sistema)
-uv tool install graphifyy
-# Instala graphifyy==0.9.50 + gramáticas tree-sitter.
+# 1. Dentro del contenedor/VM: instalar CLI, MCP y soporte SQL
+uv tool install 'graphifyy[mcp,sql]'
 # Binarios resultantes: `graphify`, `graphify-mcp`.
 
 # 2. Confirmar la instalación
 graphify --version
 uv tool list | rg graphify
+graphify-mcp --help
 ```
+
+Los extras son obligatorios para la integración descrita en esta guía:
+`mcp` aporta el servidor stdio y `sql` permite indexar migraciones Prisma. Una
+instalación base de `graphifyy` puede exponer el binario `graphify-mcp` y aun
+así fallar al iniciar con `ModuleNotFoundError: No module named 'mcp'`.
 
 **Antes de extraer nada**, confirmar que `graphify-out/` está en
 `.gitignore` (ya lo está en este repo, mismo grupo que `.codegraph/`). Si
@@ -74,11 +86,11 @@ commitea ni se mergea entre ramas.
 rg -n "graphify-out" .gitignore   # debe existir
 ```
 
-⚠️ **Nunca ejecutar** `graphify install` ni `graphify claude install`. Esos
-comandos escriben automáticamente en `CLAUDE.md` y registran un hook
-`PreToolUse`, lo que choca con los bloques gestionados por gentle-ai que ya
-existen en este archivo. La única integración autorizada es la sección
-`## Graphify` manual de `.claude/CLAUDE.md`.
+⚠️ **Nunca ejecutar** `graphify install`, `graphify claude install`,
+`graphify opencode install` ni `graphify hook install`. Esos comandos escriben
+instrucciones o hooks automáticamente y chocan con los bloques gestionados por
+gentle-ai. Las únicas integraciones autorizadas son las secciones `## Graphify`
+gestionadas manualmente en `.claude/CLAUDE.md` y `AGENTS.md`.
 
 ---
 
@@ -182,11 +194,34 @@ xdg-open graphify-out/graph.html
 bat graphify-out/GRAPH_REPORT.md   # o el lector de markdown que prefieras
 ```
 
-Para un agente IA en este mismo repo, `graphify-mcp` (stdio) queda
-disponible como servidor MCP local sin configuración de credenciales
-adicional — seguir el orden de la sección `## Graphify` de
-`.claude/CLAUDE.md` para decidir si la pregunta la resuelve CodeGraph o
-Graphify.
+Para un agente IA en este mismo repo, `graphify-mcp` usa stdio y no requiere
+credenciales. Su disponibilidad depende de que el extra `mcp` esté realmente
+instalado en el mismo entorno que ejecuta OpenCode o Claude Code. Seguir el
+orden de la sección `## Graphify` de `.claude/CLAUDE.md` o `AGENTS.md` para
+decidir si la pregunta la resuelve CodeGraph o Graphify.
+
+### OpenCode
+
+OpenCode carga `AGENTS.md` como instrucción de proyecto. No se crea otro archivo
+de instrucciones ni se ejecuta `graphify opencode install`. El servidor se
+registra manualmente en la configuración de OpenCode con esta forma:
+
+```json
+{
+  "mcp": {
+    "graphify": {
+      "type": "local",
+      "command": ["graphify-mcp"]
+    }
+  }
+}
+```
+
+OpenCode debe iniciarse desde la raíz del worktree para que el path por defecto
+resuelva `graphify-out/graph.json`. Un cambio en la configuración o en
+`AGENTS.md` requiere cerrar y reiniciar OpenCode. La verificación válida del
+MCP es un handshake `initialize` real; `graphify-mcp --help` no importa el
+runtime MCP y, por sí solo, no demuestra que el servidor pueda iniciar.
 
 ---
 
@@ -203,8 +238,8 @@ Graphify.
    el usuario lo pida explícitamente o sea un checkpoint de archivo SDD —
    ambos cuestan tokens LLM reales.
 5. Nunca correr `graphify install` / `graphify claude install` /
-   `graphify uninit` — son comandos de ciclo de vida/instalación
-   automática, no de consulta.
+   `graphify opencode install` / `graphify hook install` / `graphify uninit` —
+   son comandos de ciclo de vida o instalación automática, no de consulta.
 6. `graphify-out/` nunca se commitea ni se fuerza con `git add`; si aparece
    en `git status`, es una señal de que `.gitignore` se rompió, no de que
    haya que agregarlo.
@@ -213,10 +248,10 @@ Graphify.
 
 ## 9. Limitaciones conocidas (no resueltas, no ocultar)
 
-- **Migraciones SQL**: los `.sql` de Prisma no se indexan por defecto —
-  falta la dependencia opcional `tree_sitter_sql`. Si se necesitan nodos de
-  esquema SQL en el grafo, instalar el extra correspondiente
-  (`graphifyy[sql]`) antes de repetir el `extract`.
+- **Migraciones SQL**: los `.sql` de Prisma solo se indexan cuando el entorno
+  tiene el extra `graphifyy[sql]`. Confirmar que el grafo contiene nodos cuyo
+  `source_file` termina en `.sql`; si faltan, reparar la instalación únicamente
+  dentro del contenedor/VM y repetir el `extract --force`.
 - **Escritura concurrente**: no hay documentado un mecanismo de lock nativo
   para `graph.json` bajo escritura simultánea de múltiples agentes. Mientras
   el grafo sea por worktree (un agente por worktree, que es el modelo actual
@@ -231,8 +266,8 @@ Graphify.
 
 ## 10. Referencias
 
-- Política de uso (cuándo Graphify vs CodeGraph): `.claude/CLAUDE.md`,
-  sección `## Graphify`.
+- Política de uso (cuándo Graphify vs CodeGraph): `.claude/CLAUDE.md` para
+  Claude Code y `AGENTS.md` para OpenCode, secciones `## Graphify`.
 - Repositorio upstream: [github.com/Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify).
 - Salida generada: `graphify-out/` (gitignored, no es fuente de verdad
   versionada — es un índice derivado, regenerable en cualquier momento desde

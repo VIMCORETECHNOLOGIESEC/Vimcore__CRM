@@ -37,20 +37,24 @@ interface UsuariosTableProps {
 const columnHelper = createColumnHelper<AdminUsuario>();
 
 /**
- * Anchos fijos por columna (`table-fixed`, ver el `<Table>` de abajo). Rol,
- * Estado, Carga activa y Acciones tienen contenido acotado (catálogo fijo o
- * botones), así que se les da un ancho chico y determinístico; Nombre y
- * Correo son de longitud libre y se reparten el resto -- por eso son las
- * únicas dos con `truncate` + `Tooltip` (evita que un nombre/correo largo
- * deforme el resto de la tabla, ver informe de esta tarea).
+ * Anchos fijos por columna, en px (mismo criterio que
+ * `leads/LeadsTable.tsx`): Rol, Estado, Carga activa y Acciones tienen
+ * contenido acotado (catálogo fijo o botones), así que se les da un ancho
+ * chico y determinístico; Nombre y Correo son de longitud libre y se
+ * reparten el resto -- por eso son las únicas dos con `truncate` + `Tooltip`.
+ *
+ * Fuente de verdad ÚNICA vía `<colgroup>` (ver el `<Table>` de abajo), no
+ * clases `w-*` por celda -- declarar el ancho en cada celda deja a
+ * `table-layout: fixed` con una fuente de verdad ambigua y produce
+ * corrimiento de columnas (bug real corregido en `leads/LeadsTable.tsx`).
  */
-const COLUMN_WIDTHS: Record<string, string> = {
-  nombre: "w-[20%]",
-  correo: "w-[24%]",
-  rol: "w-32",
-  estado: "w-28",
-  cargaActiva: "w-36",
-  acciones: "w-16",
+const COLUMN_WIDTHS_PX: Record<string, number> = {
+  nombre: 224,
+  correo: 256,
+  rol: 128,
+  estado: 112,
+  cargaActiva: 144,
+  acciones: 72,
 };
 
 /** Celda de texto libre truncada con elipsis + tooltip con el valor completo. */
@@ -60,7 +64,9 @@ function CeldaTruncada({ valor }: { valor: string }) {
       <TooltipTrigger asChild>
         <span className="block truncate">{valor}</span>
       </TooltipTrigger>
-      <TooltipContent>{valor}</TooltipContent>
+      <TooltipContent side="top" align="start" sideOffset={6}>
+        {valor}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -173,34 +179,59 @@ export function UsuariosTable({
     [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivandoId],
   );
 
+  /**
+   * Anchos del `<colgroup>`, en el MISMO orden que `columns` de arriba --
+   * derivado de ese mismo array (no una lista separada mantenida a mano)
+   * para que ambos queden siempre sincronizados por construcción.
+   */
+  const colWidthsPx = useMemo(
+    () => columns.map((columna) => COLUMN_WIDTHS_PX[columna.id as string]),
+    [columns],
+  );
+
+  const anchoTotalPx = colWidthsPx.reduce((suma, w) => suma + w, 0);
+
   const table = useReactTable({ data: usuarios, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
-    <Table className="table-fixed">
-      <TableHeader>
+    <Table className="table-fixed" wrapperClassName="min-h-0" style={{ minWidth: anchoTotalPx }}>
+      <colgroup>
+        {colWidthsPx.map((ancho, indice) => (
+          // eslint-disable-next-line react/no-array-index-key -- el orden de `colWidthsPx` es estable dentro de un mismo render (deriva de `columns`, memoizado junto con él).
+          <col key={indice} style={{ width: ancho }} />
+        ))}
+      </colgroup>
+      <TableHeader className="sticky top-0 z-20 bg-sidebar">
         {table.getHeaderGroups().map((headerGroup) => (
-          <TableRow key={headerGroup.id}>
+          <TableRow key={headerGroup.id} className="h-10 hover:bg-transparent">
             {headerGroup.headers.map((header) => (
-              <TableHead key={header.id} className={COLUMN_WIDTHS[header.id]}>
+              <TableHead key={header.id} className="text-sidebar-foreground/80">
                 {flexRender(header.column.columnDef.header, header.getContext())}
               </TableHead>
             ))}
           </TableRow>
         ))}
       </TableHeader>
-      <TableBody>
-        {table.getRowModel().rows.map((row) => (
-          <TableRow
-            key={row.id}
-            className={cn(atenuarInactivos && !row.original.activo && "opacity-60")}
-          >
-            {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id} className={COLUMN_WIDTHS[cell.column.id]}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
+      <TableBody className="bg-card">
+        {table.getRowModel().rows.map((row) => {
+          const usuario = row.original;
+          return (
+            <TableRow
+              key={row.id}
+              data-state={atenuarInactivos && !usuario.activo ? "selected" : undefined}
+              className={cn(
+                "leads-table-row relative h-12",
+                atenuarInactivos && !usuario.activo && "opacity-60",
+              )}
+            >
+              {row.getVisibleCells().map((cell) => (
+                <TableCell key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </TableCell>
+              ))}
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

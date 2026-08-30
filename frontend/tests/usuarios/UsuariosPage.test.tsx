@@ -96,6 +96,10 @@ async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombr
   await user.click(screen.getByRole("button", { name: `Acciones de ${nombre}` }));
 }
 
+async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Filtros" }));
+}
+
 describe("UsuariosPage — estados de carga, vacío y error", () => {
   it("muestra un esqueleto de carga mientras llega la respuesta", async () => {
     let resolver: (value: UsuariosResponse) => void = () => {};
@@ -200,6 +204,7 @@ describe("UsuariosPage — filtro (búsqueda, rol, estado, F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Rol" }));
     await user.click(await screen.findByRole("option", { name: "Supervisor" }));
 
@@ -215,6 +220,7 @@ describe("UsuariosPage — filtro (búsqueda, rol, estado, F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Estado" }));
     await user.click(await screen.findByRole("option", { name: "Activos" }));
     await waitFor(() => {
@@ -259,7 +265,7 @@ describe("UsuariosPage — paginación (F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    expect(screen.getByRole("button", { name: "Anterior" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Página anterior" })).toBeDisabled();
   });
 
   it("«Siguiente» avanza de página y manda `pagina: 2` a fetchUsuariosApi", async () => {
@@ -268,7 +274,7 @@ describe("UsuariosPage — paginación (F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Página siguiente" }));
 
     await waitFor(() => {
       expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2);
@@ -281,7 +287,7 @@ describe("UsuariosPage — paginación (F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Página siguiente" })).toBeDisabled();
   });
 
   it("cambiar el rol filtrado reinicia la paginación a la página 1", async () => {
@@ -290,9 +296,10 @@ describe("UsuariosPage — paginación (F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Página siguiente" }));
     await waitFor(() => expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.pagina).toBe(2));
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Rol" }));
     await user.click(await screen.findByRole("option", { name: "Vendedor" }));
 
@@ -512,12 +519,14 @@ describe("UsuariosPage — reactivación de usuario (F7, sin diálogo de confirm
 describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
   it("arranca con el filtro de estado en «Activos», mandando `activo: true` desde la primera consulta", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
     expect(fetchUsuariosApiMock.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ activo: true }),
     );
+    await abrirFiltros(user);
     expect(screen.getByRole("combobox", { name: "Estado" })).toHaveTextContent("Activos");
   });
 
@@ -527,8 +536,9 @@ describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
     renderUsuariosPage();
     await screen.findByText("Marta Herrera");
 
+    await abrirFiltros(user);
     await user.click(screen.getByRole("combobox", { name: "Estado" }));
-    await user.click(await screen.findByRole("option", { name: "Todos los estados" }));
+    await user.click(await screen.findByRole("option", { name: "Todos" }));
 
     const fila = (await screen.findByText("Marta Herrera")).closest("tr");
     expect(fila).toHaveClass("opacity-60");

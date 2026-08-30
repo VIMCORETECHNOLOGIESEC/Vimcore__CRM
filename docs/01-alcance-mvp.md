@@ -45,7 +45,7 @@ la fecha de entrega del núcleo.
 | Multi-tenant y panel matriz | La fundación A-C ya está implementada en esquema compartido; panel matriz, routing por empresa, autoridad por membresía y dashboards jerárquicos siguen fuera del baseline funcional | Sí. `Empresa`/`Membresia`, ownership obligatorio, RLS, `TenantContext` y CAS ya existen; D0 hace visible la separación pre-despliegue, D/E completan el comportamiento post-despliegue y F retira el legado al final |
 | Personalización de formularios y puntuación | Recorte explícito por tiempo y personal disponible | Sí. Los formularios y la rúbrica viven en un módulo aislado (`config/formularios.ts`) para que la migración a base de datos configurable no toque el resto |
 | Módulo de remarketing | Definido como desarrollo futuro | Sí. No se elimina ni anonimiza ningún dato de lead, y la ventana de reingreso ya queda modelada |
-| Exportación Excel / PDF | No requerido actualmente | Sí. Los servicios de consulta del dashboard devuelven estructuras serializables; solo faltaría la capa de formato |
+| Exportación Excel / PDF | Incorporada posteriormente al MVP | Sí. El panel genera ambos formatos con los filtros activos, gráficos, resumen, conclusión y listado de leads |
 | Calendarios externos | Solo se requiere registro interno | No |
 | Correo / SMS / WhatsApp | Solo notificación in-app confirmada | Sí. La tabla `notificaciones` incluye columna `canal` con un único valor válido en el MVP |
 | App móvil nativa | Se confirmó web responsive únicamente | No aplica |

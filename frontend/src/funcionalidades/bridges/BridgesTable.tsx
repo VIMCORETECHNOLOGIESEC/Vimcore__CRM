@@ -1,7 +1,14 @@
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import { MoreHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Bridge } from "@/tipos/bridge";
 import { AvisoBridgeIndicador } from "./AvisoBridgeIndicador";
@@ -18,6 +25,28 @@ interface BridgesTableProps {
 }
 
 const columnHelper = createColumnHelper<Bridge>();
+
+/**
+ * Anchos fijos por columna, en px (mismo criterio que
+ * `usuarios/UsuariosTable.tsx` y `leads/LeadsTable.tsx`): Red social, Estado,
+ * Aviso y Acciones tienen contenido acotado (catálogo fijo, badge o botones),
+ * así que se les da un ancho chico y determinístico; Nombre, Último lead y
+ * Expiración de token son de formato acotado (texto/etiqueta/fecha).
+ *
+ * Fuente de verdad ÚNICA vía `<colgroup>` (ver el `<Table>` de abajo), NO
+ * clases `w-*` por celda -- declarar el ancho en cada celda deja a
+ * `table-layout: fixed` con una fuente de verdad ambigua y produce
+ * corrimiento de columnas (bug real corregido en `leads/LeadsTable.tsx`).
+ */
+const COLUMN_WIDTHS_PX: Record<string, number> = {
+  redSocial: 144,
+  nombre: 176,
+  estado: 128,
+  ultimoLeadEn: 160,
+  tokenExpiraEn: 160,
+  aviso: 72,
+  acciones: 72,
+};
 
 /**
  * Listado de bridges (F8, "Listado con estado, último lead recibido y
@@ -82,25 +111,34 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
         cell: ({ row }) => {
           const bridge = row.original;
           return (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link to={`/bridges/${bridge.id}`}>Ver detalle</Link>
-              </Button>
-              {bridge.estado === "INACTIVO" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={reactivando}
-                  onClick={() => onReactivar(bridge.id)}
-                >
-                  Reactivar
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label={`Acciones de ${bridge.nombre}`}>
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
                 </Button>
-              ) : (
-                <Button variant="destructive" size="sm" onClick={() => onDarDeBaja(bridge)}>
-                  Dar de baja
-                </Button>
-              )}
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link to={`/bridges/${bridge.id}`}>Ver detalle</Link>
+                </DropdownMenuItem>
+                {bridge.estado === "INACTIVO" ? (
+                  <DropdownMenuItem
+                    onClick={() => onReactivar(bridge.id)}
+                    disabled={reactivando}
+                    className="text-success focus:text-success"
+                  >
+                    Reactivar
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    onClick={() => onDarDeBaja(bridge)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    Dar de baja
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           );
         },
       }),
@@ -108,24 +146,42 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
     [onDarDeBaja, onReactivar, reactivando],
   );
 
+  /**
+   * Anchos del `<colgroup>`, en el MISMO orden que `columns` de arriba --
+   * derivado de ese mismo array (no una lista separada mantenida a mano)
+   * para que ambos queden siempre sincronizados por construcción.
+   */
+  const colWidthsPx = useMemo(
+    () => columns.map((columna) => COLUMN_WIDTHS_PX[columna.id as string]),
+    [columns],
+  );
+
+  const anchoTotalPx = colWidthsPx.reduce((suma, w) => suma + w, 0);
+
   const table = useReactTable({ data: bridges, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
-    <Table>
-      <TableHeader>
+    <Table className="table-fixed" wrapperClassName="min-h-0" style={{ minWidth: anchoTotalPx }}>
+      <colgroup>
+        {colWidthsPx.map((ancho, indice) => (
+          // eslint-disable-next-line react/no-array-index-key -- el orden de `colWidthsPx` es estable dentro de un mismo render (deriva de `columns`, memoizado junto con él).
+          <col key={indice} style={{ width: ancho }} />
+        ))}
+      </colgroup>
+      <TableHeader className="sticky top-0 z-20 bg-sidebar">
         {table.getHeaderGroups().map((headerGroup) => (
-          <TableRow key={headerGroup.id}>
+          <TableRow key={headerGroup.id} className="h-10 hover:bg-transparent">
             {headerGroup.headers.map((header) => (
-              <TableHead key={header.id}>
+              <TableHead key={header.id} className="text-sidebar-foreground/80">
                 {flexRender(header.column.columnDef.header, header.getContext())}
               </TableHead>
             ))}
           </TableRow>
         ))}
       </TableHeader>
-      <TableBody>
+      <TableBody className="bg-card">
         {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id}>
+          <TableRow key={row.id} className="leads-table-row relative h-12">
             {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}

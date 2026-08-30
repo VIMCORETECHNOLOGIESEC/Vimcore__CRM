@@ -1,3 +1,23 @@
+/**
+ * `withOpacity`: envuelve un token en `rgb(var(--x) / <alpha-value>)` en vez
+ * de `var(--x)` a secas -- patrón estándar shadcn/Tailwind. Tailwind
+ * sustituye `<alpha-value>` por la fracción del modificador de opacidad
+ * (`bg-primary/10` -> `rgb(var(--primary) / 0.1)`) al momento de build; el
+ * navegador resuelve `var(--primary)` en tiempo de ejecución. Esto SOLO
+ * funciona si `index.css` define cada variable como canales RGB crudos
+ * ("37 99 235"), nunca como hex plano -- ver el comentario de `:root` en
+ * `index.css` para el bug que este envoltorio arregla de raíz.
+ *
+ * NOTA: el CLI de shadcn (`add`) reescribe este archivo y deja los tokens
+ * como strings literales ('withOpacity("--x")'), lo que rompe TODOS los
+ * colores. Si el CLI vuelve a tocarlo, restaurar desde este comentario.
+ *
+ * @param {string} variableName
+ */
+function withOpacity(variableName) {
+  return `rgb(var(${variableName}) / <alpha-value>)`;
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
@@ -5,7 +25,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Montserrat", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -13,79 +33,98 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        background: withOpacity("--background"),
+        foreground: withOpacity("--foreground"),
         card: {
-          DEFAULT: "var(--card)",
-          foreground: "var(--card-foreground)",
+          DEFAULT: withOpacity("--card"),
+          foreground: withOpacity("--card-foreground"),
         },
         popover: {
-          DEFAULT: "var(--popover)",
-          foreground: "var(--popover-foreground)",
+          DEFAULT: withOpacity("--popover"),
+          foreground: withOpacity("--popover-foreground"),
         },
         primary: {
-          DEFAULT: "var(--primary)",
-          foreground: "var(--primary-foreground)",
+          DEFAULT: withOpacity("--primary"),
+          foreground: withOpacity("--primary-foreground"),
         },
         secondary: {
-          DEFAULT: "var(--secondary)",
-          foreground: "var(--secondary-foreground)",
+          DEFAULT: withOpacity("--secondary"),
+          foreground: withOpacity("--secondary-foreground"),
         },
         muted: {
-          DEFAULT: "var(--muted)",
-          foreground: "var(--muted-foreground)",
+          DEFAULT: withOpacity("--muted"),
+          foreground: withOpacity("--muted-foreground"),
         },
         accent: {
-          DEFAULT: "var(--accent)",
-          foreground: "var(--accent-foreground)",
+          DEFAULT: withOpacity("--accent"),
+          foreground: withOpacity("--accent-foreground"),
         },
         destructive: {
-          DEFAULT: "var(--destructive)",
-          foreground: "var(--destructive-foreground)",
+          DEFAULT: withOpacity("--destructive"),
+          foreground: withOpacity("--destructive-foreground"),
         },
         success: {
-          DEFAULT: "var(--success)",
-          foreground: "var(--success-foreground)",
+          DEFAULT: withOpacity("--success"),
+          foreground: withOpacity("--success-foreground"),
         },
         warning: {
-          DEFAULT: "var(--warning)",
-          foreground: "var(--warning-foreground)",
+          DEFAULT: withOpacity("--warning"),
+          foreground: withOpacity("--warning-foreground"),
         },
-        border: "var(--border)",
-        input: "var(--input)",
-        ring: "var(--ring)",
+        // Azul corporativo IDEC Corp (token de marca): mismo valor que
+        // --primary hoy, separado a propósito para que la marca evolucione
+        // sin acoplar el azul de acción genérico. Se usa en la capa de chat
+        // flotante del detalle de lead y su botón flotante de WhatsApp.
+        idec: {
+          DEFAULT: withOpacity("--idec"),
+          foreground: withOpacity("--idec-foreground"),
+        },
+        // Familia vimcore: chrome del sidebar (indigo sólido + pill azul).
+        vimcore: {
+          DEFAULT: withOpacity("--vimcore"),
+          2: withOpacity("--vimcore-2"),
+          hueso: withOpacity("--vimcore-hueso"),
+          accent: withOpacity("--vimcore-accent"),
+          foreground: withOpacity("--vimcore-accent-foreground"),
+        },
+        border: withOpacity("--border"),
+        input: withOpacity("--input"),
+        ring: withOpacity("--ring"),
         chart: {
-          1: "var(--chart-1)",
-          2: "var(--chart-2)",
-          3: "var(--chart-3)",
-          4: "var(--chart-4)",
-          5: "var(--chart-5)",
+          1: withOpacity("--chart-1"),
+          2: withOpacity("--chart-2"),
+          3: withOpacity("--chart-3"),
+          4: withOpacity("--chart-4"),
+          5: withOpacity("--chart-5"),
         },
+        // Superficies del sidebar (componente `ui/sidebar.tsx`): mapeadas al
+        // azul IDEC -- fondo azul, texto blanco, acento/activo pill blanco
+        // con texto azul.
         sidebar: {
-          DEFAULT: "var(--sidebar)",
-          foreground: "var(--sidebar-foreground)",
-          primary: "var(--sidebar-primary)",
-          "primary-foreground": "var(--sidebar-primary-foreground)",
-          accent: "var(--sidebar-accent)",
-          "accent-foreground": "var(--sidebar-accent-foreground)",
-          border: "var(--sidebar-border)",
-          ring: "var(--sidebar-ring)",
+          DEFAULT: withOpacity("--sidebar"),
+          foreground: withOpacity("--sidebar-foreground"),
+          primary: withOpacity("--sidebar-primary"),
+          "primary-foreground": withOpacity("--sidebar-primary-foreground"),
+          accent: withOpacity("--sidebar-accent"),
+          "accent-foreground": withOpacity("--sidebar-accent-foreground"),
+          border: withOpacity("--sidebar-border"),
+          ring: withOpacity("--sidebar-ring"),
         },
         // Semáforo del lead (docs/09 §3): nunca decorativo fuera de este uso,
         // siempre acompañado de una etiqueta de texto (docs/07, criterios
         // transversales de calidad).
         semaforo: {
           frio: {
-            DEFAULT: "var(--semaforo-frio)",
-            foreground: "var(--semaforo-frio-foreground)",
+            DEFAULT: withOpacity("--semaforo-frio"),
+            foreground: withOpacity("--semaforo-frio-foreground"),
           },
           tibio: {
-            DEFAULT: "var(--semaforo-tibio)",
-            foreground: "var(--semaforo-tibio-foreground)",
+            DEFAULT: withOpacity("--semaforo-tibio"),
+            foreground: withOpacity("--semaforo-tibio-foreground"),
           },
           caliente: {
-            DEFAULT: "var(--semaforo-caliente)",
-            foreground: "var(--semaforo-caliente-foreground)",
+            DEFAULT: withOpacity("--semaforo-caliente"),
+            foreground: withOpacity("--semaforo-caliente-foreground"),
           },
         },
       },

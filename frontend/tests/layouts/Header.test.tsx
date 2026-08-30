@@ -1,29 +1,50 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
-vi.mock("@/funcionalidades/autenticacion/AuthContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/notificaciones/CampanaNotificaciones", () => ({
   CampanaNotificaciones: () => null,
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/AuthContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { Header } = await import("@/layouts/Header");
 const { PageHeaderProvider, usePageHeader } = await import("@/layouts/PageHeaderContext");
 
 const useAuthMock = vi.mocked(useAuth);
 
-useAuthMock.mockReturnValue({
-  user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol: "ASESOR" },
+/**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md): forma holding-wide
+ * por defecto -- los tests de título de pantalla de abajo no ejercitan el
+ * indicador de scope, así que no necesitan una empresa concreta.
+ */
+const usuarioHoldingDefault = {
+  id: "u1",
+  nombre: "Usuaria de prueba",
+  correo: "u1@crm.test",
+  rol: "ASESOR" as const,
+  sessionScope: "holding" as const,
+  empresaId: null,
+  empresaNombre: null,
+  empresaColorPrimario: null,
+  empresaColorSecundario: null,
+};
+
+const defaultAuthValue = {
+  user: usuarioHoldingDefault,
   isAuthenticated: true,
   isLoading: false,
   login: vi.fn(),
   logout: vi.fn(),
   hasRole: () => true,
-});
+};
+
+useAuthMock.mockReturnValue(defaultAuthValue);
 
 function Publicador({ config }: { config: Parameters<typeof usePageHeader>[0] }) {
   usePageHeader(config);
@@ -35,10 +56,12 @@ function renderHeader(config: Parameters<typeof usePageHeader>[0]) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <PageHeaderProvider>
-          <Publicador config={config} />
-          <Header />
-        </PageHeaderProvider>
+        <SidebarProvider>
+          <PageHeaderProvider>
+            <Publicador config={config} />
+            <Header />
+          </PageHeaderProvider>
+        </SidebarProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -65,5 +88,67 @@ describe("Header — título de pantalla", () => {
     expect(screen.getByRole("heading", { name: "Roberto Salazar" })).toBeInTheDocument();
     const enlace = screen.getByRole("link", { name: "Leads" });
     expect(enlace).toHaveAttribute("href", "/leads");
+  });
+});
+
+/**
+ * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Contrato
+ * frontend"): indicador persistente del alcance de la sesión en el menú de
+ * usuario. No confundir con `configuracion-empresa` (marca global de la
+ * instancia, sin relación con `Empresa`/tenant -- ver "Riesgo de colisión
+ * conceptual" en el doc D0): ese módulo no vive en este `DropdownMenuLabel`.
+ */
+describe("Header — indicador de scope de sesión (Bloque D0)", () => {
+  afterEach(() => {
+    useAuthMock.mockReturnValue(defaultAuthValue);
+  });
+
+  it("sesión company, muestra 'Empresa: <empresaNombre>' en el menú de usuario", async () => {
+    useAuthMock.mockReturnValue({
+      ...defaultAuthValue,
+      user: {
+        id: "u2",
+        nombre: "Usuaria Empresa A",
+        correo: "a@crm.test",
+        rol: "ASESOR",
+        sessionScope: "company",
+        empresaId: "empresa-a",
+        empresaNombre: "Empresa A",
+        empresaColorPrimario: null,
+        empresaColorSecundario: null,
+        membresiaId: "membresia-a",
+      },
+    });
+
+    const user = userEvent.setup();
+    renderHeader(null);
+    await user.click(screen.getByRole("button", { name: /Usuaria Empresa A/ }));
+
+    expect(await screen.findByText("Empresa: Empresa A")).toBeInTheDocument();
+    expect(screen.queryByText("Alcance: Holding")).not.toBeInTheDocument();
+  });
+
+  it("sesión holding, muestra 'Alcance: Holding' sin atribuir ninguna empresa", async () => {
+    useAuthMock.mockReturnValue({
+      ...defaultAuthValue,
+      user: {
+        id: "u3",
+        nombre: "Usuaria Holding",
+        correo: "h@crm.test",
+        rol: "ADMINISTRADOR",
+        sessionScope: "holding",
+        empresaId: null,
+        empresaNombre: null,
+        empresaColorPrimario: null,
+        empresaColorSecundario: null,
+      },
+    });
+
+    const user = userEvent.setup();
+    renderHeader(null);
+    await user.click(screen.getByRole("button", { name: /Usuaria Holding/ }));
+
+    expect(await screen.findByText("Alcance: Holding")).toBeInTheDocument();
+    expect(screen.queryByText(/^Empresa:/)).not.toBeInTheDocument();
   });
 });

@@ -97,12 +97,14 @@ afterEach(() => {
 });
 
 describe("BridgeDetallePage — encabezado", () => {
-  it("muestra nombre, red social, estado, último lead recibido y expiración de token", async () => {
+  it("muestra un resumen operativo con red social, estado y metadatos de sincronización", async () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    expect(await screen.findByText("LinkedIn")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sincronización de LinkedIn" })).toBeInTheDocument();
     expect(screen.getByText("Activo")).toBeInTheDocument();
+    expect(screen.getByText("Último lead recibido")).toBeInTheDocument();
+    expect(screen.getByText("Expiración de token más próxima")).toBeInTheDocument();
   });
 
   it("muestra un mensaje de error accionable si el bridge no existe", async () => {
@@ -142,7 +144,7 @@ describe("BridgeDetallePage — aviso destacado ante token expirado o sin activi
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    await screen.findByText("LinkedIn");
+    await screen.findByRole("heading", { name: "Sincronización de LinkedIn" });
     expect(screen.queryByText(/necesita atención/)).not.toBeInTheDocument();
   });
 });
@@ -152,7 +154,7 @@ describe("BridgeDetallePage — credenciales (a nivel de bridge)", () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    await screen.findByText("LinkedIn");
+    await screen.findByRole("heading", { name: "Sincronización de LinkedIn" });
     expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
     expect(screen.getByText(/buscá la sección/i)).toBeInTheDocument();
   });
@@ -206,7 +208,7 @@ describe("BridgeDetallePage — bitácora de errores con filtro por nivel y fech
     fetchBridgeLogsApiMock.mockResolvedValue([]);
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByText("LinkedIn");
+    await screen.findByRole("heading", { name: "Sincronización de LinkedIn" });
 
     await waitFor(() => expect(fetchBridgeLogsApiMock).toHaveBeenCalledWith("bridge-1", {}));
 

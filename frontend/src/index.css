@@ -3,69 +3,113 @@
 @tailwind utilities;
 
 /*
- * Línea gráfica aprobada (docs/09-linea-grafica-frontend.md §3).
- * Paleta de dos colores base (blanco/negro) sin manual de marca, más el
- * semáforo (fuera de esta paleta, nunca decorativo) y la serie categórica
- * de gráficas. Variables en hex plano -- shadcn/ui v3 admite cualquier
- * formato de color siempre que `tailwind.config.js` la referencie sin un
- * envoltorio `hsl()`/`oklch()` incompatible (ver Colores por AGENT en el
- * commit que instaló shadcn: la salida por defecto de la CLI mezclaba
- * variables `oklch()` con un `tailwind.config.js` que las envolvía en
- * `hsl()`, una combinación inválida).
+ * Paleta "hueso" (candidato C1, en revisión -- reemplaza la línea gráfica
+ * blanco/negro previa de docs/09-linea-grafica-frontend.md §3, ese doc
+ * todavía no está actualizado con esta paleta). Fondo hueso (#F5F3EE) +
+ * grises neutros + azul de acento (#2563EB, el mismo ya validado como
+ * --chart-2), pensada para quedar personalizable por empresa más adelante --
+ * hoy es un único set de valores fijo, no hay mecanismo de override por
+ * tenant todavía (no existe modelo Empresa en el schema). Validada con
+ * `dataviz/scripts/validate_palette.js` + contraste WCAG manual: texto
+ * principal 9.4:1, azul sobre fondo 4.7:1, blanco sobre azul 5.2:1, todos
+ * AA. El semáforo (fuera de esta paleta, nunca decorativo) y la serie
+ * categórica de gráficas no se tocan -- ya estaban validados aparte.
+ * Variables como canales RGB separados por espacio (`R G B`, sin `rgb()`
+ * ni `#`), NO hex plano -- patrón estándar shadcn/Tailwind: `tailwind.config.js`
+ * envuelve cada token en `rgb(var(--x) / <alpha-value>)`, y ese envoltorio
+ * solo es CSS válido si `--x` son números crudos, nunca un literal `#RRGGBB`
+ * (`rgb(#2563EB / 0.5)` no es una función `rgb()` válida). Este formato
+ * reemplazó al hex plano anterior porque los modificadores de opacidad de
+ * Tailwind (`bg-primary/10`, `border-destructive/50`, etc.) resolvían en
+ * `background-color: rgba(0,0,0,0)` -- completamente transparente --
+ * verificado en navegador (`Skeleton`, `bg-primary/10`) y confirmado en al
+ * menos otros 8 archivos con el mismo patrón (`badge.tsx`, `button.tsx`,
+ * `table.tsx`, `CampanaNotificaciones.tsx`, `LeadTimeline.tsx`,
+ * `AvisoBridgeIndicador.tsx`, `alert.tsx`, `AccionesMasivas.tsx`).
+ * Cualquier uso RAW de estas variables en CSS plano (fuera de una clase de
+ * Tailwind) necesita el mismo envoltorio explícito `rgb(var(--x))` -- ver
+ * más abajo en este archivo (`.scrollbar-themed`, `.leads-table-row:hover`).
  */
 @layer base {
   :root {
-    --background: #FFFFFF;
-    --foreground: #18181B;
-    --card: #FFFFFF;
-    --card-foreground: #18181B;
-    --popover: #FFFFFF;
-    --popover-foreground: #18181B;
-    --primary: #111113;
-    --primary-foreground: #FFFFFF;
-    --secondary: #F5F5F5;
-    --secondary-foreground: #18181B;
-    --muted: #F5F5F5;
-    --muted-foreground: #71717A;
-    --accent: #F5F5F5;
-    --accent-foreground: #18181B;
-    --destructive: #DC2626;
-    --destructive-foreground: #FFFFFF;
-    --border: #E8E8E8;
-    --input: #E8E8E8;
-    --ring: #111113;
+    --background: 245 243 238;
+    --foreground: 63 63 70;
+    --card: 255 255 255;
+    --card-foreground: 63 63 70;
+    --popover: 255 255 255;
+    --popover-foreground: 63 63 70;
+    --primary: 37 99 235;
+    --primary-foreground: 255 255 255;
+    --secondary: 233 231 225;
+    --secondary-foreground: 63 63 70;
+    --muted: 239 237 231;
+    --muted-foreground: 113 113 122;
+    --accent: 231 237 250;
+    --accent-foreground: 29 78 216;
+    --destructive: 220 38 38;
+    --destructive-foreground: 255 255 255;
+    --border: 226 223 214;
+    --input: 226 223 214;
+    --ring: 37 99 235;
     /* Token de éxito para acciones (ej. cierre de venta), separado de
        --semaforo-frio: ese verde está reservado al chip de semáforo con
        etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
-    --success: #16A34A;
-    --success-foreground: #FFFFFF;
+    --success: 22 163 74;
+    --success-foreground: 255 255 255;
     /* Token de advertencia para íconos de estado (ej. aviso de bridge),
        separado de --semaforo-tibio: mismo criterio que --success arriba --
        el semáforo queda reservado al chip con etiqueta de texto (docs/09 §3). */
-    --warning: #D97706;
-    --warning-foreground: #FFFFFF;
-    --chart-1: #4F46E5;
-    --chart-2: #2563EB;
-    --chart-3: #0D9488;
-    --chart-4: #7C3AED;
-    --chart-5: #71717A;
+    --warning: 217 119 6;
+    --warning-foreground: 255 255 255;
+    --chart-1: 79 70 229;
+    --chart-2: 37 99 235;
+    --chart-3: 13 148 136;
+    --chart-4: 124 58 237;
+    --chart-5: 113 113 122;
     --radius: 0.5rem;
-    --sidebar: #FFFFFF;
-    --sidebar-foreground: #18181B;
-    --sidebar-primary: #111113;
-    --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: #F5F5F5;
-    --sidebar-accent-foreground: #18181B;
-    --sidebar-border: #E8E8E8;
-    --sidebar-ring: #111113;
+    /*
+     * Superficies del sidebar (`ui/sidebar.tsx`) consumen la marca vimcore:
+     * fondo indigo sólido, texto hueso, y el ítem activo/en-hover como pill
+     * azul con texto blanco.
+     */
+    --sidebar: var(--vimcore);
+    --sidebar-foreground: var(--vimcore-hueso);
+    --sidebar-primary: var(--vimcore-accent);
+    --sidebar-primary-foreground: var(--vimcore-accent-foreground);
+    --sidebar-accent: var(--vimcore-accent);
+    --sidebar-accent-foreground: var(--vimcore-accent-foreground);
+    --sidebar-border: var(--vimcore-hueso);
+    --sidebar-ring: 255 255 255;
 
     /* Semáforo -- siempre acompañado de etiqueta de texto (ver F3, F4). */
-    --semaforo-frio: #16A34A;
-    --semaforo-frio-foreground: #FFFFFF;
-    --semaforo-tibio: #D97706;
-    --semaforo-tibio-foreground: #FFFFFF;
-    --semaforo-caliente: #DC2626;
-    --semaforo-caliente-foreground: #FFFFFF;
+    --semaforo-frio: 22 163 74;
+    --semaforo-frio-foreground: 255 255 255;
+    --semaforo-tibio: 217 119 6;
+    --semaforo-tibio-foreground: 255 255 255;
+    --semaforo-caliente: 220 38 38;
+    --semaforo-caliente-foreground: 255 255 255;
+
+    /*
+     * Azul corporativo IDEC Corp (token de marca). Hoy coincide con
+     * --primary (37 99 235), pero vive separado a propósito: si la marca
+     * cambia de azul, se toca acá sin acoplar el azul de acción genérico
+     * del resto de la app. Se usa en la capa de chat flotante del detalle
+     * de lead (ver `.modo-idec` al final de este archivo) y en el botón
+     * flotante de WhatsApp.
+     */
+    --idec: 37 99 235;
+    --idec-foreground: 255 255 255;
+
+    /*
+     * Marca "vimcore" (sidebar, inspirada en la variante empresarial):
+     * chrome indigo sólido, texto hueso, pill activa azul --1029.
+     * Canales RGB crudos como el resto de los tokens (ver nota de :root).
+     */
+    --vimcore: 30 42 94;
+    --vimcore-2: 20 32 74;
+    --vimcore-hueso: 245 243 238;
+    --vimcore-accent: 37 99 235;
+    --vimcore-accent-foreground: 255 255 255;
   }
 }
 
@@ -100,14 +144,35 @@
  * arriba. En reposo, thumb en --muted-foreground (gris identificable, no
  * el --border casi invisible) -- al pasar el mouse, arrastrar, o mientras
  * `main` está efectivamente scrolleando (clase `is-scrolling` que pone
- * AppLayout.tsx), pasa a --primary (negro) para marcar movimiento.
+ * AppLayout.tsx), pasa a --primary para marcar movimiento.
  * Firefox solo soporta el color base de `scrollbar-color`, sin estado por
  * interacción -- limitación real del motor, no un bug nuestro.
  */
 @layer utilities {
+  .patron-papel {
+    background-color: rgb(var(--background));
+    background-image:
+      repeating-linear-gradient(
+        45deg,
+        rgb(var(--vimcore) / 0.045) 0,
+        rgb(var(--vimcore) / 0.045) 1px,
+        transparent 1px,
+        transparent 26px
+      ),
+      repeating-linear-gradient(
+        -45deg,
+        rgb(var(--vimcore) / 0.045) 0,
+        rgb(var(--vimcore) / 0.045) 1px,
+        transparent 1px,
+        transparent 26px
+      );
+  }
+
   .scrollbar-themed {
     scrollbar-width: thin;
-    scrollbar-color: var(--muted-foreground) transparent;
+    /* `rgb(var(--x))` explícito -- `--muted-foreground` ahora son canales
+       crudos ("113 113 122"), no un `<color>` válido por sí solos. */
+    scrollbar-color: rgb(var(--muted-foreground)) transparent;
   }
 
   .scrollbar-themed::-webkit-scrollbar {
@@ -120,9 +185,9 @@
   }
 
   .scrollbar-themed::-webkit-scrollbar-thumb {
-    background-color: var(--muted-foreground);
+    background-color: rgb(var(--muted-foreground));
     border-radius: var(--radius);
-    border: 2px solid var(--background);
+    border: 2px solid rgb(var(--background));
     background-clip: padding-box;
     transition: background-color 0.15s ease;
   }
@@ -130,7 +195,7 @@
   .scrollbar-themed::-webkit-scrollbar-thumb:hover,
   .scrollbar-themed::-webkit-scrollbar-thumb:active,
   .scrollbar-themed.is-scrolling::-webkit-scrollbar-thumb {
-    background-color: var(--primary);
+    background-color: rgb(var(--primary));
   }
 }
 
@@ -184,11 +249,76 @@
  * legible como CSS declarado que como bracket-string de una sola línea.
  */
 .leads-table-row {
-  transition: box-shadow 150ms ease, background-color 150ms ease;
+  transition:
+    box-shadow 150ms ease,
+    background-color 150ms ease;
 }
 
 .leads-table-row:hover {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--muted-foreground) 35%, transparent),
-    0 2px 10px -3px color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+  /* Barra de acento a la izquierda en el color vimcore (--sidebar) vía
+     `box-shadow` inset: pinta el borde sin desplazar el contenido (un
+     `border-left` real correría las celdas 3px). Fondo gris suave de
+     --muted para que el hover se note. */
+  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  background-color: rgb(var(--muted));
+}
+
+.leads-table-row[data-state="selected"] {
+  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+  background-color: rgb(var(--muted));
+}
+
+.leads-table-row[data-state="selected"]:hover {
+  box-shadow: inset 3px 0 0 0 rgb(var(--sidebar));
+}
+
+.bulk-actions-content {
+  animation: bulkActionsEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes bulkActionsEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-actions-content {
+    animation-duration: 0.01ms;
+  }
+}
+
+/*
+ * Capa "modo IDEC" (vista expandida del chat del detalle de lead): mientras
+ * el chat está abierto, los controles de formulario de esa superficie usan
+ * el azul corporativo IDEC Corp como borde por defecto y lo refuerzan al
+ * enfocar. Vive como clase contenedora (`.modo-idec` en LeadDetallePage) y
+ * no como utilidades por componente para no tocar el resto de la app -- el
+ * detalle normal conserva sus bordes neutros.
+ *
+ * Especificidad: (0,2,1) le gana a la utilidad `border-input` (0,1,0) y a
+ * `focus-visible:ring-2` (0,2,0) sin `!important`; el `:focus-visible` de
+ * teclado activa ambas sombras, así que acá se fija la caja combinada
+ * (borde pleno + halo suave) en lugar de competir con el ring de Tailwind.
+ */
+.modo-idec input,
+.modo-idec textarea,
+.modo-idec select {
+  border-color: rgb(var(--idec) / 0.45);
+}
+
+.modo-idec input:focus,
+.modo-idec input:focus-visible,
+.modo-idec textarea:focus,
+.modo-idec textarea:focus-visible,
+.modo-idec select:focus,
+.modo-idec select:focus-visible {
+  border-color: rgb(var(--idec));
+  box-shadow: 0 0 0 3px rgb(var(--idec) / 0.18);
 }

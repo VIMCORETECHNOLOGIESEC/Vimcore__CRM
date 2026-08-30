@@ -3,6 +3,7 @@ import { NotFoundPage } from "@/componentes/NotFoundPage";
 import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
+import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
 import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
@@ -10,6 +11,8 @@ import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
 import { AppLayout } from "@/layouts/AppLayout";
+import { FlujoIntegracionDemo } from "@/temas/variante-empresarial/FlujoIntegracionDemo";
+import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
 
 /**
  * Enrutado de la aplicación (docs/07 F1). React Router en modo de datos
@@ -29,12 +32,24 @@ import { AppLayout } from "@/layouts/AppLayout";
  * pendientes de este roadmap sin al menos una implementación (ver la nota
  * de cierre en `docs/07-modulos-frontend.md`). F6 (notificaciones) no es una
  * ruta propia -- vive en la campana de `layouts/Header.tsx`.
+ *
+ * `/temas/*`: páginas de referencia (styleguide) de variantes de línea
+ * gráfica en exploración (ver `frontend/src/temas/README.md`) -- dev-only,
+ * solo en build de desarrollo (`import.meta.env.DEV`), sin sesión ni entrada
+ * en `layouts/navigation.ts` a propósito: no debe aparecer en el sidebar de
+ * producción ni compilarse en un build de producción.
  */
 export const router = createBrowserRouter([
   {
     path: "/iniciar-sesion",
     element: <LoginPage />,
   },
+  ...(import.meta.env.DEV
+    ? [
+        { path: "/temas/empresarial", element: <StyleguidePage /> },
+        { path: "/temas/empresarial/demo", element: <FlujoIntegracionDemo /> },
+      ]
+    : []),
   {
     element: <ProtectedRoute />,
     children: [
@@ -52,6 +67,7 @@ export const router = createBrowserRouter([
               { path: "usuarios", element: <UsuariosPage /> },
               { path: "bridges", element: <BridgesPage /> },
               { path: "bridges/:id", element: <BridgeDetallePage /> },
+              { path: "configuracion-empresa", element: <ConfiguracionEmpresaPage /> },
             ],
           },
         ],

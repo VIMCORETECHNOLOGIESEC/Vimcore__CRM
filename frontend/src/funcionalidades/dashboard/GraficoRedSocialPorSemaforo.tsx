@@ -24,40 +24,52 @@ export function GraficoRedSocialPorSemaforo({ datos }: GraficoRedSocialPorSemafo
   const filas = datos.map((d) => ({ ...d, etiqueta: RED_SOCIAL_ETIQUETAS[d.redSocial] }));
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={filas} barSize={36} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="etiqueta" tick={{ fontSize: 12 }} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={32} />
-        <Tooltip cursor={{ fill: "rgba(15, 23, 42, 0.04)" }} content={<TooltipRedSocialSemaforo />} />
-        <Legend
-          formatter={(value: string) =>
-            value === ETIQUETA_SIN_CALIFICAR
-              ? value
-              : (SEMAFORO_ETIQUETAS[value as keyof typeof SEMAFORO_ETIQUETAS] ?? value)
-          }
-        />
-        {/*
-          `stroke="#fff"` con `strokeWidth={2}` simula el gap de 2px entre
-          segmentos apilados que pide la skill de dataviz -- Recharts no
-          soporta un gap real entre segmentos de una misma barra apilada
-          (siempre son rects contiguos), el trazo blanco es el sustituto
-          visual estándar para esa librería.
-        */}
-        <Bar dataKey="verde" name="VERDE" stackId="semaforo" fill={PALETA_SEMAFORO.VERDE} stroke="#fff" strokeWidth={2} />
-        <Bar dataKey="amarillo" name="AMARILLO" stackId="semaforo" fill={PALETA_SEMAFORO.AMARILLO} stroke="#fff" strokeWidth={2} />
-        <Bar dataKey="rojo" name="ROJO" stackId="semaforo" fill={PALETA_SEMAFORO.ROJO} stroke="#fff" strokeWidth={2} />
-        <Bar
-          dataKey="sinCalificar"
-          name={ETIQUETA_SIN_CALIFICAR}
-          stackId="semaforo"
-          fill={COLOR_SIN_CALIFICAR}
-          stroke="#fff"
-          strokeWidth={2}
-          radius={[4, 4, 0, 0]}
-        />
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="flex flex-col gap-3">
+      <ResponsiveContainer width="100%" height={215}>
+        <BarChart data={filas} barSize={36} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="etiqueta" tick={{ fontSize: 12 }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={32} />
+          <Tooltip cursor={{ fill: "rgba(15, 23, 42, 0.04)" }} content={<TooltipRedSocialSemaforo />} />
+          <Legend
+            formatter={(value: string) =>
+              value === ETIQUETA_SIN_CALIFICAR
+                ? value
+                : (SEMAFORO_ETIQUETAS[value as keyof typeof SEMAFORO_ETIQUETAS] ?? value)
+            }
+          />
+          {/*
+            `stroke="#fff"` con `strokeWidth={2}` simula el gap de 2px entre
+            segmentos apilados que pide la skill de dataviz -- Recharts no
+            soporta un gap real entre segmentos de una misma barra apilada
+            (siempre son rects contiguos), el trazo blanco es el sustituto
+            visual estándar para esa librería.
+          */}
+          <Bar dataKey="verde" name="VERDE" stackId="semaforo" fill={PALETA_SEMAFORO.VERDE} stroke="#fff" strokeWidth={2} />
+          <Bar dataKey="amarillo" name="AMARILLO" stackId="semaforo" fill={PALETA_SEMAFORO.AMARILLO} stroke="#fff" strokeWidth={2} />
+          <Bar dataKey="rojo" name="ROJO" stackId="semaforo" fill={PALETA_SEMAFORO.ROJO} stroke="#fff" strokeWidth={2} />
+          <Bar
+            dataKey="sinCalificar"
+            name={ETIQUETA_SIN_CALIFICAR}
+            stackId="semaforo"
+            fill={COLOR_SIN_CALIFICAR}
+            stroke="#fff"
+            strokeWidth={2}
+            radius={[4, 4, 0, 0]}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+      <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2" aria-label="Porcentaje de leads verdes por red social">
+        {filas.map((fila) => (
+          <li key={fila.redSocial} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+            <span className="min-w-0 text-xs text-foreground text-pretty">{fila.etiqueta}</span>
+            <span className="shrink-0 text-xs font-semibold text-semaforo-frio tabular-nums">
+              {fila.pctVerde === null ? "Sin leads" : `${fila.pctVerde} % verde`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
