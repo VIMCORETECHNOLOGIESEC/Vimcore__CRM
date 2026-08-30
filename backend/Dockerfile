@@ -19,6 +19,15 @@ RUN pnpm --filter backend exec prisma generate
 
 WORKDIR /app/backend
 
+# Compila a dist/ para produccion. Sin efecto sobre el flujo de desarrollo
+# local (docker-compose.yml bind-monta el repo entero y sobreescribe
+# `command:` con `pnpm dev`/tsx, ignorando este build y este CMD) -- este
+# paso solo importa cuando la imagen corre tal cual, sin compose de por
+# medio (Azure Container Apps).
+RUN pnpm build
+
+RUN chmod +x docker-entrypoint.sh
+
 EXPOSE 3000
 
-CMD ["pnpm", "dev"]
+CMD ["./docker-entrypoint.sh"]
