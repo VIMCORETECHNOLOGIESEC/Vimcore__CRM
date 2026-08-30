@@ -40,7 +40,17 @@ fuera del esquema y del código) sigue sin arrancar, sigue bloqueado por la
 otra precondición de este documento (congelar/mergear `dev-back`/
 `dev-front`) — no verificada como cumplida en esta actualización.
 
-## Precondición bloqueante — autoridad holding-wide sustituta (sin resolver)
+## Precondición bloqueante — autoridad holding-wide sustituta (resuelta de forma aditiva — ver "Estado real" arriba)
+
+> **Reconciliado 2026-08-30** (hallazgo real, no cosmético, reportado por el
+> equipo de `test/gpt`): esta sección quedó con el encabezado y el cierre
+> originales ("sin resolver", "diseñada, aprobada, implementada y
+> verificada") sin actualizar cuando se agregó "Estado real" arriba —
+> contradicción real entre dos secciones del mismo documento, no solo texto
+> viejo inofensivo. El resto de esta sección (candidato considerado,
+> discusión del problema) queda como registro histórico de cómo se llegó a
+> la decisión; el cierre al final de la sección ya está actualizado al
+> resultado real.
 
 `Usuario.rol` legacy es hoy la **única** autoridad holding-wide implementada
 (super admin de holding, administrador de holding, supervisor de holding —
@@ -69,11 +79,20 @@ mecanismo. Sigue sin ser una decisión tomada — necesita diseño, aprobación 
 implementación igual que cualquier otra alternativa, esta nota solo registra
 que existe un candidato concreto donde antes no había ninguno.
 
-**Bloque F no puede ejecutarse hasta que exista una autoridad holding-wide
-sustituta diseñada, aprobada, implementada y verificada** (tests incluidos).
-Esta precondición es adicional a la dependencia de secuencia de "Enfoque de
-implementación" más abajo (congelar/mergear `dev-back`/`dev-front`); ambas
-deben cumplirse antes de iniciar este bloque.
+**Actualización 2026-08-30 — esta precondición ya está cumplida.** La
+autoridad holding-wide sustituta quedó diseñada, aprobada e implementada de
+forma aditiva (`SUPERVISOR_HOLDING`/`SUPER_ADMIN`, ver "Estado real" arriba)
+y verificada con tests (`require-role.middleware.test.ts`, describe del
+bypass de Bloque F). No es la alternativa "Membresia auto-provisionada" que
+se discutía arriba como candidato — se optó por la más simple (valores
+nuevos del enum) porque resolvía el caso real sin el hueco de bootstrap que
+esa otra alternativa dejaba sin cubrir.
+
+Sigue en pie la OTRA precondición de este documento, sin verificar acá: la
+dependencia de secuencia de "Enfoque de implementación" más abajo
+(congelar/mergear `dev-back`/`dev-front`). Ambas deben cumplirse antes de
+iniciar el retiro real — esta ya lo está, esa otra no se confirmó en esta
+actualización.
 
 ## Decisión que implementa (ver rationale completo en `docs/16` §8 — no se repite acá)
 
