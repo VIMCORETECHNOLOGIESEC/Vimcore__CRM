@@ -13,8 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ROLES_USUARIO, type AdminUsuario, type RolUsuario } from "@/tipos/usuario";
-import { ROL_ETIQUETAS, ROLES_USUARIO_SELECCIONABLES } from "./catalogos";
+import { ROLES_USUARIO, type AdminUsuario } from "@/tipos/usuario";
+import { ROL_ETIQUETAS } from "./catalogos";
 import type { UpdateUsuarioInput } from "./usuarios.api";
 
 /** Mismos campos que `CrearUsuarioDialog`, sin `password` -- ver `RestablecerPasswordDialog.tsx`. */
@@ -55,19 +55,6 @@ export function EditarUsuarioDialog({
   const enviar = handleSubmit((valores) => {
     onSubmit(valores);
   });
-
-  /**
-   * `ROLES_USUARIO_SELECCIONABLES` saca "Vendedor" de las opciones nuevas
-   * (docs/16 D5) -- pero si el usuario que se está editando YA es
-   * `VENDEDOR`, hay que seguir mostrándolo como opción (su valor actual),
-   * o el `<Select>` quedaría con un valor sin opción visible. No habilita
-   * volver a elegirlo para otro usuario, solo preserva el propio.
-   */
-  const opcionesRol: readonly RolUsuario[] = (
-    ROLES_USUARIO_SELECCIONABLES as readonly RolUsuario[]
-  ).includes(usuario.rol)
-    ? ROLES_USUARIO_SELECCIONABLES
-    : [...ROLES_USUARIO_SELECCIONABLES, usuario.rol];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -112,7 +99,7 @@ export function EditarUsuarioDialog({
                     <SelectValue placeholder="Elegir rol…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {opcionesRol.map((rol) => (
+                    {ROLES_USUARIO.map((rol) => (
                       <SelectItem key={rol} value={rol}>
                         {ROL_ETIQUETAS[rol]}
                       </SelectItem>

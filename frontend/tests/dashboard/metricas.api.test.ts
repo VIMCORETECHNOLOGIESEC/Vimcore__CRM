@@ -29,15 +29,11 @@ vi.mock("@/api/httpClient", () => ({
 
 const { httpClient, ApiError } = await import("@/api/httpClient");
 const {
-  fetchMetricasCascadaLeadOportunidadApi,
   fetchMetricasEmbudoApi,
-  fetchMetricasEmbudoOportunidadApi,
   fetchMetricasPorAsesorApi,
   fetchMetricasPorCampaniaApi,
   fetchMetricasPorEtapaApi,
-  fetchMetricasPorProductoApi,
   fetchMetricasPorRedSocialApi,
-  fetchMetricasRankingProductosPorEmpresaApi,
   fetchRedSocialPorSemaforoApi,
   fetchResumenMetricasApi,
 } = await import("@/funcionalidades/dashboard/metricas.api");
@@ -102,7 +98,6 @@ describe("fetchResumenMetricasApi — GET /metricas/resumen", () => {
         redSocial: "INSTAGRAM",
         campania: "Verano 2026",
         responsableId: "asesor-1",
-        empresaId: undefined,
       },
     });
     expect(resultado).toEqual(resumen);
@@ -121,18 +116,7 @@ describe("fetchResumenMetricasApi — GET /metricas/resumen", () => {
         redSocial: undefined,
         campania: undefined,
         responsableId: undefined,
-        empresaId: undefined,
       },
-    });
-  });
-
-  it("docs/23 item 14 -- con empresaId (drill-down de holding a una empresa), lo manda como query param", async () => {
-    getMock.mockResolvedValue({});
-
-    await fetchResumenMetricasApi({ rango: "30d", empresaId: "empresa-9" });
-
-    expect(getMock).toHaveBeenCalledWith("/metricas/resumen", {
-      params: expect.objectContaining({ empresaId: "empresa-9" }),
     });
   });
 });
@@ -233,110 +217,5 @@ describe("fetchRedSocialPorSemaforoApi — GET /metricas/red-social-x-semaforo",
     const resultado = await fetchRedSocialPorSemaforoApi(FILTROS_30D);
 
     expect(resultado.every((r) => r.rojo + r.amarillo + r.verde + r.sinCalificar === r.total)).toBe(true);
-  });
-});
-
-describe("fetchMetricasEmbudoOportunidadApi — GET /metricas/embudo-oportunidad (docs/23 item 13)", () => {
-  it("devuelve el objeto de embudo tal cual, sin envolver, estructuralmente idéntico a /embudo", async () => {
-    const embudoOportunidad = {
-      pasos: [
-        { etapa: "NUEVO", total: 4, caidaPct: null },
-        { etapa: "CONTACTADO", total: 3, caidaPct: 25 },
-        { etapa: "CITA", total: 2, caidaPct: 33.33 },
-        { etapa: "VENTA", total: 1, caidaPct: 50 },
-      ],
-      noVenta: 1,
-    };
-    getMock.mockResolvedValue(embudoOportunidad);
-
-    const resultado = await fetchMetricasEmbudoOportunidadApi(FILTROS_30D);
-
-    expect(getMock).toHaveBeenCalledWith("/metricas/embudo-oportunidad", {
-      params: expect.objectContaining({ rango: "30d" }),
-    });
-    expect(resultado).toEqual(embudoOportunidad);
-  });
-});
-
-describe("fetchMetricasPorProductoApi — GET /metricas/por-producto (docs/23 item 13)", () => {
-  it("desenvuelve `{ items }`, ranking global plano sin empresaId/nombreEmpresa", async () => {
-    const items = [
-      { productoId: "prod-1", nombreProducto: "Seguro Auto", total: 8, ventas: 5, noVentas: 2, tasaConversionPct: 71.43 },
-    ];
-    getMock.mockResolvedValue({ items });
-
-    const resultado = await fetchMetricasPorProductoApi(FILTROS_30D);
-
-    expect(getMock).toHaveBeenCalledWith("/metricas/por-producto", {
-      params: expect.objectContaining({ rango: "30d" }),
-    });
-    expect(resultado).toEqual(items);
-    expect(resultado[0]).not.toHaveProperty("empresaId");
-  });
-});
-
-describe("fetchMetricasCascadaLeadOportunidadApi — GET /metricas/cascada-lead-oportunidad (docs/23 item 13)", () => {
-  it("devuelve el objeto crudo de cohorte tal cual, sin envolver (NO es una lista)", async () => {
-    const cascada = {
-      leads: 20,
-      conOportunidad: 8,
-      ventaOportunidad: 3,
-      tasaAperturaPct: 40,
-      tasaCierrePct: 37.5,
-    };
-    getMock.mockResolvedValue(cascada);
-
-    const resultado = await fetchMetricasCascadaLeadOportunidadApi(FILTROS_30D);
-
-    expect(getMock).toHaveBeenCalledWith("/metricas/cascada-lead-oportunidad", {
-      params: expect.objectContaining({ rango: "30d" }),
-    });
-    expect(resultado).toEqual(cascada);
-  });
-
-  it("con leads=0, tasaAperturaPct/tasaCierrePct llegan null tal cual (no se recalculan en cliente)", async () => {
-    const cascada = { leads: 0, conOportunidad: 0, ventaOportunidad: 0, tasaAperturaPct: null, tasaCierrePct: null };
-    getMock.mockResolvedValue(cascada);
-
-    const resultado = await fetchMetricasCascadaLeadOportunidadApi(FILTROS_30D);
-
-    expect(resultado.tasaAperturaPct).toBeNull();
-    expect(resultado.tasaCierrePct).toBeNull();
-  });
-});
-
-describe("fetchMetricasRankingProductosPorEmpresaApi — GET /metricas/ranking-productos-por-empresa (docs/23 item 13)", () => {
-  it("desenvuelve `{ items }`, una fila por par (empresa, producto)", async () => {
-    const items = [
-      {
-        empresaId: "empresa-1",
-        nombreEmpresa: "Empresa A",
-        productoId: "prod-1",
-        nombreProducto: "Seguro Auto",
-        total: 5,
-        ventas: 3,
-        noVentas: 1,
-        tasaConversionPct: 75,
-      },
-      {
-        empresaId: "empresa-2",
-        nombreEmpresa: "Empresa B",
-        productoId: "prod-1",
-        nombreProducto: "Seguro Auto",
-        total: 2,
-        ventas: 0,
-        noVentas: 0,
-        tasaConversionPct: null,
-      },
-    ];
-    getMock.mockResolvedValue({ items });
-
-    const resultado = await fetchMetricasRankingProductosPorEmpresaApi(FILTROS_30D);
-
-    expect(getMock).toHaveBeenCalledWith("/metricas/ranking-productos-por-empresa", {
-      params: expect.objectContaining({ rango: "30d" }),
-    });
-    expect(resultado).toEqual(items);
-    expect(resultado.map((r) => r.empresaId)).toEqual(["empresa-1", "empresa-2"]);
   });
 });

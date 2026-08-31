@@ -70,64 +70,6 @@ describe("httpClient — inyección de JWT", () => {
   });
 });
 
-describe("httpClient — postFormData (subida de archivos)", () => {
-  it("envía el FormData como body sin fijar Content-Type a mano (el browser define el boundary)", async () => {
-    setTokens({ accessToken: "token-abc", refreshToken: "refresh-abc" });
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { logoUrl: "https://cdn/x.png" }));
-    vi.stubGlobal("fetch", fetchMock);
-    const formData = new FormData();
-    formData.append("logo", new File(["contenido"], "logo.png", { type: "image/png" }));
-
-    const resultado = await httpClient.postFormData<{ logoUrl: string }>(
-      "/empresas/actual/apariencia/logo",
-      formData,
-    );
-
-    expect(resultado).toEqual({ logoUrl: "https://cdn/x.png" });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://localhost:3000/api/v1/empresas/actual/apariencia/logo");
-    expect(init.method).toBe("POST");
-    expect(init.body).toBe(formData);
-    const headers = init.headers as Record<string, string>;
-    expect(headers["Content-Type"]).toBeUndefined();
-    expect(headers.Authorization).toBe("Bearer token-abc");
-  });
-
-  it("propaga el mensaje de error accionable del backend (ej. archivo inválido)", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(400, {
-        code: "archivo_invalido",
-        message: "El archivo debe ser una imagen PNG, JPG, WEBP o SVG",
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const formData = new FormData();
-    formData.append("logo", new File(["x"], "x.txt", { type: "text/plain" }));
-
-    await expect(
-      httpClient.postFormData("/empresas/actual/apariencia/logo", formData),
-    ).rejects.toMatchObject({
-      code: "archivo_invalido",
-      status: 400,
-      message: "El archivo debe ser una imagen PNG, JPG, WEBP o SVG",
-    });
-  });
-
-  it("mapea un fallo de red a un ApiError de conexión, igual que el resto de httpClient", async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-    vi.stubGlobal("fetch", fetchMock);
-    const formData = new FormData();
-
-    await expect(
-      httpClient.postFormData("/configuracion-empresa/logo", formData),
-    ).rejects.toMatchObject({
-      code: "error_red",
-      status: 0,
-      message: "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.",
-    });
-  });
-});
-
 describe("httpClient — serialización de query params (F7, GET /usuarios con filtro y paginación)", () => {
   it("serializa `params` a query string, en el orden en que se declaran las claves", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));

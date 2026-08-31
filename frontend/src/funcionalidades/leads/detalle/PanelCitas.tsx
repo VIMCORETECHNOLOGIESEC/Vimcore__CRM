@@ -19,12 +19,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import type { Cita, ModalidadCita } from "@/tipos/cita";
-import {
-  citaRescheduleSchema,
-  citaScheduleSchema,
-  type CitaRescheduleFormValues,
-  type CitaScheduleFormValues,
-} from "./cita.schemas";
+import { citaRescheduleSchema, citaScheduleSchema, type CitaScheduleFormValues } from "./cita.schemas";
 import { useCancelCita, useCitasLead, useMarkCitaResult, useRescheduleCita, useScheduleCita } from "./useLeadDetalle";
 
 const MODALIDAD_ETIQUETAS: Record<ModalidadCita, string> = {
@@ -79,7 +74,7 @@ function CitaDateTimeField({
               id="fecha-cita"
               className="h-10 min-w-0 justify-start gap-2 border-input bg-background px-3 text-left font-normal hover:bg-accent hover:text-accent-foreground"
             >
-              <CalendarIcon className="size-4 shrink-0 text-marca-texto" aria-hidden="true" />
+              <CalendarIcon className="size-4 shrink-0 text-idec" aria-hidden="true" />
               <span className="truncate text-sm">
                 {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Elegí una fecha"}
               </span>
@@ -118,24 +113,23 @@ interface CitaItemProps {
 
 function CitaItem({ cita, onReschedule, reschedulingId }: CitaItemProps) {
   const [reprogramando, setReprogramando] = useState(false);
+  const [nuevaFecha, setNuevaFecha] = useState("");
+  const [errorFecha, setErrorFecha] = useState<string | null>(null);
   const markResult = useMarkCitaResult(cita.leadId);
   const cancelCita = useCancelCita(cita.leadId);
 
-  const {
-    handleSubmit: handleRescheduleSubmit,
-    control: rescheduleControl,
-    formState: { errors: rescheduleErrors },
-  } = useForm<CitaRescheduleFormValues>({
-    resolver: zodResolver(citaRescheduleSchema),
-    defaultValues: { programadaPara: "" },
-  });
-
   const puedeAccionar = cita.estado === "AGENDADA" || cita.estado === "REPROGRAMADA";
 
-  const confirmReschedule = handleRescheduleSubmit((valores) => {
-    onReschedule(cita.id, new Date(valores.programadaPara).toISOString());
+  function confirmReschedule() {
+    const resultado = citaRescheduleSchema.safeParse({ programadaPara: nuevaFecha });
+    if (!resultado.success) {
+      setErrorFecha(resultado.error.issues[0]?.message ?? "Fecha inválida");
+      return;
+    }
+    onReschedule(cita.id, new Date(nuevaFecha).toISOString());
     setReprogramando(false);
-  });
+    setErrorFecha(null);
+  }
 
   return (
     <li className="flex flex-col gap-2 rounded-md border border-border p-3">
@@ -180,24 +174,21 @@ function CitaItem({ cita, onReschedule, reschedulingId }: CitaItemProps) {
       ) : null}
 
       {reprogramando ? (
-        <form onSubmit={confirmReschedule} noValidate className="flex flex-wrap items-end gap-2">
-          <div className="min-w-0">
-            <Controller
-              control={rescheduleControl}
-              name="programadaPara"
-              render={({ field }) => (
-                <CitaDateTimeField
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={rescheduleErrors.programadaPara?.message}
-                />
-              )}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`reprogramar-${cita.id}`}>Nueva fecha y hora</Label>
+            <Input
+              id={`reprogramar-${cita.id}`}
+              type="datetime-local"
+              value={nuevaFecha}
+              onChange={(e) => setNuevaFecha(e.target.value)}
             />
           </div>
-          <Button size="sm" type="submit" disabled={reschedulingId === cita.id}>
+          <Button size="sm" disabled={reschedulingId === cita.id} onClick={confirmReschedule}>
             {reschedulingId === cita.id ? "Guardando…" : "Confirmar"}
           </Button>
-        </form>
+          {errorFecha ? <p className="text-sm text-destructive">{errorFecha}</p> : null}
+        </div>
       ) : null}
     </li>
   );
@@ -244,7 +235,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
     <section className="flex min-w-0 flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-marca-texto/10 text-marca-texto">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-idec/10 text-idec">
             <CalendarDays className="size-5" aria-hidden="true" />
           </span>
           <div className="flex flex-col gap-0.5">

@@ -1,13 +1,8 @@
-import * as XLSX from "xlsx";
 import type {
-  MetricasCascadaLeadOportunidad,
   MetricasEmbudo,
-  MetricasEmbudoOportunidad,
   MetricasPorAsesor,
   MetricasPorCampania,
-  MetricasPorProducto,
   MetricasPorRedSocial,
-  MetricasRankingProductoPorEmpresa,
   RedSocialPorSemaforo,
   ResumenMetricas,
 } from "@/tipos/metricas";
@@ -24,19 +19,6 @@ export interface DashboardExportData {
   embudo?: MetricasEmbudo;
   redSocialPorSemaforo?: RedSocialPorSemaforo[];
   leads?: Lead[];
-  /**
-   * docs/23 item 13 -- las 4 métricas de `Oportunidad` ya se pasan desde
-   * `DashboardPage.tsx` (mismo criterio que el resto de campos de esta
-   * interfaz: el dato ya está cargado por `useMetricas.ts`, se reenvía tal
-   * cual). GAP DELIBERADO: `construirTablas`/`construirGraficos` de este
-   * archivo todavía NO leen estos 4 campos -- son datos disponibles para
-   * quien complete esa extensión de Excel/PDF más adelante, no una promesa
-   * de que ya aparecen en el archivo exportado hoy.
-   */
-  embudoOportunidad?: MetricasEmbudoOportunidad;
-  porProducto?: MetricasPorProducto[];
-  cascadaLeadOportunidad?: MetricasCascadaLeadOportunidad;
-  rankingProductosPorEmpresa?: MetricasRankingProductoPorEmpresa[];
 }
 
 export interface DashboardExportContext {
@@ -66,12 +48,6 @@ export async function obtenerLeadsParaExportacion(
     total = respuesta.total;
     pagina += 1;
     onProgress?.(Math.min(70, Math.round((leads.length / Math.max(total, 1)) * 70)));
-    // Corta si el backend devuelve una página vacía pese a reportar total > 0
-    // (respuesta inconsistente) -- sin esto, `leads.length < total` nunca
-    // converge y el loop pega contra el endpoint para siempre.
-    if (respuesta.datos.length === 0) {
-      break;
-    }
   } while (leads.length < total);
   return leads;
 }
@@ -232,23 +208,8 @@ function nombreArchivo(extension: string): string {
   return `panel-ejecutivo-${new Date().toISOString().slice(0, 10)}.${extension}`;
 }
 
-/**
- * Arma el workbook real de SheetJS que exporta `descargarExcel()` -- una hoja
- * por sección en vez del bloque de texto único que armaba el CSV anterior
- * (docs/propuesta-consolidacion-exportacion-reportes.md §5.3). Separado de
- * `descargarExcel()` para poder testear la estructura de datos (hojas,
- * columnas, tipos de celda) sin pasar por el mecanismo de descarga del DOM
- * -- mismo criterio de "lógica separada de efecto secundario" que ya usa
- * `obtenerLeadsParaExportacion` en este archivo.
- *
- * Ninguna sección del CSV anterior se pierde: la hoja "Información" agrega,
- * al final del encabezado de contexto, la misma conclusión narrativa que el
- * CSV incluía como última fila.
- */
-export function construirWorkbookExcel(data: DashboardExportData, contexto: DashboardExportContext): XLSX.WorkBook {
-  const libro = XLSX.utils.book_new();
-
-  const hojaInformacion = XLSX.utils.aoa_to_sheet([
+export function descargarExcel(data: DashboardExportData, contexto: DashboardExportContext) {
+  const filas: unknown[][] = [
     ["Panel ejecutivo"],
     ["Empresa", contexto.empresa.nombre],
     ["Responsable del informe", contexto.empresa.usuario],
@@ -256,13 +217,7 @@ export function construirWorkbookExcel(data: DashboardExportData, contexto: Dash
     ["Período", contexto.rango],
     ["Filtros", contexto.filtros.join(" | ")],
     [],
-    ["Conclusión"],
-    [conclusion(data)],
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaInformacion, "Información");
-
-  const hojaResumen = XLSX.utils.aoa_to_sheet([
-    ["Indicador", "Valor"],
+    ["Resumen ejecutivo", "Valor"],
     ...(data.resumen
       ? [
           ["Leads ingresados", data.resumen.totalIngresados.actual],
@@ -274,68 +229,27 @@ export function construirWorkbookExcel(data: DashboardExportData, contexto: Dash
           ["Cumplimiento SLA", `${data.resumen.cumplimientoSla.porcentaje ?? "Sin dato"}%`],
         ]
       : [["Sin datos", ""]]),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaResumen, "Resumen ejecutivo");
-
-  const hojaEmbudo = XLSX.utils.aoa_to_sheet([
-    ["Etapa", "Total", "Caída"],
-    ...(data.embudo
-      ? [
-          ...data.embudo.pasos.map((paso) => [paso.etapa, paso.total, paso.caidaPct === null ? "-" : `${paso.caidaPct}%`]),
-          ["No venta", data.embudo.noVenta, "-"],
-        ]
-      : []),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaEmbudo, "Embudo por etapa");
-
-  const hojaPorRedSocial = XLSX.utils.aoa_to_sheet([
-    ["Red social", "Total", "Ventas", "No ventas", "Conversión"],
+    [],
+    ["Leads por red social", "Total", "Ventas", "No ventas", "Conversión"],
     ...(data.porRedSocial ?? []).map((item) => [item.redSocial, item.total, item.ventas, item.noVentas, item.tasaConversionPct === null ? "-" : `${item.tasaConversionPct}%`]),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaPorRedSocial, "Leads por red social");
-
-  const hojaPorAsesor = XLSX.utils.aoa_to_sheet([
-    ["Responsable", "Total", "Ventas", "No ventas", "Conversión", "SLA"],
+    [],
+    ["Leads por asesor", "Total", "Ventas", "No ventas", "Conversión", "SLA"],
     ...(data.porAsesor ?? []).map((item) => [item.nombre, item.total, item.ventas, item.noVentas, item.tasaConversionPct === null ? "-" : `${item.tasaConversionPct}%`, item.cumplimientoSlaPct === null ? "-" : `${item.cumplimientoSlaPct}%`]),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaPorAsesor, "Leads por asesor");
-
-  const hojaPorCampania = XLSX.utils.aoa_to_sheet([
-    ["Campaña", "Red social", "Total"],
+    [],
+    ["Leads por campaña", "Red social", "Total"],
     ...(data.porCampania ?? []).map((item) => [item.nombreCampania, item.redSocial ?? "Sin red", item.total]),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaPorCampania, "Leads por campaña");
-
-  const hojaSemaforo = XLSX.utils.aoa_to_sheet([
-    ["Red social", "Total", "Rojo", "Amarillo", "Verde", "Sin calificar"],
+    [],
+    ["Red social por semáforo", "Total", "Rojo", "Amarillo", "Verde", "Sin calificar"],
     ...(data.redSocialPorSemaforo ?? []).map((item) => [item.redSocial, item.total, item.rojo, item.amarillo, item.verde, item.sinCalificar]),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaSemaforo, "Red social por semáforo");
-
-  const hojaLeads = XLSX.utils.aoa_to_sheet([
+    [],
+    ["Lista de leads"],
     ["Cliente", "Teléfono", "Etapa", "Red social", "Responsable", "Ingreso"],
-    ...(data.leads ?? []).map((lead) => [
-      lead.cliente.nombre,
-      lead.cliente.telefonoOriginal,
-      ETAPA_ETIQUETAS[lead.etapa],
-      RED_SOCIAL_ETIQUETAS[lead.redSocial],
-      lead.vendedor?.nombre ?? lead.asesor?.nombre ?? "Sin asignar",
-      new Intl.DateTimeFormat("es-EC").format(new Date(lead.ingresadoEn)),
-    ]),
-  ]);
-  XLSX.utils.book_append_sheet(libro, hojaLeads, "Lista de leads");
-
-  return libro;
-}
-
-export function descargarExcel(data: DashboardExportData, contexto: DashboardExportContext) {
-  const libro = construirWorkbookExcel(data, contexto);
-  const buffer = XLSX.write(libro, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
-  descargarArchivo(
-    buffer,
-    nombreArchivo("xlsx"),
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
+    ...(data.leads ?? []).map((lead) => [lead.cliente.nombre, lead.cliente.telefonoOriginal, ETAPA_ETIQUETAS[lead.etapa], RED_SOCIAL_ETIQUETAS[lead.redSocial], lead.vendedor?.nombre ?? lead.asesor?.nombre ?? "Sin asignar", new Intl.DateTimeFormat("es-EC").format(new Date(lead.ingresadoEn))]),
+    [],
+    ["Conclusión", conclusion(data)],
+  ];
+  const contenido = filas.map((fila) => fila.map((celda) => `"${String(celda ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");
+  descargarArchivo(`\ufeff${contenido}`, nombreArchivo("csv"), "text/csv;charset=utf-8");
 }
 
 export function descargarPdf(data: DashboardExportData, contexto: DashboardExportContext, ventanaAbierta?: Window | null) {

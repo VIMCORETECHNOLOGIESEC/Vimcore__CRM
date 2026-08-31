@@ -11,21 +11,15 @@
  */
 
 .tema-empresarial {
-  /* Línea gráfica ARCANO CRM (rebrandeo de cliente, docs/branding/arcano-
-     linea-grafica.md en la rama cliente/arcano-crm): grafito/dorado
-     extraído del isotipo del cliente, reemplaza el indigo/azul de la
-     variante empresarial genérica -- este es el default estático de
-     `.chrome-gradiente`/`.headline` (login, splashes), visible ANTES de que
-     `resolveMarcaCompleta` inyecte `--marca-color-1/2` por sesión real. */
-  --indigo: #241f1b;
-  --indigo-2: #1a1613;
+  --indigo: #1e2a5e;
+  --indigo-2: #14204a;
   --papel: #f6f1e7;
   --verde: #16a34a;
   --amarillo: #d97706;
   --rojo: #dc2626;
   --gris-semaforo: #94a3b8;
   --cat-1: #db2777;
-  --cat-2: #b98a4e;
+  --cat-2: #2563eb;
   --cat-3: #7c3aed;
   --cat-4: #0891b2;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);

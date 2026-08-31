@@ -1,16 +1,12 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { MetricasFiltros } from "@/tipos/metricas";
-import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import {
-  fetchMetricasCascadaLeadOportunidadApi,
   fetchMetricasEmbudoApi,
-  fetchMetricasEmbudoOportunidadApi,
   fetchMetricasPorAsesorApi,
   fetchMetricasPorCampaniaApi,
   fetchMetricasPorEtapaApi,
-  fetchMetricasPorProductoApi,
   fetchMetricasPorRedSocialApi,
-  fetchMetricasRankingProductosPorEmpresaApi,
   fetchRedSocialPorSemaforoApi,
   fetchResumenMetricasApi,
 } from "./metricas.api";
@@ -98,57 +94,6 @@ export function useRedSocialPorSemaforo(filtros: MetricasFiltros) {
   return useQuery({
     queryKey: [METRICAS_QUERY_KEY, "red-social-x-semaforo", filtros, user?.id],
     queryFn: () => fetchRedSocialPorSemaforoApi(filtros),
-    placeholderData: keepPreviousData,
-  });
-}
-
-/**
- * Embudo de Oportunidad (`/metricas/embudo-oportunidad`, docs/23 item 13) --
- * alimenta `GraficoEmbudoOportunidad.tsx`. Sin `enabled`: el endpoint no
- * tiene `requireRole` propio, igual criterio que el resto de este archivo
- * (nunca `/metricas/por-asesor`, ese es el único caso con 403 real).
- */
-export function useMetricasEmbudoOportunidad(filtros: MetricasFiltros) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: [METRICAS_QUERY_KEY, "embudo-oportunidad", filtros, user?.id],
-    queryFn: () => fetchMetricasEmbudoOportunidadApi(filtros),
-    placeholderData: keepPreviousData,
-  });
-}
-
-/** Ranking global por producto (`/metricas/por-producto`, docs/23 item 13) -- alimenta `GraficoPorProducto.tsx`. */
-export function useMetricasPorProducto(filtros: MetricasFiltros) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: [METRICAS_QUERY_KEY, "por-producto", filtros, user?.id],
-    queryFn: () => fetchMetricasPorProductoApi(filtros),
-    placeholderData: keepPreviousData,
-  });
-}
-
-/** Cascada Lead → Oportunidad (`/metricas/cascada-lead-oportunidad`, docs/23 item 13) -- alimenta `CascadaLeadOportunidad.tsx`. */
-export function useMetricasCascadaLeadOportunidad(filtros: MetricasFiltros) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: [METRICAS_QUERY_KEY, "cascada-lead-oportunidad", filtros, user?.id],
-    queryFn: () => fetchMetricasCascadaLeadOportunidadApi(filtros),
-    placeholderData: keepPreviousData,
-  });
-}
-
-/**
- * Ranking de productos por empresa (`/metricas/ranking-productos-por-empresa`,
- * docs/23 item 13) -- alimenta `GraficoRankingProductosPorEmpresa.tsx`. Igual
- * que las otras 3 de este bloque, sin `enabled`: el endpoint no restringe por
- * rol; el aviso de la limitación conocida por scope de sesión (E5) lo decide
- * el propio componente de gráfico, no este hook.
- */
-export function useMetricasRankingProductosPorEmpresa(filtros: MetricasFiltros) {
-  const { user } = useAuth();
-  return useQuery({
-    queryKey: [METRICAS_QUERY_KEY, "ranking-productos-por-empresa", filtros, user?.id],
-    queryFn: () => fetchMetricasRankingProductosPorEmpresaApi(filtros),
     placeholderData: keepPreviousData,
   });
 }

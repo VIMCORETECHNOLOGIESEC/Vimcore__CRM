@@ -1,10 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ACTIONS, EVENTS, Joyride, STATUS, type EventData, type Step } from "react-joyride";
 import { useLocation, useNavigate } from "react-router";
-import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
-import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 
-type TutorialTransitionAction = { action: "open-workspace" | "close-workspace" | "select-tab"; tab?: string };
+type TutorialTransitionAction = { action: "open-workspace" | "select-tab"; tab?: string };
 
 interface LeadsNavigationTutorialContextValue {
   startTour: (leadId: string) => void;
@@ -22,13 +21,7 @@ const TOUR_COMPLETED_KEY_PREFIX = "crm.leads-navigation-tour.completed.";
 const APP_SCROLL_CONTAINER_SELECTOR = '[data-tour="app-scroll-container"]';
 const LEADS_TOUR_READY_EVENT = "leads-navigation-tour-ready";
 
-type TutorialReadyTarget =
-  | "detail"
-  | "workspace"
-  | "workspace-progreso"
-  | "workspace-cita"
-  | "workspace-cierre"
-  | "workspace-oportunidad";
+type TutorialReadyTarget = "detail" | "workspace" | "workspace-cita" | "workspace-cierre";
 
 interface PendingStepTransition {
   stepIndex: number;
@@ -189,35 +182,13 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
     content: "Registrá una venta o un cierre sin venta solo después de confirmar el resultado con el cliente.",
     placement: "bottom",
   },
-  {
-    target: '[data-tour="lead-workspace-oportunidad"]',
-    title: "Consultá o iniciá una oportunidad",
-    content: "Desde acá ves las oportunidades ya registradas para este lead y podés iniciar una nueva sin salir del espacio de trabajo.",
-    placement: "bottom",
-  },
 ];
 
-function dispatchLeadTourEvent(detail: TutorialTransitionAction) {
+function dispatchLeadTourEvent(detail: { action: "open-workspace" | "select-tab"; tab?: string }) {
   window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail }));
 }
 
-interface LeadsNavigationTutorialProviderProps {
-  children: ReactNode;
-  /**
-   * Color de marca (hex) para el botón "Siguiente" de Joyride y sus estados
-   * hover/focus -- `options.primaryColor` es el único valor del que Joyride
-   * los deriva automáticamente. Lo resuelve `AppLayout.tsx` (único ancestro
-   * de este provider) vía `resolveMarcaCompleta` (`lib/color-marca.ts`,
-   * `--marca-color-2`), la misma fuente que ya usa el splash de bienvenida
-   * -- se recibe como prop en vez de que este componente resuelva la marca
-   * de cero, para no duplicar la jerarquía de 3 niveles (empresa propia ->
-   * holding en vivo -> default) ya centralizada ahí. Sin prop (ej. tests que
-   * montan el provider aislado), cae al azul de fábrica del CRM.
-   */
-  colorAcento?: string;
-}
-
-export function LeadsNavigationTutorialProvider({ children, colorAcento }: LeadsNavigationTutorialProviderProps) {
+export function LeadsNavigationTutorialProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -302,46 +273,6 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
 
     const nextIndex = index + (action === ACTIONS.PREV ? -1 : 1);
     if (action === ACTIONS.PREV) {
-      // Reversas simétricas de los side-effects disparados al avanzar (ver
-      // ramas de ACTIONS.NEXT más abajo): cerrar el chat, volver a /leads y
-      // reseleccionar la pestaña anterior, replicando el mismo mecanismo de
-      // CustomEvent ("leads-navigation-tour") que usan open-workspace y
-      // select-tab. Sin esto el tutorial queda en un estado visual roto al
-      // retroceder (chat abierto, ruta o pestaña desincronizada del paso).
-      if (index === 8) {
-        dispatchLeadTourEvent({ action: "close-workspace" });
-        setStepIndex(nextIndex);
-        return;
-      }
-      if (index === 4) {
-        navigate("/leads");
-        setStepIndex(nextIndex);
-        return;
-      }
-      if (index === 11) {
-        queuePendingTransition({
-          stepIndex: nextIndex,
-          waitFor: "workspace-progreso",
-          command: { action: "select-tab", tab: "progreso" },
-        });
-        return;
-      }
-      if (index === 12) {
-        queuePendingTransition({
-          stepIndex: nextIndex,
-          waitFor: "workspace-cita",
-          command: { action: "select-tab", tab: "cita" },
-        });
-        return;
-      }
-      if (index === 13) {
-        queuePendingTransition({
-          stepIndex: nextIndex,
-          waitFor: "workspace-cierre",
-          command: { action: "select-tab", tab: "cierre" },
-        });
-        return;
-      }
       setStepIndex(nextIndex);
       return;
     }
@@ -376,14 +307,6 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
       });
       return;
     }
-    if (index === 12) {
-      queuePendingTransition({
-        stepIndex: nextIndex,
-        waitFor: "workspace-oportunidad",
-        command: { action: "select-tab", tab: "oportunidad" },
-      });
-      return;
-    }
 
     setStepIndex(nextIndex);
   }
@@ -399,7 +322,7 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
         onEvent={handleTourEvent}
         options={{
           buttons: ["back", "close", "primary", "skip"],
-          primaryColor: colorAcento ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
+          primaryColor: "#2563EB",
           showProgress: true,
           skipBeacon: true,
           skipScroll: false,

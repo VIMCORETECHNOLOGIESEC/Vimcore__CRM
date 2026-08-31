@@ -1,45 +1,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { getRefreshToken } from "@/api/httpClient";
 import {
   CONFIGURACION_EMPRESA_DEFAULT,
   type ConfiguracionEmpresa,
 } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 import { obtenerMarcaPublicaConFallback } from "@/funcionalidades/configuracion-empresa/marca-publica.api";
-import { getMarcaConocida } from "@/lib/marca-cache";
 import "./tema-empresarial.css";
 import { WelcomeSplashLoader } from "./WelcomeSplashLoader";
-
-/**
- * Estado inicial de la cortina (fix "boot desincronizado" -- F5 con sesión
- * activa): si HABÍA un refresh token persistido (mismo chequeo que
- * `AuthContext.tsx::hadPersistedRefreshToken`, `Boolean(getRefreshToken())`,
- * reusado tal cual) Y hay una marca cacheada (`@/lib/marca-cache`, escrita
- * por `AuthContext` cada vez que `GET /auth/perfil` resolvió con éxito),
- * arranca con ESA marca en vez del default público del holding -- evita el
- * corte visual brusco de pintar primero el branding del holding y recién
- * después el real de la empresa. Sin refresh token persistido (nunca hubo
- * sesión en este navegador) o sin cache, comportamiento sin cambios: default
- * de fábrica hasta que resuelva `GET /marca-publica` (PASO 5, abajo).
- *
- * Dato stale por diseño, nunca fuente de verdad -- ver comentario en
- * `marca-cache.ts`. `GET /marca-publica` sigue disparando en paralelo y
- * reemplaza este pintado optimista en cuanto resuelve.
- */
-function resolveMarcaInicial(): ConfiguracionEmpresa {
-  if (!getRefreshToken()) {
-    return CONFIGURACION_EMPRESA_DEFAULT;
-  }
-  const marcaConocida = getMarcaConocida();
-  if (!marcaConocida) {
-    return CONFIGURACION_EMPRESA_DEFAULT;
-  }
-  return {
-    nombre: marcaConocida.nombre,
-    colorPrimario: marcaConocida.colorPrimario,
-    colorSecundario: marcaConocida.colorSecundario,
-    logoUrl: CONFIGURACION_EMPRESA_DEFAULT.logoUrl,
-  };
-}
 
 /**
  * Duración del fade de opacidad de `.welcome-splash`/`.welcome-splash-marca`
@@ -68,18 +34,17 @@ const SPLASH_SOSTENIDO_MS = 700;
  * detrás desde el primer render, así que nunca hay un pop cuando la cortina
  * se desvanece: revela algo que ya está asentado, no algo que recién se monta.
  *
- * Contenido de marca: arranca con `resolveMarcaInicial()` (arriba) -- la
- * última marca conocida cacheada si había sesión antes en este navegador, o
- * el default de la instancia (`CONFIGURACION_EMPRESA_DEFAULT`, mismos
- * valores que usa `LoginPage.tsx` como fallback) en cualquier otro caso -- y
- * lo reemplaza por el branding real en cuanto resuelve `GET /marca-publica`
- * (PASO 5, tema-empresarial-integracion) -- el único endpoint sin sesión que
- * expone nombre/colores/logo, porque todavía no hay sesión en este punto
- * (`GET /configuracion-empresa`, que sí la requiere, no aplica acá).
- * `obtenerMarcaPublicaConFallback` (mismo criterio de resiliencia que
- * `LoginPage.tsx::obtenerConfiguracionEmpresaConFallback`: timeout corto,
- * fallback silencioso) nunca bloquea ni alarga el boot -- la cortina sigue
- * durando EXACTAMENTE 1500ms tenga o no tenga tiempo de resolver.
+ * Contenido de marca: arranca con el default de la instancia
+ * (`CONFIGURACION_EMPRESA_DEFAULT`, mismos valores que usa `LoginPage.tsx`
+ * como fallback) y lo reemplaza por el branding real en cuanto resuelve
+ * `GET /marca-publica` (PASO 5, tema-empresarial-integracion) -- el único
+ * endpoint sin sesión que expone nombre/colores/logo, porque todavía no hay
+ * sesión en este punto (`GET /configuracion-empresa`, que sí la requiere, no
+ * aplica acá). `obtenerMarcaPublicaConFallback` (mismo criterio de
+ * resiliencia que `LoginPage.tsx::obtenerConfiguracionEmpresaConFallback`:
+ * timeout corto, fallback silencioso) nunca bloquea ni alarga el boot --
+ * la cortina sigue durando EXACTAMENTE 1500ms tenga o no tenga tiempo de
+ * resolver.
  *
  * El wrapper `.tema-empresarial` envuelve SOLO la cortina, nunca a
  * `children` -- esa clase define `color`/`font-family` heredables
@@ -90,7 +55,7 @@ const SPLASH_SOSTENIDO_MS = 700;
 export function AppBoot({ children }: { children: ReactNode }) {
   const [bootActive, setBootActive] = useState(true);
   const [bootVisible, setBootVisible] = useState(false);
-  const [marca, setMarca] = useState<ConfiguracionEmpresa>(resolveMarcaInicial);
+  const [marca, setMarca] = useState<ConfiguracionEmpresa>(CONFIGURACION_EMPRESA_DEFAULT);
 
   useEffect(() => {
     const idAparecer = requestAnimationFrame(() => setBootVisible(true));
@@ -113,14 +78,14 @@ export function AppBoot({ children }: { children: ReactNode }) {
   // Branding real (PASO 5): dispara en paralelo a los timers de arriba, sin
   // bloquearlos -- si resuelve antes de que la cortina se desmonte, el
   // splash se actualiza en vivo; si no, se queda con el default desde el
-  // principio. `cancelled` evita un `setState` tras desmontar.
+  // principio. `cancelado` evita un `setState` tras desmontar.
   useEffect(() => {
-    let cancelled = false;
+    let cancelado = false;
     obtenerMarcaPublicaConFallback().then((configuracion) => {
-      if (!cancelled) setMarca(configuracion);
+      if (!cancelado) setMarca(configuracion);
     });
     return () => {
-      cancelled = true;
+      cancelado = true;
     };
   }, []);
 
@@ -130,15 +95,17 @@ export function AppBoot({ children }: { children: ReactNode }) {
       {bootActive ? (
         <div className="tema-empresarial">
           {/*
-            Las fuentes de esta variante (Fraunces/Source Sans 3) se cargan
-            una sola vez a nivel raíz en `index.html` -- fix "FOUT entre los
-            dos splashes de bienvenida" (boot pre-login vs. shell
-            autenticado, `AppLayout.tsx`): antes este componente y
-            `LoginPage.tsx` cada uno declaraba su propio <link>, montado en
-            un instante distinto del ciclo de red, así que cada splash podía
-            pintar con un estado de carga de fuente diferente. Ya no hace
-            falta declararlo acá.
+            React 19 hoista automáticamente <link> renderizados en cualquier
+            parte del árbol hacia <head> -- mismo patrón que
+            `LoginPage.tsx`/`FlujoIntegracionDemo.tsx` para cargar las fuentes
+            de esta variante.
           */}
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+          <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
+          />
           <WelcomeSplashLoader
             contexto={marca.nombre}
             mensaje="Cargando…"

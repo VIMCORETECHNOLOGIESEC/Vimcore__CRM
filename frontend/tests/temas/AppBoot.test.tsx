@@ -19,17 +19,7 @@ vi.mock("@/funcionalidades/configuracion-empresa/marca-publica.api", () => ({
   obtenerMarcaPublicaConFallback: () => obtenerMarcaPublicaConFallback(),
 }));
 
-// Fix "boot desincronizado": `AppBoot` consulta si había un refresh token
-// persistido con el MISMO chequeo que `AuthContext.tsx::hadPersistedRefreshToken`
-// (`Boolean(getRefreshToken())`) -- se mockea acá para poder simular "hubo
-// sesión antes" sin depender de `localStorage` real para ese chequeo puntual.
-const getRefreshTokenMock = vi.fn();
-vi.mock("@/api/httpClient", () => ({
-  getRefreshToken: () => getRefreshTokenMock(),
-}));
-
 const { AppBoot } = await import("@/temas/variante-empresarial/AppBoot");
-const { MARCA_CONOCIDA_STORAGE_KEY } = await import("@/lib/marca-cache");
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -37,15 +27,11 @@ beforeEach(() => {
   // comportamiento observable que un fetch lento/timeout: la cortina se
   // queda con el default de fábrica durante toda su duración.
   obtenerMarcaPublicaConFallback.mockReturnValue(new Promise(() => {}));
-  getRefreshTokenMock.mockReturnValue(null);
-  localStorage.removeItem(MARCA_CONOCIDA_STORAGE_KEY);
 });
 
 afterEach(() => {
   vi.useRealTimers();
   obtenerMarcaPublicaConFallback.mockReset();
-  getRefreshTokenMock.mockReset();
-  localStorage.removeItem(MARCA_CONOCIDA_STORAGE_KEY);
 });
 
 /**
@@ -128,100 +114,5 @@ describe("AppBoot", () => {
     // La cortina de 1500ms se oculta igual, con el default -- nunca esperó
     // al fetch pendiente.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  });
-
-  /**
-   * Fix "boot desincronizado": con un refresh token persistido (hubo sesión
-   * antes en este navegador) Y una marca cacheada de esa sesión, la cortina
-   * debe pintar ESE branding desde el primer render -- no el default público
-   * del holding -- mientras `GET /marca-publica` resuelve en paralelo.
-   */
-  describe("cache optimista de marca conocida", () => {
-    it("con refresh token persistido y marca cacheada, pinta la marca cacheada desde el primer render", () => {
-      getRefreshTokenMock.mockReturnValue("refresh-persistido");
-      localStorage.setItem(
-        MARCA_CONOCIDA_STORAGE_KEY,
-        JSON.stringify({
-          empresaId: "empresa-a",
-          nombre: "Arcano Motos",
-          colorPrimario: "#7c2d12",
-          colorSecundario: "#f97316",
-        }),
-      );
-
-      render(
-        <AppBoot>
-          <div>Contenido de la app</div>
-        </AppBoot>,
-      );
-
-      expect(screen.getByRole("status")).toHaveTextContent("Arcano Motos");
-    });
-
-    it("sin refresh token persistido, ignora la marca cacheada y pinta el default público", () => {
-      getRefreshTokenMock.mockReturnValue(null);
-      localStorage.setItem(
-        MARCA_CONOCIDA_STORAGE_KEY,
-        JSON.stringify({
-          empresaId: "empresa-a",
-          nombre: "Arcano Motos",
-          colorPrimario: "#7c2d12",
-          colorSecundario: "#f97316",
-        }),
-      );
-
-      render(
-        <AppBoot>
-          <div>Contenido de la app</div>
-        </AppBoot>,
-      );
-
-      expect(screen.getByRole("status")).toHaveTextContent("CRM Embudo de Leads");
-    });
-
-    it("con refresh token persistido pero sin marca cacheada, pinta el default público", () => {
-      getRefreshTokenMock.mockReturnValue("refresh-persistido");
-
-      render(
-        <AppBoot>
-          <div>Contenido de la app</div>
-        </AppBoot>,
-      );
-
-      expect(screen.getByRole("status")).toHaveTextContent("CRM Embudo de Leads");
-    });
-
-    it("la marca cacheada es solo el pintado inicial -- la query real (GET /marca-publica) la sigue reemplazando si resuelve antes de ocultarse", async () => {
-      getRefreshTokenMock.mockReturnValue("refresh-persistido");
-      localStorage.setItem(
-        MARCA_CONOCIDA_STORAGE_KEY,
-        JSON.stringify({
-          empresaId: "empresa-a",
-          nombre: "Arcano Motos (cache vieja)",
-          colorPrimario: "#7c2d12",
-          colorSecundario: "#f97316",
-        }),
-      );
-      obtenerMarcaPublicaConFallback.mockResolvedValue({
-        nombre: "Arcano Motos (real)",
-        colorPrimario: "#7c2d12",
-        colorSecundario: "#f97316",
-        logoUrl: null,
-      });
-
-      render(
-        <AppBoot>
-          <div>Contenido de la app</div>
-        </AppBoot>,
-      );
-
-      expect(screen.getByRole("status")).toHaveTextContent("Arcano Motos (cache vieja)");
-
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      expect(screen.getByRole("status")).toHaveTextContent("Arcano Motos (real)");
-    });
   });
 });

@@ -124,7 +124,7 @@ export function LeadTimeline({
                   {estado !== "completado" ? (
                     <div className="flex flex-col items-center gap-1">
                       {estado === "actual" && (etapa === "NUEVO" || etapa === "CONTACTADO") ? (
-                        <span className="text-xs font-semibold tabular-nums text-marca-texto">
+                        <span className="text-xs font-semibold tabular-nums text-idec">
                           Puntuación {puntuacionActual ?? lead.puntuacion ?? "—"}
                         </span>
                       ) : null}

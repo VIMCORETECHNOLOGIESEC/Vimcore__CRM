@@ -58,21 +58,6 @@ describe("EditarEmpresaHoldingDialog", () => {
     });
   });
 
-  it("deshabilita la subida de isotipo (POST /empresas/:empresaId/apariencia/logo aún no existe)", () => {
-    render(
-      <EditarEmpresaHoldingDialog
-        open
-        onOpenChange={vi.fn()}
-        empresa={empresaFake()}
-        enviando={false}
-        onSubmit={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByLabelText("Isotipo (opcional)")).toBeDisabled();
-    expect(screen.getByText("Subida de archivo próximamente para este caso.")).toBeInTheDocument();
-  });
-
   it("no se renderiza cuando open es false", () => {
     render(
       <EditarEmpresaHoldingDialog

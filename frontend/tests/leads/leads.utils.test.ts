@@ -88,19 +88,6 @@ describe("buildLeadsQueryParams", () => {
     const params = buildLeadsQueryParams({ ...FILTROS_LEADS_VACIOS, busqueda: "   " }, 1, 10);
     expect(params.busqueda).toBeUndefined();
   });
-
-  it("reenvía empresaVistaId como empresaId solo cuando es truthy (drill-down de holding-wide)", () => {
-    expect(buildLeadsQueryParams(FILTROS_LEADS_VACIOS, 1, 10, "emp-9")).toEqual({
-      pagina: 1,
-      porPagina: 10,
-      empresaId: "emp-9",
-    });
-    expect(buildLeadsQueryParams(FILTROS_LEADS_VACIOS, 1, 10, "")).toEqual({ pagina: 1, porPagina: 10 });
-    expect(buildLeadsQueryParams(FILTROS_LEADS_VACIOS, 1, 10, undefined)).toEqual({
-      pagina: 1,
-      porPagina: 10,
-    });
-  });
 });
 
 describe("buildFiltrosActivos", () => {

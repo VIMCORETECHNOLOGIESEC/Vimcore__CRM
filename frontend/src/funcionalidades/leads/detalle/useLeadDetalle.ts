@@ -24,19 +24,11 @@ const CITAS_LEAD_QUERY_KEY = "citas-lead";
  * Hooks TanStack Query del detalle de lead (F4). Misma forma que tendrán
  * contra el backend real -- ver `leadDetalle.api.ts` para los puntos de
  * integración pendientes (M6/M7).
- *
- * `empresaId` (drill-down de holding, `useVistaEmpresa()`, `LeadDetallePage.tsx`)
- * se reenvía en la query key y a `fetchLeadDetalleApi` -- mismo criterio que
- * `useLeads`/`useBridges`/`useOportunidades`, para que la caché de
- * TanStack Query no mezcle el lead de una empresa con el de otra al cambiar
- * de vista. Esto NO corrige por sí solo el 403 real de
- * `leads.access.ts::canRead` (todavía no resuelve `empresaId`) -- es
- * preparación de frontend, ver el prompt de esta tarea.
  */
-export function useLeadDetalle(leadId: string, empresaId?: string) {
+export function useLeadDetalle(leadId: string) {
   return useQuery({
-    queryKey: [LEAD_DETALLE_QUERY_KEY, leadId, empresaId],
-    queryFn: () => fetchLeadDetalleApi(leadId, empresaId),
+    queryKey: [LEAD_DETALLE_QUERY_KEY, leadId],
+    queryFn: () => fetchLeadDetalleApi(leadId),
   });
 }
 

@@ -6,20 +6,15 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
-import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
-import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { useLeadsNavigationTutorial } from "./tutorial/LeadsNavigationTutorial";
 import { AccionesMasivas } from "./AccionesMasivas";
-import { CargarLeadManualDialog } from "./CargarLeadManualDialog";
-import { CargaMasivaLeadsDialog } from "./CargaMasivaLeadsDialog";
-import { GestionarCanalesManualesDialog } from "./GestionarCanalesManualesDialog";
 import { getCatalogoCampanias, getCatalogoResponsables } from "./leads.api";
 import { FILTROS_LEADS_VACIOS, buildLeadsQueryParams, type LeadsFiltrosState } from "./leads.utils";
 import { LeadsFiltros } from "./LeadsFiltros";
 import { LeadsTable } from "./LeadsTable";
 import { useAssignLeadsMasivo, useLeads } from "./useLeads";
-import { useCanalesManuales, useCrearLeadManual } from "./useCanalesManuales";
 
 /**
  * Sin selector de tamaño de página todavía (pendiente de aprobación del
@@ -37,53 +32,17 @@ const LEADS_POR_PAGINA = 10;
 export function LeadsPage() {
   usePageHeader({ title: "Gestión de Leads" });
 
-  const { user, hasRole } = useAuth();
-  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
+  const { hasRole } = useAuth();
   const { startTour, startTourIfNeeded } = useLeadsNavigationTutorial();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
-  /**
-   * Reasignación masiva es una acción de escritura: un holding-wide en "Ver
-   * en vivo" de una empresa (`useVistaEmpresa().esVistaSoloLectura`) puede
-   * navegar el listado pero no reasignar leads (no soportado en esta
-   * versión de despliegue). `esGestorDeCartera` en sí mismo sigue
-   * controlando piezas de solo lectura (columna/filtro de responsable), que
-   * no se ocultan acá.
-   */
-  const puedeAsignarMasivo = esGestorDeCartera && !esVistaSoloLectura;
-
-  /**
-   * Canal de ingreso manual (diferido, docs/blocks/d-routing-oportunidad.md:
-   * 272-353) -- exclusivo de sesión `company` (cada empresa carga sus
-   * propios leads, no es una funcionalidad holding-wide). `puedeCargarLeadManual`
-   * cubre Administrador/Supervisor/Asesor; `puedeGestionarCanales` acota a
-   * Administrador. `empresaId` viene de la sesión, nunca de una vista de
-   * empresa holding-wide (`useVistaEmpresa`) -- ese caso queda deliberadamente
-   * fuera de alcance (ver el prompt de esta tarea).
-   *
-   * "Carga masiva (Excel)" (`CargaMasivaLeadsDialog.tsx`) reusa exactamente
-   * `puedeCargarLeadManual` -- es la misma capacidad de cargar un lead
-   * manual, solo que en lote vía Excel en vez de una fila a la vez.
-   */
-  const esSesionEmpresa = user?.sessionScope === "company";
-  const empresaId = esSesionEmpresa ? (user?.empresaId ?? null) : null;
-  const puedeCargarLeadManual = esSesionEmpresa && hasRole(["ADMINISTRADOR", "SUPERVISOR", "ASESOR"]);
-  const puedeGestionarCanales = esSesionEmpresa && hasRole(["ADMINISTRADOR"]);
 
   const [filtros, setFiltros] = useState<LeadsFiltrosState>(FILTROS_LEADS_VACIOS);
   const [pagina, setPagina] = useState(1);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
 
-  const [dialogLeadManualAbierto, setDialogLeadManualAbierto] = useState(false);
-  const [dialogCargaMasivaAbierto, setDialogCargaMasivaAbierto] = useState(false);
-  const [dialogCanalesAbierto, setDialogCanalesAbierto] = useState(false);
-  const { data: canalesManuales = [] } = useCanalesManuales(
-    puedeCargarLeadManual ? empresaId : null,
-  );
-  const crearLeadManual = useCrearLeadManual();
-
   const params = useMemo(
-    () => buildLeadsQueryParams(filtros, pagina, LEADS_POR_PAGINA, empresaVistaId ?? undefined),
-    [filtros, pagina, empresaVistaId],
+    () => buildLeadsQueryParams(filtros, pagina, LEADS_POR_PAGINA),
+    [filtros, pagina],
   );
 
   const { data, isLoading, isError, error, refetch } = useLeads(params);
@@ -150,24 +109,6 @@ export function LeadsPage() {
         servidor en un intervalo corto para simular tiempo real.
       */}
 
-      {puedeCargarLeadManual || puedeGestionarCanales ? (
-        <div className="flex justify-end gap-2">
-          {puedeGestionarCanales ? (
-            <Button variant="outline" onClick={() => setDialogCanalesAbierto(true)}>
-              Gestionar canales
-            </Button>
-          ) : null}
-          {puedeCargarLeadManual ? (
-            <Button onClick={() => setDialogLeadManualAbierto(true)}>Cargar lead manual</Button>
-          ) : null}
-          {puedeCargarLeadManual ? (
-            <Button variant="outline" onClick={() => setDialogCargaMasivaAbierto(true)}>
-              Carga masiva (Excel)
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-
       <LeadsFiltros
         filtros={filtros}
         onChange={updateFiltros}
@@ -179,7 +120,7 @@ export function LeadsPage() {
         }}
       />
 
-      {puedeAsignarMasivo ? (
+      {esGestorDeCartera ? (
         <AccionesMasivas
           cantidadSeleccionada={seleccionados.size}
           responsables={responsables}
@@ -202,7 +143,7 @@ export function LeadsPage() {
           <LeadsTable
             leads={data.datos}
             mostrarColumnaResponsable={esGestorDeCartera}
-            permitirSeleccion={puedeAsignarMasivo}
+            permitirSeleccion={esGestorDeCartera}
             seleccionados={seleccionados}
             onToggleSeleccion={toggleSeleccion}
             onToggleSeleccionTodos={toggleSeleccionTodos}
@@ -264,48 +205,6 @@ export function LeadsPage() {
           </div>
         </div>
       )}
-
-      {dialogLeadManualAbierto && empresaId ? (
-        <CargarLeadManualDialog
-          open
-          onOpenChange={(abierto) => {
-            if (!abierto) setDialogLeadManualAbierto(false);
-          }}
-          canales={canalesManuales}
-          enviando={crearLeadManual.isPending}
-          onSubmit={(valores) =>
-            crearLeadManual.mutate(
-              { ...valores, empresaId },
-              { onSuccess: () => setDialogLeadManualAbierto(false) },
-            )
-          }
-          esAdministrador={puedeGestionarCanales}
-          onRedirigirAGestionCanales={() => {
-            setDialogLeadManualAbierto(false);
-            setDialogCanalesAbierto(true);
-          }}
-        />
-      ) : null}
-
-      {dialogCargaMasivaAbierto && empresaId ? (
-        <CargaMasivaLeadsDialog
-          open
-          onOpenChange={(abierto) => {
-            if (!abierto) setDialogCargaMasivaAbierto(false);
-          }}
-          canales={canalesManuales}
-        />
-      ) : null}
-
-      {dialogCanalesAbierto && empresaId ? (
-        <GestionarCanalesManualesDialog
-          open
-          onOpenChange={(abierto) => {
-            if (!abierto) setDialogCanalesAbierto(false);
-          }}
-          empresaId={empresaId}
-        />
-      ) : null}
     </div>
   );
 }

@@ -70,10 +70,7 @@ function fileTooLarge(): AppError {
 export async function uploadImage(input: UploadImageInput): Promise<string> {
   const extension = EXTENSION_BY_MIME_TYPE[input.mimeType];
   if (!extension) throw invalidFileType();
-  // El buffer real, nunca `input.sizeBytes` -- mismo principio del docblock
-  // de arriba (nunca confiar en un dato que manda el cliente cuando hay una
-  // fuente de verdad propia para verificarlo).
-  if (input.buffer.length > MAX_IMAGE_BYTES) throw fileTooLarge();
+  if (input.sizeBytes > MAX_IMAGE_BYTES) throw fileTooLarge();
 
   if (!env.AZURE_STORAGE_CONNECTION_STRING) throw storageNotConfigured();
 
@@ -91,23 +88,7 @@ export async function uploadImage(input: UploadImageInput): Promise<string> {
     blobHTTPHeaders: { blobContentType: input.mimeType },
   });
 
-  return toPublicUrl(blockBlobClient.url);
-}
-
-/**
- * SOLO Azurite local -- ver `AZURE_STORAGE_PUBLIC_BASE_URL` en `config/env.ts`.
- * Reescribe únicamente protocolo+host+puerto de la URL que devuelve el SDK
- * (atada al hostname de red interna de Docker, `azurite:10000`) por el base
- * URL público configurado (`localhost:10000`), preservando el path tal cual
- * -- nunca se toca en producción real, donde esta variable queda sin setear.
- */
-function toPublicUrl(sdkUrl: string): string {
-  if (!env.AZURE_STORAGE_PUBLIC_BASE_URL) return sdkUrl;
-  const publicBase = new URL(env.AZURE_STORAGE_PUBLIC_BASE_URL);
-  const rewritten = new URL(sdkUrl);
-  rewritten.protocol = publicBase.protocol;
-  rewritten.host = publicBase.host;
-  return rewritten.toString();
+  return blockBlobClient.url;
 }
 
 /**

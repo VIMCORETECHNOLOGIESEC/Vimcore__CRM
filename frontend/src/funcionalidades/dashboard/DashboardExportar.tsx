@@ -1,6 +1,5 @@
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -87,19 +86,11 @@ export function DashboardExportar({ data, contexto, filtros, rangoReal }: Dashbo
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="h-9 gap-2 border-border/70 bg-background px-3 text-xs font-semibold">
           <Download className="size-3.5" aria-hidden="true" />
-          Exportar vista actual
+          Exportar
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel>Descarga rápida de datos filtrados</DropdownMenuLabel>
-        <p className="px-2 pb-2 text-xs text-muted-foreground">
-          Descarga instantánea de lo que ves en pantalla ahora. Para un reporte formal
-          con más alcance, usá{" "}
-          <Link to="/reportes" className="font-medium text-primary underline-offset-2 hover:underline">
-            Reportes
-          </Link>
-          .
-        </p>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Datos filtrados</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void exportar("excel")}>
           <FileSpreadsheet className="text-success" aria-hidden="true" />

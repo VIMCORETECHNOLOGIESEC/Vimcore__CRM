@@ -73,21 +73,11 @@ export default {
         },
         // Azul corporativo IDEC Corp (token de marca): mismo valor que
         // --primary hoy, separado a propósito para que la marca evolucione
-        // sin acoplar el azul de acción genérico. Ya no tiene consumidores en
-        // componentes de contenido (migrados a `primary`/`marca-texto`,
-        // migración "idec-a-marca") -- se deja definido porque
-        // `.modo-idec input/textarea/select` (`index.css`) lo sigue usando
-        // para inputs de texto normales, decisión de diseño separada.
+        // sin acoplar el azul de acción genérico. Se usa en la capa de chat
+        // flotante del detalle de lead y su botón flotante de WhatsApp.
         idec: {
           DEFAULT: withOpacity("--idec"),
           foreground: withOpacity("--idec-foreground"),
-        },
-        // Texto/íconos de marca aplicados DIRECTO sobre el fondo neutro de
-        // contenido, sin chip de color debajo (`color-marca.ts::resolveEstilosMarca`,
-        // token `--marca-texto-contenido`) -- distinto de `primary`, que es
-        // para chips/botones con fondo relleno. Ver migración "idec-a-marca".
-        marca: {
-          texto: withOpacity("--marca-texto-contenido"),
         },
         // Familia vimcore: chrome del sidebar (indigo sólido + pill azul).
         vimcore: {

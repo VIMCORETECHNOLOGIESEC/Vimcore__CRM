@@ -1,7 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  createEmpresaAdministradorApi,
   createUsuarioApi,
   deactivateUsuarioApi,
   fetchUsuariosApi,
@@ -9,7 +8,6 @@ import {
   reactivateUsuarioApi,
   resetPasswordApi,
   updateUsuarioApi,
-  type CreateEmpresaAdministradorInput,
   type UpdateUsuarioInput,
   type CreateUsuarioInput,
   type UsuariosQueryParams,
@@ -56,25 +54,6 @@ export function useCreateUsuario() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
       toast.success("Usuario creado correctamente.");
-    },
-  });
-}
-
-/**
- * Alta de administrador de empresa (Item 23). Mismo criterio de éxito que
- * `useCreateUsuario`: invalida el listado de usuarios (el nuevo administrador
- * puede pasar a aparecer ahí, según el scope/filtro de la sesión que mira) y
- * avisa con un toast. El manejo global de errores de mutaciones
- * (`api/queryClient.ts`) cubre el caso de correo duplicado u otro fallo.
- */
-export function useCreateEmpresaAdministrador(empresaId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateEmpresaAdministradorInput) =>
-      createEmpresaAdministradorApi(empresaId, input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
-      toast.success("Administrador creado correctamente.");
     },
   });
 }

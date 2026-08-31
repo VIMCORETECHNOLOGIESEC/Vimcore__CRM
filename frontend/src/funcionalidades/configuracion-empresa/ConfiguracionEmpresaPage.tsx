@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CampoColorHex } from "@/componentes/formularios/CampoColorHex";
-import { CampoLogoUpload } from "@/componentes/formularios/CampoLogoUpload";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
@@ -26,7 +25,6 @@ import {
   CONFIGURACION_EMPRESA_DEFAULT,
   type ConfiguracionEmpresa,
   type UpdateConfiguracionEmpresaInput,
-  uploadLogoHoldingApi,
 } from "./configuracion-empresa.api";
 import { useConfiguracionEmpresa, useUpdateConfiguracionEmpresa } from "./useConfiguracionEmpresa";
 
@@ -170,7 +168,6 @@ function ConfiguracionEmpresaForm({
     control,
     handleSubmit,
     watch,
-    setValue,
     formState: { errors },
   } = useForm<ConfiguracionEmpresaValues>({
     resolver: zodResolver(configuracionEmpresaSchema),
@@ -225,15 +222,20 @@ function ConfiguracionEmpresaForm({
         />
       </div>
 
-      <CampoLogoUpload
-        id="config-logo"
-        label="Isotipo"
-        valorActual={watch("logoUrl")}
-        disabled={enviando}
-        onSubirLogo={uploadLogoHoldingApi}
-        onLogoUrlChange={(url) => setValue("logoUrl", url, { shouldValidate: true })}
-      />
-      {errors.logoUrl ? <p className="text-sm text-destructive">{errors.logoUrl.message}</p> : null}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="config-logo-url">URL del isotipo (opcional)</Label>
+        <Input
+          id="config-logo-url"
+          type="url"
+          placeholder="https://cdn.miempresa.com/logo.svg"
+          disabled={enviando}
+          aria-invalid={errors.logoUrl ? "true" : undefined}
+          {...register("logoUrl")}
+        />
+        {errors.logoUrl ? (
+          <p className="text-sm text-destructive">{errors.logoUrl.message}</p>
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-2">
         <Label>Vista previa</Label>

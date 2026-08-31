@@ -622,19 +622,14 @@ Producto) — Resuelto (2026-08-25):**
   de estructura de UI en `docs/blocks/d-routing-oportunidad.md`.
 
 **8.6 — Plan de implementación: dashboards de rendimiento (decisión resuelta;
-implementación pendiente post-despliegue al momento de esta síntesis).**
+implementación pendiente post-despliegue).**
 
 Nuevas vistas propuestas sobre `metricas.service.ts` ya existente: embudo
 por Oportunidad, rendimiento por producto, cascada Lead→Oportunidad→Venta,
 conversión habilitados/no habilitados para venta, ranking de productos por
 empresa. Nada de esto se construye antes de que `Oportunidad`/`Producto`
 existan en Prisma (Bloque D). Detalle y orden de implementación en
-`docs/blocks/e-dashboards.md`. **Nota de estado (no reabre la decisión, solo
-apunta a su seguimiento vigente):** `Oportunidad`/`Producto` ya existen y
-esta implementación ya arrancó — ver estado real y commits en
-`docs/blocks/e-dashboards.md` y `docs/23-alcance-funcional-manual-tecnico.md`
-ítem 13; este documento conserva el rationale de la decisión, no el estado de
-avance.
+`docs/blocks/e-dashboards.md`.
 
 Todas las decisiones D1–D14 quedaron registradas explícitamente en esta
 sección. Ningún tema queda aprobado por aparecer en una cola — cada

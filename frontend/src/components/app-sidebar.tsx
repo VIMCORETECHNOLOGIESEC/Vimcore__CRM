@@ -1,12 +1,11 @@
 import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
-import { useAuth } from "@/funcionalidades/autenticacion/auth-context"
-import { hasRoleAccess, hasScopeAccess, hasVistaEmpresaAccess } from "@/funcionalidades/autenticacion/permissions"
+import { useAuth } from "@/funcionalidades/autenticacion/authContext"
+import { hasRoleAccess, hasScopeAccess } from "@/funcionalidades/autenticacion/permissions"
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
-import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa"
 import { resolveLogoMarca, resolveNombreMarca } from "@/lib/color-marca"
-import { NAVIGATION_ITEMS, resolveNavigationHref } from "@/layouts/navigation"
+import { NAVIGATION_ITEMS, resolveNavigationRoute } from "@/layouts/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Sidebar,
@@ -46,20 +45,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: configuracionHolding } = useConfiguracionEmpresa()
   const nombreMarca = resolveNombreMarca(user, configuracionHolding)
   const logoMarca = resolveLogoMarca(user, configuracionHolding)
-  // Bloque D/E: un holding-wide sin "entrar" a una empresa concreta no
-  // gestiona oportunidades/bridges de ninguna en particular -- ver
-  // `hasVistaEmpresaAccess`/`resolveNavigationHref` (navigation.ts).
-  const { empresaVistaId } = useVistaEmpresa()
 
   const items = NAVIGATION_ITEMS.filter(
     (item) =>
       hasRoleAccess(user?.rol, item.allowedRoles) &&
-      hasScopeAccess(user?.sessionScope, item.allowedScopes) &&
-      hasVistaEmpresaAccess(user?.sessionScope, empresaVistaId, item.requiereVistaEmpresaSiHolding),
-  ).map((item) => ({
-    ...item,
-    route: resolveNavigationHref(item, user?.sessionScope, empresaVistaId),
-  }))
+      hasScopeAccess(user?.sessionScope, item.allowedScopes),
+  ).map((item) => ({ ...item, route: resolveNavigationRoute(item, user?.sessionScope) }))
 
   return (
     <Sidebar

@@ -86,18 +86,6 @@ Reglas para los agentes:
   fase. Cada dependencia es superficie de ataque heredada.
 - Ante una dependencia con script de post-instalación, decláralo explícitamente
   en el `proposal.md` antes de incorporarla.
-- **Excepción documentada (2026-08-30):** `xlsx` (^0.18.5, `frontend/`) agrega
-  parseo de Excel en el cliente para la carga masiva de leads (docs/blocks/
-  d-routing-oportunidad.md, "Canal de ingreso manual") — el backend
-  (`POST /leads/carga-masiva`, contrato ya definido por Mateo) recibe JSON ya
-  armado, nunca el archivo crudo. Sin script de post-instalación conocido.
-  Aprobada por decisión explícita del usuario, sin artefacto SDD formal por
-  la prontitud del batch — este párrafo cumple ese rol retroactivamente.
-  **Ampliación de uso (2026-08-31):** la misma dependencia también se usa
-  para GENERAR (no solo parsear) workbooks XLSX en
-  `funcionalidades/dashboard/exportarDashboard.ts` (exportación de
-  dashboard, ver excepción de alcance en §7) — mismo paquete, capacidad
-  distinta, sin dependencia nueva.
 
 ### 2.2 Ejecución y despliegue en contenedor
 
@@ -126,16 +114,6 @@ Reglas para los agentes:
 - Salida de red restringida: solo el registro de paquetes y las APIs de las
   plataformas publicitarias necesarias. Si una tarea requiere alcanzar un
   dominio nuevo, decláralo en el artefacto SDD en lugar de abrir el acceso.
-  **Excepción documentada (2026-08-30):** `backend/src/lib/azure-blob-storage.ts`
-  (commit `3ac03ed`, rama de Mateo, ya mergeado a `test/gpt`) agrega salida
-  de red a Azure Blob Storage (`*.blob.core.windows.net`) para persistir el
-  isotipo subido por el administrador de cada empresa/holding —
-  `AZURE_STORAGE_CONNECTION_STRING`, opcional (503 sin ella, no bloquea el
-  arranque). Dependencia nueva (`@azure/storage-blob`) y dominio nuevo,
-  ambos aprobados para el despliegue vigente por decisión del usuario, sin
-  artefacto SDD formal por la prontitud del batch — este párrafo cumple ese
-  rol retroactivamente. En desarrollo local corre contra Azurite (emulador
-  oficial, sin salida de red real), ver `docs/contrato-azurite-isotipo.md`.
 - Las credenciales entran por variables de entorno desde un `.env` **no
   versionado**. Nunca escribas un token, clave o contraseña real en el
   repositorio, ni siquiera en un archivo de ejemplo.
@@ -216,14 +194,7 @@ archivos versionados — ver `sdd-init/crm_comercial` y el ejemplo de
 - Componentes funcionales, hooks, sin componentes de clase.
 - Estado de servidor con **TanStack Query**; estado local con `useState`/`useReducer`.
   No introduzcas Redux.
-- Formularios con **React Hook Form + Zod**, reutilizando los esquemas del backend
-  cuando existe un paquete Zod compartido (hoy: `loginBodySchema`,
-  `logoUrlSchema`). Los módulos sin esa infraestructura (p. ej. formularios de
-  `bridges/*`, cuyos schemas viven solo en `backend/src/schemas/bridges.schema.ts`,
-  fuera de cualquier paquete compartido) duplican localmente las reglas de
-  validación en un schema Zod propio del componente, documentando la fuente
-  que replican en un comentario — precedente ya establecido en
-  `NuevoBridgeDialog.tsx::crearBridgeSchema`.
+- Formularios con **React Hook Form + Zod**, reutilizando los esquemas del backend.
 - Tailwind con clases utilitarias directas. Sin CSS-in-JS.
 
 ### Nomenclatura
@@ -267,20 +238,6 @@ Cobertura mínima exigida por módulo:
 - Cadena de suministro y aislamiento del entorno: aplican las reglas de §2.1
   (pnpm obligatorio, lockfile congelado) y §2.2 (ejecución exclusiva en
   contenedor con red restringida).
-- **La suite de tests del backend (`pnpm test`) NUNCA corre contra la base de
-  producción** — `tests/setup.ts` trunca `usuarios`/`clientes`/`bridges`/
-  `refresh_tokens`/`configuracion_empresa` en su `globalSetup`, antes de cada
-  corrida. Los tests de backend corren siempre contra Docker local
-  (`.env.dev`), nunca contra `DATABASE_URL` real. Incidente real: la suite
-  corrió una vez con `NODE_ENV=test` pero `DATABASE_URL` apuntando a Azure —
-  sin pérdida de datos reales porque todavía no había clientes reales en ese
-  momento. Ya existe un allowlist de host (`db`/`localhost`/`127.0.0.1`/
-  `::1`) que rechaza cerrado si `DATABASE_URL` no apunta a un host de
-  test/dev conocido (commit `e2d6374`) — esta regla documenta la intención,
-  no reemplaza esa verificación en código. Esto NO afecta usar el frontend
-  local apuntando a la API real de producción para probar flujos a mano
-  (navegación/QA manual) — la restricción es específica de la suite
-  automatizada del backend.
 
 ---
 
@@ -296,185 +253,16 @@ de modificar código, datos o despliegue:
   de tenant) ya está implementada por Bloques A-C, pero este comportamiento
   funcional sigue diferido a Bloques D0/D/E/F (ver `docs/blocks/`). No crear
   routing, autorización o dashboards por empresa fuera de la SDD change del
-  bloque correspondiente.
-  **Excepción documentada (2026-08-30):** por indicación directa del
-  usuario, Bloque E (dashboards) y el frontend de Bloque D (Oportunidad)
-  entran en el alcance del despliegue vigente, como parte del mismo
-  conjunto de funcionalidades recientes del proyecto:
-  - **Bloque E / docs/23 item 13** (`funcionalidades/dashboard/`):
-    extensión del dashboard con métricas de `Oportunidad` — embudo de
-    Oportunidad, ranking global por producto, cascada Lead→Oportunidad y
-    ranking de productos por empresa (`GET /metricas/embudo-oportunidad`,
-    `/por-producto`, `/cascada-lead-oportunidad`,
-    `/ranking-productos-por-empresa`). El ranking por empresa muestra un
-    aviso visible para sesión holding-wide por un gap conocido de backend
-    (E5, ver `docs/blocks/e-dashboards.md`), sin ocultar la sección.
-  - **Bloque E / docs/23 item 14** ("Dashboard con filtro por empresa
-    holding"): `metricasQuerySchema` gana `empresaId` opcional, resuelto
-    por `metricas.access.ts::resolveEmpresaId` (sesión `company` forzada a
-    su propia empresa, `query.empresaId` ignorado; sesión holding-wide con
-    `empresaId` = drill-down a una empresa puntual; sin él = agregado de
-    todo el holding, comportamiento previo sin cambios) — aplica a los 13
-    endpoints de métricas por igual. Frontend nuevo:
-    `SelectorEmpresaDashboard.tsx` (combobox buscable sobre `GET /empresas`,
-    reusa `useVistaEmpresa`/`?empresaId=` — mismo mecanismo que
-    `GestorEmpresasPage.tsx`/`EmpresaDetallePage.tsx`/`ReportesPage.tsx`),
-    visible SOLO para `ADMINISTRADOR` + sesión `holding` en
-    `DashboardPage.tsx` (deliberadamente más estrecho que "cualquier rol
-    holding-wide": `GET /empresas` es `ADMINISTRADOR`-only en el backend;
-    un `SUPERVISOR` holding-wide ve el dashboard agregado sin selector, sin
-    perder nada que ya tuviera). Construido contra el schema de
-    `origin/main` (`a76c62b`), todavía sin mergear a `test/gpt` —
-    forward-compatible, el backend actual de esta rama ignora el param en
-    silencio (mismo criterio ya usado en `usuarios.api.ts`/`bridges.api.ts`).
-  - **Bloque D / Oportunidad, frontend** (`funcionalidades/oportunidades/`
-    + `tipos/oportunidad.ts`, 12 slices, 17 archivos de test/110 tests):
-    máquina de etapas (`NUEVO→CONTACTADO→CITA`, sin saltos a
-    `VENTA`/`NO_VENTA`), listado filtrable con paginación
-    (`OportunidadesPage.tsx`), catálogo de productos gated
-    `ADMINISTRADOR` (`ProductosAdminDialog.tsx`), alta de oportunidad
-    desde un lead (`NuevaOportunidadButton.tsx`), detalle con avance de
-    etapa, cierre de VENTA/NO_VENTA (D7 — 403 inline si el asesor no
-    tiene `habilitadoParaVenta`, sin bypass de admin/supervisor salvo
-    excepción D9) y reasignación admin/supervisor con creación lazy de
-    `Membresia` (D9). Rutas `oportunidades`/`oportunidades/:id` en
-    `router.tsx`, ítem de menú "Oportunidades" en `layouts/navigation.ts`,
-    botón "Nueva oportunidad" en `LeadDetallePage.tsx`. Las reglas de
-    negocio D7/D9 ya estaban implementadas en backend — el frontend solo
-    las consume, no agrega autoridad de cierre ni routing por `Membresia`
-    jerárquica más allá de eso. No incluye dashboards jerárquicos (ver
-    punto anterior) ni el "corte" de `Lead` (retirarle columnas de
-    negociación) — fase separada, sin arrancar.
-  - **Bloque F / docs/23 item 23** ("Alta de administrador de empresa"):
-    `POST /empresas/:empresaId/administradores` (`requireRole("ADMINISTRADOR")`,
-    body `{ nombre, correo, password }`) crea un `Usuario` `ADMINISTRADOR`
-    scopeado a esa empresa, con login propio (correo/contraseña separados,
-    `sessionScope: "company"`). Frontend nuevo:
-    `CrearAdministradorEmpresaDialog.tsx` (sin campo `rol`: implícito
-    `ADMINISTRADOR`, `password` reusa `passwordPolicySchema` compartido) +
-    `createEmpresaAdministradorApi`/`useCreateEmpresaAdministrador` en
-    `usuarios.api.ts`/`useUsuarios.ts`. Disparado desde una tercera tarjeta
-    ("Nuevo administrador") en `EmpresaDetallePage.tsx`, gated
-    `hasRole(["ADMINISTRADOR"])` — la página ya está bajo
-    `ProtectedRoute allowedScopes={["holding"]}` a nivel de ruta, sin
-    gating adicional necesario. No agrega ningún endpoint de alta de
-    administrador holding-wide ni auto-provisioning de `Membresia` —
-    ambos siguen sin arrancar del lado de Mateo.
-  - **Bloque F / docs/23 item 25** ("Tab usuarios holding-wide vs. por
-    empresa"): `listUsuariosQuerySchema` gana `soloHoldingWide` opcional
-    (gana sobre `empresaId` si ambos llegan juntos) — lista únicamente
-    usuarios sin ninguna `Membresia` (`ADMINISTRADOR`/`SUPERVISOR`/
-    `SUPERVISOR_HOLDING`/`SUPER_ADMIN` sin empresa). Frontend: toggle
-    nuevo en `UsuariosFiltros.tsx`, visible solo para sesión `holding`
-    (`useAuth().user?.sessionScope === "holding"`). De paso, `RolUsuario`
-    (frontend) se amplió a los dos roles holding-wide de Bloque F
-    (`SUPERVISOR_HOLDING`/`SUPER_ADMIN`, ya existentes en el enum Prisma
-    sin reflejarse en el tipo del frontend) — visibles en la tabla y en
-    este filtro, pero NO agregados a `ROLES_USUARIO_SELECCIONABLES`
-    (siguen sin ser creables por la vía normal de alta de usuario).
-    Ambos ítems (23 y 25), igual que el 14 de arriba, construidos contra
-    el schema de `origin/main` (`a76c62b`), todavía sin mergear a
-    `test/gpt` — forward-compatible, el backend actual de esta rama
-    ignora los params nuevos en silencio.
-  - **Bloque F / docs/23 item 30** ("Alta de empresa nueva"): el backend ya
-    exponía `POST /empresas` (`empresa-apariencia.controller.ts::postEmpresa`,
-    exclusivo `sessionScope: "holding"` + `requireRole("ADMINISTRADOR")`, con
-    bypass holding-wide para `SUPER_ADMIN`/`SUPERVISOR_HOLDING`), pero no
-    había ningún botón ni formulario de alta en el frontend. Frontend nuevo:
-    `createEmpresaApi`/`useCreateEmpresaHolding` en
-    `empresa-apariencia-holding.api.ts`/`useEmpresaAparienciaHolding.ts` +
-    `CrearEmpresaHoldingDialog.tsx` (reusa `EmpresaAparienciaForm.tsx`, mismo
-    patrón que `EditarEmpresaHoldingDialog.tsx`). Disparado desde el botón
-    "Nueva empresa" en `GestorEmpresasPage.tsx`, junto al buscador; de paso
-    se corrigió el copy desactualizado del `EmptyState` sin búsqueda activa
-    (ya no decía que las empresas se crean "desde la configuración inicial
-    de la instancia").
+  bloque correspondiente
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
-- Exportación a Excel o PDF (solo se deja el punto de extensión documentado).
-  **Excepción documentada (2026-08-30):** por indicación directa del
-  usuario, docs/23 item 15 ("Exportación de reportes PDF/XLSX") entra en el
-  alcance del despliegue vigente, contra los endpoints ya estables
-  `POST /reportes/jobs`, `GET /reportes/jobs/activo`, `GET /reportes/jobs/:id`
-  y `GET /reportes/jobs/:id/descargar` (`requireRole("ADMINISTRADOR",
-  "SUPERVISOR")`). Frontend nuevo: `funcionalidades/reportes/` (`reportes.api.ts`,
-  `useReportes.ts`, `ReportesPage.tsx`, `EstadoReporteJobBadge.tsx`,
-  `DescargarReporteButton.tsx`) + `tipos/reporte.ts`; ruta `reportes` en
-  `router.tsx` bajo `ProtectedRoute allowedRoles={["ADMINISTRADOR",
-  "SUPERVISOR"]}` (grupo nuevo, distinto del `ADMINISTRADOR`-only existente)
-  e ítem de menú "Reportes" en `layouts/navigation.ts`. Progreso en vivo vía
-  los eventos SSE `reporte.iniciado`/`reporte.listo`/`reporte.error`
-  (extensión aditiva de `notificaciones/notificaciones.sse.ts` y
-  `useNotificacionesRealtime.ts`, mismo mecanismo ya usado para
-  `whatsapp.mensaje-nuevo`), nunca polling. **Actualización (2026-08-31):**
-  el commit `ad64e8b` (Azure Blob Storage privado, URL firmada/SAS de solo
-  lectura devuelta por `GET /reportes/jobs/:id/descargar` en vez de
-  streamear el archivo) ya está mergeado a `test/gpt` (confirmado con
-  `git merge-base --is-ancestor ad64e8b HEAD`) — `reportes.api.ts` ya está
-  construido contra ese contrato vigente, no contra el `res.download`
-  anterior. La nota previa que decía lo contrario quedó obsoleta y se
-  corrige acá.
-  **Excepción documentada (2026-08-31):** por indicación directa del
-  usuario, la exportación de dashboard a Excel/PDF del lado del cliente
-  (`funcionalidades/dashboard/DashboardExportar.tsx`,
-  `exportarDashboard.ts`, usa `xlsx` además de su uso ya declarado para
-  carga masiva de leads — ver §2.1) entra también en el alcance del
-  despliegue vigente, como decisión 1 de 3 de
-  `docs/propuesta-consolidacion-exportacion-reportes.md` (consolidación
-  entre esta exportación ad-hoc y el módulo async de `funcionalidades/
-  reportes/` de arriba).
+- Exportación a Excel o PDF (solo se deja el punto de extensión documentado)
 - Integración con calendarios externos (Google Calendar, Outlook)
-- Notificaciones por correo, SMS o WhatsApp (solo in-app). **Excepción
-  documentada (2026-08-30):** `LeadDetallePage.tsx` (commit `34e49db`,
-  rama de Steven, ya mergeado a `test/gpt`) monta un panel de chat de
-  WhatsApp (`WhatsAppChat`) con historial y mensajes **hardcodeados/mock**
-  — no envía ni recibe mensajes reales, no hay integración con la API de
-  WhatsApp de por medio. Es UI de demo/venta, aprobada para el despliegue
-  vigente por decisión del usuario.
-  **Ampliación de alcance documentada (2026-08-30):** por indicación
-  directa del usuario, la integración REAL de WhatsApp Business (Embedded
-  Signup de Meta) entra en el alcance del despliegue vigente, como parte
-  del mismo conjunto de funcionalidades recientes del proyecto — deja de
-  aplicar la restricción "fuera de alcance" únicamente para el flujo de
-  **conexión** (`funcionalidades/whatsapp/`: `ConectarWhatsAppCard.tsx`,
-  `WhatsAppCallbackPage.tsx`, `useWhatsApp.ts`, `whatsapp.api.ts`,
-  `whatsapp.utils.ts`, `tipos/whatsapp.ts`, ruta pública
-  `/whatsapp/callback` en `router.tsx`) — Embedded Signup, callback OAuth
-  y persistencia de la conexión (`GET /whatsapp/conectar`,
-  `GET /whatsapp/callback`, `POST /whatsapp/conexion`), ver
-  `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3.
-  **Adenda (2026-08-31):** el mismo flujo de conexión se reemplazó el
-  redirect de página completa por una ventana emergente real
-  (`frontend/src/hooks/useOAuthPopup.ts`, infra genérica reusable, y
-  `frontend/src/funcionalidades/whatsapp/WhatsAppConexionOverlay.tsx`) —
-  ambos archivos quedan explícitamente dentro de esta misma excepción, ya
-  que sirven exclusivamente al flujo de conexión ya aprobado. El envío
-  y recepción real de mensajes de WhatsApp (lo que el panel
-  `WhatsAppChat` sigue simulando con datos mock) **no** está cubierto por
-  esta ampliación y sigue fuera de alcance salvo que se decida aparte.
-  **Excepción WIP documentada (2026-08-31), por confirmación directa del
-  usuario:** el frontend de WhatsApp Parte 2 (mensajería real -- bandeja de
-  conversaciones, envío/recepción) se construyó y se COMMITEA localmente
-  íntegro y testeado (`funcionalidades/whatsapp/{CajaRespuesta,
-  ConversacionesPage,HiloMensajes,ListaConversaciones}.tsx`,
-  `conversaciones.{api,utils}.ts`, `useConversaciones.ts`,
-  `tipos/conversacion.ts`, extensión del evento SSE
-  `whatsapp.mensaje-nuevo`, ítem de menú "Conversaciones" y ruta
-  `/conversaciones` en `router.tsx`) — esta excepción autoriza SOLO que el
-  código exista en el historial local de `test/gpt`, NO que entre al
-  despliegue vigente: Mateo todavía no confirmó si esta ronda lo incluye ni
-  con qué mecanismo (SDD formal vs. excepción definitiva). No pushear ni
-  dar por aprobado este módulo hasta esa confirmación.
+- Notificaciones por correo, SMS o WhatsApp (solo in-app)
 - App móvil nativa
 - Bridges de TikTok y sitio web propio (no implementados ni modelados como
   canales; el endpoint genérico actual registra el origen como `GOOGLE_FORMS`)
-- Timeline cronológico de interacciones en la vista de detalle del lead.
-  **Excepción documentada (2026-08-30):** `LeadDetallePage.tsx` (commit
-  `606036a`, rama de Steven, ya mergeado a `test/gpt`) usa `LeadTimeline`
-  para visualizar el AVANCE DE ETAPAS del lead (Nuevo → Contactado → Cita,
-  etc.), no un historial libre de interacciones/eventos — distinción que
-  el propio docblock del componente ya documenta. Aprobado para el
-  despliegue vigente por decisión del usuario.
+- Timeline cronológico de interacciones en la vista de detalle del lead
 - SSO / OAuth corporativo (se expone la API para integrarlo después)
 
 ---

@@ -66,14 +66,6 @@ describe("marca-publica.api", () => {
       expect(resultado).toEqual(respuesta);
     });
 
-    it("cae al default de fábrica si el fetch resuelve con null (200 sin marca configurada)", async () => {
-      getMock.mockResolvedValue(null);
-
-      const resultado = await obtenerMarcaPublicaConFallback();
-
-      expect(resultado).toEqual(CONFIGURACION_EMPRESA_DEFAULT);
-    });
-
     it("cae al default de fábrica si el fetch falla", async () => {
       getMock.mockRejectedValue(new Error("network error"));
 

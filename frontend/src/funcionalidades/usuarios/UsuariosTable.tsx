@@ -32,27 +32,6 @@ interface UsuariosTableProps {
    * mezclados en la misma tabla.
    */
   atenuarInactivos: boolean;
-  /**
-   * Subtítulo con la(s) empresa(s) del usuario bajo su nombre ("Holding"
-   * para un usuario holding-wide puro, sin ninguna `Membresia`). Solo tiene
-   * sentido cuando la vista actual mezcla usuarios de distintas empresas --
-   * es decir, `!filtros.soloHoldingWide` en `UsuariosPage.tsx` ("Ver
-   * usuarios de todas las empresas" tildado). En el modo default (solo
-   * holding-wide) o en `EmpresaUsuariosPage.tsx` (acotada a una sola
-   * empresa) el subtítulo sería ruido redundante -- por eso el default es
-   * `false`, no pasarlo deja el comportamiento anterior sin cambios.
-   */
-  mostrarEmpresas?: boolean;
-  /**
-   * Un holding-wide en "Ver en vivo" de una empresa (`useVistaEmpresa().esVistaSoloLectura`)
-   * puede navegar pero no escribir -- mismo criterio que
-   * `bridges/BridgesTable.tsx::soloLectura`. A diferencia de Bridges, acá no
-   * hay una acción de solo-lectura tipo "Ver detalle" que deba sobrevivir
-   * (Usuarios no tiene vista de detalle propia): con `soloLectura` activo la
-   * columna "Acciones" completa (header + celda) se oculta, en vez de dejar
-   * el menú `...` sin ningún ítem adentro.
-   */
-  soloLectura?: boolean;
 }
 
 const columnHelper = createColumnHelper<AdminUsuario>();
@@ -93,43 +72,6 @@ function CeldaTruncada({ valor }: { valor: string }) {
 }
 
 /**
- * "Holding" para un usuario sin ninguna `Membresia` activa; nombre(s) de
- * empresa (separados por coma) en caso contrario. Sin límite de cantidad --
- * no hay evidencia de que un usuario real acumule membresías en muchas
- * empresas a la vez como para justificar un truncamiento tipo "y N más".
- */
-function formatEmpresasSubtitulo(empresas: { id: string; nombre: string }[]): string {
-  if (empresas.length === 0) return "Holding";
-  return empresas.map((empresa) => empresa.nombre).join(", ");
-}
-
-/**
- * Celda de la columna "Nombre": nombre truncado + tooltip (`CeldaTruncada`,
- * sin cambios) y, solo cuando `mostrarEmpresas` está activo (ver el docblock
- * de `UsuariosTableProps::mostrarEmpresas`), un subtítulo con
- * `formatEmpresasSubtitulo(usuario.empresas)`.
- */
-function CeldaNombre({
-  usuario,
-  mostrarEmpresas,
-}: {
-  usuario: AdminUsuario;
-  mostrarEmpresas: boolean;
-}) {
-  if (!mostrarEmpresas) {
-    return <CeldaTruncada valor={usuario.nombre} />;
-  }
-  return (
-    <div className="flex flex-col justify-center overflow-hidden">
-      <CeldaTruncada valor={usuario.nombre} />
-      <span className="truncate text-xs text-muted-foreground">
-        {formatEmpresasSubtitulo(usuario.empresas ?? [])}
-      </span>
-    </div>
-  );
-}
-
-/**
  * Celda de "carga activa de leads" (F7): backend real, una consulta por
  * fila (`useCargaActivaDeUsuario`) -- ver la nota INTEGRACION-BACKEND-GAP en
  * `usuarios.api.ts::getCargaActivaDeUsuario` sobre el límite de 100.
@@ -155,15 +97,13 @@ export function UsuariosTable({
   onReactivar,
   reactivandoId,
   atenuarInactivos,
-  mostrarEmpresas = false,
-  soloLectura = false,
 }: UsuariosTableProps) {
-  const columns = useMemo(() => {
-    const base = [
+  const columns = useMemo(
+    () => [
       columnHelper.accessor((u) => u.nombre, {
         id: "nombre",
         header: "Nombre",
-        cell: ({ row }) => <CeldaNombre usuario={row.original} mostrarEmpresas={mostrarEmpresas} />,
+        cell: ({ getValue }) => <CeldaTruncada valor={getValue()} />,
       }),
       columnHelper.accessor((u) => u.correo, {
         id: "correo",
@@ -191,20 +131,6 @@ export function UsuariosTable({
           return <CeldaCargaActiva usuarioId={usuario.id} />;
         },
       }),
-    ];
-
-    // Columna "Acciones" -- oculta por completo (header + celda) en modo
-    // `soloLectura` (holding-wide en "Ver en vivo" de una empresa, mismo
-    // criterio que `bridges/BridgesTable.tsx::soloLectura`). A diferencia de
-    // Bridges, Usuarios no tiene una acción de solo-lectura tipo "Ver
-    // detalle" que deba sobrevivir, así que en vez de dejar el menú `...`
-    // sin ítems adentro, la columna entera no se agrega.
-    if (soloLectura) {
-      return base;
-    }
-
-    return [
-      ...base,
       columnHelper.display({
         id: "acciones",
         header: "Acciones",
@@ -249,8 +175,9 @@ export function UsuariosTable({
           );
         },
       }),
-    ];
-  }, [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivandoId, mostrarEmpresas, soloLectura]);
+    ],
+    [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivandoId],
+  );
 
   /**
    * Anchos del `<colgroup>`, en el MISMO orden que `columns` de arriba --
@@ -293,8 +220,7 @@ export function UsuariosTable({
               key={row.id}
               data-state={atenuarInactivos && !usuario.activo ? "selected" : undefined}
               className={cn(
-                "leads-table-row relative",
-                mostrarEmpresas ? "h-14" : "h-12",
+                "leads-table-row relative h-12",
                 atenuarInactivos && !usuario.activo && "opacity-60",
               )}
             >

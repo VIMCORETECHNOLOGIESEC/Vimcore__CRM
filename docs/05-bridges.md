@@ -127,20 +127,10 @@ Instagram, porque no tiene suscripción ni token propios.
 
 ---
 
-## 4. LinkedIn — Conexión implementada; adaptador de ingesta pendiente
+## 4. LinkedIn — Requisito + Diseño (no implementado)
 
-El backend ya implementa OAuth 2.0, conexión, discovery de formularios y
-activación de suscripción a `leadNotifications`
-(`backend/src/services/linkedin/`, `backend/src/controllers/linkedin/`,
-`backend/src/routes/linkedin/` — ver
-`docs/contrato-frontend-linkedin-api_mat_05.md` y
-`docs/claude-linkedin-estado-actual.md`; frontend conectado desde el commit
-`ac906c9`, sin mocks). Lo que sigue sin existir es el adaptador/consulta
-programada que efectivamente recibe/trae los leads de LinkedIn Lead Sync y
-los inserta en el pipeline de `Lead`: no hay adaptador propio en
-`backend/src/adapters/` ni job de polling en `backend/src/jobs/` todavía —
-mientras esa pieza no exista, activar una fuente no hace llegar leads reales
-al CRM. Esta sección describe ese requisito funcional y diseño de
+Ningún adaptador ni consulta programada de LinkedIn existe hoy en
+`backend/src/`. Esta sección describe requisito funcional y diseño de
 integración pendientes.
 
 **API:** LinkedIn Lead Sync (Marketing Developer Platform)

@@ -1,11 +1,10 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getRefreshToken, restoreSession, setOnSessionExpired, setTokens } from "@/api/httpClient";
-import { persistMarcaConocida } from "@/lib/marca-cache";
 import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
 import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
-import { AuthContext, type AuthContextValue } from "./auth-context";
+import { AuthContext, type AuthContextValue } from "./authContext";
 
 /**
  * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver
@@ -33,7 +32,7 @@ export const PERFIL_QUERY_KEY = ["auth", "perfil"] as const;
  * una empresa atribuida. No es tolerancia -- ninguna combinación fuera de
  * estas dos formas válidas hidrata la sesión.
  */
-function isPerfilConsistente(perfil: AuthenticatedUser): boolean {
+function esPerfilConsistente(perfil: AuthenticatedUser): boolean {
   if (perfil.sessionScope === "company") {
     return typeof perfil.empresaId === "string" && typeof perfil.empresaNombre === "string";
   }
@@ -124,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return null;
         }
         const perfil = await getPerfilApi();
-        return isPerfilConsistente(perfil) ? perfil : null;
+        return esPerfilConsistente(perfil) ? perfil : null;
       } catch {
         return null;
       }
@@ -143,16 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setOnSessionExpired(null);
   }, [queryClient]);
 
-  // Fix "boot desincronizado" (F5 con sesión activa): cada vez que el perfil
-  // hidrata con éxito (rehidratación al arrancar o login), deja en
-  // `localStorage` la última marca conocida (`@/lib/marca-cache`) -- la lee
-  // `AppBoot.tsx` en el próximo arranque para pintar el splash con ese
-  // branding en vez del público del holding, mientras la query real resuelve
-  // en paralelo. Dato stale por diseño, ver comentario en `marca-cache.ts`.
-  useEffect(() => {
-    if (user) persistMarcaConocida(user);
-  }, [user]);
-
   const login = useCallback(
     async (correo: string, password: string) => {
       setIsLoginPending(true);
@@ -167,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // arranque de arriba. `response.user` (`PublicUser`) nunca alimenta
         // la sesión.
         const perfil = await getPerfilApi();
-        if (!isPerfilConsistente(perfil)) {
+        if (!esPerfilConsistente(perfil)) {
           // Fila "Perfil incompleto o inconsistente": fallo cerrado. Los
           // tokens del login válido se conservan -- la autenticación en sí
           // fue correcta, solo la hidratación del scope falló -- para

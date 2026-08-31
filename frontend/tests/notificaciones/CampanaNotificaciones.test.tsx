@@ -9,7 +9,7 @@ import type { Notificacion } from "@/tipos/notificacion";
 // `useNotificaciones.ts` sigue usando `useAuth()` para escopar la query key
 // por `user.id` (ver esa nota en el propio hook): sin este mock, el `useAuth`
 // real lanza porque este árbol no está envuelto en `<AuthProvider>`.
-vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: () => ({
     user: { id: "u1", nombre: "Ana", correo: "ana@crm.test", rol: "ASESOR" },
   }),

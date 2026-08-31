@@ -6,9 +6,9 @@ import {
 } from "@/funcionalidades/usuarios/usuarios.utils";
 
 describe("buildUsuariosQueryParams", () => {
-  it("con filtros vacíos, el default 'Activos' manda `activo: true` y el default `soloHoldingWide: true` manda `soloHoldingWide: true` (holding-wide-only por defecto, decisión de producto)", () => {
+  it("con filtros vacíos, el default 'Activos' manda `activo: true` (nunca se ve un usuario dado de baja sin elegirlo)", () => {
     const params = buildUsuariosQueryParams(FILTROS_USUARIOS_VACIOS, 2, 10);
-    expect(params).toEqual({ pagina: 2, limite: 10, activo: true, soloHoldingWide: true });
+    expect(params).toEqual({ pagina: 2, limite: 10, activo: true });
   });
 
   it("recorta espacios de la búsqueda y la manda solo si queda contenido", () => {
@@ -21,7 +21,6 @@ describe("buildUsuariosQueryParams", () => {
       pagina: 1,
       limite: 20,
       busqueda: "ana",
-      soloHoldingWide: true,
     });
   });
 
@@ -31,11 +30,7 @@ describe("buildUsuariosQueryParams", () => {
       estado: "TODOS",
       busqueda: "   ",
     };
-    expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({
-      pagina: 1,
-      limite: 20,
-      soloHoldingWide: true,
-    });
+    expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({ pagina: 1, limite: 20 });
   });
 
   it("traduce el rol seleccionado al campo `rol`", () => {
@@ -48,7 +43,6 @@ describe("buildUsuariosQueryParams", () => {
       pagina: 1,
       limite: 20,
       rol: "SUPERVISOR",
-      soloHoldingWide: true,
     });
   });
 
@@ -58,7 +52,6 @@ describe("buildUsuariosQueryParams", () => {
       pagina: 1,
       limite: 20,
       activo: true,
-      soloHoldingWide: true,
     });
   });
 
@@ -68,7 +61,6 @@ describe("buildUsuariosQueryParams", () => {
       pagina: 1,
       limite: 20,
       activo: false,
-      soloHoldingWide: true,
     });
   });
 
@@ -77,7 +69,6 @@ describe("buildUsuariosQueryParams", () => {
       busqueda: "gómez",
       rol: "VENDEDOR",
       estado: "ACTIVOS",
-      soloHoldingWide: false,
     };
     expect(buildUsuariosQueryParams(filtros, 3, 10)).toEqual({
       pagina: 3,
@@ -85,46 +76,6 @@ describe("buildUsuariosQueryParams", () => {
       busqueda: "gómez",
       rol: "VENDEDOR",
       activo: true,
-    });
-  });
-
-  it("soloHoldingWide en true (default) se manda al backend -- solo tiene efecto para una sesión holding-wide (Item 25)", () => {
-    expect(buildUsuariosQueryParams(FILTROS_USUARIOS_VACIOS, 1, 20)).toEqual({
-      pagina: 1,
-      limite: 20,
-      activo: true,
-      soloHoldingWide: true,
-    });
-  });
-
-  it("soloHoldingWide en false (checkbox «ver todas las empresas» tildado) NO se manda -- omitido, no `false` explícito", () => {
-    const filtros: UsuariosFiltrosState = {
-      ...FILTROS_USUARIOS_VACIOS,
-      estado: "TODOS",
-      soloHoldingWide: false,
-    };
-    expect(buildUsuariosQueryParams(filtros, 1, 20)).toEqual({
-      pagina: 1,
-      limite: 20,
-    });
-  });
-
-  it("con `empresaId` explícito (drill-down a una empresa puntual), NUNCA manda `soloHoldingWide` aunque siga en su default `true` -- el backend prioriza soloHoldingWide sobre empresaId y devolvería 0 usuarios si mandáramos ambos", () => {
-    expect(buildUsuariosQueryParams(FILTROS_USUARIOS_VACIOS, 1, 20, "empresa-77")).toEqual({
-      pagina: 1,
-      limite: 20,
-      activo: true,
-      empresaId: "empresa-77",
-    });
-  });
-
-  it("con `empresaId` explícito y `soloHoldingWide: false` (checkbox tildado, caso imposible en la práctica -- ver `mostrarFiltroHoldingWide`), tampoco manda `soloHoldingWide`", () => {
-    const filtros: UsuariosFiltrosState = { ...FILTROS_USUARIOS_VACIOS, soloHoldingWide: false };
-    expect(buildUsuariosQueryParams(filtros, 1, 20, "empresa-77")).toEqual({
-      pagina: 1,
-      limite: 20,
-      activo: true,
-      empresaId: "empresa-77",
     });
   });
 });

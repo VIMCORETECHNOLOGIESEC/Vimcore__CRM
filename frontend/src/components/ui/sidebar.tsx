@@ -213,8 +213,8 @@ const Sidebar = React.forwardRef<
             side={side}
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>Barra lateral</SheetTitle>
-              <SheetDescription>Muestra la barra lateral móvil.</SheetDescription>
+              <SheetTitle>Sidebar</SheetTitle>
+              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
             </SheetHeader>
             <div className="flex h-full w-full flex-col">{children}</div>
           </SheetContent>
@@ -281,7 +281,7 @@ const SidebarTrigger = React.forwardRef<
       data-sidebar="trigger"
       variant="ghost"
       size="icon"
-      className={cn("h-7 w-7 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground", className)}
+      className={cn("h-7 w-7", className)}
       aria-label={state === "expanded" ? "Colapsar sidebar" : "Expandir sidebar"}
       onClick={(event) => {
         onClick?.(event)
@@ -290,7 +290,7 @@ const SidebarTrigger = React.forwardRef<
       {...props}
     >
       {state === "expanded" ? <ChevronsLeft /> : <ChevronsRight />}
-      <span className="sr-only">Alternar barra lateral</span>
+      <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
 })
@@ -306,10 +306,10 @@ const SidebarRail = React.forwardRef<
     <button
       ref={ref}
       data-sidebar="rail"
-      aria-label="Alternar barra lateral"
+      aria-label="Toggle Sidebar"
       tabIndex={-1}
       onClick={toggleSidebar}
-      title="Alternar barra lateral"
+      title="Toggle Sidebar"
       className={cn(
         "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex",
         "[[data-side=left]_&]:cursor-w-resize [[data-side=right]_&]:cursor-e-resize",

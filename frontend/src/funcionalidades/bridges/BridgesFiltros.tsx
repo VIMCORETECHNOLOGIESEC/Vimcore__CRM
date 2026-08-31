@@ -19,14 +19,8 @@ import { useRedesSocialesSoportadas } from "./useBridges";
 interface BridgesFiltrosProps {
   filtros: BridgesFiltrosState;
   onChange: (filtros: BridgesFiltrosState) => void;
-  /**
-   * Abre el diálogo de alta de bridge (el estado del diálogo vive en
-   * `BridgesPage`). Opcional: omitido (`undefined`) oculta el botón "Nuevo
-   * bridge" por completo -- caso de un holding-wide en "Ver en vivo" de una
-   * empresa (`useVistaEmpresa().esVistaSoloLectura`), que solo puede
-   * navegar, nunca escribir.
-   */
-  onNuevo?: () => void;
+  /** Abre el diálogo de alta de bridge (el estado del diálogo vive en `BridgesPage`). */
+  onNuevo: () => void;
 }
 
 /**
@@ -77,12 +71,10 @@ export function BridgesFiltros({ filtros, onChange, onNuevo }: BridgesFiltrosPro
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex shrink-0 items-center gap-3">
           <h2 className="text-2xl">Gestión de Bridges</h2>
-          {onNuevo ? (
-            <Button onClick={onNuevo} className="rounded-2xl">
-              <Plus className="size-4" aria-hidden="true" />
-              Nuevo bridge
-            </Button>
-          ) : null}
+          <Button onClick={onNuevo} className="rounded-2xl">
+            <Plus className="size-4" aria-hidden="true" />
+            Nuevo bridge
+          </Button>
         </div>
         <div className="flex min-w-0 flex-col gap-3 sm:ml-auto sm:w-full sm:max-w-xl sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">

@@ -1,7 +1,6 @@
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getErrorMessage } from "@/api/httpClient";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,17 +17,9 @@ vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   getCargaActivaDeUsuario: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-// `UsuariosFiltros` ahora llama a `useAuth()` para gatear el toggle "solo
-// holding-wide" (Item 25) -- se mockea acá también, default company-scoped
-// (mismo criterio que `tests/oportunidades/OportunidadesFiltros.test.tsx`),
-// para no romper ninguno de los tests existentes que no le importa el scope.
-vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
-  useAuth: vi.fn(),
-}));
 
 const usuariosApi = await import("@/funcionalidades/usuarios/usuarios.api");
 const { toast } = await import("sonner");
-const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { UsuariosPage } = await import("@/funcionalidades/usuarios/UsuariosPage");
 
 const fetchUsuariosApiMock = vi.mocked(usuariosApi.fetchUsuariosApi);
@@ -40,29 +31,6 @@ const reactivateUsuarioApiMock = vi.mocked(usuariosApi.reactivateUsuarioApi);
 const getCargaActivaDeUsuarioMock = vi.mocked(usuariosApi.getCargaActivaDeUsuario);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
-const useAuthMock = vi.mocked(useAuth);
-
-function mockearAuth(sessionScope: "company" | "holding" = "company") {
-  useAuthMock.mockReturnValue({
-    user: {
-      id: "admin-1",
-      nombre: "Admin",
-      correo: "admin@crm.test",
-      rol: "ADMINISTRADOR",
-      sessionScope,
-      empresaId: sessionScope === "company" ? "empresa-1" : null,
-      empresaNombre: null,
-      empresaColorPrimario: null,
-      empresaColorSecundario: null,
-      empresaLogoUrl: null,
-    },
-    isAuthenticated: true,
-    isLoading: false,
-    login: vi.fn(),
-    logout: vi.fn(),
-    hasRole: () => true,
-  });
-}
 
 function usuarioFake(overrides: Partial<AdminUsuario> = {}): AdminUsuario {
   return {
@@ -85,14 +53,8 @@ function usuariosResponse(
   return { users, total: users.length, pagina: 1, limite: 10, ...overrides };
 }
 
-/**
- * Mismo `mutationCache` que `api/queryClient.ts` -- así las pruebas de error
- * de mutaciones son fieles al comportamiento real. `initialEntries` permite
- * simular la "vista de empresa" de un holding-wide (`useVistaEmpresa`,
- * llegada real vía `EmpresaDetallePage.tsx` -> tarjeta "Usuarios" ->
- * `/usuarios?empresaId=`).
- */
-function renderUsuariosPage(initialEntries: string[] = ["/usuarios"]) {
+/** Mismo `mutationCache` que `api/queryClient.ts` -- así las pruebas de error de mutaciones son fieles al comportamiento real. */
+function renderUsuariosPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     mutationCache: new MutationCache({
@@ -100,13 +62,11 @@ function renderUsuariosPage(initialEntries: string[] = ["/usuarios"]) {
     }),
   });
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <UsuariosPage />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <UsuariosPage />
+      </TooltipProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -121,8 +81,6 @@ beforeEach(() => {
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReturnValue(0);
-  useAuthMock.mockReset();
-  mockearAuth("company");
 });
 
 afterEach(() => {
@@ -140,15 +98,6 @@ async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombr
 
 async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Filtros" }));
-}
-
-/** Completa nombre/correo/rol del formulario de alta (queda pendiente la contraseña, distinta por test). */
-async function completarFormularioAlta(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
-  await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
-  await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
-  await user.click(screen.getByRole("combobox", { name: "Rol" }));
-  await user.click(await screen.findByRole("option", { name: "Asesor" }));
 }
 
 describe("UsuariosPage — estados de carga, vacío y error", () => {
@@ -363,6 +312,14 @@ describe("UsuariosPage — paginación (F7)", () => {
 });
 
 describe("UsuariosPage — alta de usuario", () => {
+  async function completarFormularioAlta(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
+    await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
+    await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(await screen.findByRole("option", { name: "Asesor" }));
+  }
+
   it("rechaza una contraseña inicial de menos de 12 caracteres antes de llamar al backend", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     const user = userEvent.setup();
@@ -416,46 +373,6 @@ describe("UsuariosPage — alta de usuario", () => {
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("El correo ya está en uso"));
-  });
-});
-
-describe("UsuariosPage — alta de usuario dentro de una empresa puntual (vista de holding, useVistaEmpresa)", () => {
-  it("con `?empresaId=` en la URL (vista de empresa), manda `empresaId` en el body de POST /usuarios", async () => {
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake());
-    const user = userEvent.setup();
-    renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
-    await screen.findByText("Todavía no hay usuarios registrados");
-
-    await completarFormularioAlta(user);
-    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
-
-    await waitFor(() =>
-      expect(createUsuarioApiMock).toHaveBeenCalledWith({
-        nombre: "Marta Herrera",
-        correo: "marta@crm.test",
-        rol: "ASESOR",
-        password: "una-contraseña-larga-1",
-        empresaId: "empresa-77",
-      }),
-    );
-  });
-
-  it("sin `?empresaId=` en la URL, NO manda empresaId en el body de POST /usuarios", async () => {
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake());
-    const user = userEvent.setup();
-    renderUsuariosPage(["/usuarios"]);
-    await screen.findByText("Todavía no hay usuarios registrados");
-
-    await completarFormularioAlta(user);
-    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
-
-    await waitFor(() => expect(createUsuarioApiMock).toHaveBeenCalled());
-    const body = createUsuarioApiMock.mock.calls.at(-1)?.[0];
-    expect(body).not.toHaveProperty("empresaId");
   });
 });
 
@@ -633,98 +550,5 @@ describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
 
     const fila = (await screen.findByText("Marta Herrera")).closest("tr");
     expect(fila).not.toHaveClass("opacity-60");
-  });
-});
-
-describe("UsuariosPage — vista de holding en solo lectura (useVistaEmpresa().esVistaSoloLectura)", () => {
-  it("con sesión holding y ?empresaId=, no muestra «Nuevo usuario»", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
-    await screen.findByText("Marta Herrera");
-
-    expect(screen.queryByRole("button", { name: "Nuevo usuario" })).not.toBeInTheDocument();
-  });
-
-  it("con sesión holding y ?empresaId=, la columna Acciones (editar/restablecer contraseña/dar de baja/reactivar) no se muestra", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
-    await screen.findByText("Marta Herrera");
-
-    expect(screen.queryByText("Acciones")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Acciones de Marta Herrera" })).not.toBeInTheDocument();
-  });
-
-  it("con sesión holding pero sin ?empresaId=, muestra «Nuevo usuario» y la columna Acciones con normalidad", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    renderUsuariosPage(["/usuarios"]);
-    await screen.findByText("Marta Herrera");
-
-    expect(screen.getByRole("button", { name: "Nuevo usuario" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Acciones de Marta Herrera" })).toBeInTheDocument();
-  });
-});
-
-describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración con useVistaEmpresa, default invertido)", () => {
-  it("con sesión holding-wide, la primera consulta ya manda `soloHoldingWide: true` (default nuevo, sin tocar nada)", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    renderUsuariosPage();
-    await screen.findByText("Marta Herrera");
-
-    expect(fetchUsuariosApiMock.mock.calls[0]?.[0]?.soloHoldingWide).toBe(true);
-  });
-
-  it("con sesión holding-wide, tildar «Ver usuarios de todas las empresas» quita `soloHoldingWide` de la consulta a fetchUsuariosApi", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    const user = userEvent.setup();
-    renderUsuariosPage();
-    await screen.findByText("Marta Herrera");
-
-    await abrirFiltros(user);
-    await user.click(screen.getByRole("checkbox", { name: /todas las empresas/i }));
-
-    await waitFor(() => {
-      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.soloHoldingWide).toBeUndefined();
-    });
-  });
-
-  it("con sesión company-scoped, el toggle no se muestra", async () => {
-    mockearAuth("company");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    const user = userEvent.setup();
-    renderUsuariosPage();
-    await screen.findByText("Marta Herrera");
-
-    await abrirFiltros(user);
-
-    expect(screen.queryByRole("checkbox", { name: /todas las empresas/i })).not.toBeInTheDocument();
-  });
-
-  it("`hayFiltrosActivos` (criterio invertido): con el default `soloHoldingWide: true` sin resultados, el estado vacío es el de 'sin usuarios registrados' (no cuenta como filtro activo)", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    renderUsuariosPage();
-
-    expect(await screen.findByText("Todavía no hay usuarios registrados")).toBeInTheDocument();
-  });
-
-  it("`hayFiltrosActivos` (criterio invertido): tildar «Ver usuarios de todas las empresas» sin resultados sí cuenta como filtro activo -- estado vacío de 'no coinciden con estos filtros'", async () => {
-    mockearAuth("holding");
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
-    const user = userEvent.setup();
-    renderUsuariosPage();
-    await screen.findByText("Marta Herrera");
-
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    await abrirFiltros(user);
-    await user.click(screen.getByRole("checkbox", { name: /todas las empresas/i }));
-
-    expect(
-      await screen.findByText("No hay usuarios que coincidan con estos filtros"),
-    ).toBeInTheDocument();
   });
 });

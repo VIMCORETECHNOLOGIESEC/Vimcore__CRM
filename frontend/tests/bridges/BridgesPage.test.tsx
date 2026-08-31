@@ -15,22 +15,6 @@ vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
   fetchRedesSocialesSoportadasApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-// `BridgesPage` monta `ConectarWhatsAppCard` de forma aditiva (flujo de
-// conexión de WhatsApp Business, ver `funcionalidades/whatsapp/`), que
-// necesita `useAuth()` -- mockeado acá con una sesión `company` estable por
-// defecto (mismo patrón que `tests/layouts/SalirVistaEmpresaButton.test.tsx`)
-// para no exigir un `<AuthProvider>` real en estos tests, que nunca
-// interactúan con esa tarjeta. `whatsapp.api`/`whatsapp.utils` quedan sin
-// mockear a propósito: ningún test de este archivo hace click en "Conectar
-// WhatsApp", así que su `useMutation` nunca dispara una llamada real.
-// `sessionScope` es mutable (reseteado a "company" en cada test) para el
-// describe de "vista de holding en solo lectura" de más abajo, que la
-// necesita en "holding" -- `useVistaEmpresa().esVistaSoloLectura` depende de
-// `sessionScope === "holding"` combinado con `?empresaId=` en la URL.
-let sessionScope: "company" | "holding" = "company";
-vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
-  useAuth: () => ({ user: { sessionScope, rol: "ADMINISTRADOR" } }),
-}));
 
 const bridgesApi = await import("@/funcionalidades/bridges/bridges.api");
 const { toast } = await import("sonner");
@@ -75,20 +59,15 @@ function bridgesResponse(
   return { bridges, total: bridges.length, pagina: 1, limite: 10, ...overrides };
 }
 
-/**
- * Mismo `mutationCache` que `api/queryClient.ts` -- fiel al manejo global de
- * errores real. `initialEntries` permite simular la "vista de empresa" de
- * un holding-wide (`useVistaEmpresa`, llegada real vía
- * `EmpresaDetallePage.tsx` -> tarjeta "Bridges" -> `/bridges?empresaId=`).
- */
-function renderBridgesPage(initialEntries: string[] = ["/bridges"]) {
+/** Mismo `mutationCache` que `api/queryClient.ts` -- fiel al manejo global de errores real. */
+function renderBridgesPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     mutationCache: new MutationCache({ onError: (error) => toast.error(getErrorMessage(error)) }),
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={initialEntries}>
+      <MemoryRouter>
         <BridgesPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -104,7 +83,6 @@ async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombr
 }
 
 beforeEach(() => {
-  sessionScope = "company";
   fetchBridgesApiMock.mockReset();
   createBridgeApiMock.mockReset();
   deleteBridgeApiMock.mockReset();
@@ -466,138 +444,6 @@ describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
   });
 });
 
-describe("BridgesPage — alta de bridge API_EXTERNA (arregla el flujo mock: creación real antes del asistente de configuración)", () => {
-  it("elegir «API externa» crea el bridge de verdad (mismo POST /bridges genérico), muestra su clave una vez y luego abre el asistente con el bridgeId real", async () => {
-    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
-    createBridgeApiMock.mockResolvedValue({
-      bridge: bridgeFake({
-        id: "bridge-api-externa-1",
-        redSocial: "API_EXTERNA",
-        nombre: "Sistema de reservas",
-        estado: "INACTIVO",
-        cuentasPublicitarias: [],
-      }),
-      claveApi: "brg_clave-api-externa-1",
-    });
-    const user = userEvent.setup();
-    renderBridgesPage();
-    await screen.findByText("Todavía no hay bridges configurados");
-
-    await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
-    const dialogAlta = await screen.findByRole("dialog");
-    await user.click(within(dialogAlta).getByRole("combobox", { name: "Red social" }));
-    await user.click(await screen.findByRole("option", { name: "API externa" }));
-    await user.type(within(dialogAlta).getByLabelText("Nombre"), "Sistema de reservas");
-    await user.click(within(dialogAlta).getByRole("button", { name: "Configurar API" }));
-
-    // Ya no alcanza con guardar el nombre localmente: tiene que crear el
-    // bridge real, con el mismo endpoint genérico que cualquier otra red
-    // social -- si esto no se llama, `ApiExternaSetupDialog` nunca tendría un
-    // `bridgeId` real para sus 3 pasos siguientes.
-    await waitFor(() =>
-      expect(createBridgeApiMock).toHaveBeenCalledWith({
-        redSocial: "API_EXTERNA",
-        nombre: "Sistema de reservas",
-      }),
-    );
-
-    // La clave devuelta por POST /bridges se muestra una única vez, igual
-    // que para cualquier otro bridge, antes de encadenar el asistente.
-    expect(await screen.findByText("brg_clave-api-externa-1")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("checkbox", { name: "Ya copié la clave y la guardé en un lugar seguro" }),
-    );
-    await user.click(screen.getByRole("button", { name: "Entendido, cerrar" }));
-
-    // El asistente de configuración se abre recién ahora, con el bridgeId
-    // real devuelto por la creación (no un placeholder ni el nombre solo).
-    const dialogSetup = await screen.findByRole("dialog");
-    expect(within(dialogSetup).getByText("Configurar Sistema de reservas")).toBeInTheDocument();
-  });
-});
-
-describe("BridgesPage — alta de bridge dentro de una empresa puntual (vista de holding, useVistaEmpresa)", () => {
-  it("con `?empresaId=` en la URL (vista de empresa), manda `empresaId` en el body de POST /bridges", async () => {
-    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
-    createBridgeApiMock.mockResolvedValue({
-      bridge: bridgeFake({ id: "bridge-nuevo", nombre: "Formulario Ventas", estado: "INACTIVO" }),
-      claveApi: "brg_recien-generada-123",
-    });
-    const user = userEvent.setup();
-    renderBridgesPage(["/bridges?empresaId=empresa-77"]);
-    await screen.findByText("Todavía no hay bridges configurados");
-
-    await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("combobox", { name: "Red social" }));
-    await user.click(await screen.findByRole("option", { name: "Google Forms" }));
-    await user.type(within(dialog).getByLabelText("Nombre"), "Formulario Ventas");
-    await user.click(within(dialog).getByRole("button", { name: "Crear bridge" }));
-
-    await waitFor(() =>
-      expect(createBridgeApiMock).toHaveBeenCalledWith({
-        redSocial: "GOOGLE_FORMS",
-        nombre: "Formulario Ventas",
-        empresaId: "empresa-77",
-      }),
-    );
-  });
-
-  it("sin `?empresaId=` en la URL, NO manda empresaId en el body de POST /bridges", async () => {
-    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
-    createBridgeApiMock.mockResolvedValue({
-      bridge: bridgeFake({ id: "bridge-nuevo", nombre: "Formulario Ventas", estado: "INACTIVO" }),
-      claveApi: "brg_recien-generada-123",
-    });
-    const user = userEvent.setup();
-    renderBridgesPage(["/bridges"]);
-    await screen.findByText("Todavía no hay bridges configurados");
-
-    await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("combobox", { name: "Red social" }));
-    await user.click(await screen.findByRole("option", { name: "Google Forms" }));
-    await user.type(within(dialog).getByLabelText("Nombre"), "Formulario Ventas");
-    await user.click(within(dialog).getByRole("button", { name: "Crear bridge" }));
-
-    await waitFor(() => expect(createBridgeApiMock).toHaveBeenCalled());
-    const body = createBridgeApiMock.mock.calls.at(-1)?.[0];
-    expect(body).not.toHaveProperty("empresaId");
-  });
-
-  it("con `?empresaId=` en la URL, el alta de API_EXTERNA también manda `empresaId`", async () => {
-    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([]));
-    createBridgeApiMock.mockResolvedValue({
-      bridge: bridgeFake({
-        id: "bridge-api-externa-1",
-        redSocial: "API_EXTERNA",
-        nombre: "Sistema de reservas",
-        estado: "INACTIVO",
-        cuentasPublicitarias: [],
-      }),
-      claveApi: "brg_clave-api-externa-1",
-    });
-    const user = userEvent.setup();
-    renderBridgesPage(["/bridges?empresaId=empresa-77"]);
-    await screen.findByText("Todavía no hay bridges configurados");
-
-    await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
-    const dialogAlta = await screen.findByRole("dialog");
-    await user.click(within(dialogAlta).getByRole("combobox", { name: "Red social" }));
-    await user.click(await screen.findByRole("option", { name: "API externa" }));
-    await user.type(within(dialogAlta).getByLabelText("Nombre"), "Sistema de reservas");
-    await user.click(within(dialogAlta).getByRole("button", { name: "Configurar API" }));
-
-    await waitFor(() =>
-      expect(createBridgeApiMock).toHaveBeenCalledWith({
-        redSocial: "API_EXTERNA",
-        nombre: "Sistema de reservas",
-        empresaId: "empresa-77",
-      }),
-    );
-  });
-});
-
 describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and Reactivate, Hard Delete Only Without Leads)", () => {
   it("un bridge que nunca recibió leads: advierte eliminación permanente y llama a deleteBridgeApi al confirmar", async () => {
     fetchBridgesApiMock.mockResolvedValue(
@@ -664,41 +510,5 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
 
     await waitFor(() => expect(reactivateBridgeApiMock).toHaveBeenCalledWith("bridge-inactivo"));
     expect(toastSuccessMock).toHaveBeenCalledWith("Bridge reactivado correctamente.");
-  });
-});
-
-describe("BridgesPage — vista de holding en solo lectura (useVistaEmpresa().esVistaSoloLectura)", () => {
-  it("con sesión holding y ?empresaId=, no muestra «Nuevo bridge» ni la tarjeta de WhatsApp", async () => {
-    sessionScope = "holding";
-    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
-    renderBridgesPage(["/bridges?empresaId=empresa-77"]);
-    await screen.findByText("Meta Ads — Facebook");
-
-    expect(screen.queryByRole("button", { name: "Nuevo bridge" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/conectar whatsapp/i)).not.toBeInTheDocument();
-  });
-
-  it("con sesión holding y ?empresaId=, el menú de acciones por fila no ofrece «Dar de baja»/«Reactivar»", async () => {
-    sessionScope = "holding";
-    fetchBridgesApiMock.mockResolvedValue(
-      bridgesResponse([bridgeFake({ id: "bridge-inactivo", nombre: "Bridge Pausado", estado: "INACTIVO" })]),
-    );
-    const user = userEvent.setup();
-    renderBridgesPage(["/bridges?empresaId=empresa-77"]);
-    await screen.findByText("Bridge Pausado");
-
-    await abrirMenuAcciones(user, "Bridge Pausado");
-    expect(screen.getByRole("menuitem", { name: "Ver detalle" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Dar de baja" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Reactivar" })).not.toBeInTheDocument();
-  });
-
-  it("con sesión holding pero sin ?empresaId=, muestra «Nuevo bridge» con normalidad", async () => {
-    sessionScope = "holding";
-    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
-    renderBridgesPage(["/bridges"]);
-    await screen.findByText("Meta Ads — Facebook");
-
-    expect(screen.getByRole("button", { name: "Nuevo bridge" })).toBeInTheDocument();
   });
 });

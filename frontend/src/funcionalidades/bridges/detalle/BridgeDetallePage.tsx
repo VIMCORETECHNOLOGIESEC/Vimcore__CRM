@@ -2,7 +2,6 @@ import { useParams } from "react-router";
 import { getErrorMessage } from "@/api/httpClient";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
-import { LinkedInIntegracionSection } from "@/funcionalidades/linkedin/LinkedInIntegracionSection";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AvisoBridge } from "../AvisoBridge";
 import { evaluateAvisoBridge, formatFecha, proximaExpiracionTokenBridge } from "../bridges.utils";
@@ -17,18 +16,11 @@ import { CuentasPublicitariasList } from "./CuentasPublicitariasList";
  * Detalle de un bridge (F8, docs/07 -- solo administrador, ruta protegida en
  * `router.tsx`). Backend real -- ver `bridges.api.ts`.
  *
- * La prueba de conexión ya no se muestra acá a nivel de bridge para
- * Facebook/Instagram: el backend real la resuelve POR CUENTA PUBLICITARIA
+ * La prueba de conexión ya no se muestra acá a nivel de bridge: el backend
+ * real la resuelve POR CUENTA PUBLICITARIA
  * (`POST /bridges/:id/cuentas/:cuentaId/probar-conexion`), así que vive
  * ahora por cada fila de `CuentasPublicitariasList` -- ver el gap de
  * contrato documentado en `bridges.api.ts`.
- *
- * `redSocial: "LINKEDIN"` es la excepción a ese modelo: LinkedIn Lead Sync
- * NO usa `CuentaPublicitariaBridge` en absoluto (conexión OAuth y fuentes
- * bridge-scoped, ver `funcionalidades/linkedin/`) -- por eso reemplaza por
- * completo las secciones "Credenciales"/"Cuentas publicitarias asociadas"
- * en vez de reusarlas, a diferencia de Facebook/Instagram/API_EXTERNA que sí
- * las comparten.
  */
 export function BridgeDetallePage() {
   const { id } = useParams<{ id: string }>();
@@ -97,28 +89,19 @@ export function BridgeDetallePage() {
         </dl>
       </section>
 
-      {bridge.redSocial === "LINKEDIN" ? (
-        <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
-          <h2 className="text-sm font-semibold text-foreground">LinkedIn Lead Sync</h2>
-          <LinkedInIntegracionSection bridgeId={bridge.id} />
-        </section>
-      ) : (
-        <>
-          <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
-            <h2 className="text-sm font-semibold text-foreground">Credenciales</h2>
-            <CredencialBridgeForm bridge={bridge} />
-          </section>
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+        <h2 className="text-sm font-semibold text-foreground">Credenciales</h2>
+        <CredencialBridgeForm bridge={bridge} />
+      </section>
 
-          <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
-            <h2 className="text-sm font-semibold text-foreground">Cuentas publicitarias asociadas</h2>
-            <CuentasPublicitariasList
-              bridgeId={bridge.id}
-              redSocial={bridge.redSocial}
-              cuentas={bridge.cuentasPublicitarias}
-            />
-          </section>
-        </>
-      )}
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+        <h2 className="text-sm font-semibold text-foreground">Cuentas publicitarias asociadas</h2>
+        <CuentasPublicitariasList
+          bridgeId={bridge.id}
+          redSocial={bridge.redSocial}
+          cuentas={bridge.cuentasPublicitarias}
+        />
+      </section>
 
       <BitacoraErrores bridgeId={bridge.id} />
     </div>

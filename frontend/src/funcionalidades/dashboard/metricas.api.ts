@@ -1,15 +1,11 @@
 import { httpClient, type QueryParamValue } from "@/api/httpClient";
 import type {
-  MetricasCascadaLeadOportunidad,
   MetricasEmbudo,
-  MetricasEmbudoOportunidad,
   MetricasFiltros,
   MetricasPorAsesor,
   MetricasPorCampania,
   MetricasPorEtapa,
-  MetricasPorProducto,
   MetricasPorRedSocial,
-  MetricasRankingProductoPorEmpresa,
   RedSocialPorSemaforo,
   ResumenMetricas,
 } from "@/tipos/metricas";
@@ -43,7 +39,6 @@ function toParams(filtros: MetricasFiltros): Record<string, QueryParamValue> {
     redSocial: filtros.redSocial,
     campania: filtros.campania,
     responsableId: filtros.responsableId,
-    empresaId: filtros.empresaId,
   };
 }
 
@@ -116,75 +111,6 @@ export async function fetchMetricasEmbudoApi(filtros: MetricasFiltros): Promise<
 export async function fetchRedSocialPorSemaforoApi(filtros: MetricasFiltros): Promise<RedSocialPorSemaforo[]> {
   const { items } = await httpClient.get<ItemsResponse<RedSocialPorSemaforo>>(
     "/metricas/red-social-x-semaforo",
-    { params: toParams(filtros) },
-  );
-  return items;
-}
-
-/**
- * `GET /metricas/embudo-oportunidad` (docs/23 item 13) -- estructuralmente
- * idéntico a `/metricas/embudo` (mismos 4 pasos + `noVenta` aparte), pero
- * medido sobre `Oportunidad` en vez de `Lead`. Objeto crudo, sin envolver,
- * igual criterio que `fetchMetricasEmbudoApi`.
- */
-export async function fetchMetricasEmbudoOportunidadApi(
-  filtros: MetricasFiltros,
-): Promise<MetricasEmbudoOportunidad> {
-  return httpClient.get<MetricasEmbudoOportunidad>("/metricas/embudo-oportunidad", {
-    params: toParams(filtros),
-  });
-}
-
-/**
- * `GET /metricas/por-producto` (docs/23 item 13) -- desenvuelve `{ items }`.
- * Ranking GLOBAL plano (no agrupado por empresa; el recorte a la empresa del
- * caller ya lo hace el backend de forma invisible).
- *
- * NOTA DE ASIMETRÍA (a propósito, no un bug): `redSocial`/`campania` de
- * `toParams` son ignorados en silencio por el backend para este endpoint --
- * es `Oportunidad`-scoped, sin join a `Lead`. No se filtra en cliente para
- * compensar esa asimetría.
- */
-export async function fetchMetricasPorProductoApi(filtros: MetricasFiltros): Promise<MetricasPorProducto[]> {
-  const { items } = await httpClient.get<ItemsResponse<MetricasPorProducto>>("/metricas/por-producto", {
-    params: toParams(filtros),
-  });
-  return items;
-}
-
-/**
- * `GET /metricas/cascada-lead-oportunidad` (docs/23 item 13) -- objeto crudo
- * (NO una lista): 3 conteos de cohorte + 2 tasas. A diferencia de
- * `/embudo-oportunidad` y `/por-producto`, este endpoint SÍ está
- * `Lead`-scoped, así que `redSocial`/`campania` de `toParams` sí aplican acá.
- */
-export async function fetchMetricasCascadaLeadOportunidadApi(
-  filtros: MetricasFiltros,
-): Promise<MetricasCascadaLeadOportunidad> {
-  return httpClient.get<MetricasCascadaLeadOportunidad>("/metricas/cascada-lead-oportunidad", {
-    params: toParams(filtros),
-  });
-}
-
-/**
- * `GET /metricas/ranking-productos-por-empresa` (docs/23 item 13) --
- * desenvuelve `{ items }`. Lista PLANA, una fila por par (empresa, producto)
- * -- cada fila repite `empresaId`/`nombreEmpresa`, sin recorte top-N por
- * empresa (deliberado, ver `MetricasRankingProductoPorEmpresa`).
- *
- * NOTA DE ASIMETRÍA (a propósito, no un bug): mismo motivo que
- * `fetchMetricasPorProductoApi` -- `redSocial`/`campania` de `toParams` son
- * ignorados en silencio acá también.
- *
- * GAP CONOCIDO (E5, `docs/blocks/e-dashboards.md`): sesión holding-wide puede
- * no ver la fila de una segunda empresa -- se integra igual, el aviso visible
- * vive en `GraficoRankingProductosPorEmpresa.tsx`, no acá.
- */
-export async function fetchMetricasRankingProductosPorEmpresaApi(
-  filtros: MetricasFiltros,
-): Promise<MetricasRankingProductoPorEmpresa[]> {
-  const { items } = await httpClient.get<ItemsResponse<MetricasRankingProductoPorEmpresa>>(
-    "/metricas/ranking-productos-por-empresa",
     { params: toParams(filtros) },
   );
   return items;

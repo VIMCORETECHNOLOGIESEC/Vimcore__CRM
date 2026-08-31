@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
 import type { RolUsuario } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   ),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const { fetchLeadsApi, assignLeadsMasivoApi, fetchRedesSocialesCatalogoApi } = await import(
   "@/funcionalidades/leads/leads.api"
 );
@@ -45,32 +45,15 @@ const fetchLeadsApiMock = vi.mocked(fetchLeadsApi);
 const assignLeadsMasivoApiMock = vi.mocked(assignLeadsMasivoApi);
 const fetchRedesSocialesCatalogoApiMock = vi.mocked(fetchRedesSocialesCatalogoApi);
 
-/**
- * `sessionScope`/`empresaId` opcionales (default `undefined`) a propósito:
- * el resto de los tests de este archivo (heredados, previos al canal manual)
- * siguen ejerciendo el caso "sin scope de sesión" -- `esSesionEmpresa` de
- * `LeadsPage.tsx` da `false` y ninguno de los dos botones del canal manual
- * se muestra, que es el comportamiento correcto para no romper esos tests.
- */
-function mockearAuth(
-  rol: RolUsuario,
-  opciones: { sessionScope?: "company" | "holding"; empresaId?: string | null } = {},
-) {
+function mockearAuth(rol: RolUsuario) {
   useAuthMock.mockReturnValue({
-    user: {
-      id: "u1",
-      nombre: "Usuaria de prueba",
-      correo: "u1@crm.test",
-      rol,
-      sessionScope: opciones.sessionScope,
-      empresaId: opciones.empresaId,
-    },
+    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol },
     isAuthenticated: true,
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn(),
     hasRole: (allowedRoles) => !allowedRoles || allowedRoles.length === 0 || allowedRoles.includes(rol),
-  } as unknown as ReturnType<typeof useAuth>);
+  });
 }
 
 function leadFake(overrides: Partial<Lead> = {}): Lead {
@@ -98,7 +81,7 @@ function leadFake(overrides: Partial<Lead> = {}): Lead {
   };
 }
 
-function renderLeadsPage(rutaInicial = "/leads") {
+function renderLeadsPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -106,7 +89,7 @@ function renderLeadsPage(rutaInicial = "/leads") {
     <QueryClientProvider client={client}>
       <TooltipProvider>
         {/* MemoryRouter: LeadsTable enlaza el nombre del cliente a /leads/:id (F4). */}
-        <MemoryRouter initialEntries={[rutaInicial]}>
+        <MemoryRouter>
           <LeadsPage />
         </MemoryRouter>
       </TooltipProvider>
@@ -216,19 +199,6 @@ describe("LeadsPage — filtros combinables y búsqueda", () => {
     });
   });
 
-  it("con ?empresaId= en la URL (vista viva de un holding-wide, useVistaEmpresa), reenvía empresaId en la consulta", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "holding", empresaId: null });
-    fetchLeadsApiMock.mockResolvedValue({ datos: [leadFake()], total: 1, pagina: 1, porPagina: 10 });
-
-    renderLeadsPage("/leads?empresaId=empresa-9");
-    await screen.findByText("Roberto Salazar");
-
-    await waitFor(() => {
-      const ultimaLlamada = fetchLeadsApiMock.mock.calls.at(-1)?.[0];
-      expect(ultimaLlamada?.empresaId).toBe("empresa-9");
-    });
-  });
-
   it("cambiar la etapa filtrada reinicia la paginación a la página 1", async () => {
     mockearAuth("ADMINISTRADOR");
     fetchLeadsApiMock.mockResolvedValue({ datos: [leadFake()], total: 1, pagina: 1, porPagina: 10 });
@@ -268,231 +238,5 @@ describe("LeadsPage — asignación masiva (supervisor/administrador)", () => {
     await waitFor(() => {
       expect(assignLeadsMasivoApiMock).toHaveBeenCalledWith(["lead-01"], "vendedor-1");
     });
-  });
-
-  it("holding-wide en «Ver en vivo» (?empresaId= con sessionScope holding): no ofrece selección ni «Asignar»", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "holding", empresaId: null });
-    fetchLeadsApiMock.mockResolvedValue({ datos: [leadFake()], total: 1, pagina: 1, porPagina: 10 });
-
-    renderLeadsPage("/leads?empresaId=empresa-9");
-    await screen.findByText("Roberto Salazar");
-
-    expect(
-      screen.queryByRole("checkbox", { name: "Seleccionar a Roberto Salazar" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Asignar" })).not.toBeInTheDocument();
-    // La columna de responsable sigue siendo de solo lectura: no se oculta.
-    expect(screen.getByRole("columnheader", { name: "Responsable" })).toBeInTheDocument();
-  });
-});
-
-/**
- * Canal de ingreso manual (diferido, docs/blocks/d-routing-oportunidad.md:
- * 272-353) -- exclusivo de sesión `company`, nunca `holding` (cada empresa
- * carga sus propios leads). `puedeCargarLeadManual` cubre Administrador/
- * Supervisor/Asesor; `puedeGestionarCanales` acota a Administrador. Ambos
- * requieren además `empresaId !== null`.
- */
-describe("LeadsPage — canal de ingreso manual (botones por rol/scope)", () => {
-  beforeEach(() => {
-    fetchLeadsApiMock.mockResolvedValue({ datos: [leadFake()], total: 1, pagina: 1, porPagina: 10 });
-  });
-
-  it("Administrador de sesión company ve ambos botones", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: "empresa-1" });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.getByRole("button", { name: "Cargar lead manual" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Gestionar canales" })).toBeInTheDocument();
-  });
-
-  it("Supervisor de sesión company ve «Cargar lead manual» pero no «Gestionar canales»", async () => {
-    mockearAuth("SUPERVISOR", { sessionScope: "company", empresaId: "empresa-1" });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.getByRole("button", { name: "Cargar lead manual" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gestionar canales" })).not.toBeInTheDocument();
-  });
-
-  it("Asesor de sesión company ve «Cargar lead manual» pero no «Gestionar canales»", async () => {
-    mockearAuth("ASESOR", { sessionScope: "company", empresaId: "empresa-1" });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.getByRole("button", { name: "Cargar lead manual" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gestionar canales" })).not.toBeInTheDocument();
-  });
-
-  it("Vendedor de sesión company no ve ninguno de los dos botones", async () => {
-    mockearAuth("VENDEDOR", { sessionScope: "company", empresaId: "empresa-1" });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.queryByRole("button", { name: "Cargar lead manual" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gestionar canales" })).not.toBeInTheDocument();
-  });
-
-  it("Administrador de sesión holding no ve ninguno de los dos botones (nunca holding-wide)", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "holding", empresaId: null });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.queryByRole("button", { name: "Cargar lead manual" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gestionar canales" })).not.toBeInTheDocument();
-  });
-
-  it("SUPERVISOR_HOLDING de sesión holding no ve ninguno de los dos botones", async () => {
-    mockearAuth("SUPERVISOR_HOLDING", { sessionScope: "holding", empresaId: null });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.queryByRole("button", { name: "Cargar lead manual" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gestionar canales" })).not.toBeInTheDocument();
-  });
-
-  it("Administrador de sesión company con empresaId null (caso defensivo): los botones se muestran, pero abrirlos no despliega ningún diálogo", async () => {
-    // Caso límite -- en la práctica una sesión `company` siempre trae
-    // `empresaId` (ver `AuthenticatedUser`, docs D0), pero el tipo lo declara
-    // nullable. `puedeCargarLeadManual`/`puedeGestionarCanales` en
-    // `LeadsPage.tsx` solo dependen de `esSesionEmpresa` + rol, NO de
-    // `empresaId !== null` -- ese chequeo extra vive únicamente en el
-    // renderizado condicional de cada diálogo (`{dialogXAbierto && empresaId
-    // ? ... : null}`), a pesar de que el comentario del componente dice "ambos
-    // gateados también por empresaId !== null" (no es 100% preciso: los
-    // BOTONES no están gateados por empresaId, solo los diálogos). Se
-    // documenta acá el comportamiento real en vez de forzar el que describe
-    // el comentario.
-    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: null });
-    const user = userEvent.setup();
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.getByRole("button", { name: "Cargar lead manual" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Gestionar canales" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cargar lead manual" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Gestionar canales" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("sin sessionScope definido (tests heredados de esta suite) no ve ninguno de los dos botones", async () => {
-    mockearAuth("ADMINISTRADOR");
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.queryByRole("button", { name: "Cargar lead manual" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Gestionar canales" })).not.toBeInTheDocument();
-  });
-
-  it("«Cargar lead manual» abre el diálogo de alta manual", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: "empresa-1" });
-    const user = userEvent.setup();
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    await user.click(screen.getByRole("button", { name: "Cargar lead manual" }));
-
-    expect(await screen.findByRole("dialog", { name: "Cargar lead manual" })).toBeInTheDocument();
-  });
-
-  it("«Gestionar canales» abre el diálogo de administración del catálogo", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: "empresa-1" });
-    const user = userEvent.setup();
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    await user.click(screen.getByRole("button", { name: "Gestionar canales" }));
-
-    expect(await screen.findByRole("dialog", { name: "Canales de ingreso manual" })).toBeInTheDocument();
-  });
-
-  /**
-   * Sin canales activos, Administrador se redirige a "Gestionar canales" en
-   * vez de ver el formulario vacío (tarea C1) -- coordinación de estado entre
-   * ambos diálogos en `LeadsPage.tsx`: cierra "Cargar lead manual" y abre
-   * "Gestionar canales" en el mismo `onClick`.
-   */
-  it("Administrador sin canales activos: «Ir a gestionar canales» cierra el diálogo de alta y abre el de canales", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: "empresa-1" });
-    const user = userEvent.setup();
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    await user.click(screen.getByRole("button", { name: "Cargar lead manual" }));
-    expect(await screen.findByRole("dialog", { name: "Cargar lead manual" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Ir a gestionar canales" }));
-
-    expect(screen.queryByRole("dialog", { name: "Cargar lead manual" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("dialog", { name: "Canales de ingreso manual" })).toBeInTheDocument();
-  });
-});
-
-/**
- * "Carga masiva (Excel)" (diferido, `CargaMasivaLeadsDialog.tsx`) reusa
- * EXACTAMENTE el guard de "Cargar lead manual" (`puedeCargarLeadManual`):
- * misma capacidad, solo que en lote. No repite todos los casos de rol/scope
- * ya cubiertos arriba para "Cargar lead manual" -- alcanza con verificar que
- * el botón aparece/desaparece junto con "Cargar lead manual" en un caso
- * habilitado y uno deshabilitado, y que abre el diálogo correcto.
- */
-describe("LeadsPage — carga masiva (Excel), mismo guard que «Cargar lead manual»", () => {
-  beforeEach(() => {
-    fetchLeadsApiMock.mockResolvedValue({ datos: [leadFake()], total: 1, pagina: 1, porPagina: 10 });
-  });
-
-  it("Asesor de sesión company ve «Carga masiva (Excel)» junto con «Cargar lead manual»", async () => {
-    mockearAuth("ASESOR", { sessionScope: "company", empresaId: "empresa-1" });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.getByRole("button", { name: "Cargar lead manual" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Carga masiva (Excel)" })).toBeInTheDocument();
-  });
-
-  it("Vendedor de sesión company no ve «Carga masiva (Excel)»", async () => {
-    mockearAuth("VENDEDOR", { sessionScope: "company", empresaId: "empresa-1" });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.queryByRole("button", { name: "Carga masiva (Excel)" })).not.toBeInTheDocument();
-  });
-
-  it("Administrador de sesión holding no ve «Carga masiva (Excel)» (nunca holding-wide)", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "holding", empresaId: null });
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    expect(screen.queryByRole("button", { name: "Carga masiva (Excel)" })).not.toBeInTheDocument();
-  });
-
-  it("«Carga masiva (Excel)» abre el diálogo de carga masiva", async () => {
-    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: "empresa-1" });
-    const user = userEvent.setup();
-
-    renderLeadsPage();
-    await screen.findByText("Roberto Salazar");
-
-    await user.click(screen.getByRole("button", { name: "Carga masiva (Excel)" }));
-
-    expect(await screen.findByRole("dialog", { name: "Carga masiva de leads" })).toBeInTheDocument();
   });
 });

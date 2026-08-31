@@ -2,24 +2,14 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { Outlet } from "react-router";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
-import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { useAuth } from "@/funcionalidades/autenticacion/authContext";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
-import { useEmpresaHolding } from "@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding";
-import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
 import { useSplashGate } from "@/hooks/useSplashGate";
-import {
-  resolveEstilosMarca,
-  resolveEstilosMarcaEmpresaVista,
-  resolveLogoMarca,
-  resolveMarcaCompleta,
-} from "@/lib/color-marca";
-import { updateFavicon, updateThemeColor, resolveFaviconHref } from "@/lib/favicon-marca";
+import { resolveEstilosMarca, resolveNombreMarca } from "@/lib/color-marca";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
 import { Header } from "./Header";
 import { PageHeaderProvider } from "./PageHeaderContext";
-import { SalirVistaEmpresaButton } from "./SalirVistaEmpresaButton";
 
 /**
  * Piso mínimo del splash de arranque del shell (ver `useSplashGate`) -- mismo
@@ -48,66 +38,13 @@ export function AppLayout() {
   // `undefined` mientras carga o si la query falla -- `color-marca.ts` cae
   // al default de fábrica en ese caso, nunca bloquea ni rompe el shell.
   const { data: configuracionHolding, isLoading: isLoadingHolding } = useConfiguracionEmpresa();
-  // "Ver en vivo" (EmpresaDetallePage.tsx -> `/panel?empresaId=`): un
-  // holding-wide puede simular la vista de una `Empresa` puntual. Exclusivo
-  // de sessionScope `holding` -- una sesión `company` ya está acotada a la
-  // suya, `empresaVistaId` nunca debería aplicarle. `useEmpresaHolding` solo
-  // se dispara (`enabled`) cuando `vistaEmpresaActiva` es verdadero, para no
-  // pagar una query de más en el caso normal (sin vista activa).
-  const { empresaVistaId } = useVistaEmpresa();
-  const vistaEmpresaActiva = Boolean(empresaVistaId) && user?.sessionScope === "holding";
-  const { data: empresaVista } = useEmpresaHolding(
-    vistaEmpresaActiva ? (empresaVistaId as string) : undefined,
-  );
   // tema-empresarial-integracion (Parte 3): acentos por empresa
   // (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`) en el
   // root de `SidebarProvider`, para que cubran sidebar Y contenido. Ver
   // `lib/color-marca.ts` para el alcance exacto y por qué `--sidebar`
   // (fondo sólido) queda afuera.
-  //
-  // Con vista de empresa activa, la fuente deja de ser la sesión
-  // autenticada (jerarquía de 3 niveles de `resolveEstilosMarca`) y pasa a
-  // ser DIRECTAMENTE la `Empresa` que se está mirando
-  // (`resolveEstilosMarcaEmpresaVista`, sin ambigüedad de niveles). Mientras
-  // `useEmpresaHolding` todavía no resolvió (`empresaVista` es `undefined`,
-  // primer render tras entrar a la vista), se mantiene el fallback normal de
-  // la sesión -- mismo criterio de resiliencia que el resto de este archivo:
-  // el shell nunca debe romperse ni quedar sin marca por esto, en el peor
-  // caso pinta un instante con la marca anterior hasta que llega la nueva.
-  const estilosMarca =
-    vistaEmpresaActiva && empresaVista
-      ? resolveEstilosMarcaEmpresaVista(empresaVista)
-      : resolveEstilosMarca(user, configuracionHolding);
-  // Fix real (splash duplicado con el color índigo por defecto en vez del
-  // color de marca real): `resolveMarcaCompleta` (`lib/color-marca.ts`) es
-  // la misma fuente única que ahora usa `LoginPage.tsx`, con las variables
-  // que `WelcomeSplashLoader`/`tema-empresarial.css` realmente leen
-  // (`--marca-color-1`/`--marca-color-2`) -- `estilosMarca` de arriba son
-  // tokens shadcn del shell (`--primary`/`--sidebar*`) que el splash nunca
-  // consume, por eso antes caía al índigo default de `.tema-empresarial`.
-  //
-  // Misma vista de empresa de arriba: mientras haya `empresaVista` resuelta,
-  // el nombre/colores del splash (y de la pestaña dinámica, más abajo) son
-  // los de la empresa mirada, no los de la sesión holding real -- de nuevo
-  // con el mismo fallback resiliente mientras la query no resolvió todavía.
-  const marcaSplash =
-    vistaEmpresaActiva && empresaVista
-      ? {
-          nombre: empresaVista.nombre,
-          "--marca-color-1": empresaVista.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario,
-          "--marca-color-2":
-            empresaVista.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
-        }
-      : resolveMarcaCompleta(user, configuracionHolding);
-  // Pestaña dinámica (theme-color + favicon, ver efecto de abajo): mismo
-  // isotipo de 2 niveles que ya usa `app-sidebar.tsx` (logo propio de la
-  // empresa, o el del holding EN VIVO, o `null` si ninguno llegó todavía).
-  // Con vista de empresa activa y ya resuelta, el isotipo es el de esa
-  // `Empresa` puntual -- mismo fallback resiliente mientras carga.
-  const logoMarca =
-    vistaEmpresaActiva && empresaVista
-      ? empresaVista.logoUrl
-      : resolveLogoMarca(user, configuracionHolding);
+  const estilosMarca = resolveEstilosMarca(user, configuracionHolding);
+  const nombreMarca = resolveNombreMarca(user, configuracionHolding);
   // Gap real corregido -- ver `useSplashGate.ts`: en una recarga en frío de
   // una ruta ya autenticada (F5 con sesión vigente) no hay ninguna precarga
   // de `useConfiguracionEmpresa()` como sí tiene `LoginPage.tsx`, así que el
@@ -115,67 +52,6 @@ export function AppLayout() {
   // real de marca. Mientras el gate esté activo, se muestra el mismo
   // `WelcomeSplashLoader` del boot en vez de un shell a medio pintar.
   const showSplash = useSplashGate(isLoadingHolding, SPLASH_MIN_MS);
-
-  // Fix real (Bug 3 -- color de marca no llega a componentes Radix:
-  // tooltip/dropdown/dialog/sheet/select/popover/alert-dialog): antes
-  // `estilosMarca` solo se aplicaba como `style` inline en
-  // `SidebarProvider` (abajo). Los componentes Radix de este proyecto
-  // renderizan vía Portal directo a `document.body`, FUERA del subárbol de
-  // `SidebarProvider` -- nunca heredaban esas variables CSS y caían al
-  // `:root` fijo (azul por defecto, `--ring: 37 99 235`). Este efecto
-  // espeja las mismas propiedades en `document.documentElement` (nivel
-  // `<html>`), que SÍ es ancestro de cualquier portal montado en `<body>`
-  // sin importar dónde cuelgue -- las custom properties CSS heredan por el
-  // DOM sin importar `position: fixed`. El `style` inline de
-  // `SidebarProvider` se mantiene (no se quita): sigue siendo necesario
-  // para el render inicial sin flash, antes de que este efecto corra.
-  //
-  // `estilosMarca` es `undefined` mientras no hay `usuario` (sesión sin
-  // resolver, o logout) -- el cleanup de abajo se encarga de retirar las
-  // propiedades del `documentElement` en ese caso, para no dejar residuo
-  // de una sesión anterior.
-  useEffect(() => {
-    if (!estilosMarca) {
-      return undefined;
-    }
-    const root = document.documentElement;
-    const keys = Object.keys(estilosMarca);
-    for (const key of keys) {
-      root.style.setProperty(key, estilosMarca[key]);
-    }
-    return () => {
-      for (const key of keys) {
-        root.style.removeProperty(key);
-      }
-    };
-  }, [estilosMarca]);
-
-  // Pestaña dinámica (color de marca, decisión aprobada con artefacto
-  // visual de ejemplo): mismo trigger que el efecto de arriba
-  // (`estilosMarca`, que cambia exactamente cuando cambia la marca
-  // resuelta de `user`/`configuracionHolding`) para no duplicar la
-  // condición de "sesión sin resolver todavía". Lógica pura en
-  // `lib/favicon-marca.ts` (testeada ahí sin canvas real, ver
-  // `tests/lib/favicon-marca.test.ts`) -- este efecto es solo el punto de
-  // conexión con los valores de marca ya resueltos.
-  //
-  // `theme-color`: tiñe la barra de pestaña/dirección en Chrome y Safari
-  // mobile con `colorPrimario` (mismo tono que `--sidebar`, ver
-  // `resolveMarcaCompleta`/`resolveEstilosMarca`).
-  //
-  // Favicon: el logo real de la empresa si existe (`logoMarca`), o si no,
-  // un círculo con `colorPrimario` de fondo + la inicial del nombre en el
-  // color de mayor contraste -- MISMO concepto que el fallback ya
-  // existente en `app-sidebar.tsx` (letra sobre color de marca), pero
-  // como imagen aparte: el favicon no puede leer clases/variables CSS del
-  // DOM.
-  useEffect(() => {
-    if (!estilosMarca) {
-      return;
-    }
-    updateThemeColor(marcaSplash["--marca-color-1"]);
-    updateFavicon(resolveFaviconHref(logoMarca, marcaSplash.nombre, marcaSplash["--marca-color-1"]));
-  }, [estilosMarca]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -196,23 +72,15 @@ export function AppLayout() {
   if (showSplash) {
     // `.tema-empresarial` es requerido -- `tema-empresarial.css` scopea
     // `.welcome-splash` bajo ese ancestro (mismo patrón que `AppBoot.tsx`).
-    // Las fuentes (Fraunces/Source Sans 3) se cargan una sola vez a nivel
-    // raíz en `index.html` (fix "FOUT entre los dos splashes de
-    // bienvenida"), así que ya están en curso de descarga desde el primer
-    // byte de HTML -- este layout ya no depende de que el boot pre-login
-    // haya montado antes para tener margen de tiempo.
+    // La hoja de estilos y las fuentes ya se cargaron con el boot pre-login,
+    // que siempre monta antes que este layout autenticado.
     return (
       <div className="tema-empresarial">
         <WelcomeSplashLoader
-          contexto={marcaSplash.nombre}
+          contexto={nombreMarca}
           mensaje="Cargando tu panel…"
           visible
-          style={
-            {
-              "--marca-color-1": marcaSplash["--marca-color-1"],
-              "--marca-color-2": marcaSplash["--marca-color-2"],
-            } as CSSProperties
-          }
+          style={estilosMarca as CSSProperties}
         />
       </div>
     );
@@ -220,7 +88,7 @@ export function AppLayout() {
 
   return (
     <PageHeaderProvider>
-      <LeadsNavigationTutorialProvider colorAcento={marcaSplash["--marca-color-2"]}>
+      <LeadsNavigationTutorialProvider>
         <SidebarProvider style={estilosMarca as CSSProperties}>
           <AppSidebar />
           <SidebarInset>
@@ -236,11 +104,6 @@ export function AppLayout() {
             </div>
           </SidebarInset>
         </SidebarProvider>
-        {/* `position: fixed` -- el lugar en el árbol no afecta su posición
-         * visual, se monta acá para que sobreviva a cualquier scroll del
-         * contenido interno. Se muestra/oculta solo (ver
-         * `SalirVistaEmpresaButton.tsx`), sin condición extra acá. */}
-        <SalirVistaEmpresaButton />
       </LeadsNavigationTutorialProvider>
     </PageHeaderProvider>
   );

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/httpClient";
 
-vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/autenticacion/autenticacion.api", () => ({
@@ -13,7 +13,7 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
+const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
 const authApi = await import("@/funcionalidades/autenticacion/autenticacion.api");
 const { toast } = await import("sonner");
 const { PerfilPage } = await import("@/funcionalidades/autenticacion/PerfilPage");

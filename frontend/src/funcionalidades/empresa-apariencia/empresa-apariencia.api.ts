@@ -10,8 +10,9 @@ import { httpClient } from "@/api/httpClient";
  * colorSecundario` (backend: `PATCH /empresas/actual/apariencia`, scoped al
  * `empresaId` de la sesión -- nunca un id que venga del cliente).
  *
- * Consumido por `EmpresaAparienciaPage.tsx` (self-service) como capa de
- * datos; el hook de mutación vive en `./useEmpresaApariencia`.
+ * Sin componente de UI todavía a propósito -- ver la nota de alcance en la
+ * tarea que introduce este archivo. Esto es solo la capa de datos +
+ * el hook de mutación.
  */
 export interface EmpresaAparienciaView {
   colorPrimario: string | null;
@@ -31,22 +32,4 @@ export async function updateEmpresaAparienciaApi(
   input: UpdateEmpresaAparienciaInput,
 ): Promise<EmpresaAparienciaView> {
   return httpClient.patch<EmpresaAparienciaView>("/empresas/actual/apariencia", input);
-}
-
-/**
- * `POST /empresas/actual/apariencia/logo` -- mismo guard self-service que el
- * `PATCH` de arriba (`postEmpresaAparienciaLogo`,
- * `backend/src/controllers/empresa-apariencia.controller.ts`). Multipart con
- * un único campo `logo` (`uploadLogoMiddleware`, Multer). El backend devuelve
- * la `EmpresaAparienciaView` completa ya actualizada; acá solo se expone la
- * URL nueva porque es lo único que le importa a `CampoLogoUpload`.
- */
-export async function uploadLogoEmpresaApi(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("logo", file);
-  const apariencia = await httpClient.postFormData<EmpresaAparienciaView>(
-    "/empresas/actual/apariencia/logo",
-    formData,
-  );
-  return apariencia.logoUrl ?? "";
 }

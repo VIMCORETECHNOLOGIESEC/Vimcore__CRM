@@ -40,34 +40,8 @@ programada). Precondición de diseño resuelta: `Oportunidad` se crea
 **manual**, nunca automática al ingresar un `Lead` — `ingesta.service.ts`
 queda sin tocar.
 
-**Backend real mergeado (2026-08-31)**: `CanalManual` y el catálogo dinámico
-de canales sin bridge dejaron de estar diferidos — endpoints reales
-(`POST/GET /canales-manuales`, `PATCH /canales-manuales/:id`, y
-`canalManualId` en `POST /leads`/`POST /leads/carga-masiva`) ya están
-mergeados en `test/gpt`. El frontend, construido originalmente como mock, se
-está conectando a los endpoints reales (ver "Canal de ingreso manual y
-catálogo dinámico" más abajo).
-
-**Frontend del módulo `negociacion` — construido y pusheado (commit
-`0a0ab91`, `origin/test/gpt`):** nuevo módulo
-`frontend/src/funcionalidades/oportunidades/` (listado filtrable, detalle,
-alta desde un lead, avance de etapa, cierre VENTA/NO_VENTA con autoridad D7,
-reasignación D9, catálogo de productos) consume los endpoints reales listados
-abajo. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30) para
-adelantar este frontend antes del resto del despliegue — ver
-`docs/23-alcance-funcional-manual-tecnico.md` ítem 17 para el detalle
-funcional completo. Esto no cambia el estado del corte de `Lead` (columnas de
-negociación) ni del cutover de `leads.access.ts`/`asignacion.service.ts`
-descrito arriba, que sigue siendo trabajo de `dev-mateo` pendiente de
-confirmar/mergear.
-
-**Nav condicional para holding-wide (commit `0ea8e06`)**: "Oportunidades" (y
-"Bridges") se ocultan del menú lateral y se bloquean por URL directa
-(`router.tsx`, `ProtectedRoute requiereVistaEmpresaSiHolding`) para una
-sesión holding-wide que todavía no "entró" a la vista de una empresa puntual
-(`useVistaEmpresa`) — un holding-wide no gestiona oportunidades/bridges de
-ninguna empresa en particular sin elegir una primero. Sesión `company` no se
-ve afectada. Leads queda deliberadamente afuera de este gate.
+**Diferido, sin arrancar todavía**: `CanalManual` y el catálogo dinámico de
+canales sin bridge.
 
 ## Alcance
 
@@ -86,11 +60,11 @@ sola vez:
   de asignación scopeado por empresa (D3/D4), autoridad de cierre (D7),
   split `Lead`/`Oportunidad` (D13), y la decisión registrada del riesgo de
   invariante `asesorId` (abajo).
-- **Diferido** (no bloquea el cierre esencial): las excepciones auditadas de
-  Administrador/Supervisor (D9) — sin arrancar todavía. El canal de ingreso
-  manual (`CanalManual`) YA NO está diferido: backend real mergeado
-  (2026-08-31), frontend conectándose a los endpoints reales — ver "Canal de
-  ingreso manual y catálogo dinámico" más abajo.
+- **Diferido** (no bloquea el cierre esencial): el canal de ingreso manual
+  (`CanalManual`) y las excepciones auditadas de Administrador/Supervisor
+  (D9). Sus contratos mock pueden prepararse de forma independiente, pero su
+  integración real tendrá criterios de cierre propios; no se presume incluida
+  en el cierre esencial de D.
 
 ## Requiere cerrado
 
@@ -144,25 +118,6 @@ tuvo el cutover a membresía que sí tuvieron login (D0) y parte de leads
 (Bloque C). Existe `shadowAuthorizationService.compareRequireRole` corriendo
 en sombra sobre este mismo middleware (mismo patrón que B/C) — la decisión
 correcta ya se calcula en paralelo, solo falta aplicarla.
-
-**Cerrado (2026-08-31) — fuga de lectura y control de cuenta cruzando empresa,
-verificado en código:** `usuarios.service.ts::buildWhere` ahora sí acota por
-`Membresia` para un actor company-scoped (`actor.empresaId !== null` →
-`where.membresias = { some: { empresaId: actor.empresaId, activa: true } }`),
-y `assertUsuarioEnAlcance` (`usuarios.service.ts:366-376`) se llama antes de
-operar por `id` en `findUsuarioById` (línea 447), `updateUsuario` (línea
-468 — cubre también el reseteo de contraseña vía `input.password`, mismo
-`updateUsuario`) y la baja lógica dentro de la transacción (línea 547):
-lanza `userNotFound()` si el usuario objetivo no tiene una `Membresia` propia
-en la empresa del actor. El escenario descrito arriba (Administrador de
-Empresa A editando/reseteando la contraseña de un usuario de Empresa B) ya
-no es posible.
-**Seguí sin verificar, no cerrado acá:** el punto sobre `requireRole`
-(gate de rol en `usuarios.routes.ts`) comparando contra `Usuario.rol` legacy
-en vez de `Membresia.rol` -- el cutover de rol-por-membresía que sí tuvieron
-login (D0) y parte de leads (Bloque C). Es un hallazgo distinto (gate de
-acceso al endpoint, no aislamiento del dato objetivo) que no se confirmó en
-esta verificación.
 
 No estaba cubierto por el alcance original de este documento (`leads.access.ts`/
 `asignacion.service.ts`, ver "Enfoque de implementación" abajo) — se agrega acá
@@ -303,12 +258,10 @@ independientemente de cuánto avanzó la gestión del Lead que la originó.
 
 ## Canal de ingreso manual y catálogo dinámico (movido desde `docs/16` §8.4)
 
-> **Resuelto (2026-08-31)** — el backend real está mergeado en `test/gpt`
-> (`POST/GET /canales-manuales`, `PATCH /canales-manuales/:id`,
-> `canalManualId` en `POST /leads` y `POST /leads/carga-masiva`). El
-> frontend, construido originalmente como mock (ver "Contratos mock para
-> módulos dependientes" más abajo), se está conectando a los endpoints
-> reales.
+> **Diferido** — no bloquea el cierre esencial de este bloque; se construye
+> como módulo de catálogo con mock (ver "Contratos mock para módulos
+> dependientes" más abajo) contra el shape de abajo y se integra cuando se
+> agregue el endpoint real.
 
 ```prisma
 model CanalManual {
@@ -386,29 +339,6 @@ lead manual" + administración del catálogo de canales, contra el shape ya
 especificado (`nombre`, `activo`, `empresaId`) con datos fixture; wiring
 real cuando se agregue el endpoint.
 
-**Construido (2026-08-31, backend real conectado)**:
-`frontend/src/funcionalidades/leads/CargarLeadManualDialog.tsx`,
-`GestionarCanalesManualesDialog.tsx`, `canal-manual.api.ts`,
-`useCanalesManuales.ts`, botones nuevos en `LeadsPage.tsx` (exclusivo
-sesión `company`, gate de rol: Administrador/Supervisor/Asesor cargan,
-solo Administrador gestiona el catálogo). Ya no es mock: `canal-manual.api.ts`
-consume `GET/POST /canales-manuales` y `PATCH /canales-manuales/:id`, y
-`createLeadManualApi` consume `POST /leads` (`origen: MANUAL`) — ver
-`backend/src/routes/canal-manual.routes.ts`,
-`backend/src/services/canal-manual.service.ts` y
-`backend/src/services/leads-manual.service.ts`. El alta inserta un lead real
-y el listado de "Leads" se invalida/refresca solo al terminar. Ver
-`docs/23-alcance-funcional-manual-tecnico.md` ítem 33 para el detalle
-funcional completo.
-
-**Carga masiva de leads por Excel — mismo criterio, módulo separado**: no
-estaba en el contrato original de este bloque, pero se construyó bajo el
-mismo mock/diferido. `carga-masiva.api.ts`/`carga-masiva.utils.ts`
-(parseo con la dependencia `xlsx`, ver `AGENTS.md` §2.1) +
-`CargaMasivaLeadsDialog.tsx`/`useCargaMasiva.ts`. El endpoint real
-(`POST /leads/carga-masiva`) tiene contrato ya definido por Mateo pero no
-desplegado. Ver `docs/23-alcance-funcional-manual-tecnico.md` ítem 34.
-
 ## Migración (de `docs/14` §13, Fase 5)
 
 - Activar elegibilidad por membresía de empresa completa (D4), sin sub-filtro
@@ -438,14 +368,13 @@ desplegado. Ver `docs/23-alcance-funcional-manual-tecnico.md` ítem 34.
 
 ### Criterios diferidos, no bloqueantes
 
+- `CanalManual` y los orígenes manual/recomendación tienen implementación y
+  pruebas cuando se active ese módulo.
 - Las excepciones auditadas de Administrador/Supervisor (D9) se implementan
   con motivo, auditoría y el guard de membresía acordado.
 
-La ausencia de este entregable diferido no impide cerrar el núcleo
+La ausencia de estos dos entregables diferidos no impide cerrar el núcleo
 post-despliegue de D ni habilitar la dependencia técnica de Bloque E.
-`CanalManual` y los orígenes manual/recomendación dejaron de ser diferidos
-(2026-08-31): backend real mergeado, ver "Canal de ingreso manual y catálogo
-dinámico" arriba.
 
 ## Enfoque de implementación — capas existentes, sin reestructuración
 
@@ -499,19 +428,9 @@ de primer nivel nuevo:**
   carpeta de arquitectura nueva, es un módulo de negocio nuevo dentro del
   patrón de módulos ya existente (mismo criterio que agregar `bridges/` o
   `notificaciones/` en su momento).
-- **Actualización (2026-08-30, tras `0a0ab91`)**: la implementación real no
-  editó `CierreVentaForm.tsx`/`useAutorizacionLead` de `leads/` in situ como
-  preveía este plan — creó un flujo de cierre real separado bajo
-  `oportunidades/detalle/CierreVentaForm.tsx`. El formulario de cierre a
-  nivel `Lead` en `LeadDetallePage.tsx` sigue montado y funcionando sin
-  cambios. Esto **no es un mock sin reemplazar**: es la coexistencia
-  deliberada y temporal prevista por el criterio de no-regresión del propio
-  módulo de Oportunidad ("confirmar que crear/asignar/cerrar un `Lead`
-  normal sigue funcionando exactamente igual que antes de este módulo"),
-  hasta que se ejecute el "corte" de `Lead` (retirarle sus columnas de
-  negociación) como fase separada, todavía no arrancada y sujeta a
-  confirmación aparte — ver `docs/claude-negociacion-estado-actual.md`,
-  sección "Siguiente fase".
+- Reemplazo de los mocks ya construidos (`CierreVentaForm.tsx`,
+  `useAutorizacionLead`, ver "Contratos mock" arriba) por su fuente real —
+  edición de archivos ya existentes, no archivos nuevos.
 
 Ningún directorio se mueve ni se renombra. `routes/`, `controllers/`,
 `services/`, `repositories/` (backend) y `funcionalidades/<módulo>/`

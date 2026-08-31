@@ -1,13 +1,9 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  createEmpresaApi,
-  fetchEmpresaHoldingApi,
   fetchEmpresasHoldingApi,
   updateEmpresaAparienciaHoldingApi,
-  type CreateEmpresaInput,
   type EmpresaAparienciaHoldingView,
-  type EmpresasHoldingQueryParams,
   type UpdateEmpresaAparienciaHoldingInput,
 } from "./empresa-apariencia-holding.api";
 
@@ -20,37 +16,13 @@ export interface UpdateEmpresaAparienciaHoldingVariables {
 export const EMPRESAS_HOLDING_QUERY_KEY = "empresas-holding";
 
 /**
- * Listado paginado del gestor de empresas de holding (PASO 8,
- * `GET /empresas`, contrato server-side `page`/`pageSize`/`search` ->
- * `{ items, total }`). `keepPreviousData` evita el parpadeo a "cargando" al
- * cambiar de página o de término de búsqueda, mismo criterio que
- * `usuarios/useUsuarios.ts::useUsuarios`. Consumido por
- * `GestorEmpresasPage.tsx`.
+ * Listado del gestor de empresas de holding (PASO 8, `GET /empresas`).
+ * Consumido por `GestorEmpresasPage.tsx`.
  */
-export function useEmpresasHolding(params: EmpresasHoldingQueryParams = {}) {
+export function useEmpresasHolding() {
   return useQuery({
-    queryKey: [EMPRESAS_HOLDING_QUERY_KEY, params],
-    queryFn: () => fetchEmpresasHoldingApi(params),
-    placeholderData: keepPreviousData,
-  });
-}
-
-/** `queryKey` de una empresa puntual del holding -- ver `useEmpresaHolding`. */
-export const EMPRESA_HOLDING_QUERY_KEY = "empresa-holding";
-
-/**
- * Empresa puntual por id (`GET /empresas/:empresaId`, PASO 8). Distinta de
- * `useEmpresasHolding` (listado paginado): esta resuelve UNA `Empresa`
- * directo del servidor, sin buscar en memoria sobre un listado. `enabled`
- * evita disparar la query mientras `empresaId` todavía no está disponible
- * (ej. lectura de `useParams` en el primer render). Consumido por
- * `EmpresaDetallePage.tsx`.
- */
-export function useEmpresaHolding(empresaId: string | undefined) {
-  return useQuery({
-    queryKey: [EMPRESA_HOLDING_QUERY_KEY, empresaId],
-    queryFn: () => fetchEmpresaHoldingApi(empresaId as string),
-    enabled: Boolean(empresaId),
+    queryKey: [EMPRESAS_HOLDING_QUERY_KEY],
+    queryFn: fetchEmpresasHoldingApi,
   });
 }
 
@@ -72,24 +44,6 @@ export function useUpdateEmpresaAparienciaHolding() {
       updateEmpresaAparienciaHoldingApi(empresaId, input),
     onSuccess: (empresa: EmpresaAparienciaHoldingView) => {
       toast.success(`Apariencia de ${empresa.nombre} actualizada correctamente.`);
-      void queryClient.invalidateQueries({ queryKey: [EMPRESAS_HOLDING_QUERY_KEY] });
-    },
-  });
-}
-
-/**
- * Mutación de alta de empresa (docs/23 item 30, `POST /empresas`, exclusivo
- * sessionScope `holding` + rol `ADMINISTRADOR`). Invalida
- * `EMPRESAS_HOLDING_QUERY_KEY` igual que `useUpdateEmpresaAparienciaHolding`
- * -- el gestor de empresas (`GestorEmpresasPage.tsx`) refleja el alta sin
- * recargar la página. Consumida desde `CrearEmpresaHoldingDialog.tsx`.
- */
-export function useCreateEmpresaHolding() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateEmpresaInput) => createEmpresaApi(input),
-    onSuccess: (empresa: EmpresaAparienciaHoldingView) => {
-      toast.success(`${empresa.nombre} creada correctamente.`);
       void queryClient.invalidateQueries({ queryKey: [EMPRESAS_HOLDING_QUERY_KEY] });
     },
   });
