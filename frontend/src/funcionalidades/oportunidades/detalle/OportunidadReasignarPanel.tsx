@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
 import type { Oportunidad } from "@/tipos/oportunidad";

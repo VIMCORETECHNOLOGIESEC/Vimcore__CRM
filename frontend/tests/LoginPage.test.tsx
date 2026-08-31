@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/httpClient";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/configuracion-empresa/configuracion-empresa.api", () => ({
@@ -24,7 +24,7 @@ vi.mock("@/funcionalidades/configuracion-empresa/marca-publica.api", () => ({
   obtenerMarcaPublicaConFallback: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { fetchConfiguracionEmpresaApi, CONFIGURACION_EMPRESA_DEFAULT } = await import(
   "@/funcionalidades/configuracion-empresa/configuracion-empresa.api"
 );

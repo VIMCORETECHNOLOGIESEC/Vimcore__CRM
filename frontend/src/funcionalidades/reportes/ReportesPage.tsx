@@ -8,7 +8,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import {
   buildMetricasFiltros,
   FILTROS_DASHBOARD_VACIOS,

@@ -9,7 +9,7 @@ import {
   type FiltrosState,
 } from "@/funcionalidades/oportunidades/oportunidades.utils";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   ),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { OportunidadesFiltros } = await import(
   "@/funcionalidades/oportunidades/OportunidadesFiltros"
 );

@@ -26,7 +26,7 @@ import { resolveMarcaCompleta } from "@/lib/color-marca";
 // esta página que lleva esa clase.
 import "@/temas/variante-empresarial/tema-empresarial.css";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
-import { useAuth } from "./authContext";
+import { useAuth } from "./auth-context";
 import { getLandingRoute } from "./permissions";
 
 type LoginFormValues = z.infer<typeof loginBodySchema>;

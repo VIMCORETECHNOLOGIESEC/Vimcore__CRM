@@ -28,11 +28,11 @@ vi.mock("react-joyride", async () => {
   };
 });
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { LeadsNavigationTutorialProvider } = await import(
   "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial"
 );

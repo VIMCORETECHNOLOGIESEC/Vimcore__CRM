@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { RolUsuario } from "@/tipos/usuario";
-import { useAuth } from "./authContext";
+import { useAuth } from "./auth-context";
 import { changePasswordApi } from "./autenticacion.api";
 
 // `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (Bloque F): ver el docblock de

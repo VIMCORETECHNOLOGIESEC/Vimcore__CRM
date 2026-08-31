@@ -1,5 +1,5 @@
 import { usePageHeader } from "@/layouts/PageHeaderContext";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { EmpresaAparienciaForm } from "./EmpresaAparienciaForm";
 import { useUpdateEmpresaApariencia } from "./useEmpresaApariencia";
 

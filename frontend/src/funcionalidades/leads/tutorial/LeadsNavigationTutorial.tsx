@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ACTIONS, EVENTS, Joyride, STATUS, type EventData, type Step } from "react-joyride";
 import { useLocation, useNavigate } from "react-router";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 
 type TutorialTransitionAction = { action: "open-workspace" | "select-tab"; tab?: string };

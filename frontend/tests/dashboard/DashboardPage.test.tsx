@@ -7,7 +7,7 @@ import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
 /**
  * `DashboardPage` -- docs/23 item 14, "Dashboard con filtro por empresa
- * (holding)". `metricas.api`/`leads.api` (catálogos)/`authContext` van
+ * (holding)". `metricas.api`/`leads.api` (catálogos)/`auth-context` van
  * mockeados, mismo criterio que `tests/reportes/ReportesPage.test.tsx`. El
  * listado de empresas del selector (`empresa-apariencia-holding.api`) también
  * va mockeado -- `SelectorEmpresaDashboard` ya tiene su propio test unitario
@@ -66,14 +66,14 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   getCatalogoCampanias: vi.fn(() => []),
   getCatalogoResponsables: vi.fn(() => Promise.resolve([])),
 }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
   fetchEmpresasHoldingApi: vi.fn(),
 }));
 
 const metricasApi = await import("@/funcionalidades/dashboard/metricas.api");
 const empresasApi = await import("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { DashboardPage } = await import("@/funcionalidades/dashboard/DashboardPage");
 
 const useAuthMock = vi.mocked(useAuth);

@@ -13,14 +13,14 @@ vi.mock("@/funcionalidades/oportunidades/oportunidades.api", () => ({
   crearProductoApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("@/funcionalidades/leads/leads.api", () => ({
   getCatalogoResponsables: vi.fn(() =>
     Promise.resolve([{ id: "asesor-1", nombre: "Marta Herrera" }]),
   ),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const oportunidadesApi = await import("@/funcionalidades/oportunidades/oportunidades.api");
 const { OportunidadesPage } = await import(
   "@/funcionalidades/oportunidades/OportunidadesPage"

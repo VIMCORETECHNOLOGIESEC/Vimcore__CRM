@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { CampanaNotificaciones } from "@/funcionalidades/notificaciones/CampanaNotificaciones";
 import { usePageHeaderValue } from "./PageHeaderContext";
 

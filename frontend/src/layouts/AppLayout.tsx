@@ -2,7 +2,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { Outlet } from "react-router";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
 import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
 import { useSplashGate } from "@/hooks/useSplashGate";

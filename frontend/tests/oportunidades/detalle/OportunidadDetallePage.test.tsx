@@ -8,7 +8,7 @@ import type { RolUsuario } from "@/tipos/usuario";
 
 vi.mock("@/layouts/PageHeaderContext", () => ({ usePageHeader: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("@/funcionalidades/leads/leads.api", () => ({
   getCatalogoResponsables: vi.fn(() =>
     Promise.resolve([{ id: "asesor-2", nombre: "Julián Peña" }]),
@@ -22,7 +22,7 @@ vi.mock("@/funcionalidades/oportunidades/detalle/useOportunidadDetalle", () => (
   useReasignarOportunidad: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const hook = await import("@/funcionalidades/oportunidades/detalle/useOportunidadDetalle");
 const { OportunidadDetallePage } = await import(
   "@/funcionalidades/oportunidades/detalle/OportunidadDetallePage"

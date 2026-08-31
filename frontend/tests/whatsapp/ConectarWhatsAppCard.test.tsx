@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * `useVistaEmpresa` real sobre `MemoryRouter` (para probar el `?empresaId=`
  * de verdad, sin duplicar ese mecanismo).
  */
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("@/funcionalidades/whatsapp/whatsapp.api", () => ({
   iniciarConexionWhatsAppApi: vi.fn(),
 }));
@@ -21,7 +21,7 @@ vi.mock("@/funcionalidades/whatsapp/whatsapp.utils", () => ({
   guardarEmpresaFlujo: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { iniciarConexionWhatsAppApi } = await import("@/funcionalidades/whatsapp/whatsapp.api");
 const { redirectTo, guardarEmpresaFlujo } = await import("@/funcionalidades/whatsapp/whatsapp.utils");
 const { ConectarWhatsAppCard } = await import("@/funcionalidades/whatsapp/ConectarWhatsAppCard");

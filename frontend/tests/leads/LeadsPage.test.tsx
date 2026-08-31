@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
 import type { RolUsuario } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   ),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { fetchLeadsApi, assignLeadsMasivoApi, fetchRedesSocialesCatalogoApi } = await import(
   "@/funcionalidades/leads/leads.api"
 );

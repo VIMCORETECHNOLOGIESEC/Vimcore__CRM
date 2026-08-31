@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -37,7 +37,7 @@ vi.mock("@/funcionalidades/leads/detalle/CierreNoVentaForm", () => ({
   CierreNoVentaForm: () => <div>Cierre no venta mock</div>,
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useLeadDetalle } = await import("@/funcionalidades/leads/detalle/useLeadDetalle");
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 

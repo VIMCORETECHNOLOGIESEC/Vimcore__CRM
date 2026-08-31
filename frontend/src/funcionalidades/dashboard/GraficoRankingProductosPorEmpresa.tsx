@@ -2,7 +2,7 @@ import { Info } from "lucide-react";
 import { useMemo } from "react";
 import { Bar, BarChart, Cell, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
 import type { MetricasRankingProductoPorEmpresa } from "@/tipos/metricas";
 import { PaginadorGrafico } from "./PaginadorGrafico";

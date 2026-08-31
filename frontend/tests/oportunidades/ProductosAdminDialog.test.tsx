@@ -10,10 +10,10 @@ vi.mock("@/funcionalidades/oportunidades/oportunidades.api", () => ({
   crearProductoApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 
 const oportunidadesApi = await import("@/funcionalidades/oportunidades/oportunidades.api");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { ProductosAdminDialog } = await import(
   "@/funcionalidades/oportunidades/ProductosAdminDialog"
 );

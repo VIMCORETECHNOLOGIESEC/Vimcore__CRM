@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionScope } from "@/tipos/usuario";
 import { FILTROS_USUARIOS_VACIOS, type UsuariosFiltrosState } from "@/funcionalidades/usuarios/usuarios.utils";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { UsuariosFiltros } = await import("@/funcionalidades/usuarios/UsuariosFiltros");
 
 const useAuthMock = vi.mocked(useAuth);

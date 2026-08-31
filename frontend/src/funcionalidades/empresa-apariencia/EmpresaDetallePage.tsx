@@ -5,7 +5,7 @@ import { getErrorMessage } from "@/api/httpClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { CrearAdministradorEmpresaDialog } from "@/funcionalidades/usuarios/CrearAdministradorEmpresaDialog";
 import { useCreateEmpresaAdministrador } from "@/funcionalidades/usuarios/useUsuarios";
 import { usePageHeader } from "@/layouts/PageHeaderContext";

@@ -6,7 +6,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { NuevaOportunidadButton } from "@/funcionalidades/oportunidades/NuevaOportunidadButton";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AccionesResponsable } from "./AccionesResponsable";

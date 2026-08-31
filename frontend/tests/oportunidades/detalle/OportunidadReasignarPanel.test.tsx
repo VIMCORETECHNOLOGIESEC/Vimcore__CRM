@@ -8,7 +8,7 @@ import type { RolUsuario } from "@/tipos/usuario";
 
 vi.mock("@/funcionalidades/oportunidades/detalle/oportunidadDetalle.api");
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("@/funcionalidades/leads/leads.api", () => ({
   getCatalogoResponsables: vi.fn(() =>
     Promise.resolve([
@@ -20,7 +20,7 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
 
 const api = await import("@/funcionalidades/oportunidades/detalle/oportunidadDetalle.api");
 const leadsApi = await import("@/funcionalidades/leads/leads.api");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { OportunidadReasignarPanel } = await import(
   "@/funcionalidades/oportunidades/detalle/OportunidadReasignarPanel"
 );

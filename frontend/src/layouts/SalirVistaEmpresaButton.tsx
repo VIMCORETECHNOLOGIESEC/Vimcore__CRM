@@ -1,6 +1,6 @@
 import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 
 /**

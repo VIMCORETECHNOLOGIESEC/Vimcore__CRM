@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia.api", () => ({
@@ -12,7 +12,7 @@ vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia.api", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const empresaAparienciaApi = await import(
   "@/funcionalidades/empresa-apariencia/empresa-apariencia.api"
 );

@@ -13,7 +13,7 @@ vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", (
 vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
   useVistaEmpresa: vi.fn(),
 }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   createEmpresaAdministradorApi: vi.fn(),
 }));
@@ -23,7 +23,7 @@ const empresaAparienciaHoldingApi = await import(
   "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api"
 );
 const { useVistaEmpresa } = await import("@/funcionalidades/empresa-apariencia/useVistaEmpresa");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const usuariosApi = await import("@/funcionalidades/usuarios/usuarios.api");
 const { toast } = await import("sonner");
 const { EmpresaDetallePage } = await import(

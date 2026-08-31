@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import type { ReporteJob, ReporteParametros, TipoReporte } from "@/tipos/reporte";
 import {
   crearReporteJobApi,

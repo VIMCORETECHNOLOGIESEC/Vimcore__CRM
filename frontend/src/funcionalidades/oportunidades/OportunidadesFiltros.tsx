@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
 import type { EtapaLead } from "@/tipos/lead";

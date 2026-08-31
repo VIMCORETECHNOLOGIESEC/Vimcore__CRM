@@ -18,7 +18,7 @@ vi.mock("@/api/httpClient", () => ({
 const authApi = await import("@/funcionalidades/autenticacion/autenticacion.api");
 const httpClientModule = await import("@/api/httpClient");
 const { AuthProvider } = await import("@/funcionalidades/autenticacion/AuthContext");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 // Fix "boot desincronizado" -- cache de marca en `localStorage`, no mockeada
 // acá a propósito: los tests de este bloque verifican la integración real
 // contra `localStorage`, igual criterio que `httpClient.test.ts` con

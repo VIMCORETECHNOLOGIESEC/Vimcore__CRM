@@ -20,7 +20,7 @@ vi.mock("@/funcionalidades/reportes/reportes.api", () => ({
 }));
 
 let userId: string | null = "u1";
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: () => ({ user: userId ? { id: userId } : null }),
 }));
 

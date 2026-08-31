@@ -24,7 +24,7 @@ vi.mock("react-joyride", async () => {
   };
 });
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -57,7 +57,7 @@ vi.mock("@/funcionalidades/leads/detalle/CierreNoVentaForm", () => ({
 }));
 
 const { ACTIONS, EVENTS } = await import("react-joyride");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useLeadDetalle } = await import("@/funcionalidades/leads/detalle/useLeadDetalle");
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 const {

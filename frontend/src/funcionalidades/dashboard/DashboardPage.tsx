@@ -5,7 +5,7 @@ import type { Comparativa, ResumenMetricas } from "@/tipos/metricas";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";

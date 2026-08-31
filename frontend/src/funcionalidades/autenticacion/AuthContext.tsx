@@ -5,7 +5,7 @@ import { persistMarcaConocida } from "@/lib/marca-cache";
 import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
 import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
-import { AuthContext, type AuthContextValue } from "./authContext";
+import { AuthContext, type AuthContextValue } from "./auth-context";
 
 /**
  * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver

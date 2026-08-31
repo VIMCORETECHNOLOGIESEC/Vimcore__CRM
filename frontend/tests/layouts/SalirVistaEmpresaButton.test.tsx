@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useSearchParams } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { SalirVistaEmpresaButton } = await import("@/layouts/SalirVistaEmpresaButton");
 
 /**

@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { foregroundForContrast, hexToRgbTriplet } from "@/lib/color-marca";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa", () => ({
@@ -32,7 +32,7 @@ vi.mock("@/funcionalidades/leads/tutorial/LeadsNavigationTutorial", () => ({
   },
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useConfiguracionEmpresa } = await import(
   "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
 );

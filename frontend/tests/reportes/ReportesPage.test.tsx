@@ -24,11 +24,11 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   getCatalogoCampanias: vi.fn(() => []),
   getCatalogoResponsables: vi.fn(() => Promise.resolve([])),
 }));
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const api = await import("@/funcionalidades/reportes/reportes.api");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { toast } = await import("sonner");
 const { ReportesPage } = await import("@/funcionalidades/reportes/ReportesPage");
 

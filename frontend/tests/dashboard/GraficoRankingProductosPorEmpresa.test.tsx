@@ -14,9 +14,9 @@ import type { MetricasRankingProductoPorEmpresa } from "@/tipos/metricas";
  * patrón que `ConectarWhatsAppCard.tsx` (`esHoldingWide = user?.sessionScope
  * === "holding"`) -- no se inventa un mecanismo nuevo.
  */
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { GraficoRankingProductosPorEmpresa } = await import(
   "@/funcionalidades/dashboard/GraficoRankingProductosPorEmpresa"
 );

@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { Notificacion } from "@/tipos/notificacion";
 
 let userId = "u1";
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: () => ({ user: userId ? { id: userId } : null }),
 }));
 vi.mock("@/funcionalidades/notificaciones/notificaciones.sse", () => ({
