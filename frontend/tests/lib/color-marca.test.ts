@@ -162,21 +162,26 @@ describe("resolveEstilosMarca", () => {
       undefined,
     );
     expect(estilos).toEqual({
-      "--primary": "37 99 235",
-      "--primary-foreground": "255 255 255",
-      "--ring": "37 99 235",
-      "--sidebar-primary": "37 99 235",
-      "--sidebar-primary-foreground": "255 255 255",
-      "--sidebar-accent": "37 99 235",
-      "--sidebar-accent-foreground": "255 255 255",
-      // CONFIGURACION_EMPRESA_DEFAULT.colorPrimario = "--vimcore" = "30 42 94"
+      // Línea gráfica ARCANO CRM: colorSecundario default ("#B98A4E" ->
+      // "185 138 78") alimenta los 4 tokens de acento; su foreground lo
+      // calcula `foregroundForContrast` (variante oscura de esa tonalidad,
+      // blanco falla AA contra el dorado -- ver docs/branding/arcano-linea-
+      // grafica.md), no queda fijo en blanco.
+      "--primary": "185 138 78",
+      "--primary-foreground": "55 40 22",
+      "--ring": "185 138 78",
+      "--sidebar-primary": "185 138 78",
+      "--sidebar-primary-foreground": "55 40 22",
+      "--sidebar-accent": "185 138 78",
+      "--sidebar-accent-foreground": "55 40 22",
+      // CONFIGURACION_EMPRESA_DEFAULT.colorPrimario = "#241F1B" -> "36 31 27"
       // (constante propia, no relacionada con `foregroundForContrast`).
-      "--sidebar": "30 42 94",
+      "--sidebar": "36 31 27",
       "--sidebar-foreground": "255 255 255",
       "--sidebar-border": "255 255 255",
       "--sidebar-ring": "255 255 255",
-      // colorSecundario default ("#2563eb" -> "37 99 235") evaluado contra APP_BACKGROUND.
-      "--marca-texto-contenido": "6 26 70",
+      // colorSecundario default ("#B98A4E" -> "185 138 78") evaluado contra APP_BACKGROUND.
+      "--marca-texto-contenido": "55 40 22",
     });
   });
 
@@ -185,7 +190,7 @@ describe("resolveEstilosMarca", () => {
       { ...usuarioBase, empresaColorPrimario: null, empresaColorSecundario: null },
       undefined,
     );
-    expect(estilos?.["--primary"]).toBe("37 99 235");
+    expect(estilos?.["--primary"]).toBe("185 138 78");
   });
 
   it("usuario null no devuelve overrides (sesion sin resolver todavia)", () => {
@@ -250,8 +255,8 @@ describe("resolveEstilosMarcaEmpresaVista (vista viva de una Empresa puntual)", 
 
   it("con colorPrimario/colorSecundario null (empresa sin marca propia), cae al default de fábrica -- nunca un color inventado", () => {
     const estilos = resolveEstilosMarcaEmpresaVista({ colorPrimario: null, colorSecundario: null });
-    expect(estilos["--primary"]).toBe("37 99 235");
-    expect(estilos["--sidebar"]).toBe("30 42 94");
+    expect(estilos["--primary"]).toBe("185 138 78");
+    expect(estilos["--sidebar"]).toBe("36 31 27");
   });
 
   it("nunca devuelve undefined (a diferencia de resolveEstilosMarca, no depende de una sesión sin resolver)", () => {
@@ -308,11 +313,11 @@ describe("resolveNombreMarca (PASO 7)", () => {
 
   it("nivel 3 -- sin nombre de sesion y sin config de holding cae al default de fábrica", () => {
     const usuario = { ...usuarioBase, sessionScope: "holding" as const, empresaNombre: null };
-    expect(resolveNombreMarca(usuario, undefined)).toBe("CRM Embudo de Leads");
+    expect(resolveNombreMarca(usuario, undefined)).toBe("ARCANO CRM");
   });
 
   it("usuario null cae al default de fábrica", () => {
-    expect(resolveNombreMarca(null, undefined)).toBe("CRM Embudo de Leads");
+    expect(resolveNombreMarca(null, undefined)).toBe("ARCANO CRM");
     expect(resolveNombreMarca(null, holdingConNombre)).toBe("Holding En Vivo");
   });
 });
@@ -378,17 +383,17 @@ describe("resolveMarcaCompleta (fix splash duplicado)", () => {
       empresaColorSecundario: null,
     };
     expect(resolveMarcaCompleta(usuario, undefined)).toEqual({
-      nombre: "CRM Embudo de Leads",
-      "--marca-color-1": "#1e2a5e",
-      "--marca-color-2": "#2563eb",
+      nombre: "ARCANO CRM",
+      "--marca-color-1": "#241F1B",
+      "--marca-color-2": "#B98A4E",
     });
   });
 
   it("usuario null cae al default de fábrica para las 3 variables", () => {
     expect(resolveMarcaCompleta(null, undefined)).toEqual({
-      nombre: "CRM Embudo de Leads",
-      "--marca-color-1": "#1e2a5e",
-      "--marca-color-2": "#2563eb",
+      nombre: "ARCANO CRM",
+      "--marca-color-1": "#241F1B",
+      "--marca-color-2": "#B98A4E",
     });
   });
 });

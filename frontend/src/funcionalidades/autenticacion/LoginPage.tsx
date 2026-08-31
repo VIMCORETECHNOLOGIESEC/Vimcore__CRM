@@ -222,7 +222,7 @@ export function LoginPage() {
           </div>
         )}
         <p className="headline text-lg font-semibold tracking-wide !text-[var(--papel)]">
-          CRM Embudo de Leads
+          ARCANO CRM
         </p>
       </div>
 

@@ -32,17 +32,24 @@ export interface ConfiguracionEmpresa {
 export type UpdateConfiguracionEmpresaInput = Partial<ConfiguracionEmpresa>;
 
 /**
- * Defaults si nunca se configuró nada -- mismos valores que ya devuelve el
- * backend por defecto (contrato confirmado) y que hoy están hardcodeados en
- * el tema empresarial (`tema-empresarial.css`, `--indigo`/`--cat-2`). Se usa
- * como *fallback* del frontend cuando `GET /configuracion-empresa` falla o
- * no llega a tiempo (ver `LoginPage.tsx`), nunca como sustituto silencioso
- * de una respuesta exitosa del backend.
+ * Defaults si nunca se configuró nada -- se usa como *fallback* del frontend
+ * cuando `GET /configuracion-empresa` falla o no llega a tiempo (ver
+ * `LoginPage.tsx`), nunca como sustituto silencioso de una respuesta exitosa
+ * del backend.
+ *
+ * Línea gráfica ARCANO CRM (rebrandeo de cliente, `docs/branding/arcano-
+ * linea-grafica.md` en la rama `cliente/arcano-crm`): grafito `#241F1B`
+ * (`--arcano-graphite-900`) + dorado `#B98A4E` (`--arcano-gold`), paleta
+ * extraída del isotipo del cliente y verificada por contraste WCAG en ese
+ * doc. Ya NO coincide con el default de fábrica del backend ("CRM Embudo de
+ * Leads", `#1e2a5e`/`#2563eb`) -- divergencia intencional para este cliente,
+ * solo visible en el instante breve de un fallback (el nombre/color real en
+ * uso normal viaja siempre por `GET /configuracion-empresa`).
  */
 export const CONFIGURACION_EMPRESA_DEFAULT: ConfiguracionEmpresa = {
-  nombre: "CRM Embudo de Leads",
-  colorPrimario: "#1e2a5e",
-  colorSecundario: "#2563eb",
+  nombre: "ARCANO CRM",
+  colorPrimario: "#241F1B",
+  colorSecundario: "#B98A4E",
   logoUrl: null,
 };
 

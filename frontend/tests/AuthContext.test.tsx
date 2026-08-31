@@ -552,8 +552,8 @@ describe("AuthContext — cache de marca conocida (fix boot desincronizado)", ()
     expect(getMarcaConocida()).toEqual({
       empresaId: "empresa-a",
       nombre: "Empresa A",
-      colorPrimario: "#1e2a5e",
-      colorSecundario: "#2563eb",
+      colorPrimario: "#241F1B",
+      colorSecundario: "#B98A4E",
     });
   });
 
@@ -570,7 +570,7 @@ describe("AuthContext — cache de marca conocida (fix boot desincronizado)", ()
       await result.current.login("ana@crm.test", "clave-segura");
     });
 
-    expect(getMarcaConocida()?.nombre).toBe("CRM Embudo de Leads");
+    expect(getMarcaConocida()?.nombre).toBe("ARCANO CRM");
   });
 
   it("si el perfil es inconsistente (falla cerrado), no persiste ninguna marca", async () => {

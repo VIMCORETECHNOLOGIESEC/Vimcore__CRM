@@ -38,7 +38,18 @@
     --card-foreground: 63 63 70;
     --popover: 255 255 255;
     --popover-foreground: 63 63 70;
-    --primary: 37 99 235;
+    /* Línea gráfica ARCANO CRM (rebrandeo de cliente, docs/branding/arcano-
+       linea-grafica.md en la rama cliente/arcano-crm): grafito/dorado
+       extraído del isotipo del cliente, reemplaza el azul vimcore genérico
+       en los tokens estáticos de fallback (pre-login / antes de que
+       resuelva la config dinámica por tenant, `color-marca.ts`). */
+    --arcano-graphite-900: 36 31 27;
+    --arcano-gold: 185 138 78;
+    /* `--arcano-gold-deep` (no `--arcano-gold`): blanco sobre gold plano da
+       3.08:1, falla AA texto (ver el doc de arriba) -- gold-deep da 7.98:1,
+       seguro para el pill sólido con texto blanco de abajo. */
+    --arcano-gold-deep: 107 74 37;
+    --primary: 36 31 27;
     --primary-foreground: 255 255 255;
     --secondary: 233 231 225;
     --secondary-foreground: 63 63 70;
@@ -50,7 +61,7 @@
     --destructive-foreground: 255 255 255;
     --border: 226 223 214;
     --input: 226 223 214;
-    --ring: 37 99 235;
+    --ring: 36 31 27;
     /* Token de éxito para acciones (ej. cierre de venta), separado de
        --semaforo-frio: ese verde está reservado al chip de semáforo con
        etiqueta de texto (docs/09 §3) y nunca se usa de forma decorativa. */
@@ -102,13 +113,17 @@
 
     /*
      * Marca "vimcore" (sidebar, inspirada en la variante empresarial):
-     * chrome indigo sólido, texto hueso, pill activa azul --1029.
-     * Canales RGB crudos como el resto de los tokens (ver nota de :root).
+     * chrome grafito sólido (línea gráfica ARCANO CRM), texto hueso, pill
+     * activa dorado-oscuro. Canales RGB crudos como el resto de los tokens
+     * (ver nota de :root). El acento usa `--arcano-gold-deep`
+     * (107 74 37), no `--arcano-gold` plano: sobre este mismo fondo
+     * grafito necesita distinguirse Y seguir dando AA con texto blanco
+     * encima (ver el comentario de `--arcano-gold-deep` más arriba).
      */
-    --vimcore: 30 42 94;
-    --vimcore-2: 20 32 74;
+    --vimcore: 36 31 27;
+    --vimcore-2: 27 23 20;
     --vimcore-hueso: 245 243 238;
-    --vimcore-accent: 37 99 235;
+    --vimcore-accent: 107 74 37;
     --vimcore-accent-foreground: 255 255 255;
   }
 }

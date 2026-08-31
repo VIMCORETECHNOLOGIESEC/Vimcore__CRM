@@ -79,8 +79,8 @@ describe("marca-cache — persistMarcaConocida", () => {
     expect(getMarcaConocida()).toEqual({
       empresaId: "empresa-b",
       nombre: "Empresa B",
-      colorPrimario: "#1e2a5e",
-      colorSecundario: "#2563eb",
+      colorPrimario: "#241F1B",
+      colorSecundario: "#B98A4E",
     });
   });
 
@@ -89,9 +89,9 @@ describe("marca-cache — persistMarcaConocida", () => {
 
     expect(getMarcaConocida()).toEqual({
       empresaId: null,
-      nombre: "CRM Embudo de Leads",
-      colorPrimario: "#1e2a5e",
-      colorSecundario: "#2563eb",
+      nombre: "ARCANO CRM",
+      colorPrimario: "#241F1B",
+      colorSecundario: "#B98A4E",
     });
   });
 
@@ -99,7 +99,7 @@ describe("marca-cache — persistMarcaConocida", () => {
     persistMarcaConocida(usuarioCompanyConColorPropio);
     persistMarcaConocida(usuarioHolding);
 
-    expect(getMarcaConocida()?.nombre).toBe("CRM Embudo de Leads");
+    expect(getMarcaConocida()?.nombre).toBe("ARCANO CRM");
   });
 });
 

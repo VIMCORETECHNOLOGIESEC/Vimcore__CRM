@@ -84,11 +84,11 @@ describe("configuracion-empresa.api", () => {
     expect(resultado).toBe("https://cdn.miempresa.com/logo.png");
   });
 
-  it("expone los defaults documentados como fallback", () => {
+  it("expone los defaults documentados como fallback (línea gráfica ARCANO CRM)", () => {
     expect(CONFIGURACION_EMPRESA_DEFAULT).toEqual({
-      nombre: "CRM Embudo de Leads",
-      colorPrimario: "#1e2a5e",
-      colorSecundario: "#2563eb",
+      nombre: "ARCANO CRM",
+      colorPrimario: "#241F1B",
+      colorSecundario: "#B98A4E",
       logoUrl: null,
     });
   });
