@@ -2,6 +2,7 @@ import { createHash, randomBytes as nodeRandomBytes } from "node:crypto";
 import { env } from "../../config/env.js";
 import { AppError } from "../../lib/app-error.js";
 import { decrypt, encrypt } from "../../lib/cifrado-token.js";
+import { logger } from "../../lib/logger.js";
 import { runWithTenantContext } from "../../lib/prisma.js";
 import * as conexionRepository from "../../repositories/metaAds/cuenta-anuncios-conexion.repository.js";
 import type { CuentaAnunciosConexionSafe } from "../../repositories/metaAds/cuenta-anuncios-conexion.repository.js";
@@ -18,7 +19,7 @@ import type {
   MetaAdsOAuthStartDto,
 } from "../../types/metaAds/meta-ads-oauth.dto.js";
 import { GRAPH_API_BASE_URL } from "../meta-webhook.service.js";
-import { MetaMarketingApiClient } from "./meta-marketing-api.service.js";
+import { MetaAdsApiError, MetaMarketingApiClient } from "./meta-marketing-api.service.js";
 
 const OFFICIAL_AUTH_DIALOG_BASE_URL = "https://www.facebook.com/dialog/oauth";
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
@@ -150,7 +151,22 @@ export async function completeMetaAdsOAuthCallback(
   }
 
   const tokenResponse = await exchangeAuthorizationCode(callback.code, redirectUri);
-  const cuentas = await new MetaMarketingApiClient(tokenResponse.accessToken).discoverAdAccounts().catch(() => {
+  const cuentas = await new MetaMarketingApiClient(tokenResponse.accessToken).discoverAdAccounts().catch((error: unknown) => {
+    // Fix (visibilidad, 2026-08-31): antes este catch descartaba el error
+    // real sin dejar rastro -- un 502 quedaba indistinguible de cualquier
+    // causa (permiso faltante, cuenta sin ads_read, token sin scope
+    // suficiente para /me/adaccounts pese a pasar la validación de scope
+    // del intercambio, error transitorio de Graph API). Nunca se expone al
+    // cliente HTTP (el mensaje de arriba sigue siendo genérico) -- solo se
+    // loguea para poder diagnosticar sin adivinar.
+    if (error instanceof MetaAdsApiError) {
+      logger.error(
+        { kind: error.kind, status: error.status, body: error.body },
+        "meta-ads-oauth: fallo discoverAdAccounts",
+      );
+    } else {
+      logger.error({ err: error }, "meta-ads-oauth: fallo inesperado en discoverAdAccounts");
+    }
     throw new AppError("meta_ads_descubrimiento_fallido", 502, "No se pudieron consultar las cuentas de anuncios disponibles");
   });
 

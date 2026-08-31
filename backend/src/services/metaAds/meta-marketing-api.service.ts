@@ -3,8 +3,22 @@ import { GRAPH_API_BASE_URL } from "../meta-webhook.service.js";
 
 export type MetaAdsErrorKind = "token_expired" | "transient" | "permanent";
 
+/**
+ * Fix (visibilidad, 2026-08-31): `status`/`body` opcionales, solo para
+ * diagnóstico interno (nunca se exponen al cliente HTTP -- los mensajes de
+ * error de este archivo ya son genéricos a propósito). Antes `classify`
+ * tenía el body real de Graph API en la mano y lo descartaba sin dejar
+ * rastro -- un 502 "no se pudieron consultar las cuentas" quedaba
+ * indistinguible de cualquier otra causa (permiso faltante, cuenta sin
+ * `ads_read`, error transitorio, respuesta malformada) sin poder
+ * diagnosticarlo desde los logs.
+ */
 export class MetaAdsApiError extends Error {
-  constructor(public readonly kind: MetaAdsErrorKind) {
+  constructor(
+    public readonly kind: MetaAdsErrorKind,
+    public readonly status?: number,
+    public readonly body?: unknown,
+  ) {
     super(kind === "token_expired" ? "Meta Ads token expired" : "Meta Ads API request failed");
     this.name = "MetaAdsApiError";
   }
@@ -109,6 +123,10 @@ export class MetaMarketingApiClient {
 
   private async getJson<T>(url: URL): Promise<T> {
     let ultimoError: MetaAdsErrorKind = "permanent";
+    // Fix (visibilidad, 2026-08-31): se conservan para el `MetaAdsApiError`
+    // final -- ver el comentario de esa clase.
+    let ultimoStatus: number | undefined;
+    let ultimoBody: unknown;
     const urlWithToken = appendAccessToken(url, this.accessToken);
 
     for (let intento = 1; intento <= MAX_INTENTOS_TRANSITORIOS; intento++) {
@@ -120,7 +138,9 @@ export class MetaMarketingApiClient {
         if (response.ok) return body as T;
 
         ultimoError = classify(response.status, body);
-        if (ultimoError !== "transient") throw new MetaAdsApiError(ultimoError);
+        ultimoStatus = response.status;
+        ultimoBody = body;
+        if (ultimoError !== "transient") throw new MetaAdsApiError(ultimoError, ultimoStatus, ultimoBody);
 
         const quedanReintentos = intento < MAX_INTENTOS_TRANSITORIOS;
         if (quedanReintentos) {
@@ -129,12 +149,14 @@ export class MetaMarketingApiClient {
       } catch (error) {
         if (error instanceof MetaAdsApiError) throw error;
         ultimoError = "transient";
+        ultimoStatus = undefined;
+        ultimoBody = error instanceof Error ? error.message : String(error);
         const quedanReintentos = intento < MAX_INTENTOS_TRANSITORIOS;
         if (quedanReintentos) await this.dependencies.sleep(BACKOFF_MS[intento - 1] as number);
       }
     }
 
-    throw new MetaAdsApiError(ultimoError);
+    throw new MetaAdsApiError(ultimoError, ultimoStatus, ultimoBody);
   }
 
   private async getPaginated<T>(initialUrl: URL): Promise<T[]> {
