@@ -9,6 +9,7 @@ import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import type {
+  AdminUsuarioListView,
   AdminUsuarioView,
   ResponsableView,
   UpdateUsuarioData,
@@ -344,7 +345,7 @@ export async function createEmpresaAdministrador(
 }
 
 export interface FindUsuariosResult {
-  usuarios: AdminUsuarioView[];
+  usuarios: AdminUsuarioListView[];
   total: number;
   pagina: number;
   limite: number;

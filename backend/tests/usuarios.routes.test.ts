@@ -225,6 +225,30 @@ describe("GET /api/v1/usuarios y GET /api/v1/usuarios/:id", () => {
   });
 });
 
+describe("GET /api/v1/usuarios — subtítulo de empresa por usuario (Josu, panel de holding)", () => {
+  it("200 incluye 'empresas' con la Membresia activa del usuario", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ busqueda: "Vendedor Integración" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    const encontrado = respuesta.body.users.find((u: { id: string }) => u.id === vendedorId);
+    expect(encontrado.empresas).toEqual([{ id: empresaId, nombre: "Empresa Integración CRUD" }]);
+  });
+
+  it("200 triangulación: un usuario sin ninguna Membresia devuelve 'empresas' vacío", async () => {
+    const respuesta = await request(app)
+      .get("/api/v1/usuarios")
+      .query({ busqueda: "Admin Integración" })
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(respuesta.status).toBe(200);
+    const encontrado = respuesta.body.users.find((u: { correo: string }) => u.correo === "admin-crud@integracion.test");
+    expect(encontrado.empresas).toEqual([]);
+  });
+});
+
 describe("GET /api/v1/usuarios — filtros y paginación", () => {
   let filtroBusquedaId: string;
 
