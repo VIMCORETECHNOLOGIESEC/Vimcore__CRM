@@ -266,9 +266,9 @@ export async function regenerateClave(usuario: AuthenticatedUser, id: string): P
  * con el cliente ("nadie construyó/probó una fuente real todavía").
  * INSTAGRAM no es un tipo de bridge creable: viaja como `instagramAccountId`
  * dentro de un bridge FACEBOOK (ver `cuenta-publicitaria.service.ts`).
- * LINKEDIN requiere OAuth + polling cada 5 minutos, un mecanismo sin
- * adaptador ni job en este código hoy. Esta tabla es la única fuente de
- * verdad de "implementado".
+ * LINKEDIN usa OAuth + webhook/polling — implementado desde el hotfix del
+ * 2026-08-31 (ver comentario de la entrada LINKEDIN abajo). Esta tabla es la
+ * única fuente de verdad de "implementado".
  */
 const RED_SOCIAL_IMPLEMENTACION: Record<
   RedSocial,
@@ -278,7 +278,15 @@ const RED_SOCIAL_IMPLEMENTACION: Record<
   INSTAGRAM: { implementado: false, mecanismo: "webhook-meta" },
   GOOGLE_FORMS: { implementado: true, mecanismo: "generico" },
   X: { implementado: false, mecanismo: "generico" },
-  LINKEDIN: { implementado: false, mecanismo: "polling-linkedin" },
+  // Hotfix (2026-08-31): flujo LinkedIn de punta a punta ya construido y
+  // testeado -- `POST /bridges` con `redSocial: "LINKEDIN"` usa el mismo
+  // `createBridge` genérico (sin caso especial) que FACEBOOK/GOOGLE_FORMS/
+  // API_EXTERNA, y el receptor del webhook (`GET`/`POST
+  // /api/v1/integraciones/linkedin/webhook`) + OAuth (`linkedin-oauth.
+  // service.ts::startOAuth`) + polling ya existen (ver P2 M4 en
+  // docs/06-modulos-backend.md). `implementado: false` era el único gate que
+  // faltaba levantar para que el catálogo lo exponga.
+  LINKEDIN: { implementado: true, mecanismo: "polling-linkedin" },
   // bridgeApi: adapter + job de polling + endpoints de config ya existen
   // (jobs/bridgeApi/poll.job.ts) -- implementado de verdad, no un enum
   // reservado para después.

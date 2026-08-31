@@ -152,6 +152,8 @@ export interface CreateEmpresaAdministradorInput {
   password: string;
 }
 
+export type CreateEmpresaSupervisorInput = CreateEmpresaAdministradorInput;
+
 export interface EmpresaAdministradorView {
   usuario: {
     id: string;
@@ -169,12 +171,46 @@ export interface EmpresaAdministradorView {
   };
 }
 
-function correoPortadorAdministrador(empresaId: string, correoMembresia: string): string {
+export interface EmpresaSupervisorView {
+  usuario: {
+    id: string;
+    nombre: string;
+    rol: "SUPERVISOR";
+    activo: boolean;
+  };
+  membresia: {
+    id: string;
+    usuarioId: string;
+    empresaId: string;
+    rol: "SUPERVISOR";
+    activa: boolean;
+    correo: string;
+  };
+}
+
+/**
+ * Hotfix (supervisor scoped a empresa): mapa de segmento de correo del
+ * portador por rol -- separado del propio `RolUsuario`/`RolMembresia` porque
+ * el segmento histórico de ADMINISTRADOR es `admin` (no `administrador`,
+ * ver el prefijo `portador-admin-` ya persistido en BD antes de este
+ * cambio) -- generalizar `correoPortadorAdministrador` sin este mapa
+ * explícito habría cambiado ese prefijo ya existente.
+ */
+const ROL_PORTADOR_SEGMENTO: Record<"ADMINISTRADOR" | "SUPERVISOR", string> = {
+  ADMINISTRADOR: "admin",
+  SUPERVISOR: "supervisor",
+};
+
+function correoPortadorPara(
+  rol: "ADMINISTRADOR" | "SUPERVISOR",
+  empresaId: string,
+  correoMembresia: string,
+): string {
   const digest = createHash("sha256")
     .update(`${empresaId}:${correoMembresia.trim().toLowerCase()}`)
     .digest("hex")
     .slice(0, 24);
-  return `portador-admin-${empresaId}-${digest}@no-login.crm.local`;
+  return `portador-${ROL_PORTADOR_SEGMENTO[rol]}-${empresaId}-${digest}@no-login.crm.local`;
 }
 
 /**
@@ -280,7 +316,7 @@ export async function createEmpresaAdministrador(
 ): Promise<EmpresaAdministradorView> {
   const membresiaPasswordHash = await hashPassword(input.password);
   const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
-  const usuarioCorreo = correoPortadorAdministrador(empresaId, input.correo);
+  const usuarioCorreo = correoPortadorPara("ADMINISTRADOR", empresaId, input.correo);
 
   try {
     return await runInTransaction(
@@ -329,6 +365,84 @@ export async function createEmpresaAdministrador(
             usuarioId: membresia.usuarioId,
             empresaId: membresia.empresaId,
             rol: "ADMINISTRADOR",
+            activa: membresia.activa,
+            correo: membresia.correo as string,
+          },
+        };
+      },
+      USUARIOS_TRANSACTION_BOUNDS,
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw emailAlreadyInUse();
+    }
+    throw error;
+  }
+}
+
+/**
+ * Hotfix (supervisor scoped a empresa): espejo exacto de
+ * `createEmpresaAdministrador` arriba, con `rol: "SUPERVISOR"` en el Usuario
+ * portador y en la Membresia -- mismo mecanismo (login real por
+ * `Membresia.correo`, `Usuario` portador solo requerido por
+ * `auth.service.ts::login` para resolver `rolEquivalente(membresia) ===
+ * usuarioDeMembresia.rol`).
+ */
+export async function createEmpresaSupervisor(
+  empresaId: string,
+  input: CreateEmpresaSupervisorInput,
+): Promise<EmpresaSupervisorView> {
+  const membresiaPasswordHash = await hashPassword(input.password);
+  const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
+  const usuarioCorreo = correoPortadorPara("SUPERVISOR", empresaId, input.correo);
+
+  try {
+    return await runInTransaction(
+      undefined,
+      async (tx) => {
+        const empresa = await empresaRepository.findById(empresaId, tx);
+        if (!empresa) {
+          throw empresaNotFound();
+        }
+
+        await membresiaRepository.assertCorreoDisponible(input.correo, tx);
+        await membresiaRepository.assertCorreoDisponible(usuarioCorreo, tx);
+
+        const usuario = await usuarioRepository.createUsuario(
+          {
+            nombre: input.nombre,
+            correo: usuarioCorreo,
+            // Invariantes: rol SUPERVISOR para que el login por Membresia pase;
+            // password no expuesta para que Usuario.correo no autentique holding-wide.
+            passwordHash: usuarioPasswordHash,
+            rol: "SUPERVISOR",
+          },
+          tx,
+        );
+        const membresia = await membresiaRepository.createMembresiaConCredencial(
+          {
+            usuarioId: usuario.id,
+            empresaId,
+            rol: "SUPERVISOR",
+            habilitadoParaVenta: false,
+            correo: input.correo,
+            passwordHash: membresiaPasswordHash,
+          },
+          tx,
+        );
+
+        return {
+          usuario: {
+            id: usuario.id,
+            nombre: usuario.nombre,
+            rol: "SUPERVISOR",
+            activo: usuario.activo,
+          },
+          membresia: {
+            id: membresia.id,
+            usuarioId: membresia.usuarioId,
+            empresaId: membresia.empresaId,
+            rol: "SUPERVISOR",
             activa: membresia.activa,
             correo: membresia.correo as string,
           },

@@ -9,6 +9,7 @@ import * as notificacionRepository from "../src/repositories/notificacion.reposi
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
 import {
   createEmpresaAdministrador,
+  createEmpresaSupervisor,
   createUsuario,
   deactivateUsuario,
   findResponsables,
@@ -352,6 +353,74 @@ describe("usuarios.service — createEmpresaAdministrador", () => {
       });
       expect(usuarioPersistido.rol).toBe("ADMINISTRADOR");
       expect(usuarioPersistido.correo).not.toBe(correo);
+    }));
+});
+
+/**
+ * Hotfix (supervisor scoped a empresa): espejo exacto de
+ * `createEmpresaAdministrador` arriba, mismo mecanismo (Usuario portador +
+ * Membresia con credencial propia) con `rol: "SUPERVISOR"` en vez de
+ * `"ADMINISTRADOR"`.
+ */
+describe("usuarios.service — createEmpresaSupervisor", () => {
+  it("crea un supervisor de empresa con Usuario portador SUPERVISOR y Membresia SUPERVISOR activa sin filtrar passwordHash", () =>
+    sinRestriccion(async () => {
+      const empresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa supervisor service ${randomUUID()}` },
+      });
+      const correo = `supervisor-empresa-service-${randomUUID()}@integracion.test`;
+
+      const resultado = await createEmpresaSupervisor(empresa.id, {
+        nombre: "Supervisora de Empresa Service",
+        correo,
+        password: "clave-supervisor-empresa-123456",
+      });
+
+      expect(resultado.membresia).toMatchObject({
+        empresaId: empresa.id,
+        rol: "SUPERVISOR",
+        activa: true,
+        correo,
+      });
+      expect(resultado.usuario).toMatchObject({
+        nombre: "Supervisora de Empresa Service",
+        rol: "SUPERVISOR",
+        activo: true,
+      });
+      expect(JSON.stringify(resultado)).not.toContain("passwordHash");
+
+      const usuarioPersistido = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: resultado.usuario.id },
+      });
+      expect(usuarioPersistido.rol).toBe("SUPERVISOR");
+      expect(usuarioPersistido.correo).not.toBe(correo);
+    }));
+
+  it("triangulación: el correo del portador de un Supervisor no colisiona con el de un Administrador de la misma empresa/correo", () =>
+    sinRestriccion(async () => {
+      const empresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa admin+supervisor service ${randomUUID()}` },
+      });
+      const correo = `mismo-correo-${randomUUID()}@integracion.test`;
+
+      const administrador = await createEmpresaAdministrador(empresa.id, {
+        nombre: "Administradora",
+        correo,
+        password: "clave-admin-empresa-123456",
+      });
+      const supervisor = await createEmpresaSupervisor(empresa.id, {
+        nombre: "Supervisora",
+        correo: `otro-${correo}`,
+        password: "clave-supervisor-empresa-123456",
+      });
+
+      const usuarioAdministrador = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: administrador.usuario.id },
+      });
+      const usuarioSupervisor = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: supervisor.usuario.id },
+      });
+      expect(usuarioAdministrador.correo).not.toBe(usuarioSupervisor.correo);
     }));
 });
 

@@ -35,6 +35,11 @@ export const createEmpresaAdministradorBodySchema = z.object({
   password: passwordPolicySchema,
 });
 
+// Hotfix (supervisor scoped a empresa): mismo shape exacto que
+// `createEmpresaAdministradorBodySchema` -- mismo mecanismo de alta
+// (`usuarios.service.ts::createEmpresaSupervisor`), solo cambia el rol.
+export const createEmpresaSupervisorBodySchema = createEmpresaAdministradorBodySchema;
+
 /**
  * `activo` reactiva/desactiva por este mismo endpoint — mismo patrón que
  * `bridges.schema.ts::updateBridgeBodySchema` con `estado: "ACTIVO"`. Solo
@@ -114,6 +119,7 @@ export const listResponsablesQuerySchema = z.object({
 
 export type CreateUsuarioBody = z.infer<typeof createUsuarioBodySchema>;
 export type CreateEmpresaAdministradorBody = z.infer<typeof createEmpresaAdministradorBodySchema>;
+export type CreateEmpresaSupervisorBody = z.infer<typeof createEmpresaSupervisorBodySchema>;
 export type UpdateUsuarioBody = z.infer<typeof updateUsuarioBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
 export type EmpresaIdParam = z.infer<typeof empresaIdParamSchema>;

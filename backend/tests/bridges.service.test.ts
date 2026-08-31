@@ -339,18 +339,27 @@ describe("bridge.service — regenerateClave (Requirement: Key regeneration neve
 });
 
 describe("bridge.service — listRedesSoportadas (Requirement: Network catalogs are enum-derived and deduplicated)", () => {
-  it("devuelve solo las redes con integración de ingesta real (FACEBOOK, GOOGLE_FORMS y API_EXTERNA)", () => {
+  it("devuelve solo las redes con integración de ingesta real (FACEBOOK, GOOGLE_FORMS, LINKEDIN y API_EXTERNA)", () => {
     const redes = listRedesSoportadas();
 
-    expect(new Set(redes)).toEqual(new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "API_EXTERNA"]));
+    expect(new Set(redes)).toEqual(
+      new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "LINKEDIN", "API_EXTERNA"]),
+    );
   });
 
-  it("excluye INSTAGRAM, X y LINKEDIN aunque formen parte del enum RedSocial", () => {
+  it("excluye INSTAGRAM y X aunque formen parte del enum RedSocial", () => {
     const redes = listRedesSoportadas();
 
     expect(redes).not.toContain("INSTAGRAM" satisfies RedSocial);
     expect(redes).not.toContain("X" satisfies RedSocial);
-    expect(redes).not.toContain("LINKEDIN" satisfies RedSocial);
+  });
+
+  // Hotfix (2026-08-31): triangulación -- LINKEDIN ahora SÍ aparece (a
+  // diferencia de INSTAGRAM/X, que siguen fuera del catálogo).
+  it("incluye LINKEDIN (flujo de punta a punta ya construido y testeado)", () => {
+    const redes = listRedesSoportadas();
+
+    expect(redes).toContain("LINKEDIN" satisfies RedSocial);
   });
 });
 

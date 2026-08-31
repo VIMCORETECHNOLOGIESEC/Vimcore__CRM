@@ -57,6 +57,13 @@ function permisoDenegado(): AppError {
  * `leads.service.ts::buildWhere`): Admin/Supervisor ven todas las de su
  * alcance de empresa (holding-wide si `empresaId === null`, rule 4); el
  * resto solo las suyas (`asesorId = usuario.id`).
+ *
+ * Hotfix: `clienteId` (opcional) resuelve qué conversación abrir desde el
+ * detalle de un lead puntual — SIEMPRE aditivo, se agrega DESPUÉS del scope
+ * RBAC de arriba y nunca lo reemplaza (todas las claves de `where` se
+ * combinan con AND por defecto en Prisma) — un asesor pidiendo el
+ * `clienteId` de una conversación ajena sigue sin verla, `asesorId` sigue
+ * exigiéndose igual.
  */
 export async function listConversaciones(
   usuario: UsuarioAccesoConversacion,
@@ -65,6 +72,7 @@ export async function listConversaciones(
   const where: Prisma.ConversacionWhereInput = {};
   if (usuario.empresaId !== null) where.empresaId = usuario.empresaId;
   if (!ROLES_ACCESO_TOTAL.includes(usuario.rol)) where.asesorId = usuario.id;
+  if (query.clienteId) where.clienteId = query.clienteId;
 
   const { conversaciones, total } = await conversacionRepository.findMany(where, {
     skip: (query.pagina - 1) * query.limite,

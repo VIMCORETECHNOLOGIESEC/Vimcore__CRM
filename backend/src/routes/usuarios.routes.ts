@@ -5,6 +5,7 @@ import {
   getUsuarios,
   getUsuariosResponsables,
   postEmpresaAdministrador,
+  postEmpresaSupervisor,
   patchUsuario,
   postUsuario,
 } from "../controllers/usuarios.controller.js";
@@ -25,6 +26,15 @@ usuariosRouter.post(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   postEmpresaAdministrador,
+);
+// Hotfix (supervisor scoped a empresa): mismo middleware/guard exacto que la
+// ruta de administradores de arriba -- el 403 fino de "solo holding-wide" lo
+// aplica el controller (`forbiddenHoldingScope`), no este `requireRole`.
+usuariosRouter.post(
+  "/empresas/:empresaId/supervisores",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postEmpresaSupervisor,
 );
 usuariosRouter.get(
   "/usuarios",

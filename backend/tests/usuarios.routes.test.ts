@@ -1,6 +1,7 @@
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
+import { verifyAccessToken } from "../src/lib/jwt.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
 import { testAdminPrisma } from "./fixtures/admin-prisma.js";
@@ -178,6 +179,79 @@ describe("POST /api/v1/usuarios", () => {
   it("400 con campos faltantes", async () => {
     const respuesta = await request(app)
       .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Incompleto" });
+
+    expect(respuesta.status).toBe(400);
+  });
+});
+
+describe("POST /api/v1/empresas/:empresaId/supervisores (hotfix: alta de Supervisor scoped a empresa)", () => {
+  it("201 crea un supervisor de empresa y jamás devuelve passwordHash", async () => {
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/supervisores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Supervisora Integración",
+        correo: "supervisora-crud@integracion.test",
+        password: "clave-supervisora-123456",
+      });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.supervisor.usuario.rol).toBe("SUPERVISOR");
+    expect(respuesta.body.supervisor.membresia).toMatchObject({
+      empresaId,
+      rol: "SUPERVISOR",
+      activa: true,
+      correo: "supervisora-crud@integracion.test",
+    });
+    expect(JSON.stringify(respuesta.body)).not.toContain("passwordHash");
+  });
+
+  it("201 y el supervisor creado puede loguearse de inmediato con sessionScope 'company' y el empresaId correcto (prueba real de punta a punta del fix)", async () => {
+    const correo = "supervisora-login-real@integracion.test";
+    const password = "clave-supervisora-login-1234";
+
+    const creacion = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/supervisores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Supervisora Login Real", correo, password });
+    expect(creacion.status).toBe(201);
+
+    const login = await request(app).post("/api/v1/auth/login").send({ correo, password });
+    expect(login.status).toBe(200);
+
+    const accessPayload = await verifyAccessToken(login.body.accessToken);
+    expect(accessPayload).toMatchObject({
+      rol: "SUPERVISOR",
+      sessionScope: "company",
+      empresaId,
+    });
+  });
+
+  it("403 cuando el actor no es una sesión holding-wide (ej. una sesión company-scoped)", async () => {
+    const correoAsesor = "asesor-companyscope@integracion.test";
+    const passwordAsesor = "clave-asesor-companyscope-1234";
+    await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Asesor Company Scope", correo: correoAsesor, password: passwordAsesor, rol: "ASESOR", empresaId });
+    const loginAsesor = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoAsesor, password: passwordAsesor });
+    expect(loginAsesor.status).toBe(200);
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/supervisores`)
+      .set("Authorization", `Bearer ${loginAsesor.body.accessToken}`)
+      .send({ nombre: "No Debería Crearse", correo: "no-deberia@integracion.test", password: "clave-cualquiera-1234" });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("400 con campos faltantes", async () => {
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/supervisores`)
       .set("Authorization", `Bearer ${adminAccessToken}`)
       .send({ nombre: "Incompleto" });
 
