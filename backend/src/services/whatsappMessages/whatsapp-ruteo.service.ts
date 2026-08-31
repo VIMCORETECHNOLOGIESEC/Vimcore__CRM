@@ -6,6 +6,7 @@ import * as leadRepository from "../../repositories/lead.repository.js";
 import * as conversacionRepository from "../../repositories/whatsappMessages/conversacion.repository.js";
 import * as conversacionEventoRepository from "../../repositories/whatsappMessages/conversacion-evento.repository.js";
 import * as mensajeRepository from "../../repositories/whatsappMessages/mensaje.repository.js";
+import { findActiveRecipientIds } from "../../repositories/notificacion.repository.js";
 import { assignAfterCommit } from "../asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "../committed-events.service.js";
 import { decideAccionDeduplicacion, type DeduplicacionState } from "../deduplicacion.decider.js";
@@ -258,16 +259,40 @@ export async function procesarMensajeEntrante(
       // cambiado el asesor.
       await conversacionRepository.touchUltimoMensajeEn(aplicado.conversacionId, entrante.enviadoEn, tx);
 
-      const eventosMensaje: CommittedEvent[] = aplicado.asesorId
-        ? [
-            {
-              userId: aplicado.asesorId,
-              empresaId: conexion.empresaId,
-              type: "whatsapp.mensaje-nuevo",
-              data: { conversacionId: aplicado.conversacionId },
-            },
-          ]
-        : [];
+      // Fix (push en vivo de mensajes de WhatsApp, 2026-08-31): antes solo se
+      // notificaba al asesor asignado -- Administrador/Supervisor de la
+      // empresa nunca recibían el evento SSE, así que veían el mensaje nuevo
+      // recién al refrescar la página (F5). Mismo criterio de destinatarios
+      // que `notificaciones.service.ts::UNASSIGNED_RECIPIENT_ROLES`/
+      // `createForActiveRoles` (Membresia activa, roles ADMINISTRADOR/
+      // SUPERVISOR de esta empresa) — sin duplicar contra `aplicado.asesorId`
+      // porque un rol de Membresia es excluyente, nunca puede coincidir con
+      // un ASESOR.
+      const destinatariosGestion = await findActiveRecipientIds(
+        ["ADMINISTRADOR", "SUPERVISOR"],
+        conexion.empresaId,
+        tx,
+      );
+      const eventosMensaje: CommittedEvent[] = [
+        ...(aplicado.asesorId
+          ? [
+              {
+                userId: aplicado.asesorId,
+                empresaId: conexion.empresaId,
+                type: "whatsapp.mensaje-nuevo" as const,
+                data: { conversacionId: aplicado.conversacionId },
+              },
+            ]
+          : []),
+        ...destinatariosGestion.map(
+          (userId): CommittedEvent => ({
+            userId,
+            empresaId: conexion.empresaId,
+            type: "whatsapp.mensaje-nuevo",
+            data: { conversacionId: aplicado.conversacionId },
+          }),
+        ),
+      ];
 
       return {
         clienteId: cliente.id,
