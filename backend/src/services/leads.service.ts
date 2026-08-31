@@ -75,7 +75,7 @@ function withEstadoSla<T extends Lead>(lead: T, ahora: Date): T & { estadoSla: E
  * antes duplicado).
  */
 function buildWhere(usuario: UsuarioAcceso, query: ListLeadsQuery, ahora: Date): Prisma.LeadWhereInput {
-  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario);
+  const where: Prisma.LeadWhereInput = aplicarFiltroEmpresa({}, usuario, query);
 
   if (!ROLES_ACCESO_TOTAL.includes(usuario.rol)) {
     where.OR = [{ asesorId: usuario.id }, { vendedorId: usuario.id }];
