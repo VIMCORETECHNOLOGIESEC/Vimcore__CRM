@@ -7,8 +7,13 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { useOAuthPopup } from "@/hooks/useOAuthPopup";
+import { PuntoEstadoActivo } from "./PuntoEstadoActivo";
 import { WhatsAppConexionOverlay, type WhatsAppConexionOverlayStatus } from "./WhatsAppConexionOverlay";
-import { useIniciarConexionWhatsApp, useWhatsAppConexionStatus } from "./useWhatsApp";
+import {
+  useIniciarConexionWhatsApp,
+  useWhatsAppConexionStatus,
+  useWhatsAppEstadoActual,
+} from "./useWhatsApp";
 import { redirectTo } from "./whatsapp.utils";
 
 /**
@@ -51,6 +56,8 @@ export function ConectarWhatsAppCard() {
   const esHoldingWide = user?.sessionScope === "holding";
   const empresaIdEfectiva = esHoldingWide ? (empresaVistaId ?? undefined) : undefined;
   const faltaElegirEmpresa = esHoldingWide && !empresaVistaId;
+  const estadoActual = useWhatsAppEstadoActual(empresaIdEfectiva, { enabled: !faltaElegirEmpresa });
+  const yaConectado = estadoActual.data?.estado === "ACTIVA";
 
   function connect() {
     iniciarConexion.mutate(empresaIdEfectiva, {
@@ -92,6 +99,7 @@ export function ConectarWhatsAppCard() {
   function closeOverlay() {
     estadoConexionReal.reset();
     setOverlayStatus("idle");
+    void estadoActual.refetch();
   }
 
   return (
@@ -101,32 +109,43 @@ export function ConectarWhatsAppCard() {
         <CardTitle className="text-base">WhatsApp Business</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
-          Conectá el número de WhatsApp Business de la empresa para habilitar mensajería con
-          clientes. Se abre el flujo de autorización de Meta en una ventana emergente.
-        </p>
+        {yaConectado ? (
+          <div className="flex items-center gap-2">
+            <PuntoEstadoActivo />
+            <p className="text-sm text-foreground">
+              Conectado a {estadoActual.data?.numeroDisplay}
+            </p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Conectá el número de WhatsApp Business de la empresa para habilitar mensajería con
+              clientes. Se abre el flujo de autorización de Meta en una ventana emergente.
+            </p>
 
-        {faltaElegirEmpresa ? (
-          <p className="text-sm text-muted-foreground">
-            Elegí primero una empresa desde «Empresas» para conectar su WhatsApp.
-          </p>
-        ) : null}
+            {faltaElegirEmpresa ? (
+              <p className="text-sm text-muted-foreground">
+                Elegí primero una empresa desde «Empresas» para conectar su WhatsApp.
+              </p>
+            ) : null}
 
-        {iniciarConexion.isError ? (
-          <ErrorState
-            message={getErrorMessage(iniciarConexion.error)}
-            onRetry={connect}
-          />
-        ) : null}
+            {iniciarConexion.isError ? (
+              <ErrorState
+                message={getErrorMessage(iniciarConexion.error)}
+                onRetry={connect}
+              />
+            ) : null}
 
-        <Button
-          type="button"
-          onClick={connect}
-          disabled={faltaElegirEmpresa || iniciarConexion.isPending}
-          className="w-fit"
-        >
-          {iniciarConexion.isPending ? "Conectando…" : "Conectar WhatsApp"}
-        </Button>
+            <Button
+              type="button"
+              onClick={connect}
+              disabled={faltaElegirEmpresa || iniciarConexion.isPending}
+              className="w-fit"
+            >
+              {iniciarConexion.isPending ? "Conectando…" : "Conectar WhatsApp"}
+            </Button>
+          </>
+        )}
       </CardContent>
 
       <WhatsAppConexionOverlay

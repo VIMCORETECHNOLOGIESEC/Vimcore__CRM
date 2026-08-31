@@ -58,6 +58,20 @@ interface UsuarioResponse {
 }
 
 /**
+ * Forma real de `POST /empresas/:empresaId/administradores`
+ * (`usuarios.controller.ts`): responde `{ administrador }`, NUNCA `{ user }`
+ * -- distinto de `UsuarioResponse` de arriba. Además, el shape real es
+ * `{ usuario, membresia }` (`EmpresaAdministradorView`,
+ * `usuarios.service.ts`), no un `AdminUsuario` plano --
+ * `createEmpresaAdministradorApi` solo necesita invalidar el listado
+ * (`useCreateEmpresaAdministrador` no usa el valor devuelto), así que no hace
+ * falta tipar el shape completo acá.
+ */
+interface EmpresaAdministradorResponse {
+  administrador?: unknown;
+}
+
+/**
  * Query params de `GET /usuarios` (F7, listado con filtro y paginación
  * real). Contrato confirmado contra
  * `backend/src/schemas/usuarios.schema.ts`: `busqueda` filtra por nombre O
@@ -149,12 +163,15 @@ export async function createUsuarioApi(input: CreateUsuarioInput): Promise<Admin
 export async function createEmpresaAdministradorApi(
   empresaId: string,
   input: CreateEmpresaAdministradorInput,
-): Promise<AdminUsuario> {
-  const { user } = await httpClient.post<UsuarioResponse>(
+): Promise<void> {
+  // Fix (bug real encontrado de paso): destructuraba `{ user }`, una clave
+  // que este endpoint NUNCA manda (responde `{ administrador }`) --
+  // `useCreateEmpresaAdministrador` no usa el valor devuelto, así que el
+  // 201 igual se procesaba bien, pero el tipo mentía sobre el shape real.
+  await httpClient.post<EmpresaAdministradorResponse>(
     `/empresas/${empresaId}/administradores`,
     input,
   );
-  return user;
 }
 
 /** `PATCH /usuarios/:id` -- backend real, edita nombre/correo/rol (sin contraseña). */

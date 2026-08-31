@@ -100,11 +100,15 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     requiereVistaEmpresaSiHolding: true,
   },
   {
+    // Fix (regresión de e0cb7f8): SIN `requiereVistaEmpresaSiHolding` a
+    // diferencia de Bridges -- `/usuarios` tiene su propio tab holding-wide
+    // (`soloHoldingWide`, Item 25) para que el admin de holding gestione su
+    // propio staff sin depender de ninguna empresa. Ver el comentario
+    // equivalente en `router.tsx`.
     label: "Usuarios",
     route: "/usuarios",
     icon: UserCog,
     allowedRoles: ["ADMINISTRADOR"],
-    requiereVistaEmpresaSiHolding: true,
   },
   {
     label: "Bridges",

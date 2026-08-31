@@ -75,3 +75,26 @@ export function useWhatsAppConexionStatus() {
     mutationFn: (empresaId: string | undefined) => fetchWhatsAppConexionApi(empresaId),
   });
 }
+
+export const WHATSAPP_ESTADO_ACTUAL_QUERY_KEY = "whatsapp-estado-actual";
+
+/**
+ * Estado ACTUAL de la conexión (`GET /whatsapp/conexion`), a diferencia del
+ * Paso 4 (`useWhatsAppConexionStatus`): esta sí vive montada con la card
+ * (`ConectarWhatsAppCard.tsx`), para reflejar "ya hay una conexión activa"
+ * sin depender de que el usuario acabe de pasar por el popup -- por ejemplo
+ * al recargar la página o entrar por primera vez con una empresa ya
+ * conectada de antes. Mientras la conexión está ACTIVA, se revalida sola
+ * cada 60s para detectar si se cae (token expirado, etc.) sin exigir un F5.
+ */
+export function useWhatsAppEstadoActual(
+  empresaId: string | undefined,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: [WHATSAPP_ESTADO_ACTUAL_QUERY_KEY, empresaId],
+    queryFn: () => fetchWhatsAppConexionApi(empresaId),
+    enabled: options?.enabled ?? true,
+    refetchInterval: (query) => (query.state.data?.estado === "ACTIVA" ? 60_000 : false),
+  });
+}

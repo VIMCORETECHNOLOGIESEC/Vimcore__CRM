@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useSearchParams } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
@@ -13,7 +13,24 @@ import type { RolUsuario, SessionScope } from "@/tipos/usuario";
  * va mockeado -- `SelectorEmpresaDashboard` ya tiene su propio test unitario
  * (`SelectorEmpresaDashboard.test.tsx`), acá solo se verifica el gate de
  * rol/scope y que `empresaId` llega a las llamadas de métricas.
+ *
+ * Regresión (bug de producción): el selector de este Dashboard usaba antes
+ * `useVistaEmpresa` (el mecanismo global de "entrar a mirar en vivo" una
+ * empresa, que cambia sidebar + tema de toda la app vía `?empresaId=` en la
+ * URL) -- acá se prueba explícitamente que `entrarAEmpresa`/`salirDeEmpresa`
+ * NUNCA se llaman desde este flujo y que la URL nunca cambia: el filtro de
+ * empresa del Dashboard es estado local, no navegación.
  */
+const entrarAEmpresaMock = vi.fn();
+const salirDeEmpresaMock = vi.fn();
+vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
+  useVistaEmpresa: () => ({
+    empresaVistaId: null,
+    entrarAEmpresa: entrarAEmpresaMock,
+    salirDeEmpresa: salirDeEmpresaMock,
+    esVistaSoloLectura: false,
+  }),
+}));
 const RESUMEN_VACIO = {
   rango: { desde: "2026-08-24", hasta: "2026-08-30" },
   totalIngresados: { actual: 0, anterior: 0, variacionPorcentual: null },
@@ -91,17 +108,37 @@ function mockearAuth(rol: RolUsuario, sessionScope: SessionScope = "company") {
   } as never);
 }
 
+// Igual que `SelectorEmpresaDashboard.test.tsx`: lee `?empresaId=` real desde
+// el test sin depender de `window.location` (jsdom + MemoryRouter no lo
+// sincroniza).
+function CapturaUrl({ children, onCapturar }: { children: React.ReactNode; onCapturar: (s: string) => void }) {
+  const [searchParams] = useSearchParams();
+  onCapturar(searchParams.toString());
+  return children;
+}
+
 function renderPage(initialPath = "/panel") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route path="/panel" element={<DashboardPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  let searchParamsCapturados = "";
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route
+              path="/panel"
+              element={
+                <CapturaUrl onCapturar={(s) => (searchParamsCapturados = s)}>
+                  <DashboardPage />
+                </CapturaUrl>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+    getUrl: () => searchParamsCapturados,
+  };
 }
 
 beforeEach(() => {
@@ -123,6 +160,8 @@ beforeEach(() => {
     ],
     total: 2,
   });
+  entrarAEmpresaMock.mockReset();
+  salirDeEmpresaMock.mockReset();
   mockearAuth("ADMINISTRADOR", "company");
 });
 
@@ -178,17 +217,19 @@ describe("DashboardPage — empresaId fluye a las consultas de métricas", () =>
     );
   });
 
-  it("con ?empresaId= ya en la URL, elegir 'Todo el holding' vuelve a pedir las métricas sin empresaId", async () => {
+  it("eligiendo una empresa y luego 'Todo el holding', las métricas se vuelven a pedir sin empresaId", async () => {
     mockearAuth("ADMINISTRADOR", "holding");
     const user = userEvent.setup();
-    renderPage("/panel?empresaId=empresa-1");
+    renderPage("/panel");
+    const boton = await screen.findByRole("combobox", { name: "Empresa" });
+    await user.click(boton);
+    await user.click(await screen.findByText("Empresa A"));
     await waitFor(() =>
       expect(fetchResumenMetricasApiMock).toHaveBeenCalledWith(
         expect.objectContaining({ empresaId: "empresa-1" }),
       ),
     );
 
-    const boton = await screen.findByRole("combobox", { name: "Empresa" });
     await user.click(boton);
     await user.click(await screen.findByText("Todo el holding"));
 
@@ -197,5 +238,40 @@ describe("DashboardPage — empresaId fluye a las consultas de métricas", () =>
         expect.objectContaining({ empresaId: undefined }),
       ),
     );
+  });
+});
+
+describe("DashboardPage — regresión: el filtro de empresa NO es el mecanismo global de vista-empresa", () => {
+  it("elegir una empresa en el Dashboard no cambia ?empresaId= en la URL", async () => {
+    mockearAuth("ADMINISTRADOR", "holding");
+    const user = userEvent.setup();
+    const { getUrl } = renderPage("/panel");
+    const boton = await screen.findByRole("combobox", { name: "Empresa" });
+    await user.click(boton);
+    await user.click(await screen.findByText("Empresa A"));
+
+    await waitFor(() =>
+      expect(fetchResumenMetricasApiMock).toHaveBeenCalledWith(
+        expect.objectContaining({ empresaId: "empresa-1" }),
+      ),
+    );
+    expect(getUrl()).toBe("");
+  });
+
+  it("elegir una empresa en el Dashboard nunca llama a entrarAEmpresa/salirDeEmpresa (`useVistaEmpresa`)", async () => {
+    mockearAuth("ADMINISTRADOR", "holding");
+    const user = userEvent.setup();
+    renderPage("/panel");
+    const boton = await screen.findByRole("combobox", { name: "Empresa" });
+    await user.click(boton);
+    await user.click(await screen.findByText("Empresa A"));
+
+    await waitFor(() =>
+      expect(fetchResumenMetricasApiMock).toHaveBeenCalledWith(
+        expect.objectContaining({ empresaId: "empresa-1" }),
+      ),
+    );
+    expect(entrarAEmpresaMock).not.toHaveBeenCalled();
+    expect(salirDeEmpresaMock).not.toHaveBeenCalled();
   });
 });

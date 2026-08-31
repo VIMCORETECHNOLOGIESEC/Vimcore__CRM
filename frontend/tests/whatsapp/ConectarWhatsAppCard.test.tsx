@@ -69,6 +69,10 @@ function renderConRuta(searchParamsIniciales: string, sessionScope: "holding" | 
 beforeEach(() => {
   iniciarConexionWhatsAppApiMock.mockReset();
   fetchWhatsAppConexionApiMock.mockReset();
+  // Estado ACTUAL por defecto: sin conexión -- `useWhatsAppEstadoActual` vive
+  // montada con la card y llama a esta misma función al montar, así que
+  // necesita una resolución definida de fondo salvo que un test la pise.
+  fetchWhatsAppConexionApiMock.mockResolvedValue(null);
   redirectToMock.mockReset();
   guardarEmpresaFlujoMock.mockReset();
 
@@ -148,7 +152,10 @@ describe("ConectarWhatsAppCard — flujo de popup, camino feliz del navegador (n
       expiraEn: "2026-08-30T10:00:00.000Z",
     });
     vi.spyOn(window, "open").mockImplementation(() => crearPopupFalso());
-    fetchWhatsAppConexionApiMock.mockResolvedValue({
+    // Estado ACTUAL al montar: sin conexión (la primera llamada la dispara
+    // `useWhatsAppEstadoActual` de fondo) -- recién la verificación real que
+    // dispara el cierre del popup confirma la conexión ACTIVA.
+    fetchWhatsAppConexionApiMock.mockResolvedValueOnce(null).mockResolvedValue({
       id: "conexion-1",
       empresaId: "empresa-1",
       numeroTelefonoId: "num-1",
@@ -162,6 +169,7 @@ describe("ConectarWhatsAppCard — flujo de popup, camino feliz del navegador (n
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       renderConRuta("", "company");
+      await screen.findByRole("button", { name: "Conectar WhatsApp" });
       await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
       await screen.findByRole("alertdialog");
 
@@ -229,6 +237,72 @@ describe("ConectarWhatsAppCard — flujo de popup, camino feliz del navegador (n
       await screen.findByText(
         "No se detectó una conexión activa todavía. Podés intentarlo de nuevo.",
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("ConectarWhatsAppCard — estado actual de la conexión (GET /whatsapp/conexion, montada con la card)", () => {
+  it("sin conexión activa, muestra el botón 'Conectar WhatsApp' (comportamiento sin cambios)", async () => {
+    fetchWhatsAppConexionApiMock.mockResolvedValue(null);
+
+    renderConRuta("", "company");
+
+    expect(await screen.findByRole("button", { name: "Conectar WhatsApp" })).toBeInTheDocument();
+    expect(screen.queryByText(/Conectado a/)).not.toBeInTheDocument();
+  });
+
+  it("con una conexión ACTIVA, muestra el indicador verde y el número conectado en vez del botón", async () => {
+    fetchWhatsAppConexionApiMock.mockResolvedValue({
+      id: "conexion-1",
+      empresaId: "empresa-1",
+      numeroTelefonoId: "num-1",
+      numeroDisplay: "+54 9 11 1234-5678",
+      wabaId: "waba-1",
+      estado: "ACTIVA",
+      creadoEn: "2026-08-30T10:10:00.000Z",
+    });
+
+    renderConRuta("", "company");
+
+    expect(await screen.findByText("Conectado a +54 9 11 1234-5678")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Conectar WhatsApp" })).not.toBeInTheDocument();
+  });
+
+  it("al cerrar el overlay tras una conexión confirmada, se refetchea el estado y la card pasa a mostrar 'conectado' sin recargar la página", async () => {
+    iniciarConexionWhatsAppApiMock.mockResolvedValue({
+      authorizationUrl: "https://meta.example/oauth",
+      expiraEn: "2026-08-30T10:00:00.000Z",
+    });
+    vi.spyOn(window, "open").mockImplementation(() => crearPopupFalso());
+    fetchWhatsAppConexionApiMock.mockResolvedValueOnce(null).mockResolvedValue({
+      id: "conexion-1",
+      empresaId: "empresa-1",
+      numeroTelefonoId: "num-1",
+      numeroDisplay: "+54 9 11 1234-5678",
+      wabaId: "waba-1",
+      estado: "ACTIVA",
+      creadoEn: "2026-08-30T10:10:00.000Z",
+    });
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderConRuta("", "company");
+      expect(await screen.findByRole("button", { name: "Conectar WhatsApp" })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
+      await screen.findByRole("alertdialog");
+
+      popupFalso.closed = true;
+      await vi.advanceTimersByTimeAsync(500);
+
+      await user.click(await screen.findByRole("button", { name: "Entendido" }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(await screen.findByText("Conectado a +54 9 11 1234-5678")).toBeInTheDocument();
+      expect(fetchWhatsAppConexionApiMock.mock.calls.length).toBeGreaterThanOrEqual(3);
     } finally {
       vi.useRealTimers();
     }

@@ -21,6 +21,7 @@ import {
   type UsuariosFiltrosState,
 } from "../usuarios/usuarios.utils";
 import {
+  useCreateEmpresaAdministrador,
   useCreateUsuario,
   useDeactivateUsuario,
   useReactivateUsuario,
@@ -48,7 +49,20 @@ const USUARIOS_POR_PAGINA = 10;
  *   "usuarios sin empresa" parado sobre la vista de UNA empresa concreta.
  * - El alta SIEMPRE manda `empresaId` en el body de `POST /usuarios` (acá
  *   siempre hay una empresa fija, a diferencia de `UsuariosPage.tsx`, donde
- *   es condicional a `useVistaEmpresa().empresaVistaId`).
+ *   es condicional a `useVistaEmpresa().empresaVistaId`) -- EXCEPTO cuando el
+ *   rol elegido en `CrearUsuarioDialog` es `ADMINISTRADOR`: ese caso no pasa
+ *   por `POST /usuarios` (`usuarios.service.ts::createUsuario` lo trata como
+ *   holding-wide incondicional vía `ROLES_ACCESO_TOTAL` y descarta cualquier
+ *   `empresaId` recibido), sino que se rutea a `useCreateEmpresaAdministrador`
+ *   (`POST /empresas/:empresaId/administradores`, mismo mecanismo que
+ *   `CrearAdministradorEmpresaDialog`), el único camino que hoy crea la
+ *   `Membresia` con credencial propia -- ver
+ *   `usuarios.service.ts::createEmpresaAdministrador`.
+ *   `SUPERVISOR` tiene el mismo bug (cae holding-wide sin `Membresia`), pero
+ *   no existe un equivalente `POST /empresas/:empresaId/supervisores` en el
+ *   backend y no se agrega uno -- decisión explícita del usuario (2026-08-31):
+ *   solo cambios de frontend, sin nuevas rutas de backend. `SUPERVISOR` sigue
+ *   pasando por `POST /usuarios` a sabiendas de que queda holding-wide.
  * - Usa `useEmpresaHolding(empresaId)` (mismo hook que `EmpresaDetallePage.tsx`)
  *   solo para el nombre de la empresa en el título/breadcrumb -- mientras
  *   carga o si falla, la pantalla completa muestra ese estado en vez del
@@ -74,6 +88,12 @@ export function EmpresaUsuariosPage() {
 
   const { data, isLoading, isError, error, refetch } = useUsuarios(params);
   const crear = useCreateUsuario();
+  // `empresaId` puede ser `undefined` acá (antes del guard `if (!empresaId)`
+  // de abajo) -- los hooks no pueden llamarse condicionalmente, así que se
+  // pasa `""` como fallback inerte: nunca se dispara una mutación real con
+  // ese valor porque el guard corta el render antes de que el diálogo de
+  // alta (único consumidor) pueda montarse.
+  const crearAdmin = useCreateEmpresaAdministrador(empresaId ?? "");
   const actualizar = useUpdateUsuario();
   const restablecer = useResetPassword();
   const darDeBaja = useDeactivateUsuario();
@@ -194,13 +214,23 @@ export function EmpresaUsuariosPage() {
           onOpenChange={(abierto) => {
             if (!abierto) setDialogAltaAbierto(false);
           }}
-          enviando={crear.isPending}
-          onSubmit={(valores) =>
+          enviando={crear.isPending || crearAdmin.isPending}
+          onSubmit={(valores) => {
+            // Rol ADMINISTRADOR: no pasa por `POST /usuarios` -- ver el
+            // docblock de este componente más arriba. SUPERVISOR sí, a
+            // sabiendas del bug pendiente (sin ruta de backend equivalente).
+            if (valores.rol === "ADMINISTRADOR") {
+              crearAdmin.mutate(
+                { nombre: valores.nombre, correo: valores.correo, password: valores.password },
+                { onSuccess: () => setDialogAltaAbierto(false) },
+              );
+              return;
+            }
             crear.mutate(
               { ...valores, empresaId },
               { onSuccess: () => setDialogAltaAbierto(false) },
-            )
-          }
+            );
+          }}
         />
       ) : null}
 

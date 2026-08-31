@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useSearchParams } from "react-router";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   EmpresaAparienciaHoldingView,
@@ -11,9 +11,14 @@ import type {
 /**
  * `SelectorEmpresaDashboard` (docs/23 item 14, "Dashboard con filtro por
  * empresa (holding)"): combina `useEmpresasHolding`/`useEmpresaHolding`
- * (`empresa-apariencia-holding.api` mockeado acá) con `useVistaEmpresa`
- * (`?empresaId=` en la URL, real -- mismo mecanismo que
- * `EmpresaDetallePage.tsx`/`ReportesPage.tsx`).
+ * (`empresa-apariencia-holding.api` mockeado acá) con estado local
+ * controlado por `DashboardPage.tsx` (`empresaId`/`onChange`).
+ *
+ * Regresión: este selector ANTES reusaba `useVistaEmpresa` (el mecanismo
+ * global de "entrar a mirar en vivo" una empresa, `?empresaId=` en la URL),
+ * lo que arrastraba sidebar + tema de toda la app al elegir una empresa acá
+ * -- este archivo ya no importa/mockea `useVistaEmpresa` ni `react-router`
+ * porque el componente no toca la URL en absoluto.
  *
  * A diferencia de la primera versión (bug: `pageSize: 500` fijo, rechazado
  * por el backend con 400 porque el tope real es 100), este combobox busca
@@ -23,15 +28,6 @@ import type {
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
   fetchEmpresasHoldingApi: vi.fn(),
   fetchEmpresaHoldingApi: vi.fn(),
-}));
-// `useVistaEmpresa` (consumido por `SelectorEmpresaDashboard`) ahora también
-// llama `useAuth()` para derivar `esVistaSoloLectura` -- mockeado acá con una
-// sesión `holding` estable (quien ve este selector es siempre un
-// holding-wide, ver `DashboardPage.tsx`), mismo patrón que
-// `tests/bridges/BridgesPage.test.tsx`. Ningún test de este archivo depende
-// de `esVistaSoloLectura` en sí, así que un valor fijo alcanza.
-vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
-  useAuth: () => ({ user: { sessionScope: "holding" } }),
 }));
 
 const api = await import("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api");
@@ -52,36 +48,31 @@ const EMPRESAS: EmpresasHoldingResponse = {
   total: 478,
 };
 
-function renderSelector(initialPath = "/panel") {
+/** Envoltorio controlado, mismo patrón que usa `DashboardPage.tsx` (estado `useState` local). */
+function SelectorControlado({ empresaIdInicial = null as string | null }) {
+  const [empresaId, setEmpresaId] = useState<string | null>(empresaIdInicial);
+  return <SelectorEmpresaDashboard empresaId={empresaId} onChange={setEmpresaId} />;
+}
+
+function renderSelector(empresaIdInicial: string | null = null, onChange = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  let searchParamsCapturados = "";
   return {
     ...render(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <Routes>
-            <Route
-              path="/panel"
-              element={
-                <CapturaUrl onCapturar={(s) => (searchParamsCapturados = s)}>
-                  <SelectorEmpresaDashboard />
-                </CapturaUrl>
-              }
-            />
-          </Routes>
-        </MemoryRouter>
+        <SelectorEmpresaDashboard empresaId={empresaIdInicial} onChange={onChange} />
       </QueryClientProvider>,
     ),
-    getUrl: () => searchParamsCapturados,
+    onChange,
   };
 }
 
-// Pequeño wrapper para poder leer `?empresaId=` actual desde el test sin
-// depender de `window.location` (jsdom + MemoryRouter no lo sincroniza).
-function CapturaUrl({ children, onCapturar }: { children: React.ReactNode; onCapturar: (s: string) => void }) {
-  const [searchParams] = useSearchParams();
-  onCapturar(searchParams.toString());
-  return children;
+function renderSelectorControlado(empresaIdInicial: string | null = null) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <SelectorControlado empresaIdInicial={empresaIdInicial} />
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -98,14 +89,14 @@ afterEach(() => {
 });
 
 describe("SelectorEmpresaDashboard", () => {
-  it("sin ?empresaId en la URL, muestra 'Todo el holding' seleccionado", async () => {
-    renderSelector("/panel");
+  it("con empresaId=null, muestra 'Todo el holding' seleccionado", async () => {
+    renderSelector(null);
     expect(await screen.findByRole("combobox", { name: "Empresa" })).toHaveTextContent("Todo el holding");
   });
 
   it("lista las empresas del holding en el combobox", async () => {
     const user = userEvent.setup();
-    renderSelector("/panel");
+    renderSelector(null);
     const boton = await screen.findByRole("combobox", { name: "Empresa" });
     await user.click(boton);
 
@@ -113,30 +104,40 @@ describe("SelectorEmpresaDashboard", () => {
     expect(screen.getByText("Empresa B")).toBeInTheDocument();
   });
 
-  it("elegir una empresa entra a esa vista (?empresaId= en la URL)", async () => {
+  it("elegir una empresa llama onChange con su id, como estado local (no navegación)", async () => {
     const user = userEvent.setup();
-    const { getUrl } = renderSelector("/panel");
+    const { onChange } = renderSelector(null);
     const boton = await screen.findByRole("combobox", { name: "Empresa" });
     await user.click(boton);
     await user.click(await screen.findByText("Empresa A"));
 
-    await waitFor(() => expect(getUrl()).toBe("empresaId=empresa-1"));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("empresa-1"));
   });
 
-  it("con ?empresaId= ya en la URL, elegir 'Todo el holding' lo saca de la vista de esa empresa", async () => {
+  it("con empresaId ya seteado, elegir 'Todo el holding' llama onChange con null", async () => {
     const user = userEvent.setup();
-    const { getUrl } = renderSelector("/panel?empresaId=empresa-1");
+    const { onChange } = renderSelector("empresa-1");
     const boton = await screen.findByRole("combobox", { name: "Empresa" });
     await user.click(boton);
     await user.click(await screen.findByText("Todo el holding"));
 
-    await waitFor(() => expect(getUrl()).toBe(""));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
+  });
+
+  it("elegir una empresa actualiza el botón sin depender de la URL (estado controlado por el padre)", async () => {
+    const user = userEvent.setup();
+    renderSelectorControlado(null);
+    const boton = await screen.findByRole("combobox", { name: "Empresa" });
+    await user.click(boton);
+    await user.click(await screen.findByText("Empresa A"));
+
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveTextContent("Empresa A"));
   });
 });
 
 describe("SelectorEmpresaDashboard — bug pageSize 500 rechazado por el backend (tope real 100)", () => {
   it("pide la primera página con un pageSize acotado (no 500) mientras no hay búsqueda", async () => {
-    renderSelector("/panel");
+    renderSelector(null);
     await screen.findByRole("combobox", { name: "Empresa" });
 
     await waitFor(() => expect(fetchEmpresasHoldingApiMock).toHaveBeenCalled());
@@ -149,7 +150,7 @@ describe("SelectorEmpresaDashboard — bug pageSize 500 rechazado por el backend
 describe("SelectorEmpresaDashboard — búsqueda server-side (con debounce)", () => {
   it("escribir en el buscador manda `search` a fetchEmpresasHoldingApi (sin un request por cada tecla)", async () => {
     const user = userEvent.setup();
-    renderSelector("/panel");
+    renderSelector(null);
     const boton = await screen.findByRole("combobox", { name: "Empresa" });
     await user.click(boton);
     await screen.findByText("Empresa A");
@@ -172,7 +173,7 @@ describe("SelectorEmpresaDashboard — búsqueda server-side (con debounce)", ()
 
   it("sin coincidencias con búsqueda activa, muestra 'Sin coincidencias.'", async () => {
     const user = userEvent.setup();
-    renderSelector("/panel");
+    renderSelector(null);
     const boton = await screen.findByRole("combobox", { name: "Empresa" });
     await user.click(boton);
     await screen.findByText("Empresa A");
@@ -187,11 +188,11 @@ describe("SelectorEmpresaDashboard — búsqueda server-side (con debounce)", ()
 });
 
 describe("SelectorEmpresaDashboard — empresa seleccionada fuera de la página inicial de resultados", () => {
-  it("con ?empresaId= de una empresa que no está en la primera página, el botón muestra su nombre real (no el id)", async () => {
+  it("con empresaId de una empresa que no está en la primera página, el botón muestra su nombre real (no el id)", async () => {
     fetchEmpresaHoldingApiMock.mockResolvedValue(
       empresa({ id: "empresa-999", nombre: "Empresa Lejana S.A." }),
     );
-    renderSelector("/panel?empresaId=empresa-999");
+    renderSelector("empresa-999");
 
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveTextContent("Empresa Lejana S.A."),

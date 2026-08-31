@@ -7,7 +7,6 @@ import {
   useEmpresaHolding,
   useEmpresasHolding,
 } from "@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding";
-import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 /**
@@ -35,9 +34,15 @@ export const VALOR_TODO_EL_HOLDING = "__TODO_EL_HOLDING__";
  * `holding` -- `DashboardPage.tsx` decide ese gate, este componente no lo
  * repite.
  *
- * Reusa exactamente el mecanismo ya en producción para "vista de empresa"
- * (`useVistaEmpresa`, `?empresaId=` en la URL -- mismo que
- * `EmpresaDetallePage.tsx`/`GestorEmpresasPage.tsx`/`ReportesPage.tsx`).
+ * Componente controlado con estado propio del Dashboard (`empresaId`/
+ * `onChange`, ver `DashboardPage.tsx`) -- NO reusa `useVistaEmpresa` (el
+ * mecanismo global de "entrar a mirar en vivo" una empresa, que sí cambia
+ * `?empresaId=` en la URL + sidebar + tema en toda la app, usado por
+ * `EmpresaDetallePage.tsx`/`GestorEmpresasPage.tsx`/`ReportesPage.tsx`). Este
+ * selector es un filtro de métricas, no una navegación: seleccionar una
+ * empresa acá solo debe acotar los KPIs del dashboard, sin tocar sidebar ni
+ * tema (bug corregido: antes reusaba `useVistaEmpresa` y arrastraba ambos
+ * efectos por error).
  *
  * A diferencia del combobox genérico `ResponsableCombobox` (100%
  * client-side, pensado para listas de cientos como mucho -- asesores/
@@ -53,8 +58,12 @@ export const VALOR_TODO_EL_HOLDING = "__TODO_EL_HOLDING__";
  * hay una búsqueda activa, o si la empresa seleccionada no cae en la primera
  * página alfabética, igual se muestra su nombre real en el botón.
  */
-export function SelectorEmpresaDashboard() {
-  const { empresaVistaId, entrarAEmpresa, salirDeEmpresa } = useVistaEmpresa();
+interface SelectorEmpresaDashboardProps {
+  empresaId: string | null;
+  onChange: (empresaId: string | null) => void;
+}
+
+export function SelectorEmpresaDashboard({ empresaId, onChange }: SelectorEmpresaDashboardProps) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const busquedaDebounced = useDebouncedValue(busqueda, BUSQUEDA_DEBOUNCE_MS);
@@ -69,7 +78,7 @@ export function SelectorEmpresaDashboard() {
   }, [busquedaDebounced]);
 
   const { data, isLoading } = useEmpresasHolding(params);
-  const { data: empresaSeleccionada } = useEmpresaHolding(empresaVistaId ?? undefined);
+  const { data: empresaSeleccionada } = useEmpresaHolding(empresaId ?? undefined);
 
   const empresas = useMemo(
     () => (data?.items ?? []).map((empresa) => ({ id: empresa.id, nombre: empresa.nombre })),
@@ -77,15 +86,11 @@ export function SelectorEmpresaDashboard() {
   );
 
   function seleccionar(valor: string) {
-    if (valor === VALOR_TODO_EL_HOLDING) {
-      salirDeEmpresa();
-    } else {
-      entrarAEmpresa(valor);
-    }
+    onChange(valor === VALOR_TODO_EL_HOLDING ? null : valor);
     setAbierto(false);
   }
 
-  const textoBoton = !empresaVistaId ? "Todo el holding" : (empresaSeleccionada?.nombre ?? "Cargando…");
+  const textoBoton = !empresaId ? "Todo el holding" : (empresaSeleccionada?.nombre ?? "Cargando…");
 
   return (
     <div className="flex flex-col gap-1">

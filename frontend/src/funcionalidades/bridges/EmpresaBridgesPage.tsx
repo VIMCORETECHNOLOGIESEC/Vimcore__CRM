@@ -63,6 +63,10 @@ interface ApiExternaBridgeState {
  * WhatsApp para una empresa puntual desde acá queda fuera de alcance de este
  * cambio -- requeriría una variante de `ConectarWhatsAppCard` que acepte un
  * `empresaId` explícito en vez de depender solo de `useVistaEmpresa`.
+ *
+ * Mismo motivo aplica a `ConectarMetaAdsCard` (Meta Ads, misma dependencia
+ * de `useVistaEmpresa()`) -- tampoco se monta acá por la misma razón exacta,
+ * no se agregó a propósito.
  */
 export function EmpresaBridgesPage() {
   const { empresaId } = useParams<{ empresaId: string }>();

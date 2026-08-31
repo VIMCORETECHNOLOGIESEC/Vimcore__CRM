@@ -15,6 +15,7 @@ import { DashboardPage } from "@/funcionalidades/dashboard/DashboardPage";
 import { LeadDetallePage } from "@/funcionalidades/leads/detalle/LeadDetallePage";
 import { LeadsPage } from "@/funcionalidades/leads/LeadsPage";
 import { LinkedInCallbackPage } from "@/funcionalidades/linkedin/LinkedInCallbackPage";
+import { MetaAdsCallbackPage } from "@/funcionalidades/metaAds/MetaAdsCallbackPage";
 import { OportunidadDetallePage } from "@/funcionalidades/oportunidades/detalle/OportunidadDetallePage";
 import { OportunidadesPage } from "@/funcionalidades/oportunidades/OportunidadesPage";
 import { ReportesPage } from "@/funcionalidades/reportes/ReportesPage";
@@ -69,6 +70,15 @@ import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
  * `bridges/:id` ya existente) porque LinkedIn Lead Sync cuelga de un
  * `Bridge` concreto -- no de "Bridges" en general como WhatsApp.
  *
+ * `/meta-ads/callback`: mismo criterio que `/whatsapp/callback` -- pública,
+ * Meta redirige acá el navegador de verdad (`GET /meta-ads/callback` no
+ * exige `Authorization`, la identidad se recupera del `state`). Meta Ads NO
+ * es un `Bridge` (no es fuente de leads, es una conexión OAuth por empresa
+ * para métricas de campañas) pero comparte el mismo patrón de flujo que
+ * WhatsApp -- el Paso 1 (botón "Conectar Meta Ads") vive dentro de
+ * `BridgesPage.tsx` (`ConectarMetaAdsCard.tsx`), al lado de
+ * `ConectarWhatsAppCard`.
+ *
  * `apariencia-empresa`: self-service de la propia `Empresa`
  * (`docs/blocks/d0-visualizacion-multitenant.md`, PASO 8) -- grupo de
  * `ProtectedRoute` separado del resto de rutas `ADMINISTRADOR` porque además
@@ -93,6 +103,10 @@ export const router = createBrowserRouter([
   {
     path: "/linkedin/callback",
     element: <LinkedInCallbackPage />,
+  },
+  {
+    path: "/meta-ads/callback",
+    element: <MetaAdsCallbackPage />,
   },
   ...(import.meta.env.DEV
     ? [
@@ -149,17 +163,26 @@ export const router = createBrowserRouter([
           {
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,
             children: [
+              // "usuarios" SIN el gate de vista de empresa (fix, regresión de
+              // e0cb7f8): a diferencia de Bridges, `/usuarios` tiene su
+              // propio tab holding-wide (`soloHoldingWide`, Bloque F/Item 25,
+              // `usuarios.utils.ts::FILTROS_USUARIOS_VACIOS`) para que el
+              // admin de holding gestione SU PROPIO staff sin depender de
+              // ninguna empresa -- gatearlo detrás de `?empresaId=` lo hacía
+              // inalcanzable desde el sidebar. El motivo original del gate
+              // (`/usuarios?empresaId=` para ver una empresa puntual) ya no
+              // aplica: esa función vive ahora en su propia ruta dedicada
+              // (`/empresas/:empresaId/usuarios`, ver
+              // `EmpresaUsuariosPage.tsx`).
+              { path: "usuarios", element: <UsuariosPage /> },
               {
                 // Mismo gate de vista de empresa que Oportunidades arriba,
-                // anidado dentro del grupo ADMINISTRADOR-only ya existente
-                // (Bridges sigue exigiendo ambas condiciones). Usuarios se
-                // sumó al mismo gate: un holding-wide no gestiona cuentas de
-                // ninguna empresa en particular hasta "entrar" a la vista de
-                // una concreta (bug real de QA manual, routing roto dentro
-                // de "Ver en vivo").
+                // anidado dentro del grupo ADMINISTRADOR-only ya existente.
+                // Bridges SÍ es 100% por-empresa (sin tab holding-wide
+                // equivalente), a diferencia de Usuarios arriba -- este gate
+                // se queda.
                 element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
                 children: [
-                  { path: "usuarios", element: <UsuariosPage /> },
                   { path: "bridges", element: <BridgesPage /> },
                   { path: "bridges/:id", element: <BridgeDetallePage /> },
                 ],

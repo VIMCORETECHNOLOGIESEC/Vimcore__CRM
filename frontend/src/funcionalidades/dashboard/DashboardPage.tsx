@@ -6,7 +6,6 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
-import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { DashboardFiltros } from "./DashboardFiltros";
@@ -63,7 +62,6 @@ export function DashboardPage() {
   // poblar igual. Ese rol simplemente ve el dashboard consolidado del
   // holding completo, sin selector, sin perder nada frente a hoy.
   const esAdministradorHoldingWide = hasRole(["ADMINISTRADOR"]) && user?.sessionScope === "holding";
-  const { empresaVistaId } = useVistaEmpresa();
 
   usePageHeader({ title: esGestorDeCartera ? "Dashboard general" : "Dashboard personal" });
 
@@ -72,16 +70,21 @@ export function DashboardPage() {
     return { preset: "7d", desde: hoy, hasta: hoy };
   });
   const [filtrosDashboard, setFiltrosDashboard] = useState<DashboardFiltrosState>(FILTROS_DASHBOARD_VACIOS);
+  // Estado local del filtro de empresa (docs/23 item 14) -- deliberadamente
+  // NO `useVistaEmpresa`: ese hook es el mecanismo global de "entrar a mirar
+  // en vivo" una empresa (cambia sidebar + tema en toda la app vía
+  // `?empresaId=` en la URL), y este selector es solo un filtro de métricas.
+  const [empresaFiltroId, setEmpresaFiltroId] = useState<string | null>(null);
 
-  // `empresaVistaId` solo tiene efecto real para una sesión holding-wide
+  // `empresaFiltroId` solo tiene efecto real para una sesión holding-wide
   // (`resolveEmpresaId` en `metricas.access.ts`, backend); para una sesión
   // `company` el backend ya fuerza su propia empresa e ignora este campo, así
   // que da igual que nunca esté seteado en ese caso (el selector ni se
   // renderiza). `undefined` (no `null`) para que `toParams` lo omita del
   // query string igual que el resto de filtros opcionales.
   const filtros = useMemo(
-    () => ({ ...buildMetricasFiltros(filtrosDashboard, rango), empresaId: empresaVistaId ?? undefined }),
-    [filtrosDashboard, rango, empresaVistaId],
+    () => ({ ...buildMetricasFiltros(filtrosDashboard, rango), empresaId: empresaFiltroId ?? undefined }),
+    [filtrosDashboard, rango, empresaFiltroId],
   );
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
@@ -196,7 +199,7 @@ export function DashboardPage() {
 
         {esAdministradorHoldingWide ? (
           <div className="mt-4 min-w-0 max-w-xs">
-            <SelectorEmpresaDashboard />
+            <SelectorEmpresaDashboard empresaId={empresaFiltroId} onChange={setEmpresaFiltroId} />
           </div>
         ) : null}
 

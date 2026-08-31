@@ -7,6 +7,7 @@ import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
+import { ConectarMetaAdsCard } from "@/funcionalidades/metaAds/ConectarMetaAdsCard";
 import { ConectarWhatsAppCard } from "@/funcionalidades/whatsapp/ConectarWhatsAppCard";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { Bridge } from "@/tipos/bridge";
@@ -63,13 +64,15 @@ interface ApiExternaBridgeState {
  * `AvisoBridgeIndicador.tsx`.
  *
  * `ConectarWhatsAppCard` (flujo de conexión de WhatsApp Business,
- * `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3) se monta
- * ADITIVAMENTE al final, fuera de la tabla de bridges -- WhatsApp NO es un
- * `Bridge` en el modelo de datos (un mensaje no es un lead), pero
- * conceptualmente es otro canal de comunicación de la empresa, de ahí
- * compartir esta pantalla en vez de agregar una entrada nueva al sidebar. Ya
- * reusa `empresaVistaId` de arriba (`useVistaEmpresa`) internamente, sin
- * necesitar props.
+ * `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3) y
+ * `ConectarMetaAdsCard` (flujo de conexión de Meta Ads, métricas de
+ * campañas) se montan ADITIVAMENTE al final, fuera de la tabla de bridges --
+ * ninguna de las dos es un `Bridge` en el modelo de datos (WhatsApp no es
+ * fuente de leads; Meta Ads es una conexión OAuth de métricas, no de leads),
+ * pero conceptualmente son otros canales/integraciones de la empresa, de ahí
+ * compartir esta pantalla en vez de agregar entradas nuevas al sidebar.
+ * Ambas reusan `empresaVistaId` de arriba (`useVistaEmpresa`) internamente,
+ * sin necesitar props.
  */
 export function BridgesPage() {
   usePageHeader({ title: "Bridges" });
@@ -167,7 +170,12 @@ export function BridgesPage() {
         </div>
       )}
 
-      {esVistaSoloLectura ? null : <ConectarWhatsAppCard />}
+      {esVistaSoloLectura ? null : (
+        <>
+          <ConectarWhatsAppCard />
+          <ConectarMetaAdsCard />
+        </>
+      )}
 
       {dialogAltaAbierto ? (
         <NuevoBridgeDialog
