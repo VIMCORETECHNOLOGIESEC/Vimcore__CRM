@@ -31,7 +31,7 @@ extracción de navegadores durante una instalación de workspace.
 |---|---|
 | `VPS_HOST` | IP pública o dominio de la VPS. |
 | `VPS_USER` | Usuario Linux que ejecuta Docker en la VPS. |
-| `VPS_SSH_KEY_B64` | Clave privada SSH codificada en base64. |
+| `VPS_SSH_KEY_B64` | Clave privada SSH codificada en base64. El workflow también tolera la private key pegada en crudo si se cargó así por error. |
 | `VPS_PORT` | Opcional; si no existe usa `22`. |
 
 Comando recomendado para cargar la clave sin compartirla en chat:
@@ -39,6 +39,11 @@ Comando recomendado para cargar la clave sin compartirla en chat:
 ```bash
 base64 -w0 ~/.ssh/id_ed25519_vps | gh secret set VPS_SSH_KEY_B64 --body-file -
 ```
+
+Si se carga manualmente desde la interfaz web de GitHub, pegar solo la salida
+base64, sin prompt, sin comillas y sin texto adicional. Si accidentalmente se
+pegó la private key completa (`-----BEGIN OPENSSH PRIVATE KEY-----`), el
+workflow también la escribe como archivo PEM válido.
 
 ### Variables Requeridas
 

@@ -99,7 +99,11 @@ jobs:
       - name: Prepare SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${VPS_SSH_KEY_B64}" | base64 -d > ~/.ssh/vps_key
+          if printf '%s' "${VPS_SSH_KEY_B64}" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+            printf '%s\n' "${VPS_SSH_KEY_B64}" > ~/.ssh/vps_key
+          else
+            printf '%s' "${VPS_SSH_KEY_B64}" | tr -d '[:space:]' | base64 -d > ~/.ssh/vps_key
+          fi
           chmod 600 ~/.ssh/vps_key
           ssh-keyscan -p "${VPS_PORT}" "${VPS_HOST}" >> ~/.ssh/known_hosts
         env:
