@@ -112,7 +112,7 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 
 **Estado**: ✅ Implementado y funcional
 
-**Descripción funcional**: Vista de trabajo de un lead individual — datos de contacto, origen, línea de tiempo de la negociación, gestión de citas y cierre (venta o no venta).
+**Descripción funcional**: Vista de trabajo de un lead individual — datos de contacto, origen, línea de tiempo de la negociación, y un workspace con 4 tabs: Progreso, Cita, Cierre y Oportunidad (ver nota "Grupo D" más abajo).
 
 **Pasos de uso**:
 1. Desde el listado de leads, hacer clic en un lead.
@@ -121,10 +121,17 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 4. Si corresponde, coordinar una cita desde el panel de citas.
 5. Al cerrar el lead como Venta, completar el formulario de cierre de venta (monto, forma de pago). Al cerrar como No venta, completar el formulario correspondiente con el motivo.
 6. Una vez cerrado (Venta o No venta), el lead queda en un estado terminal y no puede volver a moverse.
+7. Desde el tab "Oportunidad" del workspace, consultar las oportunidades ya registradas para este lead o iniciar una nueva sin salir del detalle (ver "Grupo D" más abajo).
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
 **Notas técnicas**: las transiciones de etapa son estrictamente hacia adelante — nunca se puede retroceder una etapa ya superada.
+
+**Fix de QA manual (A3, sin commitear al momento de esta revisión)**: el tutorial guiado (`LeadsNavigationTutorial.tsx`) se rompía visualmente al retroceder un paso con el botón "Atrás" de Joyride — la rama `ACTIONS.PREV` solo decrementaba el índice del paso, sin revertir ningún side-effect de las ramas de avance. Dos bugs concretos corregidos: (a) retroceder del paso "chat" al paso "botón de WhatsApp" dejaba el chat abierto, así que el target del paso anterior quedaba desmontado; (b) retroceder del paso "encabezado del lead" al paso "fila de la tabla" no navegaba de `/leads/:id` de regreso a `/leads`. Corregido agregando reversas simétricas (cerrar chat, navegar de vuelta, reseleccionar tab) en la rama `PREV`, mismo mecanismo de `CustomEvent` ya usado para avanzar. Cubierto en `frontend/tests/leads/tutorial/LeadsNavigationTutorial.transition.test.tsx`.
+
+**Grupo D — Tab "Oportunidad" en el workspace del lead (cerrado, sin commitear al momento de esta revisión)**: pedido de QA manual — antes, `NuevaOportunidadButton` solo permitía CREAR una oportunidad nueva y no listaba las ya existentes de ese lead, pese a que el backend ya soporta `GET /oportunidades?leadId=`. Se agregó un cuarto tab "Oportunidad" al workspace (`OportunidadesLeadTab.tsx`, nuevo), que lista las oportunidades del lead en tarjetas simples y también expone el alta (reutiliza `NuevaOportunidadButton`) — acceso alternativo útil porque con el chat de WhatsApp abierto el botón externo queda tapado por el overlay. Respeta el mismo modo de solo lectura de "Ver en vivo" (ítem 29): el botón de alta se oculta si `esVistaSoloLectura`. El tutorial (`LeadsNavigationTutorial.tsx`) suma un paso 14 nuevo apuntando a `[data-tour="lead-workspace-oportunidad"]`. Cubierto en `frontend/tests/leads/detalle/OportunidadesLeadTab.test.tsx` (incluye el caso de solo lectura).
+
+**Companion frontend de B1 (route gate + `empresaId`, sin commitear al momento de esta revisión)**: la ruta `leads/:id` en `router.tsx` ahora está anidada bajo `<ProtectedRoute requiereVistaEmpresaSiHolding />`, mismo gate real que Oportunidades/Bridges/Conversaciones — un holding-wide no tiene un lead concreto para ver hasta "entrar" a la vista de una empresa. `useLeadDetalle.ts`/`leadDetalle.api.ts` ahora reciben y reenvían `empresaId` (incluido en la query key de TanStack Query, y como query param forward-compatible en `GET /leads/:id`). **Esto NO corrige el bug de fondo**: `backend/src/services/leads.access.ts::canRead()` sigue sin resolver el bypass holding-wide para este endpoint (excluye deliberadamente a `SUPERVISOR_HOLDING`/`SUPER_ADMIN` de `ROLES_ACCESO_TOTAL`, y la ruta no pasa por `requireRole(...)`) — el 403 real para un holding-wide viendo un lead ajeno sigue determinístico hasta que Mateo entregue ese fix, sin ETA. Este cambio es únicamente preparación de frontend, no el arreglo del bug.
 
 ### Chat de WhatsApp en detalle de lead
 
@@ -141,6 +148,12 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 
 **Notas técnicas**: la interfaz visual ya está construida (incluida la animación de apertura/cierre), pero hoy muestra una conversación de ejemplo fija — no envía ni recibe mensajes reales todavía. Falta conectarla al módulo de mensajería de WhatsApp del backend (ver "Integración WhatsApp Business" más abajo), que sí está listo del lado del servidor.
 
+**Aclaración — no confundir con "Integración WhatsApp Business (real)" (ítem 11)**: hay dos superficies de WhatsApp distintas en esta aplicación, fáciles de confundir visualmente entre sí pero sin ningún cruce de código hoy:
+- Este panel (`WhatsAppChat` en `LeadDetallePage.tsx`) es 100% mock/demo, documentado como tal en `AGENTS.md` §7 — nunca envía ni recibe mensajes reales.
+- La bandeja de conversaciones real ("Conversaciones Parte 2", `funcionalidades/whatsapp/{ConversacionesPage,CajaRespuesta,HiloMensajes,ListaConversaciones}.tsx`, ver ítem 11 Parte 2 más abajo) es mensajería real de WhatsApp Business, todavía WIP y sin confirmación de alcance de Mateo — NO está aprobada para este despliegue.
+
+Ambas comparten conceptualmente el mismo contacto (`Cliente`, vía `Lead.clienteId` / `Conversacion.clienteId`, sin `leadId` en `Conversacion` por diseño), pero no hay ningún dato duplicado ni código que las cruce hoy — son dos superficies desconectadas.
+
 ### Ingreso manual de leads (canal manual)
 
 **Estado**: ✅ Implementado y funcional
@@ -155,6 +168,8 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
 **Notas técnicas**: `CargarLeadManualDialog.tsx`/`GestionarCanalesManualesDialog.tsx` + `canal-manual.api.ts`/`useCanalesManuales.ts`, botones nuevos en `LeadsPage.tsx` — exclusivo de sesión `company` (no aplica a una vista holding-wide). Backend real: `POST /canales-manuales` (alta), `GET /canales-manuales` (listado), `PATCH /canales-manuales/:id` (rename/activar-desactivar) y `POST /leads` (alta de lead manual, `origen: MANUAL`) — ver `backend/src/routes/canal-manual.routes.ts`, `backend/src/routes/leads.routes.ts` y `backend/src/services/leads-manual.service.ts`. Gestión del catálogo exclusiva de Administrador; Supervisor/Asesor solo eligen de la lista.
+
+**Fix de QA manual (C1, sin commitear al momento de esta revisión)**: antes, un Administrador sin canales manuales activos veía el formulario de carga manual vacío/inutilizable. Ahora, si no hay canales activos y quien abre el diálogo es Administrador, `CargarLeadManualDialog.tsx` muestra un `EmptyState` con un botón que cierra ese diálogo y abre directamente `GestionarCanalesManualesDialog` (coordinado desde `LeadsPage.tsx`). **Alcance explícitamente limitado a Administrador**: el caso de Supervisor/Asesor sin canales (mostrarles un aviso + botón para notificar al administrador, con el nombre sugerido) sigue bloqueado — no existe `POST /notificaciones` ni metadata para ese flujo en el backend todavía; pedido a Mateo redactado, sin enviar, sin ETA.
 
 ### Carga masiva de leads por Excel
 
@@ -189,7 +204,7 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: para una sesión holding-wide, "Bridges" queda oculto del menú lateral (y bloqueado por URL directa) hasta que el holding "entre" a la vista de una empresa puntual (`useVistaEmpresa`, ver ítem 29) — un holding-wide no gestiona bridges de ninguna empresa en particular sin haber elegido una primero. Sesión `company` no se ve afectada por este gate. Implementado en `router.tsx` (`ProtectedRoute requiereVistaEmpresaSiHolding`) y `layouts/navigation.ts`/`components/app-sidebar.tsx` para el ítem de menú — mismo mecanismo que "Oportunidades" (ítem 17).
+**Notas técnicas**: para una sesión holding-wide, "Bridges" queda oculto del menú lateral (y bloqueado por URL directa) hasta que el holding "entre" a la vista de una empresa puntual (`useVistaEmpresa`, ver ítem 29) — un holding-wide no gestiona bridges de ninguna empresa en particular sin haber elegido una primero. Sesión `company` no se ve afectada por este gate. Implementado en `router.tsx` (`ProtectedRoute requiereVistaEmpresaSiHolding`) y `layouts/navigation.ts`/`components/app-sidebar.tsx` para el ítem de menú — mismo mecanismo que "Oportunidades" (ítem 17). **Fix de QA manual (A2, sin commitear al momento de esta revisión)**: entrar a esa vista ya no solo la mostraba — permitía dar de alta, dar de baja, reactivar bridges y conectar WhatsApp sin ningún gate, pese a que "Ver en vivo" está pensado como solo lectura. Ahora, dentro de esa vista (`esVistaSoloLectura` de `useVistaEmpresa`), esas acciones quedan deshabilitadas en `BridgesPage.tsx`/`BridgesFiltros.tsx`/`BridgesTable.tsx` (botón de alta oculto, `ConectarWhatsAppCard` oculta, acciones de baja/reactivación ocultas por fila) — ver ítem 29 para el mecanismo central del modo de solo lectura.
 
 ### Alta de bridge
 
@@ -253,7 +268,7 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 
 ### Integración WhatsApp Business (real)
 
-**Estado**: 🚧 En curso — Parte 1 (conexión) hecha y pusheada; Parte 2 (mensajería real) construida pero congelada, pendiente de decisión de alcance
+**Estado**: 🚧 En curso — Parte 1 (conexión) hecha y pusheada; Parte 2 (mensajería real) construida, testeada y ya pusheada a `origin/test/gpt` como WIP explícito, pendiente de confirmación de alcance de Mateo (no aprobada para despliegue)
 
 **Descripción funcional**: Conexión de una cuenta de WhatsApp Business y, en una segunda etapa, envío/recepción de mensajes reales desde la aplicación (ver también "Chat de WhatsApp en detalle de lead").
 
@@ -268,11 +283,13 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 
 **Notas técnicas**: `funcionalidades/whatsapp/` (`ConectarWhatsAppCard.tsx`, montada en `BridgesPage.tsx`; `WhatsAppCallbackPage.tsx`, ruta pública `/whatsapp/callback`; `useWhatsApp.ts`; `whatsapp.api.ts`; `whatsapp.utils.ts`; `tipos/whatsapp.ts`) está conectado a los endpoints reales del contrato (`docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3: `GET /whatsapp/conectar`, `GET /whatsapp/callback`, `POST /whatsapp/conexion`) — sin mocks, commit `e684eee` en `origin/test/gpt`. Esta excepción de alcance está aprobada y documentada explícitamente en `AGENTS.md` §7.
 
-**Parte 2 — Bandeja de conversaciones (envío/recepción real de mensajes): pendiente de coordinación, NO lista**
+**Parte 2 — Bandeja de conversaciones (envío/recepción real de mensajes): construida y pusheada como WIP, NO aprobada para despliegue**
 
-**Estado**: construida y en verde en este worktree, pero **congelada sin commitear** por decisión del usuario, a la espera de coordinar con el desarrollador de backend (Mateo) si entra en esta ronda de despliegue. `AGENTS.md` §7 es explícito: la excepción de alcance aprobada cubre únicamente el flujo de **conexión** (Parte 1); el envío y recepción real de mensajes **no** está cubierto por esa ampliación y sigue fuera de alcance salvo que se decida aparte — probablemente como su propio bloque SDD.
+**Estado**: construida, testeada y en verde — commiteada (`496afeb`, `wip(whatsapp-parte2): mensajería real de WhatsApp -- pendiente confirmación de alcance de Mateo`) y **ya pusheada a `origin/test/gpt`** (verificado: `git log origin/test/gpt..HEAD` vacío para ese commit — es ancestro directo del HEAD remoto actual). `AGENTS.md` §7 es explícito en su alcance: la excepción de alcance aprobada cubre únicamente el flujo de **conexión** (Parte 1); el envío y recepción real de mensajes **no** está cubierto por esa ampliación y sigue fuera de alcance salvo que se decida aparte — probablemente como su propio bloque SDD. Mateo todavía no confirmó si esta ronda lo incluye ni con qué mecanismo.
 
-**Notas técnicas**: no confundir con "Chat de WhatsApp en detalle de lead" (ítem 5), que sigue siendo la UI de demo con datos mock — la bandeja real (`CajaRespuesta.tsx`, `ConversacionesPage.tsx`, `HiloMensajes.tsx`, `ListaConversaciones.tsx`, `conversaciones.api.ts`, `conversaciones.utils.ts`, `useConversaciones.ts`, `tipos/conversacion.ts`) existe como archivos sin commitear en el worktree de desarrollo al momento de esta revisión — no está en `origin/test/gpt` y no debe documentarse como disponible hasta que se resuelva el alcance y se commitee/pushee.
+**Riesgo a señalar al equipo**: el propio mensaje del commit `496afeb` documenta la excepción WIP como "se commitea íntegro y testeado para no perder el trabajo... No pushear hasta que Mateo confirme". Sin embargo, el commit **ya está en `origin/test/gpt`**, no solo en el historial local — con confirmación explícita del usuario en el momento de hacerlo (según la propia excepción de `AGENTS.md` §7), pero visible hoy para cualquiera con acceso a esa rama remota. No es un juicio sobre si estuvo bien o mal — es un hecho de estado que el equipo debe tener presente: no asumir que este módulo sigue siendo puramente local.
+
+**Notas técnicas**: no confundir con "Chat de WhatsApp en detalle de lead" (ítem 5) — ver la aclaración de las "dos superficies de WhatsApp" en esa sección. La bandeja real (`CajaRespuesta.tsx`, `ConversacionesPage.tsx`, `HiloMensajes.tsx`, `ListaConversaciones.tsx`, `conversaciones.api.ts`, `conversaciones.utils.ts`, `useConversaciones.ts`, `tipos/conversacion.ts`, notificada en vivo por el evento SSE `whatsapp.mensaje-nuevo`) está en el código de `origin/test/gpt` pero sigue sin documentarse como disponible para uso real hasta que se resuelva el alcance con Mateo.
 
 ---
 
@@ -377,6 +394,8 @@ El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA
 3. Navegar entre páginas de resultados.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
+
+**Notas técnicas**: **Fix de QA manual (A1, sin commitear al momento de esta revisión)**: "Usuarios" rompía el routing dentro de "Ver en vivo" — a diferencia de Leads/Conversaciones/Oportunidades/Bridges, el ítem de menú no tenía `requiereVistaEmpresaSiHolding: true` (`layouts/navigation.ts`) y el grupo `usuarios` en `router.tsx` solo exigía `allowedRoles={["ADMINISTRADOR"]}`, sin el gate de vista de empresa anidado que sí tenía Bridges. Corregido agregando el flag y anidando `<ProtectedRoute requiereVistaEmpresaSiHolding />` dentro del grupo ya existente, mismo patrón ya aplicado en Bridges/Oportunidades/Conversaciones (ítem 6). Cubierto en `frontend/tests/layouts/navigation.test.ts`.
 
 ### Alta de usuario
 

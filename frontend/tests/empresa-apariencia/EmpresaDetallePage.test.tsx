@@ -307,6 +307,17 @@ describe("EmpresaDetallePage — 'Ver en vivo'", () => {
     expect(navigateMock).toHaveBeenCalledWith("/panel?empresaId=e1");
   });
 
+  it("el ícono de «Ver en vivo» tiene tratamiento visual distinguido (círculo rojo tipo hero)", async () => {
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    const disparador = screen.getByRole("button", { name: /ver en vivo/i });
+    const circulo = disparador.querySelector("svg")?.parentElement;
+
+    expect(circulo).toHaveClass("bg-destructive", "rounded-full");
+  });
+
   it("empresa sin marca propia (colores null) cae al default de fábrica, nunca a un color inválido en la cortina", async () => {
     fetchEmpresaHoldingApiMock.mockResolvedValue(
       empresaFake({ id: "e1", nombre: "Empresa A", colorPrimario: null, colorSecundario: null }),

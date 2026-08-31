@@ -38,9 +38,18 @@ export function LeadsPage() {
   usePageHeader({ title: "Gestión de Leads" });
 
   const { user, hasRole } = useAuth();
-  const { empresaVistaId } = useVistaEmpresa();
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
   const { startTour, startTourIfNeeded } = useLeadsNavigationTutorial();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
+  /**
+   * Reasignación masiva es una acción de escritura: un holding-wide en "Ver
+   * en vivo" de una empresa (`useVistaEmpresa().esVistaSoloLectura`) puede
+   * navegar el listado pero no reasignar leads (no soportado en esta
+   * versión de despliegue). `esGestorDeCartera` en sí mismo sigue
+   * controlando piezas de solo lectura (columna/filtro de responsable), que
+   * no se ocultan acá.
+   */
+  const puedeAsignarMasivo = esGestorDeCartera && !esVistaSoloLectura;
 
   /**
    * Canal de ingreso manual (diferido, docs/blocks/d-routing-oportunidad.md:
@@ -170,7 +179,7 @@ export function LeadsPage() {
         }}
       />
 
-      {esGestorDeCartera ? (
+      {puedeAsignarMasivo ? (
         <AccionesMasivas
           cantidadSeleccionada={seleccionados.size}
           responsables={responsables}
@@ -193,7 +202,7 @@ export function LeadsPage() {
           <LeadsTable
             leads={data.datos}
             mostrarColumnaResponsable={esGestorDeCartera}
-            permitirSeleccion={esGestorDeCartera}
+            permitirSeleccion={puedeAsignarMasivo}
             seleccionados={seleccionados}
             onToggleSeleccion={toggleSeleccion}
             onToggleSeleccionTodos={toggleSeleccionTodos}
@@ -270,6 +279,11 @@ export function LeadsPage() {
               { onSuccess: () => setDialogLeadManualAbierto(false) },
             )
           }
+          esAdministrador={puedeGestionarCanales}
+          onRedirigirAGestionCanales={() => {
+            setDialogLeadManualAbierto(false);
+            setDialogCanalesAbierto(true);
+          }}
         />
       ) : null}
 

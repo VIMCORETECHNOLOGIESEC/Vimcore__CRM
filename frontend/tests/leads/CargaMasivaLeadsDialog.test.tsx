@@ -11,6 +11,14 @@ vi.mock("@/funcionalidades/leads/carga-masiva.api", () => ({
   crearLeadsMasivoApi: vi.fn(),
   CARGA_MASIVA_MAX_LEADS_POR_TANDA: 100,
 }));
+// `useVistaEmpresa` (consumido por `CargaMasivaLeadsDialog` para leer
+// `?empresaId=`) ahora también llama `useAuth()` -- mockeado acá con una
+// sesión `company` estable (mismo patrón que
+// `tests/layouts/SalirVistaEmpresaButton.test.tsx`/`tests/bridges/BridgesPage.test.tsx`).
+// Ningún test de este archivo depende de `esVistaSoloLectura` en sí.
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+  useAuth: () => ({ user: { sessionScope: "company" } }),
+}));
 
 vi.mock("@/funcionalidades/leads/carga-masiva.utils", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/funcionalidades/leads/carga-masiva.utils")>();

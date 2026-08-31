@@ -1,23 +1,40 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useSearchParams } from "react-router";
-import { describe, expect, it } from "vitest";
-import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionScope } from "@/tipos/usuario";
 
 /**
  * `useVistaEmpresa`: hook sobre `useSearchParams` que centraliza la "vista
  * de empresa" simulada de un holding-wide (`?empresaId=` en la URL). Mismo
  * criterio de test que `SalirVistaEmpresaButton.test.tsx` (consumidor real
  * de este hook): se prueba el comportamiento observable vía la URL, sin
- * mockear `useSearchParams`.
+ * mockear `useSearchParams`. `esVistaSoloLectura` sí depende de `useAuth`
+ * (`sessionScope`), por eso se mockea igual que
+ * `useNotificacionesRealtime.test.tsx` (variable mutable reseteada en
+ * `beforeEach`).
  */
 
+let sessionScope: SessionScope = "holding";
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+  useAuth: () => ({ user: { sessionScope } }),
+}));
+
+const { useVistaEmpresa } = await import(
+  "@/funcionalidades/empresa-apariencia/useVistaEmpresa"
+);
+
+beforeEach(() => {
+  sessionScope = "holding";
+});
+
 function Sonda() {
-  const { empresaVistaId, entrarAEmpresa, salirDeEmpresa } = useVistaEmpresa();
+  const { empresaVistaId, esVistaSoloLectura, entrarAEmpresa, salirDeEmpresa } = useVistaEmpresa();
   const [searchParams] = useSearchParams();
   return (
     <div>
       <span data-testid="empresa-vista-id">{empresaVistaId ?? "null"}</span>
+      <span data-testid="solo-lectura">{String(esVistaSoloLectura)}</span>
       <span data-testid="query-actual">{searchParams.toString()}</span>
       <button onClick={() => entrarAEmpresa("e1")}>entrar-e1</button>
       <button onClick={() => entrarAEmpresa("e2")}>entrar-e2</button>
@@ -64,6 +81,26 @@ describe("useVistaEmpresa — flujo principal", () => {
     await userEvent.click(screen.getByRole("button", { name: "entrar-e2" }));
     expect(screen.getByTestId("empresa-vista-id")).toHaveTextContent("e2");
     expect(screen.getByTestId("query-actual").textContent).toBe("empresaId=e2");
+  });
+});
+
+describe("useVistaEmpresa — esVistaSoloLectura", () => {
+  it("es true con sesión holding y ?empresaId presente", () => {
+    sessionScope = "holding";
+    renderConRuta("?empresaId=e1");
+    expect(screen.getByTestId("solo-lectura")).toHaveTextContent("true");
+  });
+
+  it("es false con sesión holding sin ?empresaId", () => {
+    sessionScope = "holding";
+    renderConRuta("");
+    expect(screen.getByTestId("solo-lectura")).toHaveTextContent("false");
+  });
+
+  it("es false con sesión company aunque haya ?empresaId en la URL", () => {
+    sessionScope = "company";
+    renderConRuta("?empresaId=e1");
+    expect(screen.getByTestId("solo-lectura")).toHaveTextContent("false");
   });
 });
 

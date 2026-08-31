@@ -76,7 +76,7 @@ export function BridgesPage() {
 
   const [filtros, setFiltros] = useState<BridgesFiltrosState>(FILTROS_BRIDGES_VACIOS);
   const [pagina, setPagina] = useState(1);
-  const { empresaVistaId } = useVistaEmpresa();
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
 
   const params = useMemo(
     () => buildBridgesQueryParams(filtros, pagina, BRIDGES_POR_PAGINA, empresaVistaId ?? undefined),
@@ -112,7 +112,7 @@ export function BridgesPage() {
       <BridgesFiltros
         filtros={filtros}
         onChange={updateFiltros}
-        onNuevo={() => setDialogAltaAbierto(true)}
+        onNuevo={esVistaSoloLectura ? undefined : () => setDialogAltaAbierto(true)}
       />
 
       {isLoading ? (
@@ -139,6 +139,7 @@ export function BridgesPage() {
             onDarDeBaja={setBridgeParaBaja}
             onReactivar={(bridgeId) => reactivar.mutate(bridgeId)}
             reactivando={reactivar.isPending}
+            soloLectura={esVistaSoloLectura}
           />
 
           <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
@@ -166,7 +167,7 @@ export function BridgesPage() {
         </div>
       )}
 
-      <ConectarWhatsAppCard />
+      {esVistaSoloLectura ? null : <ConectarWhatsAppCard />}
 
       {dialogAltaAbierto ? (
         <NuevoBridgeDialog

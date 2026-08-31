@@ -269,6 +269,21 @@ describe("LeadsPage — asignación masiva (supervisor/administrador)", () => {
       expect(assignLeadsMasivoApiMock).toHaveBeenCalledWith(["lead-01"], "vendedor-1");
     });
   });
+
+  it("holding-wide en «Ver en vivo» (?empresaId= con sessionScope holding): no ofrece selección ni «Asignar»", async () => {
+    mockearAuth("ADMINISTRADOR", { sessionScope: "holding", empresaId: null });
+    fetchLeadsApiMock.mockResolvedValue({ datos: [leadFake()], total: 1, pagina: 1, porPagina: 10 });
+
+    renderLeadsPage("/leads?empresaId=empresa-9");
+    await screen.findByText("Roberto Salazar");
+
+    expect(
+      screen.queryByRole("checkbox", { name: "Seleccionar a Roberto Salazar" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Asignar" })).not.toBeInTheDocument();
+    // La columna de responsable sigue siendo de solo lectura: no se oculta.
+    expect(screen.getByRole("columnheader", { name: "Responsable" })).toBeInTheDocument();
+  });
 });
 
 /**
@@ -402,6 +417,28 @@ describe("LeadsPage — canal de ingreso manual (botones por rol/scope)", () => 
 
     await user.click(screen.getByRole("button", { name: "Gestionar canales" }));
 
+    expect(await screen.findByRole("dialog", { name: "Canales de ingreso manual" })).toBeInTheDocument();
+  });
+
+  /**
+   * Sin canales activos, Administrador se redirige a "Gestionar canales" en
+   * vez de ver el formulario vacío (tarea C1) -- coordinación de estado entre
+   * ambos diálogos en `LeadsPage.tsx`: cierra "Cargar lead manual" y abre
+   * "Gestionar canales" en el mismo `onClick`.
+   */
+  it("Administrador sin canales activos: «Ir a gestionar canales» cierra el diálogo de alta y abre el de canales", async () => {
+    mockearAuth("ADMINISTRADOR", { sessionScope: "company", empresaId: "empresa-1" });
+    const user = userEvent.setup();
+
+    renderLeadsPage();
+    await screen.findByText("Roberto Salazar");
+
+    await user.click(screen.getByRole("button", { name: "Cargar lead manual" }));
+    expect(await screen.findByRole("dialog", { name: "Cargar lead manual" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Ir a gestionar canales" }));
+
+    expect(screen.queryByRole("dialog", { name: "Cargar lead manual" })).not.toBeInTheDocument();
     expect(await screen.findByRole("dialog", { name: "Canales de ingreso manual" })).toBeInTheDocument();
   });
 });

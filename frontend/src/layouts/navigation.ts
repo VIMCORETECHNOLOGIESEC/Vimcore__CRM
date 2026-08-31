@@ -104,6 +104,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     route: "/usuarios",
     icon: UserCog,
     allowedRoles: ["ADMINISTRADOR"],
+    requiereVistaEmpresaSiHolding: true,
   },
   {
     label: "Bridges",

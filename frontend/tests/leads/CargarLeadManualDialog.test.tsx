@@ -19,8 +19,10 @@ function renderDialog(
   canales: CanalManual[] = [canalFake()],
   onSubmit = vi.fn(),
   enviando = false,
+  opciones: { esAdministrador?: boolean; onRedirigirAGestionCanales?: () => void } = {},
 ) {
   const onOpenChange = vi.fn();
+  const onRedirigirAGestionCanales = opciones.onRedirigirAGestionCanales ?? vi.fn();
   render(
     <CargarLeadManualDialog
       open
@@ -28,9 +30,11 @@ function renderDialog(
       canales={canales}
       onSubmit={onSubmit}
       enviando={enviando}
+      esAdministrador={opciones.esAdministrador ?? false}
+      onRedirigirAGestionCanales={onRedirigirAGestionCanales}
     />,
   );
-  return { onSubmit, onOpenChange };
+  return { onSubmit, onOpenChange, onRedirigirAGestionCanales };
 }
 
 afterEach(() => {
@@ -146,5 +150,42 @@ describe("CargarLeadManualDialog", () => {
     expect(screen.getByRole("combobox", { name: "Canal" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cargando…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+  });
+});
+
+/**
+ * Sin canales activos: Administrador se redirige a "Gestionar canales" en
+ * vez de ver el formulario vacío/error de validación (tarea C1). Roles no
+ * Administrador conservan el comportamiento previo -- ver el prompt de esta
+ * tarea, la variante "Supervisor/Asesor → notificar admin" queda fuera de
+ * alcance (bloqueada en `POST /notificaciones`, todavía inexistente).
+ */
+describe("CargarLeadManualDialog — sin canales activos", () => {
+  it("Administrador ve un estado vacío con acción para ir a gestionar canales, sin el formulario", () => {
+    renderDialog([], vi.fn(), false, { esAdministrador: true });
+
+    expect(screen.getByText("Todavía no hay canales de ingreso manual")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ir a gestionar canales" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cargar lead" })).not.toBeInTheDocument();
+  });
+
+  it("Administrador: al hacer clic en la acción, llama a onRedirigirAGestionCanales", async () => {
+    const user = userEvent.setup();
+    const { onRedirigirAGestionCanales } = renderDialog([], vi.fn(), false, {
+      esAdministrador: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Ir a gestionar canales" }));
+
+    expect(onRedirigirAGestionCanales).toHaveBeenCalledTimes(1);
+  });
+
+  it("no Administrador (ej. Asesor) sigue viendo el formulario vacío con validación normal", () => {
+    renderDialog([], vi.fn(), false, { esAdministrador: false });
+
+    expect(screen.getByLabelText("Nombre")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Canal" })).toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay canales de ingreso manual")).not.toBeInTheDocument();
   });
 });

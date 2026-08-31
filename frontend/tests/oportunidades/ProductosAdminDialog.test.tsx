@@ -45,13 +45,29 @@ function productoFake(overrides: Partial<ProductoOportunidad> = {}): ProductoOpo
   };
 }
 
-function renderDialog(empresaVistaId?: string) {
+/**
+ * `ProductosAdminDialog` es controlado (tarea C1, refactor -- sin trigger
+ * propio): `open`/`onOpenChange` los provee el caller
+ * (`OportunidadesPage.tsx`/`NuevaOportunidadButton.tsx`). Estos tests
+ * renderizan directamente con `open` en vez de simular el click de un botón
+ * "Gestionar productos" que ya no vive acá.
+ */
+function renderDialog(
+  empresaVistaId?: string,
+  onOpenChange = vi.fn(),
+  esVistaSoloLectura = false,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <ProductosAdminDialog empresaVistaId={empresaVistaId} />
+      <ProductosAdminDialog
+        open
+        onOpenChange={onOpenChange}
+        empresaVistaId={empresaVistaId}
+        esVistaSoloLectura={esVistaSoloLectura}
+      />
     </QueryClientProvider>,
   );
 }
@@ -62,24 +78,21 @@ beforeEach(() => {
 });
 
 describe("ProductosAdminDialog", () => {
-  it("no muestra el trigger para un rol distinto de ADMINISTRADOR", () => {
+  it("no muestra nada para un rol distinto de ADMINISTRADOR (gate único, sin duplicar en el caller)", () => {
     mockearAuth("ASESOR");
     const { container } = renderDialog();
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("muestra el trigger 'Gestionar productos' para ADMINISTRADOR", () => {
+  it("no muestra nada con esVistaSoloLectura, aunque el rol sea ADMINISTRADOR (holding-wide en «Ver en vivo»)", () => {
     mockearAuth("ADMINISTRADOR");
-    renderDialog();
-    expect(screen.getByRole("button", { name: "Gestionar productos" })).toBeInTheDocument();
+    const { container } = renderDialog(undefined, vi.fn(), true);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("abrir el diálogo lista los productos", async () => {
+  it("con open=true y rol ADMINISTRADOR, lista los productos", async () => {
     mockearAuth("ADMINISTRADOR");
-    const user = userEvent.setup();
     renderDialog("emp-1");
-
-    await user.click(screen.getByRole("button", { name: "Gestionar productos" }));
 
     expect(await screen.findByText("Departamento tipo A")).toBeInTheDocument();
     expect(fetchProductosApiMock).toHaveBeenCalledWith(
@@ -92,7 +105,6 @@ describe("ProductosAdminDialog", () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await user.click(screen.getByRole("button", { name: "Gestionar productos" }));
     await user.click(await screen.findByRole("button", { name: "Crear producto" }));
 
     expect(await screen.findByText("Ingresá el nombre.")).toBeInTheDocument();
@@ -105,7 +117,6 @@ describe("ProductosAdminDialog", () => {
     const user = userEvent.setup();
     renderDialog("emp-1");
 
-    await user.click(screen.getByRole("button", { name: "Gestionar productos" }));
     await user.type(await screen.findByLabelText("Nombre del producto"), "Departamento tipo B");
     await user.click(screen.getByRole("button", { name: "Crear producto" }));
 
@@ -122,10 +133,23 @@ describe("ProductosAdminDialog", () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await user.click(screen.getByRole("button", { name: "Gestionar productos" }));
     await user.type(await screen.findByLabelText("Nombre del producto"), "Departamento tipo B");
     await user.click(screen.getByRole("button", { name: "Crear producto" }));
 
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith("Producto creado"));
+  });
+
+  it("«Cerrar» llama a onOpenChange(false)", async () => {
+    mockearAuth("ADMINISTRADOR");
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderDialog(undefined, onOpenChange);
+
+    // Dos elementos con nombre accesible "Cerrar": el botón del footer y la
+    // X del propio `<Dialog>` (sr-only) -- el primero es el nuestro.
+    const [botonCerrarFooter] = await screen.findAllByRole("button", { name: "Cerrar" });
+    await user.click(botonCerrarFooter);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

@@ -129,6 +129,12 @@ export function UsuariosPage() {
             onReactivar={(usuarioId) => reactivar.mutate(usuarioId)}
             reactivandoId={reactivar.isPending ? (reactivar.variables ?? null) : null}
             atenuarInactivos={filtros.estado !== "ACTIVOS"}
+            // Subtítulo de empresa por fila (ver el docblock de
+            // `UsuariosTable.tsx::mostrarEmpresas`): solo cuando la vista
+            // actual mezcla usuarios de distintas empresas, es decir cuando
+            // el checkbox "Ver usuarios de todas las empresas" está tildado
+            // (`soloHoldingWide === false`).
+            mostrarEmpresas={!filtros.soloHoldingWide}
           />
 
           <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">

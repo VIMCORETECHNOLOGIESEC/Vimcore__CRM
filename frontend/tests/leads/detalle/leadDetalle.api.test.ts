@@ -74,7 +74,7 @@ describe("fetchLeadDetalleApi (GET /leads/:id real)", () => {
 
     const lead = await fetchLeadDetalleApi("lead-01");
 
-    expect(getMock).toHaveBeenCalledWith("/leads/lead-01");
+    expect(getMock).toHaveBeenCalledWith("/leads/lead-01", { params: { empresaId: undefined } });
     expect(lead.id).toBe("lead-01");
     expect(lead.cliente.nombre).toBe("Roberto Salazar");
   });

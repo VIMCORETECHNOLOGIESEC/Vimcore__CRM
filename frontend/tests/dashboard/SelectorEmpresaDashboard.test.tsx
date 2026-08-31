@@ -24,6 +24,15 @@ vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", (
   fetchEmpresasHoldingApi: vi.fn(),
   fetchEmpresaHoldingApi: vi.fn(),
 }));
+// `useVistaEmpresa` (consumido por `SelectorEmpresaDashboard`) ahora también
+// llama `useAuth()` para derivar `esVistaSoloLectura` -- mockeado acá con una
+// sesión `holding` estable (quien ve este selector es siempre un
+// holding-wide, ver `DashboardPage.tsx`), mismo patrón que
+// `tests/bridges/BridgesPage.test.tsx`. Ningún test de este archivo depende
+// de `esVistaSoloLectura` en sí, así que un valor fijo alcanza.
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+  useAuth: () => ({ user: { sessionScope: "holding" } }),
+}));
 
 const api = await import("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api");
 const { SelectorEmpresaDashboard } = await import("@/funcionalidades/dashboard/SelectorEmpresaDashboard");

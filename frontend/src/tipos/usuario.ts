@@ -104,7 +104,7 @@ export interface AuthenticatedUser extends PublicUser {
 
 /**
  * Vista administrativa de un usuario (F7, `GET/POST/PATCH /usuarios`).
- * Forma de `AdminUsuarioView` en `backend/src/repositories/usuario.repository.ts`
+ * Forma de `AdminUsuarioListView` en `backend/src/repositories/usuario.repository.ts`
  * (`adminUsuarioSelect`) -- nunca incluye `passwordHash`. `creadoEn`/`actualizadoEn`
  * llegan como ISO 8601 (`Date` de Prisma serializado por `res.json`), igual
  * criterio que `Lead.ingresadoEn`.
@@ -117,4 +117,19 @@ export interface AdminUsuario {
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  /**
+   * Empresas con `Membresia` activa del usuario (deduplicadas, backend real
+   * -- `AdminUsuarioListView::empresas`). Array vacío `[]` para un usuario
+   * holding-wide puro, sin ninguna `Membresia`. Solo se usa en el listado
+   * (`UsuariosTable.tsx`) cuando la vista actual es "todas las empresas"
+   * (`!filtros.soloHoldingWide`, `UsuariosPage.tsx`) -- ver el docblock de
+   * `UsuariosTable.tsx::mostrarEmpresas`.
+   *
+   * Opcional (no `empresas: [...]` a secas) a propósito: el backend real
+   * SIEMPRE lo manda, pero hay fixtures de `AdminUsuario` en otras
+   * suites de test (fuera de este alcance, ver `EmpresaUsuariosPage.test.tsx`)
+   * que no lo setean -- forzarlo a obligatorio rompería su typecheck sin
+   * necesidad. `UsuariosTable.tsx` hace `usuario.empresas ?? []` al leerlo.
+   */
+  empresas?: { id: string; nombre: string }[];
 }

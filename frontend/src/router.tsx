@@ -109,7 +109,17 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/panel" replace /> },
           { path: "panel", element: <DashboardPage /> },
           { path: "leads", element: <LeadsPage /> },
-          { path: "leads/:id", element: <LeadDetallePage /> },
+          {
+            // Mismo gate real que Oportunidades/Bridges/Conversaciones: un
+            // holding-wide no tiene un lead concreto para ver hasta "entrar"
+            // a la vista de una empresa (`?empresaId=`, `useVistaEmpresa()`).
+            // Prep de frontend para un bug real de backend en paralelo
+            // (`leads.access.ts::canRead` sigue sin resolver `empresaId` acá
+            // -- este gate por sí solo NO lo corrige, ver
+            // `useLeadDetalle.ts`/`leadDetalle.api.ts`).
+            element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
+            children: [{ path: "leads/:id", element: <LeadDetallePage /> }],
+          },
           {
             // Conversaciones de WhatsApp (Parte 2): mismo gate real que
             // Oportunidades/Bridges -- un holding-wide no gestiona
@@ -139,13 +149,17 @@ export const router = createBrowserRouter([
           {
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,
             children: [
-              { path: "usuarios", element: <UsuariosPage /> },
               {
                 // Mismo gate de vista de empresa que Oportunidades arriba,
                 // anidado dentro del grupo ADMINISTRADOR-only ya existente
-                // (Bridges sigue exigiendo ambas condiciones).
+                // (Bridges sigue exigiendo ambas condiciones). Usuarios se
+                // sumó al mismo gate: un holding-wide no gestiona cuentas de
+                // ninguna empresa en particular hasta "entrar" a la vista de
+                // una concreta (bug real de QA manual, routing roto dentro
+                // de "Ver en vivo").
                 element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
                 children: [
+                  { path: "usuarios", element: <UsuariosPage /> },
                   { path: "bridges", element: <BridgesPage /> },
                   { path: "bridges/:id", element: <BridgeDetallePage /> },
                 ],

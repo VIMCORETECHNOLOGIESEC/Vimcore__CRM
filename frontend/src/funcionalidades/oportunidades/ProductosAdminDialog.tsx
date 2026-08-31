@@ -1,5 +1,4 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -29,21 +28,43 @@ const crearProductoSchema = z.object({
 type CrearProductoValues = z.infer<typeof crearProductoSchema>;
 
 interface ProductosAdminDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   /** Empresa activa (drill-down de holding). Se reenvía al listar y al crear. */
   empresaVistaId?: string;
+  /**
+   * `useVistaEmpresa().esVistaSoloLectura` del caller -- un holding-wide en
+   * "Ver en vivo" de una empresa puede navegar pero no escribir (no
+   * soportado en esta versión de despliegue). Prop en vez de llamar
+   * `useVistaEmpresa()` acá adentro a propósito: este componente se testea
+   * sin `<MemoryRouter>` (`ProductosAdminDialog.test.tsx`), y ese hook
+   * depende de `useSearchParams`.
+   */
+  esVistaSoloLectura?: boolean;
 }
 
 /**
- * Catálogo de productos (Bloque D, D14) -- diálogo dentro de la propia página
- * de oportunidades, NO una ruta nueva: el backend solo expone listar + crear
- * (`GET /productos`, `POST /productos` con `requireRole(ADMINISTRADOR)`), sin
- * PATCH/DELETE/toggle -- ver "Productos admin surface" en el plan del bloque.
- * El trigger es visible únicamente para ADMINISTRADOR (mismo rol que exige el
- * servidor en la creación); el servidor lo revalida igual.
+ * Catálogo de productos (Bloque D, D14) -- diálogo controlado (mismo patrón
+ * que `CargarLeadManualDialog.tsx`/`GestionarCanalesManualesDialog.tsx`), sin
+ * trigger propio: cada caller (`OportunidadesPage.tsx`, con su botón
+ * "Gestionar productos"; `NuevaOportunidadButton.tsx`, como redirección
+ * cuando no hay productos y el usuario es Administrador -- tarea C1) decide
+ * cuándo mostrarlo y controla su propio estado `open`. El backend solo
+ * expone listar + crear (`GET /productos`, `POST /productos` con
+ * `requireRole(ADMINISTRADOR)`), sin PATCH/DELETE/toggle -- ver "Productos
+ * admin surface" en el plan del bloque. El gate de rol sigue viviendo acá
+ * (única fuente de verdad, el servidor lo revalida igual) -- cada caller
+ * además evita mostrar su propio trigger a un no-Administrador, pero ninguno
+ * duplica la regla: solo repite la misma consulta `useAuth()/hasRole` ya
+ * usada en el resto de la app (ver `LeadsPage.tsx::puedeGestionarCanales`).
  */
-export function ProductosAdminDialog({ empresaVistaId }: ProductosAdminDialogProps) {
+export function ProductosAdminDialog({
+  open,
+  onOpenChange,
+  empresaVistaId,
+  esVistaSoloLectura = false,
+}: ProductosAdminDialogProps) {
   const { user } = useAuth();
-  const [open, setOpen] = useState(false);
   const esAdmin = user?.rol === "ADMINISTRADOR";
 
   const { data: productos = [], isLoading } = useProductos({ empresaId: empresaVistaId });
@@ -56,7 +77,7 @@ export function ProductosAdminDialog({ empresaVistaId }: ProductosAdminDialogPro
     formState: { errors },
   } = useForm<CrearProductoValues>({ resolver: zodResolver(crearProductoSchema) });
 
-  if (!esAdmin) return null;
+  if (!esAdmin || esVistaSoloLectura) return null;
 
   const enviar = handleSubmit((valores) => {
     crearProducto.mutate(
@@ -66,69 +87,64 @@ export function ProductosAdminDialog({ empresaVistaId }: ProductosAdminDialogPro
   });
 
   return (
-    <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        Gestionar productos
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Catálogo de productos</DialogTitle>
-            <DialogDescription>
-              Consultá los productos disponibles y agregá uno nuevo para vincularlo a las
-              oportunidades.
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Catálogo de productos</DialogTitle>
+          <DialogDescription>
+            Consultá los productos disponibles y agregá uno nuevo para vincularlo a las
+            oportunidades.
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="flex flex-col gap-4">
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground">Cargando…</p>
-            ) : productos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Todavía no hay productos cargados.</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {productos.map((producto) => (
-                  <li key={producto.id} className="text-sm text-foreground">
-                    {producto.nombre}
-                  </li>
-                ))}
-              </ul>
-            )}
+        <div className="flex flex-col gap-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Cargando…</p>
+          ) : productos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay productos cargados.</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {productos.map((producto) => (
+                <li key={producto.id} className="text-sm text-foreground">
+                  {producto.nombre}
+                </li>
+              ))}
+            </ul>
+          )}
 
-            <form
-              onSubmit={enviar}
-              noValidate
-              className="flex flex-col gap-3 border-t border-border pt-4"
-            >
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="producto-nombre">Nombre del producto</Label>
-                <Input
-                  id="producto-nombre"
-                  disabled={crearProducto.isPending}
-                  aria-invalid={errors.nombre ? "true" : undefined}
-                  {...register("nombre")}
-                />
-                {errors.nombre ? (
-                  <p className="text-sm text-destructive">{errors.nombre.message}</p>
-                ) : null}
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                  disabled={crearProducto.isPending}
-                >
-                  Cerrar
-                </Button>
-                <Button type="submit" disabled={crearProducto.isPending}>
-                  {crearProducto.isPending ? "Creando…" : "Crear producto"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+          <form
+            onSubmit={enviar}
+            noValidate
+            className="flex flex-col gap-3 border-t border-border pt-4"
+          >
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="producto-nombre">Nombre del producto</Label>
+              <Input
+                id="producto-nombre"
+                disabled={crearProducto.isPending}
+                aria-invalid={errors.nombre ? "true" : undefined}
+                {...register("nombre")}
+              />
+              {errors.nombre ? (
+                <p className="text-sm text-destructive">{errors.nombre.message}</p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={crearProducto.isPending}
+              >
+                Cerrar
+              </Button>
+              <Button type="submit" disabled={crearProducto.isPending}>
+                {crearProducto.isPending ? "Creando…" : "Crear producto"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

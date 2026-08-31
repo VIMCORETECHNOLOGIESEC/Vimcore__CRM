@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Send, X } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Handshake, Send, X } from "lucide-react";
 import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
@@ -7,6 +7,7 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { NuevaOportunidadButton } from "@/funcionalidades/oportunidades/NuevaOportunidadButton";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AccionesResponsable } from "./AccionesResponsable";
@@ -14,6 +15,7 @@ import { LeadDatosContacto } from "./LeadDatosContacto";
 import { LeadDetalleEncabezado } from "./LeadDetalleEncabezado";
 import { LeadOrigenInfo } from "./LeadOrigenInfo";
 import { LeadTimeline } from "./LeadTimeline";
+import { OportunidadesLeadTab } from "./OportunidadesLeadTab";
 import { PanelCitas } from "./PanelCitas";
 import { CierreNoVentaForm } from "./CierreNoVentaForm";
 import { CierreVentaForm } from "./CierreVentaForm";
@@ -21,12 +23,13 @@ import { useLeadDetalle } from "./useLeadDetalle";
 import { ETAPA_ETIQUETAS } from "../catalogos";
 import type { Lead, EtapaLead } from "@/tipos/lead";
 
-type VistaDetalle = "progreso" | "cita" | "cierre";
+type VistaDetalle = "progreso" | "cita" | "cierre" | "oportunidad";
 
 const VISTAS: Array<{ id: VistaDetalle; label: string; icon: typeof Check }> = [
   { id: "progreso", label: "Progreso", icon: Check },
   { id: "cita", label: "Agendar cita", icon: CalendarDays },
   { id: "cierre", label: "Cerrar lead", icon: X },
+  { id: "oportunidad", label: "Oportunidad", icon: Handshake },
 ];
 
 const ETAPAS_EMBUDO: EtapaLead[] = ["NUEVO", "CONTACTADO", "CITA", "VENTA", "NO_VENTA"];
@@ -302,16 +305,28 @@ function dispatchTutorialReady(target: "detail" | "workspace" | `workspace-${Vis
 export function LeadDetallePage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
   const [vistaActiva, setVistaActiva] = useState<VistaDetalle>("progreso");
   const [chatAbierto, setChatAbierto] = useState(false);
   const [puntuacionActual, setPuntuacionActual] = useState<number | null>(null);
-  const { data: lead, isLoading, isError, error, refetch } = useLeadDetalle(id ?? "");
+  const {
+    data: lead,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useLeadDetalle(id ?? "", empresaVistaId ?? undefined);
 
   useEffect(() => {
     function handleTutorialEvent(event: Event) {
-      const detail = (event as CustomEvent<{ action: "open-workspace" | "select-tab"; tab?: VistaDetalle }>).detail;
+      const detail = (
+        event as CustomEvent<{ action: "open-workspace" | "close-workspace" | "select-tab"; tab?: VistaDetalle }>
+      ).detail;
       if (detail.action === "open-workspace") {
         setChatAbierto(true);
+      }
+      if (detail.action === "close-workspace") {
+        setChatAbierto(false);
       }
       if (detail.action === "select-tab" && detail.tab) {
         setChatAbierto(true);
@@ -376,7 +391,16 @@ export function LeadDetallePage() {
             <LeadOrigenInfo lead={lead} />
           </div>
           <div className="mt-4 flex flex-col gap-4">
-            <AccionesResponsable lead={lead} user={user} />
+            {/*
+             * Reasignación/traspaso es una acción de escritura: un
+             * holding-wide en "Ver en vivo" de una empresa
+             * (`useVistaEmpresa().esVistaSoloLectura`) puede navegar el
+             * detalle pero no reasignar (no soportado en esta versión de
+             * despliegue). El gate vive acá, no dentro de
+             * `AccionesResponsable` (que no llama `useVistaEmpresa()` para
+             * no exigir Router en sus propios tests).
+             */}
+            {esVistaSoloLectura ? null : <AccionesResponsable lead={lead} user={user} />}
             <NuevaOportunidadButton leadId={lead.id} />
           </div>
         </div>
@@ -410,7 +434,7 @@ export function LeadDetallePage() {
           </div>
           <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
             <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background" aria-label="Módulos del lead">
-              <nav className="grid h-14 shrink-0 grid-cols-3 border-b border-border bg-background" data-tour="lead-workspace-tabs" aria-label="Secciones del lead" role="tablist">
+              <nav className="grid h-14 shrink-0 grid-cols-4 border-b border-border bg-background" data-tour="lead-workspace-tabs" aria-label="Secciones del lead" role="tablist">
                 {VISTAS.map(({ id: vista, label, icon: Icon }) => {
                   const activa = vistaActiva === vista;
                   return (
@@ -442,6 +466,7 @@ export function LeadDetallePage() {
                 ) : null}
                 {vistaActiva === "cita" ? <PanelCitas leadId={lead.id} usuarioId={user.id} /> : null}
                 {vistaActiva === "cierre" ? <CierreLeadPanel leadId={lead.id} cerrado={Boolean(lead.cerradoEn)} /> : null}
+                {vistaActiva === "oportunidad" ? <OportunidadesLeadTab leadId={lead.id} /> : null}
               </div>
             </section>
             <div className="min-h-0 min-w-0">

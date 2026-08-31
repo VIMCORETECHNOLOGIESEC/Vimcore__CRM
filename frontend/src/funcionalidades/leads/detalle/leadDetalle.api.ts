@@ -15,9 +15,20 @@ interface BackendLeadEnvelope {
   lead: BackendLeadDetalleConSla;
 }
 
-/** `GET /leads/:id` (backend real). 404 si no existe, 403 sin acceso -- `httpClient` los traduce a `ApiError`. */
-export async function fetchLeadDetalleApi(leadId: string): Promise<Lead> {
-  const { lead } = await httpClient.get<BackendLeadEnvelope>(`/leads/${leadId}`);
+/**
+ * `GET /leads/:id` (backend real). 404 si no existe, 403 sin acceso --
+ * `httpClient` los traduce a `ApiError`. `empresaId` (drill-down de holding,
+ * `useVistaEmpresa()`) se reenvía como query param -- forward-compatible,
+ * mismo criterio que `usuarios.api.ts`/`bridges.api.ts`: el controller real
+ * (`leads.controller.ts::getLeadById`) todavía IGNORA `req.query` por
+ * completo para este endpoint, así que esto no corrige el 403 real de
+ * `leads.access.ts::canRead` -- es preparación de frontend para cuando ese
+ * fix de backend aterrice, no el fix en sí.
+ */
+export async function fetchLeadDetalleApi(leadId: string, empresaId?: string): Promise<Lead> {
+  const { lead } = await httpClient.get<BackendLeadEnvelope>(`/leads/${leadId}`, {
+    params: { empresaId },
+  });
   return mapLeadFromApi(lead);
 }
 

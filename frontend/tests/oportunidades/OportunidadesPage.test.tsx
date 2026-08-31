@@ -29,9 +29,9 @@ const { OportunidadesPage } = await import(
 const useAuthMock = vi.mocked(useAuth);
 const fetchOportunidadesApiMock = vi.mocked(oportunidadesApi.fetchOportunidadesApi);
 
-function mockearAuth(rol: RolUsuario) {
+function mockearAuth(rol: RolUsuario, sessionScope: "company" | "holding" = "company") {
   useAuthMock.mockReturnValue({
-    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol },
+    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol, sessionScope },
     isAuthenticated: true,
     isLoading: false,
     login: vi.fn(),
@@ -208,6 +208,31 @@ describe("OportunidadesPage — catálogo de productos", () => {
     mockearAuth("ASESOR");
     fetchOportunidadesApiMock.mockResolvedValue(respuesta([oportunidadFake()]));
     renderPage();
+    await screen.findByText("Roberto Salazar");
+
+    expect(screen.queryByRole("button", { name: "Gestionar productos" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * `ProductosAdminDialog` es controlado desde acá (tarea C1, refactor): el
+   * botón "Gestionar productos" vive en la página, no en el diálogo.
+   */
+  it("ADMINISTRADOR: «Gestionar productos» abre el diálogo del catálogo", async () => {
+    mockearAuth("ADMINISTRADOR");
+    fetchOportunidadesApiMock.mockResolvedValue(respuesta([oportunidadFake()]));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Roberto Salazar");
+
+    await user.click(screen.getByRole("button", { name: "Gestionar productos" }));
+
+    expect(await screen.findByRole("dialog", { name: "Catálogo de productos" })).toBeInTheDocument();
+  });
+
+  it("ADMINISTRADOR en vista de holding en solo lectura (?empresaId= con sessionScope holding) tampoco ve el trigger", async () => {
+    mockearAuth("ADMINISTRADOR", "holding");
+    fetchOportunidadesApiMock.mockResolvedValue(respuesta([oportunidadFake()]));
+    renderPage(["/oportunidades?empresaId=emp-9"]);
     await screen.findByText("Roberto Salazar");
 
     expect(screen.queryByRole("button", { name: "Gestionar productos" })).not.toBeInTheDocument();

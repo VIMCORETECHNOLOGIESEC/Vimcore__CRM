@@ -4,23 +4,40 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/httpClient";
 import type { OportunidadPlana, ProductoOportunidad } from "@/tipos/oportunidad";
+import type { RolUsuario } from "@/tipos/usuario";
 
 vi.mock("@/funcionalidades/oportunidades/oportunidades.api", () => ({
   fetchProductosApi: vi.fn(),
   crearOportunidadApi: vi.fn(),
+  crearProductoApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
 
 const navigateMock = vi.fn();
 vi.mock("react-router", () => ({ useNavigate: () => navigateMock }));
 
 const oportunidadesApi = await import("@/funcionalidades/oportunidades/oportunidades.api");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { NuevaOportunidadButton } = await import(
   "@/funcionalidades/oportunidades/NuevaOportunidadButton"
 );
 
 const fetchProductosApiMock = vi.mocked(oportunidadesApi.fetchProductosApi);
 const crearOportunidadApiMock = vi.mocked(oportunidadesApi.crearOportunidadApi);
+const useAuthMock = vi.mocked(useAuth);
+
+function mockearAuth(rol: RolUsuario) {
+  useAuthMock.mockReturnValue({
+    user: { id: "u1", nombre: "Usuaria de prueba", correo: "u1@crm.test", rol },
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    hasRole: (allowedRoles) =>
+      !allowedRoles || allowedRoles.length === 0 || allowedRoles.includes(rol),
+  } as unknown as ReturnType<typeof useAuth>);
+}
 
 function productoFake(overrides: Partial<ProductoOportunidad> = {}): ProductoOportunidad {
   return {
@@ -69,6 +86,9 @@ function renderBoton() {
 beforeEach(() => {
   vi.clearAllMocks();
   fetchProductosApiMock.mockResolvedValue([productoFake()]);
+  // Rol irrelevante en la mayoría de estos tests -- solo importa cuando el
+  // catálogo de productos está vacío (ver describe dedicado más abajo).
+  mockearAuth("ADMINISTRADOR");
 });
 
 describe("NuevaOportunidadButton", () => {
@@ -145,5 +165,52 @@ describe("NuevaOportunidadButton", () => {
     ).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Crear oportunidad" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Sin productos en el catálogo: Administrador se redirige a "Gestionar
+ * productos" en vez de ver el selector vacío (tarea C1). Un rol distinto de
+ * Administrador conserva el selector con "Sin producto" como única opción --
+ * el producto es opcional, así que igual puede crear la oportunidad.
+ */
+describe("NuevaOportunidadButton — sin productos en el catálogo", () => {
+  it("Administrador ve un estado vacío con acción para ir a gestionar productos, sin el selector", async () => {
+    fetchProductosApiMock.mockResolvedValue([]);
+    mockearAuth("ADMINISTRADOR");
+    const user = userEvent.setup();
+    renderBoton();
+
+    await user.click(screen.getByRole("button", { name: "Nueva oportunidad" }));
+
+    expect(await screen.findByText("Todavía no hay productos en el catálogo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ir a gestionar productos" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Producto" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Crear oportunidad" })).not.toBeInTheDocument();
+  });
+
+  it("Administrador: al hacer clic en la acción, cierra este diálogo y abre el de gestión de productos", async () => {
+    fetchProductosApiMock.mockResolvedValue([]);
+    mockearAuth("ADMINISTRADOR");
+    const user = userEvent.setup();
+    renderBoton();
+
+    await user.click(screen.getByRole("button", { name: "Nueva oportunidad" }));
+    await user.click(await screen.findByRole("button", { name: "Ir a gestionar productos" }));
+
+    expect(screen.queryByRole("dialog", { name: "Nueva oportunidad" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Catálogo de productos" })).toBeInTheDocument();
+  });
+
+  it("no Administrador (ej. Asesor) sigue viendo el selector con «Sin producto» como única opción", async () => {
+    fetchProductosApiMock.mockResolvedValue([]);
+    mockearAuth("ASESOR");
+    const user = userEvent.setup();
+    renderBoton();
+
+    await user.click(screen.getByRole("button", { name: "Nueva oportunidad" }));
+
+    expect(screen.getByRole("combobox", { name: "Producto" })).toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay productos en el catálogo")).not.toBeInTheDocument();
   });
 });

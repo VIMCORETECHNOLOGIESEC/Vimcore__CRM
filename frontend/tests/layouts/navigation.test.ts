@@ -59,12 +59,13 @@ describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
   });
 });
 
-describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads/Conversaciones)", () => {
-  it("Oportunidades, Bridges, Leads y Conversaciones están marcados con requiereVistaEmpresaSiHolding", () => {
+describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads/Conversaciones/Usuarios)", () => {
+  it("Oportunidades, Bridges, Leads, Conversaciones y Usuarios están marcados con requiereVistaEmpresaSiHolding", () => {
     const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
     const bridges = NAVIGATION_ITEMS.find((item) => item.label === "Bridges");
     const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
     const conversaciones = NAVIGATION_ITEMS.find((item) => item.label === "Conversaciones");
+    const usuarios = NAVIGATION_ITEMS.find((item) => item.label === "Usuarios");
     expect(oportunidades?.requiereVistaEmpresaSiHolding).toBe(true);
     expect(bridges?.requiereVistaEmpresaSiHolding).toBe(true);
     // Bloqueado antes por falta de soporte de `?empresaId=` en `GET /leads`
@@ -75,11 +76,16 @@ describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportu
     // no gestiona conversaciones de ninguna empresa en particular sin entrar
     // a la vista de una concreta.
     expect(conversaciones?.requiereVistaEmpresaSiHolding).toBe(true);
+    // Bug real de QA manual ("Usuarios" rompía el routing dentro de "Ver en
+    // vivo"): mismo criterio -- un holding-wide no gestiona cuentas de
+    // ninguna empresa en particular sin entrar a la vista de una concreta.
+    expect(usuarios?.requiereVistaEmpresaSiHolding).toBe(true);
   });
 
-  it("Dashboard, Usuarios, Reportes, Apariencia y Empresas no están marcados", () => {
+  it("Dashboard, Reportes, Apariencia y Empresas no están marcados", () => {
     const sinFlag = NAVIGATION_ITEMS.filter(
-      (item) => !["Oportunidades", "Bridges", "Leads", "Conversaciones"].includes(item.label),
+      (item) =>
+        !["Oportunidades", "Bridges", "Leads", "Conversaciones", "Usuarios"].includes(item.label),
     );
     for (const item of sinFlag) {
       expect(item.requiereVistaEmpresaSiHolding).toBeUndefined();

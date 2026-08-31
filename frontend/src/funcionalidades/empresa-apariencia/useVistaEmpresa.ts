@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useSearchParams } from "react-router";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 
 /**
  * "Vista de empresa" de un holding-wide (reparto de trabajo, pantallas de
@@ -23,8 +24,10 @@ import { useSearchParams } from "react-router";
  * refresh de página completo, porque vive en la URL.
  */
 export function useVistaEmpresa() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const empresaVistaId = searchParams.get("empresaId");
+  const esVistaSoloLectura = user?.sessionScope === "holding" && !!empresaVistaId;
 
   const entrarAEmpresa = useCallback(
     (empresaId: string) => {
@@ -45,5 +48,5 @@ export function useVistaEmpresa() {
     });
   }, [setSearchParams]);
 
-  return { empresaVistaId, entrarAEmpresa, salirDeEmpresa };
+  return { empresaVistaId, esVistaSoloLectura, entrarAEmpresa, salirDeEmpresa };
 }

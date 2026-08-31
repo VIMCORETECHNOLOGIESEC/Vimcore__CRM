@@ -22,6 +22,12 @@ interface BridgesTableProps {
   onDarDeBaja: (bridge: Bridge) => void;
   onReactivar: (bridgeId: string) => void;
   reactivando: boolean;
+  /**
+   * Un holding-wide en "Ver en vivo" de una empresa (`useVistaEmpresa().esVistaSoloLectura`)
+   * puede navegar pero no escribir: en ese caso el menú de acciones por fila
+   * solo ofrece "Ver detalle", sin "Reactivar"/"Dar de baja".
+   */
+  soloLectura?: boolean;
 }
 
 const columnHelper = createColumnHelper<Bridge>();
@@ -56,7 +62,13 @@ const COLUMN_WIDTHS_PX: Record<string, number> = {
  * accesibilidad) -- y enlaza al detalle, donde el aviso completo se repite
  * destacado (`AvisoBridge.tsx`, sin cambios en este trabajo).
  */
-export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }: BridgesTableProps) {
+export function BridgesTable({
+  bridges,
+  onDarDeBaja,
+  onReactivar,
+  reactivando,
+  soloLectura = false,
+}: BridgesTableProps) {
   const columns = useMemo(
     () => [
       columnHelper.accessor((b) => b.redSocial, {
@@ -121,7 +133,7 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
                 <DropdownMenuItem asChild>
                   <Link to={`/bridges/${bridge.id}`}>Ver detalle</Link>
                 </DropdownMenuItem>
-                {bridge.estado === "INACTIVO" ? (
+                {soloLectura ? null : bridge.estado === "INACTIVO" ? (
                   <DropdownMenuItem
                     onClick={() => onReactivar(bridge.id)}
                     disabled={reactivando}
@@ -143,7 +155,7 @@ export function BridgesTable({ bridges, onDarDeBaja, onReactivar, reactivando }:
         },
       }),
     ],
-    [onDarDeBaja, onReactivar, reactivando],
+    [onDarDeBaja, onReactivar, reactivando, soloLectura],
   );
 
   /**

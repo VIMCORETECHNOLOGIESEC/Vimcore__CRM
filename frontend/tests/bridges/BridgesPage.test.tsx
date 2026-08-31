@@ -17,14 +17,19 @@ vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // `BridgesPage` monta `ConectarWhatsAppCard` de forma aditiva (flujo de
 // conexión de WhatsApp Business, ver `funcionalidades/whatsapp/`), que
-// necesita `useAuth()` -- mockeado acá con una sesión `company` estable
-// (mismo patrón que `tests/layouts/SalirVistaEmpresaButton.test.tsx`) para
-// no exigir un `<AuthProvider>` real en estos tests, que nunca interactúan
-// con esa tarjeta. `whatsapp.api`/`whatsapp.utils` quedan sin mockear a
-// propósito: ningún test de este archivo hace click en "Conectar WhatsApp",
-// así que su `useMutation` nunca dispara una llamada real.
+// necesita `useAuth()` -- mockeado acá con una sesión `company` estable por
+// defecto (mismo patrón que `tests/layouts/SalirVistaEmpresaButton.test.tsx`)
+// para no exigir un `<AuthProvider>` real en estos tests, que nunca
+// interactúan con esa tarjeta. `whatsapp.api`/`whatsapp.utils` quedan sin
+// mockear a propósito: ningún test de este archivo hace click en "Conectar
+// WhatsApp", así que su `useMutation` nunca dispara una llamada real.
+// `sessionScope` es mutable (reseteado a "company" en cada test) para el
+// describe de "vista de holding en solo lectura" de más abajo, que la
+// necesita en "holding" -- `useVistaEmpresa().esVistaSoloLectura` depende de
+// `sessionScope === "holding"` combinado con `?empresaId=` en la URL.
+let sessionScope: "company" | "holding" = "company";
 vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
-  useAuth: () => ({ user: { sessionScope: "company", rol: "ADMINISTRADOR" } }),
+  useAuth: () => ({ user: { sessionScope, rol: "ADMINISTRADOR" } }),
 }));
 
 const bridgesApi = await import("@/funcionalidades/bridges/bridges.api");
@@ -99,6 +104,7 @@ async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombr
 }
 
 beforeEach(() => {
+  sessionScope = "company";
   fetchBridgesApiMock.mockReset();
   createBridgeApiMock.mockReset();
   deleteBridgeApiMock.mockReset();
@@ -658,5 +664,41 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
 
     await waitFor(() => expect(reactivateBridgeApiMock).toHaveBeenCalledWith("bridge-inactivo"));
     expect(toastSuccessMock).toHaveBeenCalledWith("Bridge reactivado correctamente.");
+  });
+});
+
+describe("BridgesPage — vista de holding en solo lectura (useVistaEmpresa().esVistaSoloLectura)", () => {
+  it("con sesión holding y ?empresaId=, no muestra «Nuevo bridge» ni la tarjeta de WhatsApp", async () => {
+    sessionScope = "holding";
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
+    renderBridgesPage(["/bridges?empresaId=empresa-77"]);
+    await screen.findByText("Meta Ads — Facebook");
+
+    expect(screen.queryByRole("button", { name: "Nuevo bridge" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/conectar whatsapp/i)).not.toBeInTheDocument();
+  });
+
+  it("con sesión holding y ?empresaId=, el menú de acciones por fila no ofrece «Dar de baja»/«Reactivar»", async () => {
+    sessionScope = "holding";
+    fetchBridgesApiMock.mockResolvedValue(
+      bridgesResponse([bridgeFake({ id: "bridge-inactivo", nombre: "Bridge Pausado", estado: "INACTIVO" })]),
+    );
+    const user = userEvent.setup();
+    renderBridgesPage(["/bridges?empresaId=empresa-77"]);
+    await screen.findByText("Bridge Pausado");
+
+    await abrirMenuAcciones(user, "Bridge Pausado");
+    expect(screen.getByRole("menuitem", { name: "Ver detalle" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Dar de baja" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Reactivar" })).not.toBeInTheDocument();
+  });
+
+  it("con sesión holding pero sin ?empresaId=, muestra «Nuevo bridge» con normalidad", async () => {
+    sessionScope = "holding";
+    fetchBridgesApiMock.mockResolvedValue(bridgesResponse([bridgeFake()]));
+    renderBridgesPage(["/bridges"]);
+    await screen.findByText("Meta Ads — Facebook");
+
+    expect(screen.getByRole("button", { name: "Nuevo bridge" })).toBeInTheDocument();
   });
 });

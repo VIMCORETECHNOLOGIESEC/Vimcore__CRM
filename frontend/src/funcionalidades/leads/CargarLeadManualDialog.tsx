@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { EmptyState } from "@/componentes/states/EmptyState";
 import type { CanalManual, CrearLeadManualInput } from "./canal-manual.api";
 
 /**
@@ -53,6 +54,10 @@ interface CargarLeadManualDialogProps {
   canales: CanalManual[];
   onSubmit: (valores: Omit<CrearLeadManualInput, "empresaId">) => void;
   enviando: boolean;
+  /** Habilita el atajo de redirección a "Gestionar canales" cuando no hay canales activos -- solo Administrador puede resolverlo por sí mismo. */
+  esAdministrador: boolean;
+  /** Cierra este diálogo y abre `GestionarCanalesManualesDialog` (coordinado en `LeadsPage.tsx`). Solo se usa cuando `esAdministrador` y no hay canales activos. */
+  onRedirigirAGestionCanales: () => void;
 }
 
 /**
@@ -71,8 +76,11 @@ export function CargarLeadManualDialog({
   canales,
   onSubmit,
   enviando,
+  esAdministrador,
+  onRedirigirAGestionCanales,
 }: CargarLeadManualDialogProps) {
   const canalesActivos = canales.filter((c) => c.activo);
+  const sinCanalesActivos = canalesActivos.length === 0;
 
   const {
     register,
@@ -107,72 +115,84 @@ export function CargarLeadManualDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={enviar} noValidate className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lead-manual-nombre">Nombre</Label>
-            <Input id="lead-manual-nombre" disabled={enviando} {...register("nombre")} />
-            {errors.nombre ? <p className="text-sm text-destructive">{errors.nombre.message}</p> : null}
-          </div>
+        {sinCanalesActivos && esAdministrador ? (
+          <EmptyState
+            title="Todavía no hay canales de ingreso manual"
+            description="Creá al menos un canal activo en el catálogo antes de cargar un lead manual."
+            action={
+              <Button type="button" onClick={onRedirigirAGestionCanales}>
+                Ir a gestionar canales
+              </Button>
+            }
+          />
+        ) : (
+          <form onSubmit={enviar} noValidate className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lead-manual-nombre">Nombre</Label>
+              <Input id="lead-manual-nombre" disabled={enviando} {...register("nombre")} />
+              {errors.nombre ? <p className="text-sm text-destructive">{errors.nombre.message}</p> : null}
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lead-manual-telefono">Teléfono</Label>
-            <Input
-              id="lead-manual-telefono"
-              disabled={enviando}
-              aria-invalid={errors.telefono ? "true" : undefined}
-              {...register("telefono")}
-            />
-            {errors.telefono ? (
-              <p className="text-sm text-destructive">{errors.telefono.message}</p>
-            ) : null}
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lead-manual-telefono">Teléfono</Label>
+              <Input
+                id="lead-manual-telefono"
+                disabled={enviando}
+                aria-invalid={errors.telefono ? "true" : undefined}
+                {...register("telefono")}
+              />
+              {errors.telefono ? (
+                <p className="text-sm text-destructive">{errors.telefono.message}</p>
+              ) : null}
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lead-manual-correo">Correo (opcional)</Label>
-            <Input
-              id="lead-manual-correo"
-              type="email"
-              disabled={enviando}
-              aria-invalid={errors.correo ? "true" : undefined}
-              {...register("correo")}
-            />
-            {errors.correo ? <p className="text-sm text-destructive">{errors.correo.message}</p> : null}
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lead-manual-correo">Correo (opcional)</Label>
+              <Input
+                id="lead-manual-correo"
+                type="email"
+                disabled={enviando}
+                aria-invalid={errors.correo ? "true" : undefined}
+                {...register("correo")}
+              />
+              {errors.correo ? <p className="text-sm text-destructive">{errors.correo.message}</p> : null}
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lead-manual-canal">Canal</Label>
-            <Controller
-              control={control}
-              name="canalManualId"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange} disabled={enviando}>
-                  <SelectTrigger id="lead-manual-canal" aria-label="Canal">
-                    <SelectValue placeholder="Elegir canal…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {canalesActivos.map((canal) => (
-                      <SelectItem key={canal.id} value={canal.id}>
-                        {canal.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.canalManualId ? (
-              <p className="text-sm text-destructive">{errors.canalManualId.message}</p>
-            ) : null}
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="lead-manual-canal">Canal</Label>
+              <Controller
+                control={control}
+                name="canalManualId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange} disabled={enviando}>
+                    <SelectTrigger id="lead-manual-canal" aria-label="Canal">
+                      <SelectValue placeholder="Elegir canal…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {canalesActivos.map((canal) => (
+                        <SelectItem key={canal.id} value={canal.id}>
+                          {canal.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.canalManualId ? (
+                <p className="text-sm text-destructive">{errors.canalManualId.message}</p>
+              ) : null}
+            </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={enviando}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={enviando}>
-              {enviando ? "Cargando…" : "Cargar lead"}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={enviando}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={enviando}>
+                {enviando ? "Cargando…" : "Cargar lead"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

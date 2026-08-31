@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { buildQueryParams, FILTROS_VACIOS, type FiltrosState } from "./oportunidades.utils";
@@ -25,9 +26,13 @@ const LIMITE = 25;
 export function OportunidadesPage() {
   usePageHeader({ title: "Oportunidades" });
 
+  const { hasRole } = useAuth();
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
+  const puedeGestionarProductos = hasRole(["ADMINISTRADOR"]) && !esVistaSoloLectura;
+
   const [filtros, setFiltros] = useState<FiltrosState>(FILTROS_VACIOS);
   const [pagina, setPagina] = useState(1);
-  const { empresaVistaId } = useVistaEmpresa();
+  const [dialogProductosAbierto, setDialogProductosAbierto] = useState(false);
 
   const params = useMemo(
     () => buildQueryParams(filtros, pagina, LIMITE, empresaVistaId ?? undefined),
@@ -50,9 +55,13 @@ export function OportunidadesPage() {
     <div className="flex flex-col gap-4">
       <OportunidadesFiltros filtros={filtros} onChange={updateFiltros} />
 
-      <div className="flex justify-end">
-        <ProductosAdminDialog empresaVistaId={empresaVistaId ?? undefined} />
-      </div>
+      {puedeGestionarProductos ? (
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={() => setDialogProductosAbierto(true)}>
+            Gestionar productos
+          </Button>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <LoadingState rows={10} rowHeight="h-10" />
@@ -123,6 +132,17 @@ export function OportunidadesPage() {
           </div>
         </div>
       )}
+
+      {dialogProductosAbierto ? (
+        <ProductosAdminDialog
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setDialogProductosAbierto(false);
+          }}
+          empresaVistaId={empresaVistaId ?? undefined}
+          esVistaSoloLectura={esVistaSoloLectura}
+        />
+      ) : null}
     </div>
   );
 }

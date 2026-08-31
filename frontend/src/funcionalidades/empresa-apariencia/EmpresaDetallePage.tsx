@@ -229,7 +229,14 @@ export function EmpresaDetallePage() {
         <button type="button" className="block text-left" onClick={handleVerEnVivo}>
           <Card className="transition-colors hover:border-primary/50">
             <CardHeader className="flex flex-row items-center gap-3 space-y-0">
-              <Eye className="size-5 text-muted-foreground" aria-hidden="true" />
+              {/* Tratamiento "hero" -- círculo rojo detrás del ícono, mismo
+                  criterio de composición que el avatar de `WhatsAppChat` en
+                  `LeadDetallePage.tsx` (`bg-primary text-primary-foreground
+                  rounded-full`), pero en `destructive` para distinguir este
+                  acceso como el que lleva a ver el panel en vivo. */}
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground">
+                <Eye className="size-4" aria-hidden="true" />
+              </span>
               <CardTitle className="text-base">Ver en vivo</CardTitle>
             </CardHeader>
             <CardContent>
