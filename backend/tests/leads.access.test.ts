@@ -114,6 +114,17 @@ describe("services/leads.access — canRead / canEdit (edición genérica, no ci
     expect(canClose(asesor, leadCita)).toBeNull();
     expect(canClose(vendedorCualquiera, leadCita)).toBe("no_es_titular");
   });
+
+  it.each<RolUsuario>(["SUPERVISOR_HOLDING", "SUPER_ADMIN"])(
+    "%s puede leer cualquier lead sin relación con él, pero NO editarlo (modo solo lectura de 'Ver en vivo', fix roadmap backend pre-deploy)",
+    (rol) => {
+      const lead: LeadAcceso = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A };
+      const holding = usuario(OTRO, rol);
+
+      expect(canRead(holding, lead)).toBe(true);
+      expect(canEdit(holding, lead)).toBe(false);
+    },
+  );
 });
 
 describe("services/leads.access — canClose (M-hardening Bloque A, D1-D3, memoria #82)", () => {
@@ -157,6 +168,17 @@ describe("services/leads.access — aislamiento entre empresas (Bloque C, Fase 2
     expect(canRead(adminHolding, lead)).toBe(true);
     expect(canEdit(adminHolding, lead)).toBe(true);
   });
+
+  it.each<RolUsuario>(["SUPERVISOR_HOLDING", "SUPER_ADMIN"])(
+    "%s en sesión holding-wide (empresaId null) lee un lead de cualquier empresa sin estar asignado (repro exacto del 403 en 'Ver en vivo')",
+    (rol) => {
+      const lead: LeadAcceso = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A };
+      const holding = usuario(OTRO, rol, null);
+
+      expect(canRead(holding, lead)).toBe(true);
+      expect(canEdit(holding, lead)).toBe(false);
+    },
+  );
 
   it("el propio asesor titular (mismo id, mismo rol) pero en OTRA empresa no puede leer ni editar (empresaId manda sobre titularidad)", () => {
     const lead: LeadAcceso = { asesorId: ASESOR_A, vendedorId: null, empresaId: EMPRESA_A };

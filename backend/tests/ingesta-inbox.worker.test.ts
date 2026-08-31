@@ -72,7 +72,7 @@ describe("trabajador del buzón de ingesta", () => {
     const now = new Date();
     const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
     const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-atomic", leaseHasta: new Date(now.getTime() + 60_000) } });
-    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-atomic", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+    const claim: inbox.InboxClaim = { recepcionId: row.id, bridgeId: row.bridgeId, leaseOwner: "worker-atomic", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
     vi.mocked(inbox.completeClaim).mockRejectedValueOnce(new Error("fallo de finalización"));
     await expect(conContexto(() => procesarRecepcion(claim))).rejects.toThrow("fallo de finalización");
     expect(vi.mocked(committedEvents.publishCommittedEvents)).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe("trabajador del buzón de ingesta", () => {
 
     const expiredReceipt = await inbox.aceptarLeadRecibido(await entrada(), undefined, testAdminPrisma);
     const expired = await testAdminPrisma.leadRecibido.update({ where: { id: expiredReceipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-expired", leaseHasta: new Date(Date.now() - 1_000) } });
-    const expiredClaim = { recepcionId: expired.id, leaseOwner: "worker-expired", intento: 1, leaseHasta: expired.leaseHasta!, entradaProcesamiento: expired.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 } satisfies inbox.InboxClaim;
+    const expiredClaim = { recepcionId: expired.id, bridgeId: expired.bridgeId, leaseOwner: "worker-expired", intento: 1, leaseHasta: expired.leaseHasta!, entradaProcesamiento: expired.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 } satisfies inbox.InboxClaim;
     expect(await conContexto(() => procesarRecepcion(expiredClaim))).toBe(false);
     expect(await inbox.marcarFallo(expired.id, "worker-expired", "fallo tardío", new Date(0), testAdminPrisma)).toBe(false);
     expect(await testAdminPrisma.leadRecibido.findUniqueOrThrow({ where: { id: expired.id } })).toMatchObject({ estado: "PROCESANDO", leadId: null, ultimoError: null });
@@ -106,7 +106,7 @@ describe("trabajador del buzón de ingesta", () => {
     const now = new Date();
     const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
     const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-advertencia", leaseHasta: new Date(now.getTime() + 60_000) } });
-    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-advertencia", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+    const claim: inbox.InboxClaim = { recepcionId: row.id, bridgeId: row.bridgeId, leaseOwner: "worker-advertencia", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
@@ -119,7 +119,7 @@ describe("trabajador del buzón de ingesta", () => {
     const now = new Date();
     const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
     const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-info", leaseHasta: new Date(now.getTime() + 60_000) } });
-    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-info", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+    const claim: inbox.InboxClaim = { recepcionId: row.id, bridgeId: row.bridgeId, leaseOwner: "worker-info", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
@@ -136,7 +136,7 @@ describe("trabajador del buzón de ingesta", () => {
     const now = new Date();
     const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
     const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-ultimo-lead", leaseHasta: new Date(now.getTime() + 60_000) } });
-    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-ultimo-lead", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+    const claim: inbox.InboxClaim = { recepcionId: row.id, bridgeId: row.bridgeId, leaseOwner: "worker-ultimo-lead", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 
@@ -150,7 +150,7 @@ describe("trabajador del buzón de ingesta", () => {
     const now = new Date();
     const receipt = await inbox.aceptarLeadRecibido(input, now, testAdminPrisma);
     const row = await testAdminPrisma.leadRecibido.update({ where: { id: receipt.recepcionId }, data: { estado: "PROCESANDO", intentos: 1, leaseOwner: "worker-metricas", leaseHasta: new Date(now.getTime() + 60_000) } });
-    const claim: inbox.InboxClaim = { recepcionId: row.id, leaseOwner: "worker-metricas", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
+    const claim: inbox.InboxClaim = { recepcionId: row.id, bridgeId: row.bridgeId, leaseOwner: "worker-metricas", intento: 1, leaseHasta: row.leaseHasta!, entradaProcesamiento: row.entradaProcesamiento as unknown as inbox.PersistedLeadEntranteV1 };
 
     expect(await conContexto(() => procesarRecepcion(claim))).toBe(true);
 

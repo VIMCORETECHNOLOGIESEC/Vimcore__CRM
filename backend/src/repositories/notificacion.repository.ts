@@ -1,4 +1,10 @@
-import type { CanalNotificacion, Notificacion, RolUsuario, TipoNotificacion } from "@prisma/client";
+import type {
+  CanalNotificacion,
+  Notificacion,
+  Prisma,
+  RolUsuario,
+  TipoNotificacion,
+} from "@prisma/client";
 import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
 import { condicionesMembresiaPorRol } from "../lib/rol-membresia.js";
 export interface CreateNotificacionData {
@@ -14,6 +20,17 @@ export interface CreateNotificacionData {
    * los call sites que todavía no resuelven una empresa.
    */
   empresaId: string | null;
+  /**
+   * Fix (tsc, pre-deploy): el tipo generado por Prisma para una columna
+   * `Json?` en un input de escritura es `NullableJsonNullValueInput |
+   * InputJsonValue | undefined` — un `null` literal NO tipa (haría falta
+   * `Prisma.JsonNull`, el sentinel de Prisma para eso). Ningún caller real
+   * pasa `null` explícito hoy (siempre un objeto o directamente omitido, que
+   * ya deja la columna en NULL vía el default de Postgres — mismo criterio
+   * que `empresaId` arriba), así que alcanza con sacar el `| null` del tipo
+   * en vez de introducir el sentinel sin un caso de uso real.
+   */
+  metadata?: Prisma.InputJsonValue;
 }
 export async function createNotificacion(
   data: CreateNotificacionData,

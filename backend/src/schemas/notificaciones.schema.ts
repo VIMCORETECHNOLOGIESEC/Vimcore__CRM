@@ -7,3 +7,9 @@ export const listNotificationsQuerySchema = z.object({
     .optional()
     .default(false),
 });
+export const createNotificationSchema = z.object({
+  recurso: z.enum(["canal", "producto"]),
+  nombreSugerido: z.string().trim().min(1).max(200),
+  mensaje: z.string().trim().min(1).max(500).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});

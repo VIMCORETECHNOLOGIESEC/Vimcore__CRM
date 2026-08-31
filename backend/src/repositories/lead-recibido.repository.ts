@@ -29,7 +29,33 @@ export interface PersistedMetaPendienteDetalleV2 {
   pageId: string;
 }
 
-export type PersistedEntradaProcesamiento = PersistedLeadEntranteV1 | PersistedMetaPendienteDetalleV2;
+/**
+ * Sobre del buzón para el webhook de LinkedIn (2026-08-31, mismo criterio que
+ * `PersistedMetaPendienteDetalleV2`: el `POST` solo trae identificadores, el
+ * `LeadEntrante` completo recién existe después de que el worker consulte
+ * `GET /leadFormResponses/{id}` (`linkedin-webhook.service.ts::
+ * resolverLinkedInLeadFormResponse`). `leadFormResponseId` es el id RAW (sin
+ * el prefijo `urn:li:leadGenFormResponse:`) que exige ese endpoint.
+ * `leadGenFormResponse`/`occurredAt` se preservan además del id raw porque
+ * son los dos campos que componen `id_externo_lead` (deduplicación
+ * recomendada por LinkedIn — un mismo `leadGenFormResponse` URN se reutiliza
+ * entre alta/baja/re-alta del mismo evento) y `adaptLinkedIn` necesita
+ * reconstruir ESE MISMO compuesto para `LeadEntrante.idExternoLead`, no un
+ * valor distinto inventado por el worker.
+ */
+export interface PersistedLinkedInPendienteDetalleV2 {
+  version: 2;
+  tipo: "LINKEDIN_PENDIENTE_DETALLE";
+  recibidoEn: string;
+  leadFormResponseId: string;
+  leadGenFormResponse: string;
+  occurredAt: number;
+}
+
+export type PersistedEntradaProcesamiento =
+  | PersistedLeadEntranteV1
+  | PersistedMetaPendienteDetalleV2
+  | PersistedLinkedInPendienteDetalleV2;
 
 export interface AceptacionLead {
   recepcionId: string;
@@ -38,6 +64,7 @@ export interface AceptacionLead {
 
 export interface InboxClaim {
   recepcionId: string;
+  bridgeId: string;
   leaseOwner: string;
   intento: number;
   leaseHasta: Date;
@@ -46,6 +73,7 @@ export interface InboxClaim {
 
 interface InboxClaimRow {
   recepcionId: string;
+  bridgeId: string;
   leaseOwner: string;
   intento: number;
   leaseHasta: Date;
@@ -135,6 +163,57 @@ export async function aceptarLeadgenMetaPendiente(
   return { recepcionId: row.recepcionId, estado: "ACEPTADO" };
 }
 
+export interface AceptarLinkedInPendienteData {
+  bridgeId: string;
+  leadFormResponseId: string;
+  leadGenFormResponse: string;
+  occurredAt: number;
+}
+
+/**
+ * Encolado idempotente del webhook de LinkedIn (2026-08-31, mismo criterio
+ * que `aceptarLeadgenMetaPendiente`). `id_externo_lead` es el compuesto
+ * `${leadGenFormResponse}:${occurredAt}` recomendado por LinkedIn para
+ * deduplicación (learn.microsoft.com/en-us/linkedin/marketing/lead-sync/
+ * leadsync, sección "Webhook Deduplication") — un solo `leadGenFormResponse`
+ * se reutiliza entre alta/baja/re-alta del mismo evento, así que esa URN por
+ * sí sola no alcanza como clave única de una sola columna.
+ */
+export async function aceptarLinkedInPendiente(
+  data: AceptarLinkedInPendienteData,
+  recibidoEn: Date = new Date(),
+  client: PrismaClientOrTransaction = prisma,
+): Promise<AceptacionLead> {
+  const idExternoLead = `${data.leadGenFormResponse}:${data.occurredAt}`;
+  const envelope: PersistedLinkedInPendienteDetalleV2 = {
+    version: 2,
+    tipo: "LINKEDIN_PENDIENTE_DETALLE",
+    recibidoEn: recibidoEn.toISOString(),
+    leadFormResponseId: data.leadFormResponseId,
+    leadGenFormResponse: data.leadGenFormResponse,
+    occurredAt: data.occurredAt,
+  };
+  const [row] = await client.$queryRaw<Array<{ recepcionId: string }>>(Prisma.sql`
+    INSERT INTO leads_recibidos (
+      id, bridge_id, id_externo_lead, payload, datos_incompletos, recibido_en,
+      entrada_procesamiento, estado, disponible_en
+    ) VALUES (
+      ${randomUUID()}::uuid, ${data.bridgeId}::uuid, ${idExternoLead},
+      ${JSON.stringify({
+        leadFormResponseId: data.leadFormResponseId,
+        leadGenFormResponse: data.leadGenFormResponse,
+        occurredAt: data.occurredAt,
+      })}::jsonb,
+      false, ${recibidoEn},
+      ${JSON.stringify(envelope)}::jsonb, 'PENDIENTE', ${recibidoEn}
+    )
+    ON CONFLICT (bridge_id, id_externo_lead)
+    DO UPDATE SET bridge_id = EXCLUDED.bridge_id
+    RETURNING id AS "recepcionId"
+  `);
+  return { recepcionId: row.recepcionId, estado: "ACEPTADO" };
+}
+
 export async function claimNext(
   now: Date,
   owner: string,
@@ -156,7 +235,8 @@ export async function claimNext(
         lease_owner = ${owner}, lease_hasta = ${now} + (${INGESTA_LEASE_MS} * interval '1 millisecond')
     FROM candidate
     WHERE reception.id = candidate.id
-    RETURNING reception.id AS "recepcionId", reception.lease_owner AS "leaseOwner",
+    RETURNING reception.id AS "recepcionId", reception.bridge_id AS "bridgeId",
+      reception.lease_owner AS "leaseOwner",
       reception.intentos AS intento, reception.lease_hasta AS "leaseHasta",
       reception.entrada_procesamiento AS "entradaProcesamiento"
   `);
@@ -169,7 +249,7 @@ export async function lockValidClaim(
   client: PrismaClientOrTransaction,
 ): Promise<InboxClaim | null> {
   const [row] = await client.$queryRaw<InboxClaimRow[]>(Prisma.sql`
-    SELECT id AS "recepcionId", lease_owner AS "leaseOwner", intentos AS intento,
+    SELECT id AS "recepcionId", bridge_id AS "bridgeId", lease_owner AS "leaseOwner", intentos AS intento,
       lease_hasta AS "leaseHasta", entrada_procesamiento AS "entradaProcesamiento"
     FROM leads_recibidos
     WHERE id = ${recepcionId}::uuid AND estado = 'PROCESANDO'

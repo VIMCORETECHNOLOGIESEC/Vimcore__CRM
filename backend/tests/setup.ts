@@ -46,6 +46,22 @@ import { fileURLToPath } from "node:url";
  * Riesgo residual documentado (D-H): la suite destruye los datos sembrados.
  * Ejecuta `pnpm --filter backend exec prisma db seed` de nuevo después de
  * correr las pruebas si necesitas los usuarios de desarrollo.
+ *
+ * CI (GitHub Actions, `.github/workflows/deploy-backend.yml`, job `test`):
+ * no hay `docker compose` de por medio ahí — no existe ningún `.env`/
+ * `.env.dev` en el runner, y el `DATABASE_URL` que importa lo inyecta el
+ * propio workflow vía `env:` del step "Run tests", apuntando siempre a
+ * `localhost` (el Postgres service container de ese job) con valores
+ * dummy/`secrets.CI_*` explícitos en el YAML versionado — el escenario real
+ * que forzar `.env.dev` previene (Docker Compose resolviendo `${DATABASE_URL}`
+ * desde el `.env` de referencia de Azure por falta de `--env-file`) no puede
+ * ocurrir ahí, no existe ningún `.env` que pueda ganarle por accidente. Por
+ * eso, si `.env.dev` no existe Y `process.env.CI === "true"` (variable que
+ * GitHub Actions setea sola, no manipulable por un `.env` local), se salta el
+ * paso (0) y se sigue directo a los pasos (1)/(2) contra lo que el workflow
+ * ya dejó en `process.env` — la allowlist de host sigue siendo la guarda real
+ * en ese caso, igual que en local. Fuera de CI, sin `.env.dev`, sigue
+ * abortando exactamente como antes (D-H no se relaja para un dev local).
  */
 const ALLOWED_TEST_DB_HOSTS = new Set(["db", "localhost", "127.0.0.1", "::1"]);
 
@@ -73,6 +89,16 @@ function forzarEnvDev(): void {
   try {
     contenido = readFileSync(ENV_DEV_PATH, "utf-8");
   } catch {
+    if (process.env.CI === "true") {
+      // CI (ver comentario de clase arriba): no hay `.env.dev` en el runner
+      // ni falta que hacer -- el workflow ya inyectó `DATABASE_URL`/etc. de
+      // forma explícita y confiable. Se sigue directo a los pasos (1)/(2)
+      // contra ese `process.env` tal cual está, sin abortar acá. Mismo
+      // refuerzo de `NODE_ENV` que la rama con archivo (mismo motivo: nunca
+      // depender de que otra cosa lo haya dejado bien seteado).
+      process.env.NODE_ENV = "test";
+      return;
+    }
     // eslint-disable-next-line no-console
     console.error(`Abortado: no se pudo leer "${ENV_DEV_PATH}" — las pruebas requieren .env.dev en la raíz del repo.`);
     process.exit(1);

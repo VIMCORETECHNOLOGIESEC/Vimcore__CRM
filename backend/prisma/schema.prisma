@@ -65,6 +65,10 @@ enum TipoNotificacion {
   // (3 intentos, sin backoff) al usuario que intentó reasignar y a su
   // supervisor de empresa.
   ASIGNACION_CONFLICTO
+  // Pre-deploy (endpoint manual de aviso Supervisor/Asesor → Administrador):
+  // agregado AL FINAL, mismo criterio append-only de arriba. Dispara cuando
+  // no hay canal o producto activo para cargar un lead.
+  CANAL_O_PRODUCTO_FALTANTE
 
   @@map("tipo_notificacion")
 }
@@ -722,6 +726,11 @@ model Notificacion {
   // sin restricción). La política RLS de `notificaciones` deja pasar
   // `empresa_id IS NULL` como parte del mismo `OR` de contexto unrestricted.
   empresaId String?           @map("empresa_id") @db.Uuid
+  // Pre-deploy (endpoint manual de aviso Supervisor/Asesor → Administrador,
+  // recurso "canal_o_producto_faltante"): payload estructurado libre para que
+  // el frontend arme el deep-link (`recurso`/`nombreSugerido` y cualquier
+  // dato extra que el cliente envíe). NULL para toda notificación existente.
+  metadata  Json?             @db.JsonB
 
   usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)

@@ -1,15 +1,7 @@
 import { z } from "zod";
+import { linkedinLeadTypeSchema } from "./linkedin-leads.schema.js";
 
 const nonEmptyTextSchema = z.string().trim().min(1);
-
-const linkedinReferenceObjectSchema = z
-  .object({
-    id: nonEmptyTextSchema.optional(),
-    urn: nonEmptyTextSchema.optional(),
-  })
-  .passthrough();
-
-const linkedinReferenceSchema = z.union([nonEmptyTextSchema, linkedinReferenceObjectSchema]);
 
 export const linkedinWebhookChallengeQuerySchema = z.object({
   challengeCode: z.string().trim().min(1).max(2_048),
@@ -17,45 +9,61 @@ export const linkedinWebhookChallengeQuerySchema = z.object({
 });
 
 /**
- * Notificación Lead Sync con forma flexible: LinkedIn puede envolver las URNs
- * como texto o como objetos Rest.li. Se exige ID de notificación y se preservan
- * campos desconocidos para auditoría/adaptación futura.
+ * Owner de la notificación Lead Sync (learn.microsoft.com/en-us/linkedin/
+ * marketing/lead-sync/leadsync, FAQ "What content can I expect to be
+ * included in the notification payloads?", verificado 2026-08-31): objeto
+ * con EXACTAMENTE una key presente, `organization` o `sponsoredAccount` —
+ * mismo criterio inverso que `linkedin-subscription.service.ts::ownerBodyFor`.
+ * Modelado como objeto con ambas keys opcionales + `superRefine` (en vez de
+ * `z.union` de dos objetos exclusivos) para que el tipo inferido permita
+ * `owner.organization ?? owner.sponsoredAccount` directo, sin narrowing
+ * adicional — misma ergonomía que `linkedinUrnReferenceSchema` en
+ * `linkedin-leads.schema.ts`.
  */
-export const linkedinNotificationSchema = z
+export const linkedinNotificationOwnerSchema = z
   .object({
-    id: nonEmptyTextSchema.optional(),
-    notificationId: nonEmptyTextSchema.optional(),
-    leadFormResponseId: nonEmptyTextSchema.optional(),
-    leadFormResponse: linkedinReferenceSchema.optional(),
-    leadGenFormResponse: linkedinReferenceSchema.optional(),
-    ownerUrn: nonEmptyTextSchema.optional(),
-    owner: linkedinReferenceSchema.optional(),
-    versionedFormUrn: nonEmptyTextSchema.optional(),
-    versionedLeadGenFormUrn: nonEmptyTextSchema.optional(),
-    versionedLeadGenForm: linkedinReferenceSchema.optional(),
-    leadType: z.enum(["SPONSORED", "EVENT", "COMPANY", "ORGANIZATION_PRODUCT"]).optional(),
-    createdAt: z.union([z.coerce.date(), z.number().int().nonnegative()]).optional(),
+    organization: nonEmptyTextSchema.optional(),
+    sponsoredAccount: nonEmptyTextSchema.optional(),
   })
   .passthrough()
-  .superRefine((notification, ctx) => {
-    if (!notification.id && !notification.notificationId) {
+  .superRefine((owner, ctx) => {
+    const presentes = [owner.organization, owner.sponsoredAccount].filter(
+      (valor) => valor !== undefined,
+    ).length;
+    if (presentes !== 1) {
       ctx.addIssue({
         code: "custom",
-        path: ["notificationId"],
-        message: "La notificación de LinkedIn debe incluir id o notificationId",
+        path: [],
+        message: "owner debe traer exactamente una de: organization, sponsoredAccount",
       });
     }
   });
 
-export const linkedinWebhookPayloadSchema = z.union([
-  z.array(linkedinNotificationSchema),
-  z
-    .object({
-      notifications: z.array(linkedinNotificationSchema).default([]),
-    })
-    .passthrough(),
-]);
+export const linkedinLeadActionSchema = z.enum(["CREATED", "DELETED"]);
+
+/**
+ * Notificación real de Lead Sync (2026-08-31, REESCRITO: la forma previa de
+ * este schema — un sobre `{ notifications: [...] }` o un array, con campos
+ * especulativos como `leadFormResponseId`/`versionedFormUrn` — no coincide
+ * con lo que LinkedIn realmente envía, según la doc oficial verificada. Es
+ * un objeto JSON plano, UNA notificación por POST, sin envoltorio).
+ * `associatedEntity` (p. ej. `{ "event": "urn:li:event:123" }`) se preserva
+ * sin traducir — ningún flujo de este proyecto lo consume todavía.
+ */
+export const linkedinNotificationSchema = z
+  .object({
+    type: z.literal("LEAD_ACTION"),
+    leadGenFormResponse: nonEmptyTextSchema,
+    leadGenForm: nonEmptyTextSchema,
+    owner: linkedinNotificationOwnerSchema,
+    associatedEntity: z.record(z.string(), nonEmptyTextSchema).optional(),
+    leadType: linkedinLeadTypeSchema,
+    leadAction: linkedinLeadActionSchema,
+    occurredAt: z.number().int().nonnegative(),
+  })
+  .passthrough();
 
 export type LinkedInWebhookChallengeQuery = z.infer<typeof linkedinWebhookChallengeQuerySchema>;
+export type LinkedInNotificationOwner = z.infer<typeof linkedinNotificationOwnerSchema>;
+export type LinkedInLeadAction = z.infer<typeof linkedinLeadActionSchema>;
 export type LinkedInNotificationBody = z.infer<typeof linkedinNotificationSchema>;
-export type LinkedInWebhookPayload = z.infer<typeof linkedinWebhookPayloadSchema>;

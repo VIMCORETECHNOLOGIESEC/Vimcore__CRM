@@ -2,10 +2,12 @@ import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
+  createNotificationSchema,
   listNotificationsQuerySchema,
   notificationIdParamSchema,
 } from "../schemas/notificaciones.schema.js";
 import {
+  createCanalOProductoFaltanteNotification,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -31,4 +33,14 @@ export async function patchAllNotificationsRead(req: Request, res: Response): Pr
   const usuario = assertAuthenticated(req);
   await markAllNotificationsRead(usuario.id);
   res.status(204).send();
+}
+export async function postNotification(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  const parsed = createNotificationSchema.safeParse(req.body);
+  if (!parsed.success) throw invalidRequest();
+  const notificaciones = await createCanalOProductoFaltanteNotification(
+    parsed.data,
+    usuario.empresaId,
+  );
+  res.status(201).json({ notificaciones });
 }

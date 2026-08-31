@@ -28,12 +28,75 @@ const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
  * `Usuario.rol` — este helper crea la Membresia activa equivalente para que
  * estas pruebas sigan ejerciendo la resolución real de destinatarios.
  */
-async function createUserConMembresia(role: "ADMINISTRADOR" | "SUPERVISOR", active = true) {
+async function createUserConMembresia(
+  role: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR",
+  active = true,
+  empresaId = BOOTSTRAP_EMPRESA_ID,
+) {
   const usuario = await createUser(role, active);
   await testAdminPrisma.membresia.create({
-    data: { usuarioId: usuario.id, empresaId: BOOTSTRAP_EMPRESA_ID, rol: role, activa: true },
+    data: { usuarioId: usuario.id, empresaId, rol: role, activa: true },
   });
   return usuario;
+}
+/**
+ * Pre-deploy (endpoint manual de aviso Supervisor/Asesor → Administrador):
+ * `VENDEDOR` (legado) no tiene `RolMembresia` propio — mismo mapeo de
+ * backfill que ya documenta `notificacion.repository.test.ts`
+ * (`Membresia(rol: ASESOR, habilitadoParaVenta: true)`), necesario para que
+ * este usuario pueda autenticarse en alcance COMPANY y llegar a probar el
+ * 403 de `requireRole` en el POST nuevo.
+ */
+async function createVendedorConMembresia(empresaId = BOOTSTRAP_EMPRESA_ID) {
+  const usuario = await prisma.usuario.create({
+    data: {
+      nombre: "Notificaciones VENDEDOR",
+      correo: `notificaciones-vendedor-${crypto.randomUUID()}@test.local`,
+      passwordHash: await hashPassword(password),
+      rol: "VENDEDOR",
+      activo: true,
+    },
+  });
+  await testAdminPrisma.membresia.create({
+    data: {
+      usuarioId: usuario.id,
+      empresaId,
+      rol: "ASESOR",
+      habilitadoParaVenta: true,
+      activa: true,
+    },
+  });
+  return usuario;
+}
+/**
+ * Pre-deploy (endpoint manual de aviso Supervisor/Asesor → Administrador):
+ * el endpoint nuevo resuelve `empresaId` de la sesión (nunca del body), así
+ * que necesita una sesión COMPANY real — vía `Membresia.correo`/
+ * `passwordHash`, mismo patrón que
+ * `negociacion.producto.test.ts::crearAdministradorCompanyScoped` /
+ * `auth.session-scope.test.ts`. Loguear con `usuario.correo` (como el resto
+ * de este archivo) resuelve por el camino `Usuario.correo` PRIMERO
+ * (dual-login-routing) y da una sesión HOLDING (`empresaId: null`), que este
+ * endpoint rechaza con 422 — de ahí el correo de Membresia dedicado.
+ */
+async function createCompanyScopedUserConToken(
+  role: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR",
+  empresaId: string,
+) {
+  const usuario = await createUser(role);
+  const membresiaCorreo = `notificaciones-membresia-${role.toLowerCase()}-${crypto.randomUUID()}@test.local`;
+  await testAdminPrisma.membresia.create({
+    data: {
+      usuarioId: usuario.id,
+      empresaId,
+      rol: role,
+      correo: membresiaCorreo,
+      passwordHash: await hashPassword(password),
+      activa: true,
+    },
+  });
+  const token = await login(membresiaCorreo);
+  return { id: usuario.id, token };
 }
 async function login(correo: string): Promise<string> {
   const response = await request(app).post("/api/v1/auth/login").send({ correo, password });
@@ -203,5 +266,91 @@ describe("M8 active supervisor/admin fan-out", () => {
       }),
     ).rejects.toThrow("forced rollback");
     expect(await testAdminPrisma.notificacion.count()).toBe(0);
+  });
+});
+describe("POST /notificaciones — aviso manual de canal/producto faltante (pre-deploy)", () => {
+  it("un Supervisor autenticado notifica al Administrador activo de su empresa", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa canal faltante ${crypto.randomUUID()}` },
+    });
+    const admin = await createUserConMembresia("ADMINISTRADOR", true, empresa.id);
+    const supervisor = await createCompanyScopedUserConToken("SUPERVISOR", empresa.id);
+
+    const response = await request(app)
+      .post("/api/v1/notificaciones")
+      .set("Authorization", `Bearer ${supervisor.token}`)
+      .send({ recurso: "canal", nombreSugerido: "WhatsApp Business" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificaciones).toHaveLength(1);
+    const [created] = response.body.notificaciones;
+    expect(created.tipo).toBe("CANAL_O_PRODUCTO_FALTANTE");
+    expect(created.usuarioId).toBe(admin.id);
+    expect(created.titulo).toBe("Falta un canal activo");
+    expect(created.metadata).toMatchObject({
+      recurso: "canal",
+      nombreSugerido: "WhatsApp Business",
+    });
+  });
+  it("un Asesor autenticado notifica al Administrador activo de su empresa (triangulación de rol)", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa producto faltante ${crypto.randomUUID()}` },
+    });
+    const admin = await createUserConMembresia("ADMINISTRADOR", true, empresa.id);
+    const asesor = await createCompanyScopedUserConToken("ASESOR", empresa.id);
+
+    const response = await request(app)
+      .post("/api/v1/notificaciones")
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ recurso: "producto", nombreSugerido: "Plan Premium", mensaje: "Necesito cargar un lead ya" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificaciones).toHaveLength(1);
+    const [created] = response.body.notificaciones;
+    expect(created.usuarioId).toBe(admin.id);
+    expect(created.titulo).toBe("Falta un producto activo");
+    expect(created.mensaje).toBe("Necesito cargar un lead ya");
+    expect(created.metadata).toMatchObject({ recurso: "producto", nombreSugerido: "Plan Premium" });
+  });
+  it("rechaza con 403 a Administrador y a Vendedor, roles que no disparan este aviso", async () => {
+    const admin = await createUserConMembresia("ADMINISTRADOR");
+    const adminToken = await login(admin.correo);
+    const vendedor = await createVendedorConMembresia();
+    const vendedorToken = await login(vendedor.correo);
+
+    for (const token of [adminToken, vendedorToken]) {
+      const response = await request(app)
+        .post("/api/v1/notificaciones")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ recurso: "canal", nombreSugerido: "Instagram Ads" });
+      expect(response.status).toBe(403);
+    }
+  });
+  it("rechaza un body inválido con 400 (recurso fuera de dominio o nombreSugerido vacío)", async () => {
+    const invalidRecurso = await request(app)
+      .post("/api/v1/notificaciones")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ recurso: "otro", nombreSugerido: "Landing Ads" });
+    expect(invalidRecurso.status).toBe(400);
+
+    const emptyNombre = await request(app)
+      .post("/api/v1/notificaciones")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ recurso: "canal", nombreSugerido: "" });
+    expect(emptyNombre.status).toBe(400);
+  });
+  it("devuelve 201 con arreglo vacío cuando la empresa no tiene ningún Administrador activo", async () => {
+    const empresaSinAdmin = await prisma.empresa.create({
+      data: { nombre: `Empresa sin admin ${crypto.randomUUID()}` },
+    });
+    const asesor = await createCompanyScopedUserConToken("ASESOR", empresaSinAdmin.id);
+
+    const response = await request(app)
+      .post("/api/v1/notificaciones")
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ recurso: "canal", nombreSugerido: "Instagram Ads" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificaciones).toEqual([]);
   });
 });
