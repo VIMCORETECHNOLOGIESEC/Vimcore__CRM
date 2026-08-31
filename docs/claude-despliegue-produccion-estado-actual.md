@@ -183,7 +183,8 @@ el backend se mantiene en Azure Container Apps:
 - `deploy/frontend/nginx.conf`: fallback de SPA, cache de assets y endpoint
   `/health`.
 - `deploy/frontend/docker-compose.yml`: Compose mínimo para la VPS, exponiendo
-  puerto 80.
+  puerto 8080 por defecto para no chocar con un proxy o web server existente en
+  80.
 - `.github/workflows/deploy-frontend-vps.yml`: tests y build de frontend antes
   de publicar imagen en GHCR y actualizar la VPS por SSH.
 - `docs/despliegue-frontend-vps.md`: guía de secrets, variables, dominio,

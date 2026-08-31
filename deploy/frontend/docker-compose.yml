@@ -3,7 +3,7 @@ services:
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${FRONTEND_HTTP_PORT:-8080}:80"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null 2>&1 || exit 1"]
       interval: 30s

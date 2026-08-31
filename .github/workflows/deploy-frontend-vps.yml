@@ -24,6 +24,7 @@ env:
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
   VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
   VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/opt/crm-frontend' }}
+  FRONTEND_HTTP_PORT: ${{ vars.FRONTEND_HTTP_PORT || '8080' }}
 
 jobs:
   test:
@@ -127,7 +128,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
             "cd '${VPS_DEPLOY_PATH}' && \
-            printf 'FRONTEND_IMAGE=%s\n' '${IMAGE_NAME}:${GITHUB_SHA}' > .env && \
+            printf 'FRONTEND_IMAGE=%s\nFRONTEND_HTTP_PORT=%s\n' '${IMAGE_NAME}:${GITHUB_SHA}' '${FRONTEND_HTTP_PORT}' > .env && \
             echo '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
             docker compose pull && \
             docker compose up -d && \
@@ -138,7 +139,7 @@ jobs:
 
       - name: Verify VPS health
         run: |
-          HEALTH_URL="${FRONTEND_HEALTH_URL:-http://${VPS_HOST}/health}"
+          HEALTH_URL="${FRONTEND_HEALTH_URL:-http://${VPS_HOST}:${FRONTEND_HTTP_PORT}/health}"
           curl --fail --silent --show-error "${HEALTH_URL}"
         env:
           FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}

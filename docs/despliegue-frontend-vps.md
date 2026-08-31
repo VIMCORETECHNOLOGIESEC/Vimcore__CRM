@@ -62,6 +62,7 @@ workflow también la escribe como archivo PEM válido.
 |---|---|
 | `FRONTEND_API_BASE_URL` | URL del backend con `/api/v1`, por ejemplo `https://arcano-crm.happyground-63307e62.eastus.azurecontainerapps.io/api/v1`. |
 | `FRONTEND_HEALTH_URL` | Opcional; health check final del workflow. Usar cuando el dominio ya tenga HTTPS, por ejemplo `https://crm.tudominio.com/health`. |
+| `FRONTEND_HTTP_PORT` | Opcional; puerto público del contenedor en la VPS. Si no existe usa `8080` para no chocar con un proxy o web server existente en `80`. |
 | `VPS_DEPLOY_PATH` | Opcional; si no existe usa `/opt/crm-frontend`. |
 
 `FRONTEND_API_BASE_URL` es variable, no secret: no contiene credenciales. Vite la
@@ -82,16 +83,17 @@ sudo mkdir -p /opt/crm-frontend
 sudo chown -R $USER:$USER /opt/crm-frontend
 ```
 
-Compose expone el contenedor en el puerto `80` de la VPS:
+Compose expone el contenedor en el puerto `8080` de la VPS por defecto:
 
 ```yaml
 ports:
-  - "80:80"
+  - "${FRONTEND_HTTP_PORT:-8080}:80"
 ```
 
-Si en la VPS ya existe otro reverse proxy escuchando en `80`, cambiar ese mapeo
-a un puerto local, por ejemplo `127.0.0.1:8080:80`, y hacer que el proxy externo
-apunte a `http://127.0.0.1:8080`.
+Si se quiere publicar directamente por HTTP sin reverse proxy, configurar
+`FRONTEND_HTTP_PORT=80`. Si en la VPS ya existe otro servicio escuchando en
+`80`, dejar `8080` y hacer que el proxy externo apunte a
+`http://127.0.0.1:8080`.
 
 ## Dominio
 
@@ -100,7 +102,7 @@ El dominio no se agrega en Docker ni en GitHub. Se configura en el proveedor DNS
 1. Crear un registro `A` para el dominio o subdominio.
 2. Apuntarlo al IP público de la VPS.
 3. Esperar propagación DNS.
-4. Probar `http://<dominio>/health`.
+4. Probar `http://<dominio>:8080/health` mientras no haya reverse proxy en `80`.
 
 Ejemplo:
 
@@ -126,7 +128,7 @@ usuarios, HTTPS debe quedar activo y el backend debe cambiar `CORS_ORIGIN` de
 Después del despliegue:
 
 ```bash
-curl -f http://<dominio-o-ip>/health
+curl -f http://<dominio-o-ip>:8080/health
 ```
 
 Luego abrir la app y verificar:
