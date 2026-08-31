@@ -422,11 +422,11 @@ describe(
 
       expect(respuesta.status).toBe(200);
       expect(new Set(respuesta.body.redesSociales)).toEqual(
-        new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "API_EXTERNA"]),
+        new Set<RedSocial>(["FACEBOOK", "GOOGLE_FORMS", "LINKEDIN", "API_EXTERNA"]),
       );
       expect(respuesta.body.redesSociales).not.toContain("INSTAGRAM" satisfies RedSocial);
       expect(respuesta.body.redesSociales).not.toContain("X" satisfies RedSocial);
-      expect(respuesta.body.redesSociales).not.toContain("LINKEDIN" satisfies RedSocial);
+      expect(respuesta.body.redesSociales).toContain("LINKEDIN" satisfies RedSocial);
     });
 
     it("403 cuando un VENDEDOR intenta leer el catálogo", async () => {

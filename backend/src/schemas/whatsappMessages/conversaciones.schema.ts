@@ -4,7 +4,14 @@ export const conversacionIdParamSchema = z.object({ id: z.uuid() });
 
 const LIMITES_PERMITIDOS = [10, 25, 50, 100] as const;
 
-/** `GET /conversaciones` — paginación, mismo criterio que `listLeadsQuerySchema`. */
+/**
+ * `GET /conversaciones` — paginación, mismo criterio que `listLeadsQuerySchema`.
+ *
+ * Hotfix: `clienteId` opcional — permite al frontend resolver qué
+ * conversación abrir desde el detalle de un lead puntual. Aditivo: nunca
+ * reemplaza el scope RBAC existente (`empresaId`/`asesorId`), ver
+ * `conversaciones.service.ts::listConversaciones`.
+ */
 export const listConversacionesQuerySchema = z.object({
   pagina: z.coerce.number().int().min(1).default(1),
   limite: z.coerce
@@ -14,6 +21,7 @@ export const listConversacionesQuerySchema = z.object({
       message: "limite debe ser 10, 25, 50 o 100",
     })
     .default(25),
+  clienteId: z.uuid().optional(),
 });
 
 /** `GET /conversaciones/:id/mensajes` — historial paginado, orden fijo por `enviadoEn desc`. */

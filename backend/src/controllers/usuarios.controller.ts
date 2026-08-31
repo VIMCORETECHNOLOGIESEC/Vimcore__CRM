@@ -3,6 +3,7 @@ import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   createEmpresaAdministradorBodySchema,
+  createEmpresaSupervisorBodySchema,
   createUsuarioBodySchema,
   empresaIdParamSchema,
   idParamSchema,
@@ -12,6 +13,7 @@ import {
 } from "../schemas/usuarios.schema.js";
 import {
   createEmpresaAdministrador,
+  createEmpresaSupervisor,
   createUsuario,
   deactivateUsuario,
   findResponsables,
@@ -70,6 +72,31 @@ export async function postEmpresaAdministrador(req: Request, res: Response): Pro
 
   const administrador = await createEmpresaAdministrador(parsedParams.data.empresaId, parsedBody.data);
   res.status(201).json({ administrador });
+}
+
+/**
+ * Hotfix (supervisor scoped a empresa): espejo exacto de
+ * `postEmpresaAdministrador` arriba, mismo guard (`sessionScope !==
+ * "holding" || empresaId !== null` -> 403 `forbiddenHoldingScope`).
+ */
+export async function postEmpresaSupervisor(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  if (usuario.sessionScope !== "holding" || usuario.empresaId !== null) {
+    throw forbiddenHoldingScope();
+  }
+
+  const parsedParams = empresaIdParamSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidEmpresaIdParam();
+  }
+
+  const parsedBody = createEmpresaSupervisorBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw zodValidationError();
+  }
+
+  const supervisor = await createEmpresaSupervisor(parsedParams.data.empresaId, parsedBody.data);
+  res.status(201).json({ supervisor });
 }
 
 export async function getUsuarios(req: Request, res: Response): Promise<void> {
