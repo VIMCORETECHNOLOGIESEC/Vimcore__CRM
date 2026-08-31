@@ -18,6 +18,16 @@ import type { WhatsAppNumeroDescubiertoDto } from "../../types/whatsappMessages/
  * versión default configurada en el dashboard de la Meta App cuando no se
  * especifica una.
  */
+/**
+ * Fix (WhatsApp OAuth connect, 2026-08-31): ninguna llamada de este archivo
+ * tenía timeout -- mismo bug y mismo criterio de fix que
+ * `whatsapp-oauth.service.ts::META_TOKEN_EXCHANGE_TIMEOUT_MS`. `getJson`
+ * encadena varias llamadas en secuencia (`descubrirNumeros`, un business →
+ * varias WABAs → varios números) -- sin esto, UNA sola llamada colgada
+ * bloquea todo el descubrimiento sin ningún error visible.
+ */
+const WHATSAPP_CLOUD_API_TIMEOUT_MS = 10_000;
+
 function envioFallido(): AppError {
   return new AppError("whatsapp_envio_fallido", 502, "No se pudo enviar el mensaje de WhatsApp");
 }
@@ -54,6 +64,7 @@ export async function enviarMensajeTexto(
         type: "text",
         text: { body: texto },
       }),
+      signal: AbortSignal.timeout(WHATSAPP_CLOUD_API_TIMEOUT_MS),
     });
     ok = respuesta.ok;
     cuerpo = await respuesta.json().catch(() => null);
@@ -70,7 +81,7 @@ export async function enviarMensajeTexto(
 
 async function getJson(url: string, fetchFn: typeof globalThis.fetch): Promise<unknown> {
   try {
-    const respuesta = await fetchFn(url);
+    const respuesta = await fetchFn(url, { signal: AbortSignal.timeout(WHATSAPP_CLOUD_API_TIMEOUT_MS) });
     const cuerpo: unknown = await respuesta.json().catch(() => null);
     if (!respuesta.ok) throw descubrimientoFallido();
     return cuerpo;

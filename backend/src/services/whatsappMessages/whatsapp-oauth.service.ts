@@ -27,6 +27,15 @@ import { descubrirNumeros } from "./whatsapp-cloud-api.service.js";
  * módulo (ver `whatsapp-cloud-api.service.ts`).
  */
 const OFFICIAL_AUTH_DIALOG_BASE_URL = "https://www.facebook.com/dialog/oauth";
+/**
+ * Fix (WhatsApp OAuth connect, 2026-08-31): `exchangeAuthorizationCode`
+ * llamaba a `fetch(url)` sin timeout ni `AbortSignal` -- si Meta no
+ * respondía, la request de Express quedaba colgada indefinidamente en vez de
+ * fallar con un error visible (nada queda logueado, ni éxito ni error: el
+ * bug se manifestaba como "no pasa nada" del lado del usuario). Mismo valor
+ * que `linkedin-api.service.ts::LINKEDIN_API_TIMEOUT_MS`, por consistencia.
+ */
+const META_TOKEN_EXCHANGE_TIMEOUT_MS = 10_000;
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
 const OAUTH_STATE_BYTES = 32;
 /** El blob `seleccion` (ver `WhatsAppOAuthCallbackDto`) vive el mismo TTL que el state que lo originó. */
@@ -150,7 +159,7 @@ async function exchangeAuthorizationCode(
   let cuerpo: unknown;
   let ok: boolean;
   try {
-    const respuesta = await fetch(url);
+    const respuesta = await fetch(url, { signal: AbortSignal.timeout(META_TOKEN_EXCHANGE_TIMEOUT_MS) });
     ok = respuesta.ok;
     cuerpo = await respuesta.json().catch(() => null);
   } catch {
