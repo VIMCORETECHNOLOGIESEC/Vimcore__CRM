@@ -31,6 +31,13 @@ export interface UpdateEmpresaAparienciaHoldingInput {
   logoUrl?: string | null;
 }
 
+export interface CreateEmpresaInput {
+  nombre: string;
+  colorPrimario?: string | null;
+  colorSecundario?: string | null;
+  logoUrl?: string | null;
+}
+
 /**
  * Query params de `GET /empresas` (paginación server-side, contrato fijo
  * acordado con el backend -- 1-based `page`, default 1; `pageSize` default
@@ -75,4 +82,14 @@ export async function fetchEmpresasHoldingApi(
   return httpClient.get<EmpresasHoldingResponse>("/empresas", {
     params: params as Record<string, QueryParamValue>,
   });
+}
+
+/**
+ * `POST /empresas` -- solo sessionScope `holding` + rol `ADMINISTRADOR`. Alta
+ * de una `Empresa` nueva dentro de la instancia (docs/23 item 30). Devuelve
+ * la `Empresa` creada, misma forma que el resto de este archivo. Alimenta
+ * `CrearEmpresaHoldingDialog.tsx`, disparado desde `GestorEmpresasPage.tsx`.
+ */
+export async function createEmpresaApi(input: CreateEmpresaInput): Promise<EmpresaAparienciaHoldingView> {
+  return httpClient.post<EmpresaAparienciaHoldingView>("/empresas", input);
 }

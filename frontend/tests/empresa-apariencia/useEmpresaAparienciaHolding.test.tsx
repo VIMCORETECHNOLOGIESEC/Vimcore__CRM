@@ -7,6 +7,7 @@ vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", (
   updateEmpresaAparienciaHoldingApi: vi.fn(),
   fetchEmpresasHoldingApi: vi.fn(),
   fetchEmpresaHoldingApi: vi.fn(),
+  createEmpresaApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -18,6 +19,7 @@ const {
   useUpdateEmpresaAparienciaHolding,
   useEmpresasHolding,
   useEmpresaHolding,
+  useCreateEmpresaHolding,
   EMPRESAS_HOLDING_QUERY_KEY,
   EMPRESA_HOLDING_QUERY_KEY,
 } = await import("@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding");
@@ -27,12 +29,14 @@ const updateEmpresaAparienciaHoldingApiMock = vi.mocked(
 );
 const fetchEmpresasHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresasHoldingApi);
 const fetchEmpresaHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresaHoldingApi);
+const createEmpresaApiMock = vi.mocked(empresaAparienciaHoldingApi.createEmpresaApi);
 const toastSuccessMock = vi.mocked(toast.success);
 
 beforeEach(() => {
   updateEmpresaAparienciaHoldingApiMock.mockReset();
   fetchEmpresasHoldingApiMock.mockReset();
   fetchEmpresaHoldingApiMock.mockReset();
+  createEmpresaApiMock.mockReset();
   toastSuccessMock.mockReset();
 });
 
@@ -110,6 +114,73 @@ describe("useUpdateEmpresaAparienciaHolding", () => {
 
     act(() => {
       result.current.mutate({ empresaId: "e2", input: { nombre: "Empresa B" } });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [EMPRESAS_HOLDING_QUERY_KEY] });
+  });
+});
+
+describe("useCreateEmpresaHolding", () => {
+  it("llama a la API con el input recibido", async () => {
+    createEmpresaApiMock.mockResolvedValue({
+      id: "e3",
+      nombre: "Empresa Nueva",
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useCreateEmpresaHolding(), {
+      wrapper: crearWrapper(queryClient),
+    });
+
+    act(() => {
+      result.current.mutate({ nombre: "Empresa Nueva" });
+    });
+
+    await waitFor(() =>
+      expect(createEmpresaApiMock).toHaveBeenCalledWith({ nombre: "Empresa Nueva" }),
+    );
+  });
+
+  it("avisa éxito con el nombre de la empresa creada al terminar", async () => {
+    createEmpresaApiMock.mockResolvedValue({
+      id: "e3",
+      nombre: "Empresa Nueva",
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useCreateEmpresaHolding(), {
+      wrapper: crearWrapper(queryClient),
+    });
+
+    act(() => {
+      result.current.mutate({ nombre: "Empresa Nueva" });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(toastSuccessMock).toHaveBeenCalledWith("Empresa Nueva creada correctamente.");
+  });
+
+  it("invalida el listado de empresas del holding al terminar con éxito", async () => {
+    createEmpresaApiMock.mockResolvedValue({
+      id: "e3",
+      nombre: "Empresa Nueva",
+      colorPrimario: null,
+      colorSecundario: null,
+      logoUrl: null,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCreateEmpresaHolding(), {
+      wrapper: crearWrapper(queryClient),
+    });
+
+    act(() => {
+      result.current.mutate({ nombre: "Empresa Nueva" });
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

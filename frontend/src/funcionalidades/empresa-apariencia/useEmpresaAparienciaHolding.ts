@@ -1,9 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  createEmpresaApi,
   fetchEmpresaHoldingApi,
   fetchEmpresasHoldingApi,
   updateEmpresaAparienciaHoldingApi,
+  type CreateEmpresaInput,
   type EmpresaAparienciaHoldingView,
   type EmpresasHoldingQueryParams,
   type UpdateEmpresaAparienciaHoldingInput,
@@ -70,6 +72,24 @@ export function useUpdateEmpresaAparienciaHolding() {
       updateEmpresaAparienciaHoldingApi(empresaId, input),
     onSuccess: (empresa: EmpresaAparienciaHoldingView) => {
       toast.success(`Apariencia de ${empresa.nombre} actualizada correctamente.`);
+      void queryClient.invalidateQueries({ queryKey: [EMPRESAS_HOLDING_QUERY_KEY] });
+    },
+  });
+}
+
+/**
+ * Mutación de alta de empresa (docs/23 item 30, `POST /empresas`, exclusivo
+ * sessionScope `holding` + rol `ADMINISTRADOR`). Invalida
+ * `EMPRESAS_HOLDING_QUERY_KEY` igual que `useUpdateEmpresaAparienciaHolding`
+ * -- el gestor de empresas (`GestorEmpresasPage.tsx`) refleja el alta sin
+ * recargar la página. Consumida desde `CrearEmpresaHoldingDialog.tsx`.
+ */
+export function useCreateEmpresaHolding() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateEmpresaInput) => createEmpresaApi(input),
+    onSuccess: (empresa: EmpresaAparienciaHoldingView) => {
+      toast.success(`${empresa.nombre} creada correctamente.`);
       void queryClient.invalidateQueries({ queryKey: [EMPRESAS_HOLDING_QUERY_KEY] });
     },
   });

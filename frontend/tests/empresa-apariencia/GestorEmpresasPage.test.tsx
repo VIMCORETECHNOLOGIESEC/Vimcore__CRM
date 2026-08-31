@@ -11,6 +11,7 @@ import type {
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
   fetchEmpresasHoldingApi: vi.fn(),
   updateEmpresaAparienciaHoldingApi: vi.fn(),
+  createEmpresaApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -25,6 +26,7 @@ const fetchEmpresasHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchE
 const updateEmpresaAparienciaHoldingApiMock = vi.mocked(
   empresaAparienciaHoldingApi.updateEmpresaAparienciaHoldingApi,
 );
+const createEmpresaApiMock = vi.mocked(empresaAparienciaHoldingApi.createEmpresaApi);
 
 function empresaFake(overrides: Partial<EmpresaAparienciaHoldingView> = {}): EmpresaAparienciaHoldingView {
   return {
@@ -48,6 +50,7 @@ function empresasResponse(
 beforeEach(() => {
   fetchEmpresasHoldingApiMock.mockReset();
   updateEmpresaAparienciaHoldingApiMock.mockReset();
+  createEmpresaApiMock.mockReset();
 });
 
 afterEach(() => {
@@ -60,7 +63,7 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      {/* MemoryRouter: cada card enlaza "Ver detalles" a /usuarios?empresaId= (F8-D0). */}
+      {/* MemoryRouter: cada card enlaza "Ver detalles" a /empresas/:empresaId (F8-D0). */}
       <MemoryRouter>
         <GestorEmpresasPage />
       </MemoryRouter>
@@ -75,10 +78,11 @@ describe("GestorEmpresasPage", () => {
     expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
   });
 
-  it("muestra un estado vacío cuando no hay empresas", async () => {
+  it("muestra un estado vacío cuando no hay empresas, invitando a usar el botón de alta", async () => {
     fetchEmpresasHoldingApiMock.mockResolvedValue(empresasResponse([]));
     renderPage();
     expect(await screen.findByText(/todavía no hay empresas/i)).toBeInTheDocument();
+    expect(screen.getByText(/Creá la primera empresa con el botón «Nueva empresa»/)).toBeInTheDocument();
   });
 
   it("muestra un mensaje accionable cuando falla la carga", async () => {
@@ -103,10 +107,10 @@ describe("GestorEmpresasPage", () => {
     expect(isotipo.tagName).toBe("IMG");
     expect(isotipo).toHaveAttribute("src", "https://cdn.test/e1.png");
 
-    // Acción primaria: navega a la vista de detalle (hoy /usuarios?empresaId=,
-    // ver comentario en GestorEmpresasPage.tsx sobre el context pendiente).
+    // Acción primaria: navega a la vista de detalle real (`EmpresaDetallePage`,
+    // que a su vez entra en la "vista de empresa" simulada vía `useVistaEmpresa`).
     const verDetalles = screen.getByRole("link", { name: "Ver detalles de Empresa A" });
-    expect(verDetalles).toHaveAttribute("href", "/usuarios?empresaId=e1");
+    expect(verDetalles).toHaveAttribute("href", "/empresas/e1");
 
     // Acción secundaria: Editar, subordinada visualmente pero con el mismo
     // nombre accesible que antes (no rompe el flujo de edición existente).
@@ -171,6 +175,29 @@ describe("GestorEmpresasPage", () => {
         nombre: "Empresa A renombrada",
         colorPrimario: "#7c2d12",
         colorSecundario: "#f97316",
+        logoUrl: null,
+      }),
+    );
+  });
+
+  it("abre el diálogo de alta con el botón «Nueva empresa» y envía la creación al backend", async () => {
+    fetchEmpresasHoldingApiMock.mockResolvedValue(empresasResponse([empresaFake()]));
+    createEmpresaApiMock.mockResolvedValue(empresaFake({ id: "e9", nombre: "Empresa Nueva" }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Empresa A");
+    await user.click(screen.getByRole("button", { name: "Nueva empresa" }));
+
+    const campoNombre = await screen.findByLabelText("Nombre de la empresa");
+    await user.type(campoNombre, "Empresa Nueva");
+    await user.click(screen.getByRole("button", { name: "Crear empresa" }));
+
+    await waitFor(() =>
+      expect(createEmpresaApiMock).toHaveBeenCalledWith({
+        nombre: "Empresa Nueva",
+        colorPrimario: null,
+        colorSecundario: null,
         logoUrl: null,
       }),
     );

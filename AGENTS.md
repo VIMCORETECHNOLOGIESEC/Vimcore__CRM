@@ -255,6 +255,20 @@ Cobertura mínima exigida por módulo:
 - Cadena de suministro y aislamiento del entorno: aplican las reglas de §2.1
   (pnpm obligatorio, lockfile congelado) y §2.2 (ejecución exclusiva en
   contenedor con red restringida).
+- **La suite de tests del backend (`pnpm test`) NUNCA corre contra la base de
+  producción** — `tests/setup.ts` trunca `usuarios`/`clientes`/`bridges`/
+  `refresh_tokens`/`configuracion_empresa` en su `globalSetup`, antes de cada
+  corrida. Los tests de backend corren siempre contra Docker local
+  (`.env.dev`), nunca contra `DATABASE_URL` real. Incidente real: la suite
+  corrió una vez con `NODE_ENV=test` pero `DATABASE_URL` apuntando a Azure —
+  sin pérdida de datos reales porque todavía no había clientes reales en ese
+  momento. Ya existe un allowlist de host (`db`/`localhost`/`127.0.0.1`/
+  `::1`) que rechaza cerrado si `DATABASE_URL` no apunta a un host de
+  test/dev conocido (commit `e2d6374`) — esta regla documenta la intención,
+  no reemplaza esa verificación en código. Esto NO afecta usar el frontend
+  local apuntando a la API real de producción para probar flujos a mano
+  (navegación/QA manual) — la restricción es específica de la suite
+  automatizada del backend.
 
 ---
 
@@ -350,6 +364,19 @@ de modificar código, datos o despliegue:
     el schema de `origin/main` (`a76c62b`), todavía sin mergear a
     `test/gpt` — forward-compatible, el backend actual de esta rama
     ignora los params nuevos en silencio.
+  - **Bloque F / docs/23 item 30** ("Alta de empresa nueva"): el backend ya
+    exponía `POST /empresas` (`empresa-apariencia.controller.ts::postEmpresa`,
+    exclusivo `sessionScope: "holding"` + `requireRole("ADMINISTRADOR")`, con
+    bypass holding-wide para `SUPER_ADMIN`/`SUPERVISOR_HOLDING`), pero no
+    había ningún botón ni formulario de alta en el frontend. Frontend nuevo:
+    `createEmpresaApi`/`useCreateEmpresaHolding` en
+    `empresa-apariencia-holding.api.ts`/`useEmpresaAparienciaHolding.ts` +
+    `CrearEmpresaHoldingDialog.tsx` (reusa `EmpresaAparienciaForm.tsx`, mismo
+    patrón que `EditarEmpresaHoldingDialog.tsx`). Disparado desde el botón
+    "Nueva empresa" en `GestorEmpresasPage.tsx`, junto al buscador; de paso
+    se corrigió el copy desactualizado del `EmptyState` sin búsqueda activa
+    (ya no decía que las empresas se crean "desde la configuración inicial
+    de la instancia").
 - Personalización de formularios, etapas o reglas de puntuación por el administrador
 - Módulo de remarketing
 - Exportación a Excel o PDF (solo se deja el punto de extensión documentado).

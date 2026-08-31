@@ -10,11 +10,12 @@ vi.mock("@/api/httpClient", () => ({
 }));
 
 const { httpClient } = await import("@/api/httpClient");
-const { fetchEmpresasHoldingApi, fetchEmpresaHoldingApi } = await import(
+const { fetchEmpresasHoldingApi, fetchEmpresaHoldingApi, createEmpresaApi } = await import(
   "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api"
 );
 
 const getMock = vi.mocked(httpClient.get);
+const postMock = vi.mocked(httpClient.post);
 
 describe("fetchEmpresaHoldingApi", () => {
   it("llama a GET /empresas/:empresaId y devuelve la empresa tal cual (sin envelope)", async () => {
@@ -57,5 +58,29 @@ describe("fetchEmpresasHoldingApi", () => {
     await fetchEmpresasHoldingApi();
 
     expect(getMock).toHaveBeenCalledWith("/empresas", { params: {} });
+  });
+});
+
+describe("createEmpresaApi", () => {
+  it("llama a POST /empresas con el input recibido y devuelve la empresa creada", async () => {
+    const empresaCreada = {
+      id: "e3",
+      nombre: "Empresa Nueva",
+      colorPrimario: "#111111",
+      colorSecundario: null,
+      logoUrl: null,
+    };
+    postMock.mockResolvedValue(empresaCreada);
+
+    const resultado = await createEmpresaApi({
+      nombre: "Empresa Nueva",
+      colorPrimario: "#111111",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/empresas", {
+      nombre: "Empresa Nueva",
+      colorPrimario: "#111111",
+    });
+    expect(resultado).toEqual(empresaCreada);
   });
 });

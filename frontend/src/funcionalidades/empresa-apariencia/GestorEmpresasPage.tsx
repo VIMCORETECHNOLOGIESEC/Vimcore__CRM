@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { getErrorMessage } from "@/api/httpClient";
@@ -10,9 +10,14 @@ import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
+import { CrearEmpresaHoldingDialog } from "./CrearEmpresaHoldingDialog";
 import { EditarEmpresaHoldingDialog } from "./EditarEmpresaHoldingDialog";
 import type { EmpresaAparienciaHoldingView, EmpresasHoldingQueryParams } from "./empresa-apariencia-holding.api";
-import { useEmpresasHolding, useUpdateEmpresaAparienciaHolding } from "./useEmpresaAparienciaHolding";
+import {
+  useCreateEmpresaHolding,
+  useEmpresasHolding,
+  useUpdateEmpresaAparienciaHolding,
+} from "./useEmpresaAparienciaHolding";
 
 /** Tamaño de página, igual al default server-side (`GET /empresas?pageSize=`). */
 const EMPRESAS_POR_PAGINA = 25;
@@ -35,11 +40,11 @@ const BUSQUEDA_DEBOUNCE_MS = 300;
  * en la esquina, elevada por encima de ese overlay con `relative z-10` para
  * seguir siendo clickeable de forma independiente.
  *
- * TODO(bloque holding/empresa, otra sesión en curso): el destino real es
- * `entrarAEmpresa(empresa.id)` de un context de "empresa en vista" que
- * todavía no existe. Mientras tanto navega a `/usuarios?empresaId=` (ruta ya
- * existente) para que el botón sea funcional hoy -- cambio de una línea
- * cuando ese context exista.
+ * Navega a `/empresas/:empresaId` (`EmpresaDetallePage.tsx`, ruta real en
+ * `router.tsx`), que a su vez entra en la "vista de empresa" simulada vía
+ * `useVistaEmpresa::entrarAEmpresa` -- el context que este botón esperaba ya
+ * existe, no hace falta pasar por `/usuarios?empresaId=` como paso
+ * intermedio.
  */
 function CardEmpresa({
   empresa,
@@ -76,7 +81,7 @@ function CardEmpresa({
 
       <Button asChild variant="secondary" size="sm" className="w-full">
         <Link
-          to={`/usuarios?empresaId=${empresa.id}`}
+          to={`/empresas/${empresa.id}`}
           aria-label={`Ver detalles de ${empresa.nombre}`}
           className="after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-1"
         >
@@ -144,10 +149,12 @@ export function GestorEmpresasPage() {
 
   const { data, isLoading, isError, error, refetch } = useEmpresasHolding(params);
   const actualizar = useUpdateEmpresaAparienciaHolding();
+  const crear = useCreateEmpresaHolding();
 
   const [empresaEnEdicion, setEmpresaEnEdicion] = useState<EmpresaAparienciaHoldingView | null>(
     null,
   );
+  const [crearAbierto, setCrearAbierto] = useState(false);
 
   const empresas = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -164,18 +171,24 @@ export function GestorEmpresasPage() {
           cualquiera de ellas -- sus equipos ven el cambio reflejado en su propia pantalla de
           bienvenida.
         </p>
-        <div className="relative w-full shrink-0 sm:w-72">
-          <Search
-            className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={busqueda}
-            onChange={(event) => setBusqueda(event.target.value)}
-            placeholder="Buscar por nombre…"
-            aria-label="Buscar empresas"
-            className="pl-9"
-          />
+        <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+          <div className="relative w-full sm:w-72">
+            <Search
+              className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={busqueda}
+              onChange={(event) => setBusqueda(event.target.value)}
+              placeholder="Buscar por nombre…"
+              aria-label="Buscar empresas"
+              className="pl-9"
+            />
+          </div>
+          <Button type="button" className="w-full sm:w-fit" onClick={() => setCrearAbierto(true)}>
+            <Plus aria-hidden="true" />
+            Nueva empresa
+          </Button>
         </div>
       </div>
 
@@ -193,7 +206,7 @@ export function GestorEmpresasPage() {
           description={
             hayBusquedaActiva
               ? "Probá ajustar o limpiar el término buscado."
-              : "Las empresas se crean desde la configuración inicial de la instancia."
+              : "Creá la primera empresa con el botón «Nueva empresa»."
           }
         />
       ) : (
@@ -290,6 +303,28 @@ export function GestorEmpresasPage() {
           }
         />
       ) : null}
+
+      <CrearEmpresaHoldingDialog
+        open={crearAbierto}
+        onOpenChange={setCrearAbierto}
+        enviando={crear.isPending}
+        onSubmit={(valores) =>
+          // `mostrarNombre` siempre está en true en este formulario ->
+          // `valores.nombre` siempre viene completo (validado por
+          // `nombreMarcaSchema` en `EmpresaAparienciaForm`), a diferencia de
+          // `EmpresaAparienciaSubmitValues` que lo tipa opcional para
+          // soportar también el self-service sin nombre.
+          crear.mutate(
+            {
+              nombre: valores.nombre ?? "",
+              colorPrimario: valores.colorPrimario,
+              colorSecundario: valores.colorSecundario,
+              logoUrl: valores.logoUrl,
+            },
+            { onSuccess: () => setCrearAbierto(false) },
+          )
+        }
+      />
     </div>
   );
 }
