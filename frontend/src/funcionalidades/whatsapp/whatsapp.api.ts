@@ -94,3 +94,26 @@ export async function completarConexionWhatsAppApi(
   );
   return conexion;
 }
+
+interface WhatsAppConexionStatusResponse {
+  conexion: WhatsAppConexion | null;
+}
+
+/**
+ * Paso 4 (`GET /whatsapp/conexion`, rol ADMINISTRADOR) -- estado REAL actual
+ * de la conexión de la empresa (`null` si nunca se conectó). Misma
+ * resolución de empresa destino que el Paso 1 (`empresaId` solo aplica a un
+ * actor holding-wide, se omite para un actor de sesión `company`). Usado
+ * por el flujo de popup (`useOAuthPopup`, `useWhatsApp.ts`) para confirmar
+ * el resultado real después de que la ventana emergente se cierra, en vez
+ * de asumir éxito o cancelación por el solo hecho de que se cerró.
+ */
+export async function fetchWhatsAppConexionApi(
+  empresaId: string | undefined,
+): Promise<WhatsAppConexion | null> {
+  const { conexion } = await httpClient.get<WhatsAppConexionStatusResponse>(
+    "/whatsapp/conexion",
+    { params: { empresaId } },
+  );
+  return conexion;
+}

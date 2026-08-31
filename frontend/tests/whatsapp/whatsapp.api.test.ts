@@ -19,6 +19,7 @@ const { httpClient } = await import("@/api/httpClient");
 const {
   completarConexionWhatsAppApi,
   fetchWhatsAppCallbackApi,
+  fetchWhatsAppConexionApi,
   iniciarConexionWhatsAppApi,
 } = await import("@/funcionalidades/whatsapp/whatsapp.api");
 
@@ -120,5 +121,43 @@ describe("completarConexionWhatsAppApi — Paso 3 (POST /whatsapp/conexion)", ()
       numeroTelefonoId: "num-1",
       empresaId: "empresa-1",
     });
+  });
+});
+
+describe("fetchWhatsAppConexionApi — Paso 4 (GET /whatsapp/conexion)", () => {
+  it("sin empresaId, devuelve la conexión activa tal cual", async () => {
+    getMock.mockResolvedValue({
+      conexion: {
+        id: "conexion-1",
+        empresaId: "empresa-1",
+        numeroTelefonoId: "num-1",
+        numeroDisplay: "+54 9 11 1234-5678",
+        wabaId: "waba-1",
+        estado: "ACTIVA",
+        creadoEn: "2026-08-30T10:10:00.000Z",
+      },
+    });
+
+    const resultado = await fetchWhatsAppConexionApi(undefined);
+
+    expect(getMock).toHaveBeenCalledWith("/whatsapp/conexion", { params: { empresaId: undefined } });
+    expect(resultado?.estado).toBe("ACTIVA");
+  });
+
+  it("con empresaId (actor holding-wide), lo manda como query param", async () => {
+    getMock.mockResolvedValue({ conexion: null });
+
+    const resultado = await fetchWhatsAppConexionApi("empresa-9");
+
+    expect(getMock).toHaveBeenCalledWith("/whatsapp/conexion", { params: { empresaId: "empresa-9" } });
+    expect(resultado).toBeNull();
+  });
+
+  it("devuelve null si nunca se conectó (resultado válido, no un error)", async () => {
+    getMock.mockResolvedValue({ conexion: null });
+
+    const resultado = await fetchWhatsAppConexionApi(undefined);
+
+    expect(resultado).toBeNull();
   });
 });

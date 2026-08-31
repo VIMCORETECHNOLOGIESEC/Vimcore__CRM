@@ -2,11 +2,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   completarConexionWhatsAppApi,
   fetchWhatsAppCallbackApi,
+  fetchWhatsAppConexionApi,
   iniciarConexionWhatsAppApi,
   type CompletarConexionWhatsAppInput,
   type WhatsAppCallbackParams,
 } from "./whatsapp.api";
-import { guardarEmpresaFlujo, redirectTo } from "./whatsapp.utils";
+import { guardarEmpresaFlujo } from "./whatsapp.utils";
 
 const WHATSAPP_CALLBACK_QUERY_KEY = "whatsapp-callback";
 
@@ -15,15 +16,22 @@ const WHATSAPP_CALLBACK_QUERY_KEY = "whatsapp-callback";
  * de fondo -- por eso `useMutation` pese a ser un GET (mismo criterio que
  * `bridges/useBridges.ts::useTestConnection`, también GET/POST triggereado
  * por botón). Al resolver: guarda el `empresaId` usado (si lo hay, caso
- * holding-wide) para que el Paso 3 lo recupere después de la navegación
- * completa a Meta, y redirige el navegador de verdad a `authorizationUrl`.
+ * holding-wide) para que el Paso 3 lo recupere después de la navegación a
+ * Meta.
+ *
+ * Ya NO redirige acá dentro (antes hacía `redirectTo(data.authorizationUrl)`
+ * en su propio `onSuccess`) -- esa decisión ahora vive en quien consume este
+ * hook (`ConectarWhatsAppCard.tsx`), porque el flujo real es abrir
+ * `authorizationUrl` en un popup (`useOAuthPopup`) y solo caer a un redirect
+ * de página completa como fallback si el navegador bloqueó el popup. Este
+ * hook no tiene forma de saber cuál de los dos corresponde, así que ya no
+ * decide.
  */
 export function useIniciarConexionWhatsApp() {
   return useMutation({
     mutationFn: (empresaId: string | undefined) => iniciarConexionWhatsAppApi(empresaId),
-    onSuccess: (data, empresaId) => {
+    onSuccess: (_data, empresaId) => {
       guardarEmpresaFlujo(empresaId);
-      redirectTo(data.authorizationUrl);
     },
   });
 }
@@ -47,5 +55,23 @@ export function useWhatsAppCallback(params: WhatsAppCallbackParams) {
 export function useCompletarConexionWhatsApp() {
   return useMutation({
     mutationFn: (input: CompletarConexionWhatsAppInput) => completarConexionWhatsAppApi(input),
+  });
+}
+
+/**
+ * Paso 4 (`GET /whatsapp/conexion`) -- estado REAL de la conexión, consultado
+ * en un momento preciso: justo después de que la ventana emergente del Paso
+ * 1 se cierra (`WhatsAppConexionOverlay.tsx`, estado `"verificando"`), nunca
+ * en background ni al montar. `useMutation` en vez de `useQuery` a propósito
+ * -- mismo criterio que `useIniciarConexionWhatsApp`: es un GET pero
+ * disparado por un evento puntual (el cierre del popup), no un dato que
+ * viva montado con la pantalla y se revalide solo. Un `useQuery` habilitado
+ * condicionalmente exigiría modelar ese "condicional" con una `key`/`enabled`
+ * artificiales para algo que en los hechos ocurre como máximo una vez por
+ * intento de conexión -- `mutate()` expresa esa semántica de forma directa.
+ */
+export function useWhatsAppConexionStatus() {
+  return useMutation({
+    mutationFn: (empresaId: string | undefined) => fetchWhatsAppConexionApi(empresaId),
   });
 }
