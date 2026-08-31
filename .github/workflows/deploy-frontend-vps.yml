@@ -24,7 +24,7 @@ env:
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
   VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
   VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/opt/crm-frontend' }}
-  FRONTEND_HTTP_PORT: ${{ vars.FRONTEND_HTTP_PORT || '8080' }}
+  FRONTEND_HTTP_PORT: ${{ vars.FRONTEND_HTTP_PORT || '30080' }}
 
 jobs:
   test:
