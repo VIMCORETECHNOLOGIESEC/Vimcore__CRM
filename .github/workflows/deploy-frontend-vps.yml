@@ -71,11 +71,12 @@ jobs:
           test -n "${FRONTEND_API_BASE_URL}" || { echo "Missing repository variable FRONTEND_API_BASE_URL"; exit 1; }
           test -n "${VPS_HOST}" || { echo "Missing secret VPS_HOST"; exit 1; }
           test -n "${VPS_USER}" || { echo "Missing secret VPS_USER"; exit 1; }
-          test -n "${VPS_SSH_KEY_B64}" || { echo "Missing secret VPS_SSH_KEY_B64"; exit 1; }
+          test -n "${VPS_SSH_KEY}${VPS_SSH_KEY_B64}" || { echo "Missing secret VPS_SSH_KEY or VPS_SSH_KEY_B64"; exit 1; }
         env:
           FRONTEND_API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
 
       - name: Login GHCR
@@ -99,15 +100,19 @@ jobs:
       - name: Prepare SSH
         run: |
           mkdir -p ~/.ssh
-          if printf '%s' "${VPS_SSH_KEY_B64}" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+          if test -n "${VPS_SSH_KEY}"; then
+            printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/vps_key
+          elif printf '%s' "${VPS_SSH_KEY_B64}" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
             printf '%s\n' "${VPS_SSH_KEY_B64}" > ~/.ssh/vps_key
           else
             printf '%s' "${VPS_SSH_KEY_B64}" | tr -d '[:space:]' | base64 -d > ~/.ssh/vps_key
           fi
           chmod 600 ~/.ssh/vps_key
+          ssh-keygen -y -f ~/.ssh/vps_key >/dev/null
           ssh-keyscan -p "${VPS_PORT}" "${VPS_HOST}" >> ~/.ssh/known_hosts
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
 
       - name: Copy deploy files
