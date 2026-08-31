@@ -1,6 +1,7 @@
 import { usePageHeader } from "@/layouts/PageHeaderContext";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { EmpresaAparienciaForm } from "./EmpresaAparienciaForm";
+import { uploadLogoEmpresaApi } from "./empresa-apariencia.api";
 import { useUpdateEmpresaApariencia } from "./useEmpresaApariencia";
 
 /**
@@ -55,6 +56,7 @@ export function EmpresaAparienciaPage() {
             logoUrl: valores.logoUrl,
           })
         }
+        onSubirLogo={uploadLogoEmpresaApi}
       />
     </div>
   );

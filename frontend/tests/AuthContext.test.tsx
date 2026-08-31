@@ -18,7 +18,12 @@ vi.mock("@/api/httpClient", () => ({
 const authApi = await import("@/funcionalidades/autenticacion/autenticacion.api");
 const httpClientModule = await import("@/api/httpClient");
 const { AuthProvider } = await import("@/funcionalidades/autenticacion/AuthContext");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
+// Fix "boot desincronizado" -- cache de marca en `localStorage`, no mockeada
+// acá a propósito: los tests de este bloque verifican la integración real
+// contra `localStorage`, igual criterio que `httpClient.test.ts` con
+// `crm.refreshToken`.
+const { MARCA_CONOCIDA_STORAGE_KEY, getMarcaConocida } = await import("@/lib/marca-cache");
 
 const loginApiMock = vi.mocked(authApi.loginApi);
 const logoutApiMock = vi.mocked(authApi.logoutApi);
@@ -86,10 +91,12 @@ beforeEach(() => {
   restoreSessionMock.mockReset();
   setOnSessionExpiredMock.mockReset();
   setTokensMock.mockReset();
+  localStorage.removeItem(MARCA_CONOCIDA_STORAGE_KEY);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  localStorage.removeItem(MARCA_CONOCIDA_STORAGE_KEY);
 });
 
 describe("AuthContext — estado inicial", () => {
@@ -523,5 +530,57 @@ describe("AuthContext — sesión expirada notificada por httpClient", () => {
 
     await waitFor(() => expect(result.current.user).toBeNull());
     expect(result.current.isAuthenticated).toBe(false);
+  });
+});
+
+/**
+ * Fix "boot desincronizado" (F5 con sesión activa): cada vez que `GET
+ * /auth/perfil` resuelve con éxito, `AuthContext` debe dejar en
+ * `localStorage` la última marca conocida (`@/lib/marca-cache`) para que
+ * `AppBoot.tsx` pueda pintar el próximo arranque con ese branding en vez del
+ * público del holding, mientras la query real resuelve.
+ */
+describe("AuthContext — cache de marca conocida (fix boot desincronizado)", () => {
+  it("al rehidratar sesión con éxito, persiste empresaId/nombre/colores en localStorage", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue(usuarioCompanyFake);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(getMarcaConocida()).toEqual({
+      empresaId: "empresa-a",
+      nombre: "Empresa A",
+      colorPrimario: "#241F1B",
+      colorSecundario: "#B98A4E",
+    });
+  });
+
+  it("en login exitoso, también persiste la marca conocida", async () => {
+    loginApiMock.mockResolvedValue({
+      accessToken: "access-1",
+      refreshToken: "refresh-1",
+      user: usuarioFake,
+    });
+    getPerfilApiMock.mockResolvedValue(usuarioFake);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.login("ana@crm.test", "clave-segura");
+    });
+
+    expect(getMarcaConocida()?.nombre).toBe("ARCANO CRM");
+  });
+
+  it("si el perfil es inconsistente (falla cerrado), no persiste ninguna marca", async () => {
+    getRefreshTokenMock.mockReturnValue("refresh-persistido");
+    restoreSessionMock.mockResolvedValue(true);
+    getPerfilApiMock.mockResolvedValue({ ...usuarioCompanyFake, empresaNombre: null });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(getMarcaConocida()).toBeNull();
   });
 });

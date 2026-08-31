@@ -2,6 +2,19 @@ import { NAVIGATION_ITEMS } from "@/layouts/navigation";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
 /**
+ * Espejo exacto de `ROLES_HOLDING_BYPASS` en
+ * `backend/src/middlewares/require-role.middleware.ts` (Bloque F, aditivo):
+ * el backend ya bypasea CUALQUIER `requireRole(...)` para estos dos roles
+ * antes de validar la lista fija -- sin este mismo bypass acá, `hasRoleAccess`
+ * ocultaba del sidebar/rutas protegidas todo lo gateado con
+ * `allowedRoles: ["ADMINISTRADOR"]` (Usuarios, Bridges, Apariencia, Empresas)
+ * para una sesión `SUPER_ADMIN`/`SUPERVISOR_HOLDING`, aunque el backend ya le
+ * daba acceso total -- bug real detectado en verificación E2E contra
+ * producción (2026-08-30).
+ */
+const ROLES_HOLDING_BYPASS: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
+
+/**
  * Regla pura de autorización por rol para el enrutado del frontend.
  *
  * IMPORTANTE: esto es cosmético (AGENTS.md §6 -- "el filtrado por rol en el
@@ -21,6 +34,9 @@ export function hasRoleAccess(
   }
   if (!rol) {
     return false;
+  }
+  if (ROLES_HOLDING_BYPASS.includes(rol)) {
+    return true;
   }
   return allowedRoles.includes(rol);
 }
@@ -46,6 +62,35 @@ export function hasScopeAccess(
     return false;
   }
   return allowedScopes.includes(scope);
+}
+
+/**
+ * Regla pura de autorización por "vista de empresa" (Bloque D/E, gate
+ * holding-wide sin empresa) -- espejo de `hasRoleAccess`/`hasScopeAccess`:
+ * un holding-wide (sesión `holding`) sin haber "entrado" a una empresa
+ * concreta (`useVistaEmpresa()::empresaVistaId`, query param `?empresaId=`)
+ * no gestiona leads/oportunidades/bridges de ninguna empresa en particular,
+ * así que un ítem marcado con `requiereVistaEmpresaSiHolding` (Oportunidades,
+ * Bridges) queda oculto/bloqueado hasta que entre a una. Sesión `company`
+ * nunca se ve afectada por este flag -- una empresa siempre gestiona lo
+ * suyo, sin necesitar "entrar" a nada.
+ *
+ * Sin `requiereVistaEmpresaSiHolding` (o `false`), el acceso es libre --
+ * mismo criterio "sin restricción por defecto" que el resto de estas
+ * funciones.
+ */
+export function hasVistaEmpresaAccess(
+  scope: SessionScope | null | undefined,
+  empresaVistaId: string | null | undefined,
+  requiereVistaEmpresaSiHolding?: boolean,
+): boolean {
+  if (!requiereVistaEmpresaSiHolding) {
+    return true;
+  }
+  if (scope !== "holding") {
+    return true;
+  }
+  return Boolean(empresaVistaId);
 }
 
 /**

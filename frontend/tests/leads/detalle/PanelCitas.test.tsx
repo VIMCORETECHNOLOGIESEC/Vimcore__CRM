@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -109,5 +109,83 @@ describe("PanelCitas -- botón Cancelar", () => {
     expect(postMock).toHaveBeenCalledWith("/citas/cita-01/cancelar");
     expect(postMock).toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "CUMPLIDA" });
     expect(postMock).toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "NO_ASISTIO" });
+  });
+});
+
+/**
+ * `PanelCitas` (F4) -- form "Reprogramar" dentro de `CitaItem`. Migrado de
+ * `useState` + `citaRescheduleSchema.safeParse` manual a
+ * `useForm` + `zodResolver(citaRescheduleSchema)` (AGENTS.md §4). Estos
+ * casos cubren la validación real que motivó la migración.
+ */
+describe("PanelCitas -- form Reprogramar", () => {
+  it('reprograma la cita con una fecha válida: llama a rescheduleCita.mutate (POST /citas/:citaId/reprogramar) con la fecha ISO', async () => {
+    getMock.mockResolvedValue({ citas: [citaBackendFake()] });
+    postMock.mockResolvedValue({ cita: citaBackendFake({ estado: "REPROGRAMADA" }) });
+
+    renderPanelCitas();
+
+    const botonReprogramar = await screen.findByRole("button", { name: "Reprogramar" });
+    await userEvent.click(botonReprogramar);
+
+    const fechaFutura = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    // Hay DOS forms con el mismo campo "Hora de la cita" en pantalla a la vez
+    // (el de agendar, siempre visible, y el de reprogramar, revelado por el
+    // botón de arriba) -- se acota la búsqueda al form de reprogramar
+    // ubicándolo por su botón "Confirmar", único de ese form.
+    const formReprogramar = screen.getByRole("button", { name: "Confirmar" }).closest("form");
+    if (!formReprogramar) throw new Error("No se encontró el form de reprogramar");
+    const dentroDelForm = within(formReprogramar);
+
+    const campoHora = dentroDelForm.getByLabelText("Hora de la cita");
+    await userEvent.clear(campoHora);
+    await userEvent.type(campoHora, "15:30");
+
+    // El campo puede arrancar con un valor por defecto ("30 de agosto de
+    // 2026") en vez del placeholder "Elegí una fecha" -- matcheamos
+    // cualquiera de los dos, el único botón disparador del calendario dentro
+    // de este form ya está acotado por `within`.
+    const botonFecha = dentroDelForm.getByRole("button", { name: /elegí una fecha|de \d{4}$/i });
+    await userEvent.click(botonFecha);
+    const diaBoton = await waitFor(() => {
+      const elemento = document.querySelector(`[data-day="${fechaFutura.toLocaleDateString()}"]`);
+      if (!elemento) throw new Error("Día de la agenda no encontrado en el calendario");
+      return elemento as HTMLElement;
+    });
+    await userEvent.click(diaBoton);
+
+    const botonConfirmar = dentroDelForm.getByRole("button", { name: "Confirmar" });
+    await userEvent.click(botonConfirmar);
+
+    await waitFor(() => {
+      expect(postMock).toHaveBeenCalledWith(
+        "/citas/cita-01/reprogramar",
+        expect.objectContaining({ programadaPara: expect.any(String) }),
+      );
+    });
+
+    const llamadaReprogramar = postMock.mock.calls.find(([path]) => path === "/citas/cita-01/reprogramar");
+    const { programadaPara } = llamadaReprogramar?.[1] as { programadaPara: string };
+    expect(new Date(programadaPara).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("no reprograma con fecha vacía: no llama a POST /citas/:citaId/reprogramar y muestra el error de validación", async () => {
+    getMock.mockResolvedValue({ citas: [citaBackendFake()] });
+    postMock.mockResolvedValue({ cita: citaBackendFake() });
+
+    renderPanelCitas();
+
+    const botonReprogramar = await screen.findByRole("button", { name: "Reprogramar" });
+    await userEvent.click(botonReprogramar);
+
+    const botonConfirmar = screen.getByRole("button", { name: "Confirmar" });
+    await userEvent.click(botonConfirmar);
+
+    expect(await screen.findByText("La fecha y hora son obligatorias")).toBeInTheDocument();
+    expect(postMock).not.toHaveBeenCalledWith(
+      "/citas/cita-01/reprogramar",
+      expect.anything(),
+    );
   });
 });

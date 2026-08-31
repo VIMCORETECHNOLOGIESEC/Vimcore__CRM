@@ -40,7 +40,7 @@ export function LeadDetalleEncabezado({
     >
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
         <Avatar className="size-8" aria-hidden="true">
-          <AvatarFallback className="bg-idec text-xs font-semibold text-idec-foreground">
+          <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
             {getInitials(lead.cliente.nombre)}
           </AvatarFallback>
         </Avatar>

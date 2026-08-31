@@ -88,6 +88,22 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
 });
 
 /**
+ * tema-empresarial-integracion (PASO 8, gap de gestor de empresas): listado
+ * exclusivo sessionScope holding -- shape idéntico a
+ * `EmpresaAparienciaHoldingView` (el mismo tipo que ya devuelve
+ * `updateAparienciaHolding`), consumido por `GET /empresas`.
+ *
+ * Gap de paginación (478 filas reales sin límite ni filtro en este entorno):
+ * `listEmpresas` ahora exige `page`/`pageSize` y devuelve `{ items, total }`
+ * -- cada test usa `search` para acotar el resultado a la Empresa que crea,
+ * ya que sin filtro la paginación por defecto podría dejarla fuera de página.
+ */
+describe("services/empresa-apariencia — listEmpresas", () => {
+  it("incluye una Empresa recién creada con el shape de EmpresaAparienciaHoldingView", async () => {
+    const nombre = `Empresa service listado ${randomUUID()}`;
+    const empresa = await prisma.empresa.create({
+      data: {
+        nombre,
  * `GET /empresas/:empresaId` (pedido explícito de frontend, `EmpresaDetallePage
  * .tsx`): mismo shape `EmpresaAparienciaHoldingView` que `updateAparienciaHolding`
  * arriba, mismo criterio de 404.
@@ -102,6 +118,8 @@ describe("services/empresa-apariencia — getEmpresaHolding", () => {
         logoUrl: "https://cdn.miempresa.com/logo.svg",
       },
     });
+
+    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre });
 
     const resultado = await getEmpresaHolding(empresa.id);
 

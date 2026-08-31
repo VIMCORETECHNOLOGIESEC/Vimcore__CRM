@@ -6,19 +6,26 @@ vi.mock("@/api/httpClient", () => ({
     post: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
+    postFormData: vi.fn(),
   },
 }));
 
 const { httpClient } = await import("@/api/httpClient");
-const { fetchConfiguracionEmpresaApi, updateConfiguracionEmpresaApi, CONFIGURACION_EMPRESA_DEFAULT } =
-  await import("@/funcionalidades/configuracion-empresa/configuracion-empresa.api");
+const {
+  fetchConfiguracionEmpresaApi,
+  updateConfiguracionEmpresaApi,
+  uploadLogoHoldingApi,
+  CONFIGURACION_EMPRESA_DEFAULT,
+} = await import("@/funcionalidades/configuracion-empresa/configuracion-empresa.api");
 
 const getMock = vi.mocked(httpClient.get);
 const patchMock = vi.mocked(httpClient.patch);
+const postFormDataMock = vi.mocked(httpClient.postFormData);
 
 beforeEach(() => {
   getMock.mockReset();
   patchMock.mockReset();
+  postFormDataMock.mockReset();
 });
 
 afterEach(() => {
@@ -59,11 +66,29 @@ describe("configuracion-empresa.api", () => {
     expect(resultado).toEqual(actualizado);
   });
 
-  it("expone los defaults documentados como fallback", () => {
+  it("uploadLogoHoldingApi envía el archivo en un FormData al campo 'logo' y devuelve la URL nueva", async () => {
+    postFormDataMock.mockResolvedValue({
+      nombre: "Arcano Motos",
+      colorPrimario: "#111111",
+      colorSecundario: "#222222",
+      logoUrl: "https://cdn.miempresa.com/logo.png",
+    });
+    const file = new File([new Uint8Array(10)], "logo.png", { type: "image/png" });
+
+    const resultado = await uploadLogoHoldingApi(file);
+
+    expect(postFormDataMock).toHaveBeenCalledTimes(1);
+    const [path, formData] = postFormDataMock.mock.calls[0] as [string, FormData];
+    expect(path).toBe("/configuracion-empresa/logo");
+    expect(formData.get("logo")).toBe(file);
+    expect(resultado).toBe("https://cdn.miempresa.com/logo.png");
+  });
+
+  it("expone los defaults documentados como fallback (línea gráfica ARCANO CRM)", () => {
     expect(CONFIGURACION_EMPRESA_DEFAULT).toEqual({
-      nombre: "CRM Embudo de Leads",
-      colorPrimario: "#1e2a5e",
-      colorSecundario: "#2563eb",
+      nombre: "ARCANO CRM",
+      colorPrimario: "#241F1B",
+      colorSecundario: "#B98A4E",
       logoUrl: null,
     });
   });

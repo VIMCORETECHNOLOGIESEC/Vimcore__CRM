@@ -8,6 +8,7 @@ import type { ConfiguracionEmpresa } from "@/funcionalidades/configuracion-empre
 vi.mock("@/funcionalidades/configuracion-empresa/configuracion-empresa.api", () => ({
   fetchConfiguracionEmpresaApi: vi.fn(),
   updateConfiguracionEmpresaApi: vi.fn(),
+  uploadLogoHoldingApi: vi.fn(),
   CONFIGURACION_EMPRESA_DEFAULT: {
     nombre: "CRM Embudo de Leads",
     colorPrimario: "#1e2a5e",
@@ -27,6 +28,7 @@ const { ConfiguracionEmpresaPage } = await import(
 
 const fetchConfiguracionEmpresaApiMock = vi.mocked(configuracionEmpresaApi.fetchConfiguracionEmpresaApi);
 const updateConfiguracionEmpresaApiMock = vi.mocked(configuracionEmpresaApi.updateConfiguracionEmpresaApi);
+const uploadLogoHoldingApiMock = vi.mocked(configuracionEmpresaApi.uploadLogoHoldingApi);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
 
@@ -58,6 +60,7 @@ function renderPage() {
 beforeEach(() => {
   fetchConfiguracionEmpresaApiMock.mockReset();
   updateConfiguracionEmpresaApiMock.mockReset();
+  uploadLogoHoldingApiMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
 });
@@ -152,16 +155,23 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
     expect(toastSuccessMock).toHaveBeenCalledWith("Configuración de la empresa actualizada correctamente.");
   });
 
-  it("envía un logoUrl válido tecleado en el campo", async () => {
+  it("sube un archivo de isotipo válido y envía la URL resultante al guardar", async () => {
     fetchConfiguracionEmpresaApiMock.mockResolvedValue(configuracionFake());
+    uploadLogoHoldingApiMock.mockResolvedValue("https://cdn.miempresa.com/logo.png");
     updateConfiguracionEmpresaApiMock.mockResolvedValue(
-      configuracionFake({ logoUrl: "https://cdn.miempresa.com/logo.svg" }),
+      configuracionFake({ logoUrl: "https://cdn.miempresa.com/logo.png" }),
     );
     const user = userEvent.setup();
     renderPage();
 
-    const campoLogo = await screen.findByLabelText("URL del isotipo (opcional)");
-    await user.type(campoLogo, "https://cdn.miempresa.com/logo.svg");
+    const campoLogo = await screen.findByLabelText("Isotipo (opcional)");
+    await user.upload(
+      campoLogo,
+      new File([new Uint8Array(10)], "logo.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => expect(uploadLogoHoldingApiMock).toHaveBeenCalledTimes(1));
+
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     await waitFor(() =>
@@ -169,23 +179,26 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
         nombre: "Arcano Motos",
         colorPrimario: "#1e2a5e",
         colorSecundario: "#2563eb",
-        logoUrl: "https://cdn.miempresa.com/logo.svg",
+        logoUrl: "https://cdn.miempresa.com/logo.png",
       }),
     );
   });
 
-  it("valida que el logoUrl sea una URL válida antes de enviar", async () => {
+  it("rechaza un archivo de isotipo con un tipo no soportado sin subirlo", async () => {
     fetchConfiguracionEmpresaApiMock.mockResolvedValue(configuracionFake());
-    const user = userEvent.setup();
+    // `applyAccept: false` -- fuerza la selección para probar la validación
+    // propia, igual que en `EmpresaAparienciaForm.test.tsx` (el atributo
+    // `accept` ya filtra esto en un navegador real).
+    const user = userEvent.setup({ applyAccept: false });
     renderPage();
 
-    const campoLogo = await screen.findByLabelText("URL del isotipo (opcional)");
-    await user.type(campoLogo, "no-es-una-url");
-    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    const campoLogo = await screen.findByLabelText("Isotipo (opcional)");
+    await user.upload(campoLogo, new File([new Uint8Array(10)], "logo.txt", { type: "text/plain" }));
 
     expect(
-      await screen.findByText("Ingresá una URL válida (ej. https://cdn.miempresa.com/logo.svg)."),
+      await screen.findByText("El archivo debe ser una imagen PNG, JPG, WEBP o SVG"),
     ).toBeInTheDocument();
+    expect(uploadLogoHoldingApiMock).not.toHaveBeenCalled();
     expect(updateConfiguracionEmpresaApiMock).not.toHaveBeenCalled();
   });
 

@@ -53,7 +53,7 @@ export async function patchEmpresaApariencia(req: Request, res: Response): Promi
   res.status(200).json(apariencia);
 }
 
-function archivoFaltante(): AppError {
+function missingUploadedFile(): AppError {
   return new AppError(
     "archivo_faltante",
     400,
@@ -77,7 +77,7 @@ export async function postEmpresaAparienciaLogo(req: Request, res: Response): Pr
   }
 
   if (!req.file) {
-    throw archivoFaltante();
+    throw missingUploadedFile();
   }
 
   const apariencia = await uploadEmpresaLogo(req.user.empresaId, {

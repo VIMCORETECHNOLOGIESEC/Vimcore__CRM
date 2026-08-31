@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { AdminUsuario } from "@/tipos/usuario";
 import { BajaUsuarioDialog } from "./BajaUsuarioDialog";
@@ -52,10 +53,11 @@ export function UsuariosPage() {
 
   const [filtros, setFiltros] = useState<UsuariosFiltrosState>(FILTROS_USUARIOS_VACIOS);
   const [pagina, setPagina] = useState(1);
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
 
   const params = useMemo(
-    () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA),
-    [filtros, pagina],
+    () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA, empresaVistaId ?? undefined),
+    [filtros, pagina, empresaVistaId],
   );
 
   const { data, isLoading, isError, error, refetch } = useUsuarios(params);
@@ -75,10 +77,16 @@ export function UsuariosPage() {
     setPagina(1);
   }
 
+  // `soloHoldingWide` invertido (default `true` ahora, ver
+  // `usuarios.utils.ts::FILTROS_USUARIOS_VACIOS`): lo que cuenta como filtro
+  // activo es `soloHoldingWide === false` (alguien tildó "ver usuarios de
+  // todas las empresas" en `UsuariosFiltros.tsx`), no `true` -- ese es el
+  // estado normal por defecto, no un filtro aplicado.
   const hayFiltrosActivos =
     filtros.busqueda !== "" ||
     filtros.rol !== FILTRO_TODOS ||
-    filtros.estado !== FILTROS_USUARIOS_VACIOS.estado;
+    filtros.estado !== FILTROS_USUARIOS_VACIOS.estado ||
+    !filtros.soloHoldingWide;
 
   const usuarios = data?.users ?? [];
   const total = data?.total ?? 0;
@@ -91,7 +99,7 @@ export function UsuariosPage() {
       <UsuariosFiltros
         filtros={filtros}
         onChange={updateFiltros}
-        onNuevo={() => setDialogAltaAbierto(true)}
+        onNuevo={esVistaSoloLectura ? undefined : () => setDialogAltaAbierto(true)}
       />
 
       {isLoading ? (
@@ -121,6 +129,13 @@ export function UsuariosPage() {
             onReactivar={(usuarioId) => reactivar.mutate(usuarioId)}
             reactivandoId={reactivar.isPending ? (reactivar.variables ?? null) : null}
             atenuarInactivos={filtros.estado !== "ACTIVOS"}
+            // Subtítulo de empresa por fila (ver el docblock de
+            // `UsuariosTable.tsx::mostrarEmpresas`): solo cuando la vista
+            // actual mezcla usuarios de distintas empresas, es decir cuando
+            // el checkbox "Ver usuarios de todas las empresas" está tildado
+            // (`soloHoldingWide === false`).
+            mostrarEmpresas={!filtros.soloHoldingWide}
+            soloLectura={esVistaSoloLectura}
           />
 
           <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">
@@ -128,19 +143,19 @@ export function UsuariosPage() {
               Mostrando {desde}–{hasta} de {total} usuarios
             </span>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina <= 1} onClick={() => setPagina(1)} aria-label="Primera página" title="Primera página">
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent" disabled={pagina <= 1} onClick={() => setPagina(1)} aria-label="Primera página" title="Primera página">
                 <ChevronsLeft aria-hidden="true" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina <= 1} onClick={() => setPagina((p) => Math.max(1, p - 1))} aria-label="Página anterior" title="Página anterior">
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent" disabled={pagina <= 1} onClick={() => setPagina((p) => Math.max(1, p - 1))} aria-label="Página anterior" title="Página anterior">
                 <ChevronLeft aria-hidden="true" />
               </Button>
               <span>
                 Página {pagina} de {totalPaginas}
               </span>
-              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina >= totalPaginas} onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} aria-label="Página siguiente" title="Página siguiente">
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent" disabled={pagina >= totalPaginas} onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} aria-label="Página siguiente" title="Página siguiente">
                 <ChevronRight aria-hidden="true" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-no" disabled={pagina >= totalPaginas} onClick={() => setPagina(totalPaginas)} aria-label="Última página" title="Última página">
+              <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl text-sidebar-foreground hover:bg-transparent" disabled={pagina >= totalPaginas} onClick={() => setPagina(totalPaginas)} aria-label="Última página" title="Última página">
                 <ChevronsRight aria-hidden="true" />
               </Button>
             </div>
@@ -156,7 +171,16 @@ export function UsuariosPage() {
           }}
           enviando={crear.isPending}
           onSubmit={(valores) =>
-            crear.mutate(valores, { onSuccess: () => setDialogAltaAbierto(false) })
+            // Alta dentro de una empresa puntual (holding-wide mirando una
+            // empresa vía `?empresaId=`, ver `useVistaEmpresa`): manda
+            // `empresaId` en el body de `POST /usuarios` (`usuarios.api.ts`,
+            // el backend ya lo acepta). Sin empresa en vista (sesión
+            // company-scoped normal, o holding-wide sin drill-down) no se
+            // agrega el campo -- comportamiento sin cambios.
+            crear.mutate(
+              empresaVistaId ? { ...valores, empresaId: empresaVistaId } : valores,
+              { onSuccess: () => setDialogAltaAbierto(false) },
+            )
           }
         />
       ) : null}

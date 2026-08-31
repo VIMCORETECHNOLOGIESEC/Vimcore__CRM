@@ -5,7 +5,8 @@ import type { Comparativa, ResumenMetricas } from "@/tipos/metricas";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { DashboardFiltros } from "./DashboardFiltros";
@@ -17,20 +18,29 @@ import {
 } from "./dashboard.utils";
 import { FiltroRangoFechas } from "./FiltroRangoFechas";
 import { DashboardExportar } from "./DashboardExportar";
+import { SelectorEmpresaDashboard } from "./SelectorEmpresaDashboard";
 import { formatFechaLocal } from "./rangoFechas";
+import { CascadaLeadOportunidad } from "./CascadaLeadOportunidad";
 import { GraficoCard } from "./GraficoCard";
 import { GraficoDistribucionSemaforo } from "./GraficoDistribucionSemaforo";
 import { GraficoEmbudo } from "./GraficoEmbudo";
+import { GraficoEmbudoOportunidad } from "./GraficoEmbudoOportunidad";
 import { GraficoPorAsesor } from "./GraficoPorAsesor";
 import { GraficoPorCampania } from "./GraficoPorCampania";
+import { GraficoPorProducto } from "./GraficoPorProducto";
 import { GraficoPorRedSocial } from "./GraficoPorRedSocial";
+import { GraficoRankingProductosPorEmpresa } from "./GraficoRankingProductosPorEmpresa";
 import { GraficoRedSocialPorSemaforo } from "./GraficoRedSocialPorSemaforo";
 import { KpiCard } from "./KpiCard";
 import {
+  useMetricasCascadaLeadOportunidad,
   useMetricasEmbudo,
+  useMetricasEmbudoOportunidad,
   useMetricasPorAsesor,
   useMetricasPorCampania,
+  useMetricasPorProducto,
   useMetricasPorRedSocial,
+  useMetricasRankingProductosPorEmpresa,
   useRedSocialPorSemaforo,
   useResumenMetricas,
 } from "./useMetricas";
@@ -45,6 +55,15 @@ import {
 export function DashboardPage() {
   const { hasRole, user } = useAuth();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
+  // docs/23 item 14 -- "Dashboard con filtro por empresa (holding)". Gate
+  // deliberadamente MÁS ESTRECHO que "cualquier rol holding-wide": la fuente
+  // del listado de empresas del selector (`GET /empresas`, ver
+  // `SelectorEmpresaDashboard.tsx`) es exclusiva de `ADMINISTRADOR` en el
+  // backend -- un `SUPERVISOR` holding-wide recibiría un 403 si se intentara
+  // poblar igual. Ese rol simplemente ve el dashboard consolidado del
+  // holding completo, sin selector, sin perder nada frente a hoy.
+  const esAdministradorHoldingWide = hasRole(["ADMINISTRADOR"]) && user?.sessionScope === "holding";
+  const { empresaVistaId } = useVistaEmpresa();
 
   usePageHeader({ title: esGestorDeCartera ? "Dashboard general" : "Dashboard personal" });
 
@@ -54,7 +73,16 @@ export function DashboardPage() {
   });
   const [filtrosDashboard, setFiltrosDashboard] = useState<DashboardFiltrosState>(FILTROS_DASHBOARD_VACIOS);
 
-  const filtros = useMemo(() => buildMetricasFiltros(filtrosDashboard, rango), [filtrosDashboard, rango]);
+  // `empresaVistaId` solo tiene efecto real para una sesión holding-wide
+  // (`resolveEmpresaId` en `metricas.access.ts`, backend); para una sesión
+  // `company` el backend ya fuerza su propia empresa e ignora este campo, así
+  // que da igual que nunca esté seteado en ese caso (el selector ni se
+  // renderiza). `undefined` (no `null`) para que `toParams` lo omita del
+  // query string igual que el resto de filtros opcionales.
+  const filtros = useMemo(
+    () => ({ ...buildMetricasFiltros(filtrosDashboard, rango), empresaId: empresaVistaId ?? undefined }),
+    [filtrosDashboard, rango, empresaVistaId],
+  );
 
   const campanias = useMemo(() => getCatalogoCampanias(), []);
   // `getCatalogoResponsables` es backend real (D-A2, integración F3/F4).
@@ -70,6 +98,11 @@ export function DashboardPage() {
   const embudo = useMetricasEmbudo(filtros);
   const porCampania = useMetricasPorCampania(filtros);
   const redSocialPorSemaforo = useRedSocialPorSemaforo(filtros);
+  // docs/23 item 13 -- extensión de dashboard con métricas de `Oportunidad`.
+  const embudoOportunidad = useMetricasEmbudoOportunidad(filtros);
+  const porProducto = useMetricasPorProducto(filtros);
+  const cascadaLeadOportunidad = useMetricasCascadaLeadOportunidad(filtros);
+  const rankingProductosPorEmpresa = useMetricasRankingProductosPorEmpresa(filtros);
   const metricasActualizando = [
     resumen.isFetching,
     porRedSocial.isFetching,
@@ -77,6 +110,10 @@ export function DashboardPage() {
     embudo.isFetching,
     porCampania.isFetching,
     redSocialPorSemaforo.isFetching,
+    embudoOportunidad.isFetching,
+    porProducto.isFetching,
+    cascadaLeadOportunidad.isFetching,
+    rankingProductosPorEmpresa.isFetching,
   ].some(Boolean);
 
   const embudoVacio = !embudo.data || (embudo.data.pasos.every((p) => p.total === 0) && embudo.data.noVenta === 0);
@@ -86,6 +123,10 @@ export function DashboardPage() {
       resumen.data.distribucionSemaforo.amarillo === 0 &&
       resumen.data.distribucionSemaforo.verde === 0 &&
       resumen.data.distribucionSemaforo.sinCalificar === 0);
+  const embudoOportunidadVacio =
+    !embudoOportunidad.data ||
+    (embudoOportunidad.data.pasos.every((p) => p.total === 0) && embudoOportunidad.data.noVenta === 0);
+  const cascadaLeadOportunidadVacia = !cascadaLeadOportunidad.data || cascadaLeadOportunidad.data.leads === 0;
 
   return (
     <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-6">
@@ -129,6 +170,10 @@ export function DashboardPage() {
                 porCampania: porCampania.data,
                 embudo: embudo.data,
                 redSocialPorSemaforo: redSocialPorSemaforo.data,
+                embudoOportunidad: embudoOportunidad.data,
+                porProducto: porProducto.data,
+                cascadaLeadOportunidad: cascadaLeadOportunidad.data,
+                rankingProductosPorEmpresa: rankingProductosPorEmpresa.data,
               }}
               contexto={{
                 rango: rango.preset === "personalizado" ? `${rango.desde} a ${rango.hasta}` : rango.preset,
@@ -148,6 +193,12 @@ export function DashboardPage() {
             />
           </div>
         </div>
+
+        {esAdministradorHoldingWide ? (
+          <div className="mt-4 min-w-0 max-w-xs">
+            <SelectorEmpresaDashboard />
+          </div>
+        ) : null}
 
         <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.8fr)]">
           <div className="min-w-0">
@@ -294,6 +345,81 @@ export function DashboardPage() {
             </GraficoCard>
           ) : null}
 
+        </div>
+      </section>
+
+      <section aria-labelledby="dashboard-negociacion" className="flex flex-col gap-3">
+        <EncabezadoSeccion
+          id="dashboard-negociacion"
+          titulo="Negociación / producto"
+          descripcion="Embudo y rendimiento de Oportunidad, y qué tan bien convierte cada producto (docs/23 item 13)."
+        />
+        {/*
+          NOTA DE ASIMETRÍA DE FILTROS (a propósito, no un bug): `redSocial`/
+          `campania` de `filtros` son ignorados en silencio por el backend
+          para `embudo-oportunidad`/`por-producto`/`ranking-productos-por-
+          empresa` -- son métricas `Oportunidad`-scoped, sin join a `Lead`.
+          Sí aplican para `cascada-lead-oportunidad`, que está `Lead`-scoped.
+          Ver detalle en `metricas.api.ts`.
+        */}
+        <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.85fr)]">
+          <GraficoCard
+            className="min-w-0"
+            destacado
+            titulo="Embudo de Oportunidad"
+            descripcion="Nuevo → Contactado → Cita → Venta, sobre Oportunidad. No Venta se muestra aparte."
+            isLoading={embudoOportunidad.isLoading}
+            isError={embudoOportunidad.isError}
+            error={embudoOportunidad.error}
+            onRetry={() => void embudoOportunidad.refetch()}
+            vacio={embudoOportunidadVacio}
+          >
+            {embudoOportunidad.data ? <GraficoEmbudoOportunidad datos={embudoOportunidad.data} /> : null}
+          </GraficoCard>
+
+          <GraficoCard
+            className="min-w-0"
+            compacto
+            titulo="Cascada Lead → Oportunidad"
+            descripcion="Leads del período que alguna vez llegaron a Oportunidad / Venta"
+            isLoading={cascadaLeadOportunidad.isLoading}
+            isError={cascadaLeadOportunidad.isError}
+            error={cascadaLeadOportunidad.error}
+            onRetry={() => void cascadaLeadOportunidad.refetch()}
+            vacio={cascadaLeadOportunidadVacia}
+          >
+            {cascadaLeadOportunidad.data ? (
+              <CascadaLeadOportunidad datos={cascadaLeadOportunidad.data} />
+            ) : null}
+          </GraficoCard>
+
+          <GraficoCard
+            className="min-w-0"
+            titulo="Rendimiento por producto"
+            descripcion="Ranking global de oportunidades por producto"
+            isLoading={porProducto.isLoading}
+            isError={porProducto.isError}
+            error={porProducto.error}
+            onRetry={() => void porProducto.refetch()}
+            vacio={!porProducto.data || porProducto.data.length === 0}
+          >
+            {porProducto.data ? <GraficoPorProducto datos={porProducto.data} /> : null}
+          </GraficoCard>
+
+          <GraficoCard
+            className="min-w-0"
+            titulo="Ranking de productos por empresa"
+            descripcion="Una fila por cada par empresa · producto"
+            isLoading={rankingProductosPorEmpresa.isLoading}
+            isError={rankingProductosPorEmpresa.isError}
+            error={rankingProductosPorEmpresa.error}
+            onRetry={() => void rankingProductosPorEmpresa.refetch()}
+            vacio={!rankingProductosPorEmpresa.data || rankingProductosPorEmpresa.data.length === 0}
+          >
+            {rankingProductosPorEmpresa.data ? (
+              <GraficoRankingProductosPorEmpresa datos={rankingProductosPorEmpresa.data} />
+            ) : null}
+          </GraficoCard>
         </div>
       </section>
     </div>

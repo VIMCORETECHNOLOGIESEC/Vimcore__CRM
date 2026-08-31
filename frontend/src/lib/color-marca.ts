@@ -1,5 +1,6 @@
 import type { ConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import type { EmpresaAparienciaHoldingView } from "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 
 /**
@@ -21,10 +22,14 @@ export function hexToRgbTriplet(hex: string): string {
 }
 
 const WHITE = "255 255 255";
-/** `--vimcore` (index.css) -- mismo azul marino oscuro que ya usa el tema
- * base como alternativa oscura, para no introducir un tercer color de texto
- * fijo además de blanco. */
-const VIMCORE_DARK = "30 42 94";
+
+/**
+ * `--background` (index.css línea 35) -- fondo neutro claro de toda la app,
+ * capturado acá como constante fija (no hay tema oscuro todavía) para poder
+ * evaluar contraste de texto de marca aplicado DIRECTO sobre el contenido
+ * central, sin depender de CSS en tiempo de ejecución.
+ */
+const APP_BACKGROUND = "245 243 238";
 
 /** Matemática genérica de contraste WCAG (sin vocabulario de dominio) --
  * inglés puro, AGENTS.md §3.4. */
@@ -38,11 +43,101 @@ function relativeLuminance(triplet: string): number {
   return 0.2126 * linearChannel(r) + 0.7152 * linearChannel(g) + 0.0722 * linearChannel(b);
 }
 
-function contrastRatio(tripletA: string, tripletB: string): number {
+export function contrastRatio(tripletA: string, tripletB: string): number {
   const lA = relativeLuminance(tripletA);
   const lB = relativeLuminance(tripletB);
   const [lighter, darker] = lA >= lB ? [lA, lB] : [lB, lA];
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** Triplete RGB ("R G B") -> {h, s, l} (h en grados 0-360, s/l en 0-1). */
+function rgbTripletToHsl(triplet: string): { h: number; s: number; l: number } {
+  const [r0, g0, b0] = triplet.split(" ").map(Number);
+  const r = r0 / 255;
+  const g = g0 / 255;
+  const b = b0 / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+
+  let h = 0;
+  let s = 0;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r:
+        h = ((g - b) / d) % 6;
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h *= 60;
+    if (h < 0) {
+      h += 360;
+    }
+  }
+
+  return { h, s, l };
+}
+
+/** {h, s (0-1), l en PORCENTAJE 0-100} -> triplete RGB ("R G B"). */
+function hslToRgbTriplet(h: number, s: number, lPercent: number): string {
+  const l = lPercent / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+
+  let r1 = 0;
+  let g1 = 0;
+  let b1 = 0;
+  if (h < 60) {
+    [r1, g1, b1] = [c, x, 0];
+  } else if (h < 120) {
+    [r1, g1, b1] = [x, c, 0];
+  } else if (h < 180) {
+    [r1, g1, b1] = [0, c, x];
+  } else if (h < 240) {
+    [r1, g1, b1] = [0, x, c];
+  } else if (h < 300) {
+    [r1, g1, b1] = [x, 0, c];
+  } else {
+    [r1, g1, b1] = [c, 0, x];
+  }
+
+  const r = Math.round((r1 + m) * 255);
+  const g = Math.round((g1 + m) * 255);
+  const b = Math.round((b1 + m) * 255);
+  return `${r} ${g} ${b}`;
+}
+
+/**
+ * Dado un triplete "fuente de tonalidad", genera las 2 variantes de la MISMA
+ * tonalidad (H/S) que reemplazan al navy fijo (`VIMCORE_DARK`, retirado):
+ * una empujada a oscuro (L 15%) y otra empujada a claro (L 90%). La elección
+ * entre estas dos MÁS blanco sigue siendo por contraste medido (nunca una
+ * regla fija de "siempre oscurecer") -- ver `foregroundForContrast` y
+ * `textoMarcaSobreFondoNeutro` más abajo, los dos únicos consumidores.
+ */
+function variantesDeTonalidad(hueSourceTriplet: string): { oscura: string; clara: string } {
+  const { h, s } = rgbTripletToHsl(hueSourceTriplet);
+  return {
+    oscura: hslToRgbTriplet(h, s, 15),
+    clara: hslToRgbTriplet(h, s, 90),
+  };
+}
+
+/** De una lista de candidatos, el que dé mayor `contrastRatio` contra `referenceBackground`. */
+function mejorContraste(referenceBackground: string, candidatos: string[]): string {
+  return candidatos.reduce((mejor, candidato) =>
+    contrastRatio(referenceBackground, candidato) > contrastRatio(referenceBackground, mejor)
+      ? candidato
+      : mejor,
+  );
 }
 
 /**
@@ -50,16 +145,38 @@ function contrastRatio(tripletA: string, tripletB: string): number {
  * mismo umbral que ya usa la paleta base del proyecto (`index.css`,
  * "blanco sobre azul 5.2:1, todos AA"). El acento base (`--vimcore-accent`,
  * 37 99 235) cumple con blanco; un color de marca real por empresa (ej.
- * naranja/verde saturado sobre fondo claro) puede NO cumplirlo -- en vez de
- * bloquear el color o documentarlo como límite conocido, se elige entre
- * blanco y el oscuro del tema base (`--vimcore`) el que dé mayor contraste,
- * para que el texto sea legible sin importar qué color cargue cada empresa.
+ * naranja/verde saturado sobre fondo claro) puede NO cumplirlo.
+ *
+ * Antes se elegía entre blanco y un navy FIJO (`VIMCORE_DARK`, remanente de
+ * la identidad azul original) el que diera mayor contraste. Ahora se elige
+ * entre blanco y DOS variantes de la MISMA tonalidad que el propio
+ * `backgroundTriplet` recibido (esta función no conoce el hex de marca
+ * original, solo el triplete RGB ya convertido -- el hue se deriva de ESE
+ * triplete): una empujada a oscuro (L 15%) y otra empujada a claro (L 90%).
+ * Sigue siendo la matemática de contraste la que decide sola, sin reglas
+ * especiales por caso -- para un fondo ya oscuro blanco casi siempre gana
+ * (blanco es el máximo de luminancia posible, ninguna variante clara con
+ * saturación puede superarlo), y para un fondo claro/pastel la variante
+ * oscura de su propia tonalidad reemplaza al navy fijo de antes.
  */
-
 export function foregroundForContrast(backgroundTriplet: string): string {
-  const contrastWithWhite = contrastRatio(backgroundTriplet, WHITE);
-  const contrastWithDark = contrastRatio(backgroundTriplet, VIMCORE_DARK);
-  return contrastWithWhite >= contrastWithDark ? WHITE : VIMCORE_DARK;
+  const { oscura, clara } = variantesDeTonalidad(backgroundTriplet);
+  return mejorContraste(backgroundTriplet, [WHITE, oscura, clara]);
+}
+
+/**
+ * Texto/íconos de marca aplicados DIRECTO sobre el fondo neutro de contenido
+ * (`--background`, `APP_BACKGROUND` arriba) -- distinto de
+ * `foregroundForContrast`: acá la tonalidad se deriva de un color de marca
+ * (`colorSecundario`, el mismo campo que ya usan `--primary`/`--ring`), pero
+ * el contraste se mide contra el fondo neutro de la app, NUNCA contra el
+ * propio color de marca (ese es el caso de `--primary-foreground`, texto
+ * encima de un chip ya pintado con `--primary`). Fuente del nuevo token
+ * `--marca-texto-contenido` en `resolveEstilosMarca`.
+ */
+function textoMarcaSobreFondoNeutro(colorSecundarioTriplet: string): string {
+  const { oscura, clara } = variantesDeTonalidad(colorSecundarioTriplet);
+  return mejorContraste(APP_BACKGROUND, [WHITE, oscura, clara]);
 }
 
 /**
@@ -106,6 +223,40 @@ export function foregroundForContrast(backgroundTriplet: string): string {
  * jerarquía SIEMPRE hay un color activo -- la función ya no devuelve
  * `undefined` salvo que `usuario` sea `null` (sesión sin resolver todavía).
  */
+/**
+ * Núcleo compartido de `resolveEstilosMarca` (sesión autenticada) y
+ * `resolveEstilosMarcaEmpresaVista` (vista viva de un holding-wide sobre una
+ * `Empresa` puntual, ver esa función más abajo) -- ambas terminan resolviendo
+ * el mismo objeto de 12 variables a partir de un par de colores hex
+ * (`colorPrimario`/`colorSecundario`), solo cambia CÓMO se llega a ese par.
+ * Extraído para no duplicar la matemática de contraste/tokens entre ambas.
+ */
+function construirEstilosMarca(colorPrimario: string, colorSecundario: string): Record<string, string> {
+  const acento = hexToRgbTriplet(colorSecundario);
+  const acentoForeground = foregroundForContrast(acento);
+
+  const sidebar = hexToRgbTriplet(colorPrimario);
+  const sidebarForeground = foregroundForContrast(sidebar);
+
+  return {
+    "--primary": acento,
+    "--primary-foreground": acentoForeground,
+    "--ring": acento,
+    "--sidebar-primary": acento,
+    "--sidebar-primary-foreground": acentoForeground,
+    "--sidebar-accent": acento,
+    "--sidebar-accent-foreground": acentoForeground,
+    "--sidebar": sidebar,
+    "--sidebar-foreground": sidebarForeground,
+    "--sidebar-border": sidebarForeground,
+    "--sidebar-ring": sidebarForeground,
+    // Texto/íconos de marca DIRECTO sobre el fondo neutro de contenido (no
+    // dentro de un chip ya coloreado) -- ver `textoMarcaSobreFondoNeutro`.
+    // Consumo pendiente: migración de los 24 usos de `idec` (otra tarea).
+    "--marca-texto-contenido": textoMarcaSobreFondoNeutro(acento),
+  };
+}
+
 export function resolveEstilosMarca(
   usuario: AuthenticatedUser | null,
   configuracionHolding: Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> | undefined,
@@ -126,25 +277,28 @@ export function resolveEstilosMarca(
     ? (usuario.empresaColorSecundario as string)
     : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
 
-  const acento = hexToRgbTriplet(colorSecundario);
-  const acentoForeground = foregroundForContrast(acento);
+  return construirEstilosMarca(colorPrimario, colorSecundario);
+}
 
-  const sidebar = hexToRgbTriplet(colorPrimario);
-  const sidebarForeground = foregroundForContrast(sidebar);
-
-  return {
-    "--primary": acento,
-    "--primary-foreground": acentoForeground,
-    "--ring": acento,
-    "--sidebar-primary": acento,
-    "--sidebar-primary-foreground": acentoForeground,
-    "--sidebar-accent": acento,
-    "--sidebar-accent-foreground": acentoForeground,
-    "--sidebar": sidebar,
-    "--sidebar-foreground": sidebarForeground,
-    "--sidebar-border": sidebarForeground,
-    "--sidebar-ring": sidebarForeground,
-  };
+/**
+ * "Vista viva" de un holding-wide sobre una `Empresa` puntual
+ * (`EmpresaDetallePage.tsx` -> "Ver en vivo" -> `/panel?empresaId=`,
+ * `AppLayout.tsx` consume esto cuando `useVistaEmpresa().empresaVistaId` está
+ * activo con sesión `holding`): a diferencia de `resolveEstilosMarca`, que
+ * resuelve la marca de la SESIÓN autenticada (usuario/holding en vivo), acá
+ * la fuente es directamente la `Empresa` que se está mirando
+ * (`EmpresaAparienciaHoldingView`, `GET /empresas/:empresaId`) -- sin
+ * jerarquía de niveles, porque no hay ambigüedad de sesión: se está
+ * simulando la vista de ESA empresa puntual. `colorPrimario`/`colorSecundario`
+ * nulos (empresa sin marca propia configurada) caen al mismo default de
+ * fábrica que el resto del archivo, nunca a un color inventado.
+ */
+export function resolveEstilosMarcaEmpresaVista(
+  empresa: Pick<EmpresaAparienciaHoldingView, "colorPrimario" | "colorSecundario">,
+): Record<string, string> {
+  const colorPrimario = empresa.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario;
+  const colorSecundario = empresa.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario;
+  return construirEstilosMarca(colorPrimario, colorSecundario);
 }
 
 /**
@@ -191,4 +345,50 @@ export function resolveNombreMarca(
   }
 
   return configuracionHolding?.nombre ?? CONFIGURACION_EMPRESA_DEFAULT.nombre;
+}
+
+/**
+ * Fix real (splash post-login duplicado, cada uno con un dato mal): fuente
+ * de verdad única para las 3 variables que `WelcomeSplashLoader.tsx`/
+ * `tema-empresarial.css` (`.welcome-splash`) consumen para pintar el splash
+ * -- `nombre` (texto) + `--marca-color-1`/`--marca-color-2` (hex CRUDO, sin
+ * la conversión a triplete RGB que sí usa `resolveEstilosMarca` para los
+ * tokens shadcn del shell, que son un caso de uso distinto). Antes había dos
+ * implementaciones paralelas y desincronizadas: `LoginPage.tsx` tenía su
+ * propia `resolveColorMarca` local que nunca resolvía `nombre` (seguía
+ * viniendo del holding global aunque el usuario fuera de una `Empresa` con
+ * nombre propio), y `AppLayout.tsx` no seteaba estas variables en absoluto
+ * (le pasaba al splash los tokens de `resolveEstilosMarca`, que
+ * `WelcomeSplashLoader` no lee).
+ *
+ * Reusa `resolveNombreMarca` (ya correcta) para el nombre, y replica la
+ * misma jerarquía de 3 niveles de `resolveEstilosMarca` para los colores
+ * (Empresa propia con AMBOS colores seteados -> holding EN VIVO ->
+ * `CONFIGURACION_EMPRESA_DEFAULT`) sin la conversión a RGB.
+ */
+export function resolveMarcaCompleta(
+  usuario: AuthenticatedUser | null,
+  configuracionHolding:
+    | Pick<ConfiguracionEmpresa, "nombre" | "colorPrimario" | "colorSecundario">
+    | undefined,
+): { nombre: string; "--marca-color-1": string; "--marca-color-2": string } {
+  const colorPrimario =
+    usuario?.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null
+      ? usuario.empresaColorPrimario
+      : (configuracionHolding?.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario);
+
+  const colorSecundario =
+    usuario?.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null
+      ? usuario.empresaColorSecundario
+      : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
+
+  return {
+    nombre: resolveNombreMarca(usuario, configuracionHolding),
+    "--marca-color-1": colorPrimario,
+    "--marca-color-2": colorSecundario,
+  };
 }

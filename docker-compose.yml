@@ -7,7 +7,12 @@ services:
     # cualquiera que corra Azurite) -- en produccion se pisa con la
     # connection string real de nexuscorp, sin ningun cambio de código.
     image: mcr.microsoft.com/azure-storage/azurite:3.35.0
-    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000"
+    # --skipApiVersionCheck: @azure/storage-blob manda una version de API
+    # mas nueva que la que Azurite 3.35.0 reconoce por defecto (rechaza con
+    # InvalidHeaderValue/400 sin esto). Solo afecta al emulador local -- la
+    # Storage Account real de Azure acepta cualquier version del SDK, esto
+    # nunca corre en produccion.
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck"
     ports:
       - "10000:10000"
     volumes:
@@ -36,6 +41,10 @@ services:
       db:
         condition: service_healthy
     environment:
+      # Evita que pnpm pida confirmacion interactiva (TTY) para purgar
+      # node_modules si detecta drift al arrancar `pnpm dev` -- un contenedor
+      # nunca tiene TTY, así que sin esto el arranque aborta.
+      CI: "true"
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_URL_APP: ${DATABASE_URL_APP}
       CRM_APP_DB_PASSWORD: ${CRM_APP_DB_PASSWORD}
@@ -61,6 +70,7 @@ services:
       REPORTES_STORAGE_DIR: ${REPORTES_STORAGE_DIR:-storage/reportes}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       AZURE_STORAGE_CONTAINER_ISOTIPOS: ${AZURE_STORAGE_CONTAINER_ISOTIPOS:-isotipos}
+      AZURE_STORAGE_PUBLIC_BASE_URL: ${AZURE_STORAGE_PUBLIC_BASE_URL:-}
     ports:
       - "3000:3000"
     volumes:
@@ -97,6 +107,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      # Forma lista con nombre sin `=valor`: pasa VITE_API_BASE_URL solo si
+      # está exportada en el entorno de quien corre `docker compose` -- si no
+      # lo está, queda AUSENTE del contenedor (no vacía), para que
+      # `httpClient.ts` caiga en su default de `localhost:3000` como antes.
+      - CI=true
+      - VITE_API_BASE_URL
     ports:
       - "5173:5173"
     volumes:

@@ -7,6 +7,13 @@
 >
 > **Verificación:** revisión estática de la rama `test/gpt`, commit `e70b3a4`,
 > 2026-08-25. No sustituye una ejecución de QA.
+>
+> **Corrección puntual (2026-08-30):** la fila F8 y el punto 3 de "Brechas
+> compartidas" citaban como pendiente la atribución del endpoint genérico de
+> ingesta como Google Forms — verificado contra
+> `backend/src/controllers/ingesta.controller.ts` que ese punto ya está
+> cerrado desde Bloque A (WU3, 2026-08-26, ver `06-modulos-backend.md`); el
+> resto de la matriz no se volvió a auditar en esta pasada.
 
 ## Conclusión rápida
 
@@ -34,7 +41,7 @@ git log --follow -- docs/11-plan-integracion.md
 | F5 — Dashboard | M9 | Todos los KPIs consultan endpoints reales y se invalidan mediante SSE. | La métrica por campaña todavía depende del nombre guardado en JSON, no de una atribución normalizada. |
 | F6 — Notificaciones | M8 | Listado, lectura individual/masiva y canal SSE usan backend real. | Falta el productor preventivo `TOKEN_POR_EXPIRAR`; no todo evento de negocio tiene el alcance de entrega requerido. |
 | F7 — Usuarios | M2/M6 | CRUD, baja/reactivación y reasignación de cartera usan API real. | Sin gap de integración principal; sus permisos siguen siendo globales al despliegue single-company. |
-| F8 — Bridges | M4 | CRUD de bridges/cuentas, rotación de clave, prueba de conexión, logs y catálogos usan API real. | El endpoint genérico atribuye como Google Forms; LinkedIn/X siguen pendientes y la ingesta no materializa cuenta/campaña en el lead. |
+| F8 — Bridges | M4 | CRUD de bridges/cuentas, rotación de clave, prueba de conexión, logs y catálogos usan API real. | LinkedIn (conexión OAuth/discovery ya implementada, ver `05-bridges.md` §4) y X siguen sin adaptador de ingesta; la atribución del endpoint genérico ya usa el `redSocial` real del bridge (Bloque A, cerrado). |
 
 ## Brechas compartidas, por orden de decisión
 
@@ -43,8 +50,10 @@ git log --follow -- docs/11-plan-integracion.md
    no garantiza la separación asesor→vendedor planteada para la evolución.
 2. **P1 — Origen canónico del lead.** Definir y persistir bridge, cuenta,
    campaña y futura empresa/sitio sin depender de `payload_original`.
-3. **P1 — Fuente del endpoint genérico.** Evitar que un bridge autenticado de
-   otra red quede registrado como Google Forms antes de sumar canales.
+3. ✅ **P1 — Fuente del endpoint genérico — resuelto (Bloque A, WU3,
+   2026-08-26).** `adaptGoogleForms` ya recibe el `redSocial` real del bridge
+   (`req.bridge.redSocial`) en vez de fijar la constante; un bridge de otra
+   red ya no queda registrado como Google Forms.
 4. **P1 — Contratos F3/F4.** Exponer correo y atribución reales, y entregar
    capacidades de edición coherentes con la autorización del backend.
 5. **P1 — Operación preventiva.** Producir de forma idempotente la alerta de

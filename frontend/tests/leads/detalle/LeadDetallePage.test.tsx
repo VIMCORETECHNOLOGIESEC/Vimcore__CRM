@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
@@ -37,7 +37,11 @@ vi.mock("@/funcionalidades/leads/detalle/CierreNoVentaForm", () => ({
   CierreNoVentaForm: () => <div>Cierre no venta mock</div>,
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+vi.mock("@/funcionalidades/leads/detalle/OportunidadesLeadTab", () => ({
+  OportunidadesLeadTab: () => <div>Oportunidades lead tab mock</div>,
+}));
+
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useLeadDetalle } = await import("@/funcionalidades/leads/detalle/useLeadDetalle");
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 
@@ -72,7 +76,7 @@ function buildLead(overrides: Partial<Lead> = {}): Lead {
   };
 }
 
-function renderPage() {
+function renderPage(rutaInicial = "/leads/lead-01") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -80,7 +84,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <MemoryRouter initialEntries={["/leads/lead-01"]}>
+        <MemoryRouter initialEntries={[rutaInicial]}>
           <Routes>
             <Route path="/leads/:id" element={<LeadDetallePage />} />
           </Routes>
@@ -92,7 +96,13 @@ function renderPage() {
 
 beforeEach(() => {
   useAuthMock.mockReturnValue({
-    user: { id: "u1", nombre: "Usuaria", correo: "u1@crm.test", rol: "ADMINISTRADOR" },
+    user: {
+      id: "u1",
+      nombre: "Usuaria",
+      correo: "u1@crm.test",
+      rol: "ADMINISTRADOR",
+      sessionScope: "company",
+    },
     isAuthenticated: true,
     isLoading: false,
     login: vi.fn(),
@@ -106,6 +116,35 @@ beforeEach(() => {
     isError: false,
     error: null,
     refetch: vi.fn(),
+  });
+});
+
+describe("LeadDetallePage — useVistaEmpresa().esVistaSoloLectura", () => {
+  it("con sesión company, muestra AccionesResponsable con normalidad", async () => {
+    renderPage();
+    expect(await screen.findByText("Acciones responsable")).toBeInTheDocument();
+  });
+
+  it("holding-wide en «Ver en vivo» (?empresaId= con sessionScope holding): oculta AccionesResponsable", async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "u1",
+        nombre: "Usuaria",
+        correo: "u1@crm.test",
+        rol: "ADMINISTRADOR",
+        sessionScope: "holding",
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: () => true,
+    });
+
+    renderPage("/leads/lead-01?empresaId=empresa-9");
+
+    await screen.findByText("Roberto Salazar");
+    expect(screen.queryByText("Acciones responsable")).not.toBeInTheDocument();
   });
 });
 
@@ -123,6 +162,41 @@ describe("LeadDetallePage tutorial anchors", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Chat de WhatsApp")).toBeInTheDocument();
       expect(document.querySelector('[data-tour="lead-whatsapp-chat"]')).not.toBeNull();
+    });
+  });
+
+  it("cierra el panel de WhatsApp al recibir el evento close-workspace del tutorial", async () => {
+    renderPage();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Chat de WhatsApp")).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "close-workspace" } }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Chat de WhatsApp")).not.toBeInTheDocument();
+      expect(document.querySelector('[data-tour="lead-whatsapp"]')).not.toBeNull();
+    });
+  });
+});
+
+describe("LeadDetallePage — tab Oportunidad del workspace", () => {
+  it("muestra el tab Oportunidad y su contenido al recibir select-tab del tutorial", async () => {
+    renderPage();
+
+    window.dispatchEvent(
+      new CustomEvent("leads-navigation-tour", { detail: { action: "select-tab", tab: "oportunidad" } }),
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-tour="lead-workspace-oportunidad"]')).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByText("Oportunidades lead tab mock")).toBeInTheDocument();
     });
   });
 });

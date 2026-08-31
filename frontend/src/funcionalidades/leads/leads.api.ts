@@ -36,6 +36,13 @@ export interface LeadsQueryParams {
   /** ISO `YYYY-MM-DD`, inclusive. Se manda como `hasta` al backend real. */
   fechaHasta?: string;
   estadoSla?: EstadoSla;
+  /**
+   * Drill-down de un holding-wide sobre una empresa puntual (`useVistaEmpresa`,
+   * ver `buildLeadsQueryParams`) -- mismo campo que ya soportan
+   * `OportunidadesQueryParams`/`BridgesQueryParams`. Backend real:
+   * `leads.access.ts::aplicarFiltroEmpresa`.
+   */
+  empresaId?: string;
 }
 
 export interface LeadsResponse {
@@ -177,6 +184,7 @@ export async function fetchLeadsApi(params: LeadsQueryParams): Promise<LeadsResp
       // vez de mandar un valor que el servidor rechazaría o interpretaría
       // distinto.
       estadoSla: mapEstadoSlaToBackend(params.estadoSla),
+      empresaId: params.empresaId,
     } as Record<string, QueryParamValue>,
   });
 

@@ -4,15 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia.api", () => ({
   updateEmpresaAparienciaApi: vi.fn(),
+  uploadLogoEmpresaApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const empresaAparienciaApi = await import(
   "@/funcionalidades/empresa-apariencia/empresa-apariencia.api"
 );
@@ -22,6 +23,7 @@ const { EmpresaAparienciaPage } = await import(
 
 const useAuthMock = vi.mocked(useAuth);
 const updateEmpresaAparienciaApiMock = vi.mocked(empresaAparienciaApi.updateEmpresaAparienciaApi);
+const uploadLogoEmpresaApiMock = vi.mocked(empresaAparienciaApi.uploadLogoEmpresaApi);
 
 function usuarioFake(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser {
   return {
@@ -42,6 +44,7 @@ function usuarioFake(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedU
 
 beforeEach(() => {
   updateEmpresaAparienciaApiMock.mockReset();
+  uploadLogoEmpresaApiMock.mockReset();
 });
 
 afterEach(() => {
@@ -104,6 +107,40 @@ describe("EmpresaAparienciaPage", () => {
         colorPrimario: "#111111",
         colorSecundario: "#f97316",
         logoUrl: null,
+      }),
+    );
+  });
+
+  it("sube el isotipo con uploadLogoEmpresaApi y lo incluye al guardar", async () => {
+    useAuthMock.mockReturnValue({
+      user: usuarioFake(),
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: vi.fn(),
+    });
+    uploadLogoEmpresaApiMock.mockResolvedValue("https://cdn.miempresa.com/logo-nuevo.png");
+    updateEmpresaAparienciaApiMock.mockResolvedValue({
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.miempresa.com/logo-nuevo.png",
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const campoLogo = screen.getByLabelText("Isotipo (opcional)");
+    await user.upload(campoLogo, new File([new Uint8Array(10)], "logo.png", { type: "image/png" }));
+
+    await waitFor(() => expect(uploadLogoEmpresaApiMock).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() =>
+      expect(updateEmpresaAparienciaApiMock).toHaveBeenCalledWith({
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+        logoUrl: "https://cdn.miempresa.com/logo-nuevo.png",
       }),
     );
   });

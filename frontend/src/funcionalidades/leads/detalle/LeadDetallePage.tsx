@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Send, X } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Handshake, Send, X } from "lucide-react";
 import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
+import { NuevaOportunidadButton } from "@/funcionalidades/oportunidades/NuevaOportunidadButton";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { AccionesResponsable } from "./AccionesResponsable";
 import { LeadDatosContacto } from "./LeadDatosContacto";
 import { LeadDetalleEncabezado } from "./LeadDetalleEncabezado";
 import { LeadOrigenInfo } from "./LeadOrigenInfo";
 import { LeadTimeline } from "./LeadTimeline";
+import { OportunidadesLeadTab } from "./OportunidadesLeadTab";
 import { PanelCitas } from "./PanelCitas";
 import { CierreNoVentaForm } from "./CierreNoVentaForm";
 import { CierreVentaForm } from "./CierreVentaForm";
@@ -20,12 +23,13 @@ import { useLeadDetalle } from "./useLeadDetalle";
 import { ETAPA_ETIQUETAS } from "../catalogos";
 import type { Lead, EtapaLead } from "@/tipos/lead";
 
-type VistaDetalle = "progreso" | "cita" | "cierre";
+type VistaDetalle = "progreso" | "cita" | "cierre" | "oportunidad";
 
 const VISTAS: Array<{ id: VistaDetalle; label: string; icon: typeof Check }> = [
   { id: "progreso", label: "Progreso", icon: Check },
   { id: "cita", label: "Agendar cita", icon: CalendarDays },
   { id: "cierre", label: "Cerrar lead", icon: X },
+  { id: "oportunidad", label: "Oportunidad", icon: Handshake },
 ];
 
 const ETAPAS_EMBUDO: EtapaLead[] = ["NUEVO", "CONTACTADO", "CITA", "VENTA", "NO_VENTA"];
@@ -64,7 +68,7 @@ function ResumenEjecutivo({ lead, puntuacionActual }: { lead: Lead; puntuacionAc
     <section className="flex flex-col gap-5 rounded-lg border border-border bg-background p-4 md:p-5" aria-labelledby="resumen-ejecutivo-titulo">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-idec">Lectura rápida</p>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-marca-texto">Lectura rápida</p>
           <h2 id="resumen-ejecutivo-titulo" className="text-lg font-semibold text-foreground">Resumen ejecutivo</h2>
         </div>
         <span className="text-xs text-muted-foreground">Ingreso: {formatFechaCorta(lead.ingresadoEn)}</span>
@@ -73,7 +77,7 @@ function ResumenEjecutivo({ lead, puntuacionActual }: { lead: Lead; puntuacionAc
       <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
         <div className="flex items-start justify-between gap-4 rounded-lg bg-secondary/60 p-4">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-idec/10 text-idec">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-marca-texto/10 text-marca-texto">
               <CalendarClock className="size-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
@@ -82,7 +86,7 @@ function ResumenEjecutivo({ lead, puntuacionActual }: { lead: Lead; puntuacionAc
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{siguientePaso.detalle}</p>
             </div>
           </div>
-          <ArrowRight className="mt-1 size-4 shrink-0 text-idec" aria-hidden="true" />
+          <ArrowRight className="mt-1 size-4 shrink-0 text-marca-texto" aria-hidden="true" />
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -105,7 +109,7 @@ function ResumenEjecutivo({ lead, puntuacionActual }: { lead: Lead; puntuacionAc
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-full bg-idec/10 text-idec">
+              <span className="flex size-7 items-center justify-center rounded-full bg-marca-texto/10 text-marca-texto">
                 <Clock3 className="size-3.5" aria-hidden="true" />
               </span>
               <span className="text-sm font-semibold text-foreground">Avance del embudo</span>
@@ -114,13 +118,13 @@ function ResumenEjecutivo({ lead, puntuacionActual }: { lead: Lead; puntuacionAc
           </div>
           <div className="relative px-2">
             <div className="absolute inset-x-2 top-3 h-0.5 bg-border" aria-hidden="true" />
-            <div className="absolute left-2 top-3 h-0.5 bg-idec transition-[width]" style={{ width: `${Math.min(100, (Math.max(0, Math.min(etapaActual, 2)) / 2) * 100)}%` }} aria-hidden="true" />
+            <div className="absolute left-2 top-3 h-0.5 bg-primary transition-[width]" style={{ width: `${Math.min(100, (Math.max(0, Math.min(etapaActual, 2)) / 2) * 100)}%` }} aria-hidden="true" />
             <ol className="relative grid grid-cols-3">
               {ETAPAS_EMBUDO.slice(0, 3).map((etapa, indice) => {
                 const completada = etapaActual >= indice;
                 return (
                   <li key={etapa} className="flex flex-col items-center gap-2 text-center">
-                    <span className={`flex size-6 items-center justify-center rounded-full border-2 text-[10px] font-semibold ${completada ? "border-idec bg-idec text-idec-foreground" : "border-border bg-background text-muted-foreground"}`}>
+                    <span className={`flex size-6 items-center justify-center rounded-full border-2 text-[10px] font-semibold ${completada ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}>
                       {completada ? <Check className="size-3" aria-hidden="true" /> : indice + 1}
                     </span>
                     <span className={`text-xs ${completada ? "font-medium text-foreground" : "text-muted-foreground"}`}>{ETAPA_ETIQUETAS[etapa]}</span>
@@ -132,14 +136,14 @@ function ResumenEjecutivo({ lead, puntuacionActual }: { lead: Lead; puntuacionAc
         </div>
 
         <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-          <CircleGauge className="size-8 shrink-0 text-idec" aria-hidden="true" />
+          <CircleGauge className="size-8 shrink-0 text-marca-texto" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="text-muted-foreground">Calificación</span>
               <span className="font-semibold tabular-nums text-foreground">{puntuacion === null ? "Sin calificar" : `${puntuacion}/100`}</span>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-label="Puntuación del lead" aria-valuemin={0} aria-valuemax={100} aria-valuenow={puntuacion ?? 0}>
-              <div className="h-full rounded-full bg-idec transition-[width]" style={{ width: `${porcentajePuntuacion}%` }} />
+              <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${porcentajePuntuacion}%` }} />
             </div>
           </div>
         </div>
@@ -214,13 +218,13 @@ function WhatsAppChat({
     <section
       data-tour={expanded ? "lead-whatsapp-chat" : undefined}
       className={`flex min-h-0 flex-col overflow-hidden border-border bg-background ${
-        expanded ? "h-full rounded-none border-0 border-l border-idec/20 shadow-none" : "h-[min(680px,calc(100vh-15rem))] min-h-[520px] rounded-lg border shadow-sm"
+        expanded ? "h-full rounded-none border-0 border-l border-primary/20 shadow-none" : "h-[min(680px,calc(100vh-15rem))] min-h-[520px] rounded-lg border shadow-sm"
       }`}
       aria-label="Chat de WhatsApp"
     >
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-idec/20 px-4">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-primary/20 px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-idec text-sm font-semibold text-idec-foreground">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
             {leadName.charAt(0).toUpperCase()}
           </span>
           <div className="min-w-0">
@@ -240,24 +244,24 @@ function WhatsAppChat({
         ) : null}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-[#fafafa] p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-muted p-4">
         <p className="mx-auto rounded-full bg-secondary px-3 py-1 text-[11px] text-muted-foreground">Hoy</p>
         <div className="flex items-end gap-2">
           <span className="size-6 shrink-0 rounded-full bg-secondary" aria-hidden="true" />
-          <p className="max-w-[82%] rounded-2xl rounded-bl-sm bg-white px-3 py-2 text-sm text-foreground shadow-sm">
+          <p className="max-w-[82%] rounded-2xl rounded-bl-sm bg-card px-3 py-2 text-sm text-foreground shadow-sm">
             Hola, ¿cómo estás? Vi que pediste información.
             <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:42</span>
           </p>
         </div>
         <div className="flex items-end justify-end gap-2">
-          <p className="max-w-[82%] rounded-2xl rounded-br-sm bg-idec/10 px-3 py-2 text-sm text-foreground">
+          <p className="max-w-[82%] rounded-2xl rounded-br-sm bg-primary/10 px-3 py-2 text-sm text-foreground">
             Hola, sí. Me gustaría conocer más detalles.
             <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:44</span>
           </p>
         </div>
         <div className="flex items-end gap-2">
           <span className="size-6 shrink-0 rounded-full bg-secondary" aria-hidden="true" />
-          <p className="max-w-[82%] rounded-2xl rounded-bl-sm bg-white px-3 py-2 text-sm text-foreground shadow-sm">
+          <p className="max-w-[82%] rounded-2xl rounded-bl-sm bg-card px-3 py-2 text-sm text-foreground shadow-sm">
             Perfecto. Puedo ayudarte a coordinar una llamada cuando te quede cómodo.
             <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:45</span>
           </p>
@@ -270,12 +274,12 @@ function WhatsAppChat({
           id="mensaje-whatsapp"
           type="text"
           placeholder="Escribí un mensaje..."
-          className="h-10 min-w-0 flex-1 rounded-md border border-idec/40 bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-idec/50"
+          className="h-10 min-w-0 flex-1 rounded-md border border-primary/40 bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
         />
         <button
           type="submit"
           aria-label="Enviar mensaje"
-          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-idec text-idec-foreground transition-colors hover:bg-idec/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-idec/50"
+          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         >
           <Send className="size-4" aria-hidden="true" />
         </button>
@@ -301,16 +305,28 @@ function dispatchTutorialReady(target: "detail" | "workspace" | `workspace-${Vis
 export function LeadDetallePage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
   const [vistaActiva, setVistaActiva] = useState<VistaDetalle>("progreso");
   const [chatAbierto, setChatAbierto] = useState(false);
   const [puntuacionActual, setPuntuacionActual] = useState<number | null>(null);
-  const { data: lead, isLoading, isError, error, refetch } = useLeadDetalle(id ?? "");
+  const {
+    data: lead,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useLeadDetalle(id ?? "", empresaVistaId ?? undefined);
 
   useEffect(() => {
     function handleTutorialEvent(event: Event) {
-      const detail = (event as CustomEvent<{ action: "open-workspace" | "select-tab"; tab?: VistaDetalle }>).detail;
+      const detail = (
+        event as CustomEvent<{ action: "open-workspace" | "close-workspace" | "select-tab"; tab?: VistaDetalle }>
+      ).detail;
       if (detail.action === "open-workspace") {
         setChatAbierto(true);
+      }
+      if (detail.action === "close-workspace") {
+        setChatAbierto(false);
       }
       if (detail.action === "select-tab" && detail.tab) {
         setChatAbierto(true);
@@ -374,8 +390,18 @@ export function LeadDetallePage() {
             <LeadDatosContacto cliente={lead.cliente} />
             <LeadOrigenInfo lead={lead} />
           </div>
-          <div className="mt-4">
-            <AccionesResponsable lead={lead} user={user} />
+          <div className="mt-4 flex flex-col gap-4">
+            {/*
+             * Reasignación/traspaso es una acción de escritura: un
+             * holding-wide en "Ver en vivo" de una empresa
+             * (`useVistaEmpresa().esVistaSoloLectura`) puede navegar el
+             * detalle pero no reasignar (no soportado en esta versión de
+             * despliegue). El gate vive acá, no dentro de
+             * `AccionesResponsable` (que no llama `useVistaEmpresa()` para
+             * no exigir Router en sus propios tests).
+             */}
+            {esVistaSoloLectura ? null : <AccionesResponsable lead={lead} user={user} />}
+            <NuevaOportunidadButton leadId={lead.id} />
           </div>
         </div>
         <div data-tour="lead-summary">
@@ -383,14 +409,14 @@ export function LeadDetallePage() {
         </div>
       </div>
       {chatAbierto ? (
-        <div className="modo-idec fixed inset-0 z-40 flex flex-col overflow-hidden bg-background md:left-60">
+        <div className="modo-idec fixed inset-0 z-40 flex flex-col overflow-hidden bg-background md:left-[--sidebar-width]">
           <div className="flex shrink-0 items-center gap-3 p-3 md:p-4 md:pl-5">
             {/*
              * Navbar flotante (solo en la vista de chat): la información del
              * lead vive en una tarjeta elevada con halo azul IDEC, separada
              * del botón de cierre, en vez de pegada al borde superior.
              */}
-            <div className="min-w-0 flex-1 rounded-2xl border border-border bg-background shadow-[0_10px_26px_-16px_rgb(var(--idec)/0.35)]">
+            <div className="min-w-0 flex-1 rounded-2xl border border-border bg-background shadow-[0_10px_26px_-16px_rgb(var(--primary)/0.35)]">
               <LeadDetalleEncabezado
                 lead={lead}
                 sinBorde
@@ -401,14 +427,14 @@ export function LeadDetallePage() {
               type="button"
               onClick={() => setChatAbierto(false)}
               aria-label="Cerrar vista de WhatsApp"
-              className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:border-idec/40 hover:text-idec focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-idec/50"
+              className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:text-marca-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             >
               <X className="size-5" aria-hidden="true" />
             </button>
           </div>
           <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
             <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background" aria-label="Módulos del lead">
-              <nav className="grid h-14 shrink-0 grid-cols-3 border-b border-border bg-background" data-tour="lead-workspace-tabs" aria-label="Secciones del lead" role="tablist">
+              <nav className="grid h-14 shrink-0 grid-cols-4 border-b border-border bg-background" data-tour="lead-workspace-tabs" aria-label="Secciones del lead" role="tablist">
                 {VISTAS.map(({ id: vista, label, icon: Icon }) => {
                   const activa = vistaActiva === vista;
                   return (
@@ -419,13 +445,13 @@ export function LeadDetallePage() {
                       data-tour={`lead-workspace-${vista}`}
                       aria-selected={activa}
                       onClick={() => setVistaActiva(vista)}
-                      className={`group relative flex h-14 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 px-2 text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-idec/50 ${activa ? "text-idec" : "text-muted-foreground"}`}
+                      className={`group relative flex h-14 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 px-2 text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 ${activa ? "text-marca-texto" : "text-muted-foreground"}`}
                     >
                       <span className="inline-flex items-center gap-2 truncate">
                         <Icon className="size-4 shrink-0" aria-hidden="true" />
                         <span className="truncate">{label}</span>
                       </span>
-                      <span className={`absolute inset-x-0 bottom-0 h-1 ${activa ? "bg-idec" : "bg-transparent"}`} aria-hidden="true" />
+                      <span className={`absolute inset-x-0 bottom-0 h-1 ${activa ? "bg-primary" : "bg-transparent"}`} aria-hidden="true" />
                     </button>
                   );
                 })}
@@ -440,6 +466,7 @@ export function LeadDetallePage() {
                 ) : null}
                 {vistaActiva === "cita" ? <PanelCitas leadId={lead.id} usuarioId={user.id} /> : null}
                 {vistaActiva === "cierre" ? <CierreLeadPanel leadId={lead.id} cerrado={Boolean(lead.cerradoEn)} /> : null}
+                {vistaActiva === "oportunidad" ? <OportunidadesLeadTab leadId={lead.id} /> : null}
               </div>
             </section>
             <div className="min-h-0 min-w-0">
@@ -455,7 +482,7 @@ export function LeadDetallePage() {
           data-tour="lead-whatsapp"
           aria-label="Abrir chat de WhatsApp"
           title="Abrir chat de WhatsApp"
-          className="fixed bottom-6 right-6 z-30 flex size-14 cursor-pointer items-center justify-center rounded-full bg-idec text-idec-foreground shadow-[0_12px_28px_-8px_rgb(var(--idec)/0.55)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-idec/50 focus-visible:ring-offset-2 active:scale-95"
+          className="fixed bottom-6 right-6 z-30 flex size-14 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_28px_-8px_rgb(var(--primary)/0.55)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 active:scale-95"
         >
           <WhatsAppIcon />
         </button>
