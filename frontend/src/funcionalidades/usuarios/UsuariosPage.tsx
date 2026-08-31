@@ -53,7 +53,7 @@ export function UsuariosPage() {
 
   const [filtros, setFiltros] = useState<UsuariosFiltrosState>(FILTROS_USUARIOS_VACIOS);
   const [pagina, setPagina] = useState(1);
-  const { empresaVistaId } = useVistaEmpresa();
+  const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
 
   const params = useMemo(
     () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA, empresaVistaId ?? undefined),
@@ -99,7 +99,7 @@ export function UsuariosPage() {
       <UsuariosFiltros
         filtros={filtros}
         onChange={updateFiltros}
-        onNuevo={() => setDialogAltaAbierto(true)}
+        onNuevo={esVistaSoloLectura ? undefined : () => setDialogAltaAbierto(true)}
       />
 
       {isLoading ? (
@@ -135,6 +135,7 @@ export function UsuariosPage() {
             // el checkbox "Ver usuarios de todas las empresas" está tildado
             // (`soloHoldingWide === false`).
             mostrarEmpresas={!filtros.soloHoldingWide}
+            soloLectura={esVistaSoloLectura}
           />
 
           <div className="leads-table-footer flex h-10 shrink-0 items-center justify-between rounded-b-lg border-t border-sidebar-border bg-sidebar px-3 text-sm text-sidebar-foreground">

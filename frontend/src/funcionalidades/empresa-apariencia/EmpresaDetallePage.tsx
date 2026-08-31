@@ -58,7 +58,7 @@ const DURACION_TRANSICION_VISTA_VIVA_MS = 1500;
 export function EmpresaDetallePage() {
   const { empresaId } = useParams<{ empresaId: string }>();
   const navigate = useNavigate();
-  const { entrarAEmpresa, salirDeEmpresa } = useVistaEmpresa();
+  const { entrarAEmpresa } = useVistaEmpresa();
   const { data: empresa, isLoading, isError, error, refetch } = useEmpresaHolding(empresaId);
   const { hasRole } = useAuth();
   const [dialogAdminAbierto, setDialogAdminAbierto] = useState(false);
@@ -73,12 +73,16 @@ export function EmpresaDetallePage() {
   const [verEnVivoActivo, setVerEnVivoActivo] = useState(false);
   const timeoutsRef = useRef<number[]>([]);
 
-  useEffect(() => {
-    if (!empresaId) return;
-    entrarAEmpresa(empresaId);
-    return () => salirDeEmpresa();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- entrar/salir son estables (useCallback), reintroducirlas dispara el effect en cada render.
-  }, [empresaId]);
+  // NOTA (bug corregido): esta ficha de detalle (`/empresas/:id`) NO llama a
+  // `entrarAEmpresa`/`salirDeEmpresa` en su ciclo de vida de mount/unmount --
+  // antes lo hacía acá mismo, lo que activaba `esVistaSoloLectura` con solo
+  // VISITAR la ficha (sin haber clickeado "Ver en vivo"), y además el
+  // cleanup de ese efecto corría DESPUÉS de que `handleVerEnVivo` navegaba a
+  // `/panel?empresaId=`, borrando el query param justo al llegar (porque
+  // `useSearchParams` opera sobre `location.search` global, no por ruta).
+  // `entrarAEmpresa` ahora se dispara SOLO desde el click real del botón
+  // "Ver en vivo" (`handleVerEnVivo`, abajo), y la limpieza de esa vista
+  // queda a cargo exclusivo de `SalirVistaEmpresaButton`.
 
   // Cancela el timer de la cortina si el componente se desmonta antes de
   // que dispare (ej. el usuario navega fuera por otra vía mientras la
@@ -98,6 +102,11 @@ export function EmpresaDetallePage() {
 
   function handleVerEnVivo() {
     if (!empresaId) return;
+    // Setea `?empresaId=` en la URL ANTES de que el `navigate()` del timeout
+    // dispare -- así el destino (`/panel?empresaId=`) ya llega con el query
+    // param puesto, en vez de depender de un efecto de mount separado que
+    // podía perder la carrera contra la navegación (ver la nota arriba).
+    entrarAEmpresa(empresaId);
     setVerEnVivoActivo(true);
     const idNavegar = window.setTimeout(() => {
       navigate(`/panel?empresaId=${empresaId}`);

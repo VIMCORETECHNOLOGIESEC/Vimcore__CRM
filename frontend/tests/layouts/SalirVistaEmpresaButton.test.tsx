@@ -139,4 +139,26 @@ describe("SalirVistaEmpresaButton — cortina de salida (transición hacia /empr
 
     expect(navigateMock).toHaveBeenCalledWith("/empresas/empresa-a");
   });
+
+  it("no deja la cortina pegada -- tras completar la navegación, saliendoActivo vuelve a false (bug corregido)", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderConRuta("?empresaId=empresa-a");
+
+    await user.click(screen.getByRole("button", { name: /salir de vista de empresa/i }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    // La cortina "Saliendo de la vista de empresa…" ya no debe seguir
+    // renderizada -- sin el reset, quedaba pegada para siempre porque este
+    // componente vive en `AppLayout` y no se desmonta entre rutas. Como
+    // `?empresaId=` ya se limpió de la URL (mismo click), el componente cae
+    // al guard `!empresaVistaId && !saliendoActivo` y no renderiza nada.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /salir de vista de empresa/i }),
+    ).not.toBeInTheDocument();
+  });
 });

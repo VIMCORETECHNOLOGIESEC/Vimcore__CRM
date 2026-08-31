@@ -636,6 +636,37 @@ describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
   });
 });
 
+describe("UsuariosPage — vista de holding en solo lectura (useVistaEmpresa().esVistaSoloLectura)", () => {
+  it("con sesión holding y ?empresaId=, no muestra «Nuevo usuario»", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
+    await screen.findByText("Marta Herrera");
+
+    expect(screen.queryByRole("button", { name: "Nuevo usuario" })).not.toBeInTheDocument();
+  });
+
+  it("con sesión holding y ?empresaId=, la columna Acciones (editar/restablecer contraseña/dar de baja/reactivar) no se muestra", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
+    await screen.findByText("Marta Herrera");
+
+    expect(screen.queryByText("Acciones")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Acciones de Marta Herrera" })).not.toBeInTheDocument();
+  });
+
+  it("con sesión holding pero sin ?empresaId=, muestra «Nuevo usuario» y la columna Acciones con normalidad", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    renderUsuariosPage(["/usuarios"]);
+    await screen.findByText("Marta Herrera");
+
+    expect(screen.getByRole("button", { name: "Nuevo usuario" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Acciones de Marta Herrera" })).toBeInTheDocument();
+  });
+});
+
 describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración con useVistaEmpresa, default invertido)", () => {
   it("con sesión holding-wide, la primera consulta ya manda `soloHoldingWide: true` (default nuevo, sin tocar nada)", async () => {
     mockearAuth("holding");

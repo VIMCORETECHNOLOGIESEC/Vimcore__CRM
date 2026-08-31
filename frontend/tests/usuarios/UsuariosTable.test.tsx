@@ -24,7 +24,7 @@ function usuarioFake(overrides: Partial<AdminUsuario> = {}): AdminUsuario {
   };
 }
 
-function renderTabla(usuarios: AdminUsuario[], mostrarEmpresas?: boolean) {
+function renderTabla(usuarios: AdminUsuario[], mostrarEmpresas?: boolean, soloLectura?: boolean) {
   return render(
     <TooltipProvider>
       <UsuariosTable
@@ -36,6 +36,7 @@ function renderTabla(usuarios: AdminUsuario[], mostrarEmpresas?: boolean) {
         reactivandoId={null}
         atenuarInactivos={false}
         mostrarEmpresas={mostrarEmpresas}
+        soloLectura={soloLectura}
       />
     </TooltipProvider>,
   );
@@ -97,5 +98,24 @@ describe("UsuariosTable -- subtítulo de empresa por fila", () => {
     renderTabla([usuarioSinEmpresas as AdminUsuario], true);
 
     expect(screen.getByText("Holding")).toBeInTheDocument();
+  });
+});
+
+describe("UsuariosTable -- soloLectura (holding-wide en 'Ver en vivo' de una empresa, bug corregido)", () => {
+  it("con soloLectura, oculta la columna Acciones por completo (sin header ni botón de menú por fila)", () => {
+    renderTabla([usuarioFake()], false, true);
+
+    expect(screen.getByText("Marta Herrera")).toBeInTheDocument();
+    expect(screen.queryByText("Acciones")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Acciones de Marta Herrera" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sin soloLectura (default), muestra la columna Acciones con normalidad", () => {
+    renderTabla([usuarioFake()]);
+
+    expect(screen.getByText("Acciones")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Acciones de Marta Herrera" })).toBeInTheDocument();
   });
 });

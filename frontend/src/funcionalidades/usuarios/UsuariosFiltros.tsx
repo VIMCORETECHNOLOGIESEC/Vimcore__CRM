@@ -32,8 +32,14 @@ const ETIQUETA_TODAS_LAS_EMPRESAS_ACTIVO = "Todas las empresas";
 interface UsuariosFiltrosProps {
   filtros: UsuariosFiltrosState;
   onChange: (filtros: UsuariosFiltrosState) => void;
-  /** Abre el diálogo de alta de usuario (el estado del diálogo vive en `UsuariosPage`). */
-  onNuevo: () => void;
+  /**
+   * Abre el diálogo de alta de usuario (el estado del diálogo vive en
+   * `UsuariosPage`). Opcional: omitido (`undefined`) oculta el botón "Nuevo
+   * usuario" por completo -- caso de un holding-wide en "Ver en vivo" de una
+   * empresa (`useVistaEmpresa().esVistaSoloLectura`), que solo puede
+   * navegar, nunca escribir. Mismo criterio que `BridgesFiltros.tsx::onNuevo`.
+   */
+  onNuevo?: () => void;
   /**
    * `false` fuerza a ocultar el toggle "solo holding-wide" sin importar el
    * `sessionScope` de la sesión -- usado por `empresa-apariencia/EmpresaUsuariosPage.tsx`
@@ -107,10 +113,12 @@ export function UsuariosFiltros({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex shrink-0 items-center gap-3">
           <h2 className="text-2xl">Gestión de Usuarios</h2>
-          <Button onClick={onNuevo} className="rounded-2xl">
-            <Plus className="size-4" aria-hidden="true" />
-            Nuevo usuario
-          </Button>
+          {onNuevo ? (
+            <Button onClick={onNuevo} className="rounded-2xl">
+              <Plus className="size-4" aria-hidden="true" />
+              Nuevo usuario
+            </Button>
+          ) : null}
         </div>
         <div className="flex min-w-0 flex-col gap-3 sm:ml-auto sm:w-full sm:max-w-xl sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">

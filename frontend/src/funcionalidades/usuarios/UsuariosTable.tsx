@@ -43,6 +43,16 @@ interface UsuariosTableProps {
    * `false`, no pasarlo deja el comportamiento anterior sin cambios.
    */
   mostrarEmpresas?: boolean;
+  /**
+   * Un holding-wide en "Ver en vivo" de una empresa (`useVistaEmpresa().esVistaSoloLectura`)
+   * puede navegar pero no escribir -- mismo criterio que
+   * `bridges/BridgesTable.tsx::soloLectura`. A diferencia de Bridges, acá no
+   * hay una acción de solo-lectura tipo "Ver detalle" que deba sobrevivir
+   * (Usuarios no tiene vista de detalle propia): con `soloLectura` activo la
+   * columna "Acciones" completa (header + celda) se oculta, en vez de dejar
+   * el menú `...` sin ningún ítem adentro.
+   */
+  soloLectura?: boolean;
 }
 
 const columnHelper = createColumnHelper<AdminUsuario>();
@@ -146,9 +156,10 @@ export function UsuariosTable({
   reactivandoId,
   atenuarInactivos,
   mostrarEmpresas = false,
+  soloLectura = false,
 }: UsuariosTableProps) {
-  const columns = useMemo(
-    () => [
+  const columns = useMemo(() => {
+    const base = [
       columnHelper.accessor((u) => u.nombre, {
         id: "nombre",
         header: "Nombre",
@@ -180,6 +191,20 @@ export function UsuariosTable({
           return <CeldaCargaActiva usuarioId={usuario.id} />;
         },
       }),
+    ];
+
+    // Columna "Acciones" -- oculta por completo (header + celda) en modo
+    // `soloLectura` (holding-wide en "Ver en vivo" de una empresa, mismo
+    // criterio que `bridges/BridgesTable.tsx::soloLectura`). A diferencia de
+    // Bridges, Usuarios no tiene una acción de solo-lectura tipo "Ver
+    // detalle" que deba sobrevivir, así que en vez de dejar el menú `...`
+    // sin ítems adentro, la columna entera no se agrega.
+    if (soloLectura) {
+      return base;
+    }
+
+    return [
+      ...base,
       columnHelper.display({
         id: "acciones",
         header: "Acciones",
@@ -224,9 +249,8 @@ export function UsuariosTable({
           );
         },
       }),
-    ],
-    [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivandoId, mostrarEmpresas],
-  );
+    ];
+  }, [onEditar, onRestablecerPassword, onDarDeBaja, onReactivar, reactivandoId, mostrarEmpresas, soloLectura]);
 
   /**
    * Anchos del `<colgroup>`, en el MISMO orden que `columns` de arriba --

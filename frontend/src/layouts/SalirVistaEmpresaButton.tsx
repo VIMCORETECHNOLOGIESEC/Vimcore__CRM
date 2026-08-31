@@ -86,6 +86,12 @@ export function SalirVistaEmpresaButton() {
     setSaliendoActivo(true);
     const idNavegar = window.setTimeout(() => {
       navigate(`/empresas/${empresaVistaIdCapturada}`);
+      // Resetea la cortina una vez completada la navegación -- sin esto
+      // `saliendoActivo` quedaba en `true` para siempre (este componente
+      // vive en `AppLayout`, no se desmonta entre rutas), pegando la
+      // cortina "Saliendo de la vista de empresa…" en cualquier uso real
+      // del botón.
+      setSaliendoActivo(false);
     }, DURACION_TRANSICION_SALIDA_MS);
     timeoutsRef.current.push(idNavegar);
   }

@@ -93,3 +93,12 @@ describe("UsuariosFiltros — toggle «ver usuarios de todas las empresas» (Ite
     expect(screen.queryByText(/todas las empresas/i)).not.toBeInTheDocument();
   });
 });
+
+describe("UsuariosFiltros — onNuevo opcional (vista de holding en solo lectura, mismo criterio que BridgesFiltros)", () => {
+  it("con onNuevo omitido, no muestra el botón «Nuevo usuario»", () => {
+    mockearAuth("company");
+    render(<UsuariosFiltros filtros={FILTROS_USUARIOS_VACIOS} onChange={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Nuevo usuario" })).not.toBeInTheDocument();
+  });
+});

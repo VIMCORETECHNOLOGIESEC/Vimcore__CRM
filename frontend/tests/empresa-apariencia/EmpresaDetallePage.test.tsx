@@ -334,26 +334,40 @@ describe("EmpresaDetallePage — 'Ver en vivo'", () => {
   });
 });
 
-describe("EmpresaDetallePage — punto frágil: efecto de entrar/salir de la vista de empresa", () => {
-  it("al montar con un empresaId válido llama a entrarAEmpresa una sola vez, incluso tras re-renders por la carga de datos", async () => {
+describe("EmpresaDetallePage — punto frágil: entrar/salir de la vista de empresa (bug corregido)", () => {
+  it("el simple mount de la ficha de detalle NO llama a entrarAEmpresa ni activa la vista de empresa", async () => {
     fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     renderPage("/empresas/e1");
 
     // Espera a que la carga termine (loading -> success ya disparó sus re-renders).
     await screen.findByRole("heading", { name: "Empresa A" });
 
-    expect(entrarAEmpresaMock).toHaveBeenCalledTimes(1);
-    expect(entrarAEmpresaMock).toHaveBeenCalledWith("e1");
-    expect(salirDeEmpresaMock).not.toHaveBeenCalled();
+    expect(entrarAEmpresaMock).not.toHaveBeenCalled();
   });
 
-  it("al desmontar, llama a salirDeEmpresa", async () => {
+  it("desmontar la ficha (sin haber clickeado «Ver en vivo») NO llama a salirDeEmpresa (ya no hay cleanup de vista acá)", async () => {
     fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
     const { unmount } = renderPage("/empresas/e1");
     await screen.findByRole("heading", { name: "Empresa A" });
 
     unmount();
 
-    await waitFor(() => expect(salirDeEmpresaMock).toHaveBeenCalledTimes(1));
+    expect(salirDeEmpresaMock).not.toHaveBeenCalled();
+  });
+
+  it("clickear «Ver en vivo» SÍ llama a entrarAEmpresa con el empresaId, antes de que dispare la navegación", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    await user.click(screen.getByRole("button", { name: /ver en vivo/i }));
+
+    expect(entrarAEmpresaMock).toHaveBeenCalledTimes(1);
+    expect(entrarAEmpresaMock).toHaveBeenCalledWith("e1");
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 });
