@@ -74,13 +74,22 @@ function buildFiltrosComunes(filtros: LeadsFiltrosState): RedesSocialesCatalogoP
   return params;
 }
 
+/**
+ * `empresaVistaId` (drill-down de un holding-wide, `useVistaEmpresa()`) se
+ * reenvía como `empresaId` solo cuando es truthy -- mismo criterio que
+ * `oportunidades.utils.ts::buildQueryParams`. El backend real ya soporta
+ * `GET /leads?empresaId=` (`leads.access.ts::aplicarFiltroEmpresa`, commit
+ * `0ea2742`), gap que bloqueaba este parámetro antes ya resuelto.
+ */
 export function buildLeadsQueryParams(
   filtros: LeadsFiltrosState,
   pagina: number,
   porPagina: number,
+  empresaVistaId?: string,
 ): LeadsQueryParams {
   const params: LeadsQueryParams = { pagina, porPagina, ...buildFiltrosComunes(filtros) };
   if (filtros.redSocial !== FILTRO_TODOS) params.redSocial = filtros.redSocial;
+  if (empresaVistaId) params.empresaId = empresaVistaId;
   return params;
 }
 

@@ -77,7 +77,12 @@ export function resolveNavigationHref(
 /** Ítems de la barra lateral principal (docs/07 F1). */
 export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   { label: "Dashboard", route: "/panel", icon: LayoutDashboard },
-  { label: "Leads", route: "/leads", icon: Users },
+  {
+    label: "Leads",
+    route: "/leads",
+    icon: Users,
+    requiereVistaEmpresaSiHolding: true,
+  },
   {
     label: "Oportunidades",
     route: "/oportunidades",

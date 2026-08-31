@@ -138,8 +138,20 @@ describe("fetchLeadsApi — contrato de respuesta (GET /leads real, D-A1)", () =
         desde: "2026-01-01",
         hasta: "2026-01-31",
         estadoSla: undefined,
+        empresaId: undefined,
       },
     });
+  });
+
+  it("manda empresaId tal cual cuando viene (drill-down de un holding-wide vía useVistaEmpresa)", async () => {
+    getMock.mockResolvedValue({ leads: [], total: 0, pagina: 1, limite: 10 });
+
+    await fetchLeadsApi({ pagina: 1, porPagina: 10, empresaId: "emp-9" });
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/leads",
+      expect.objectContaining({ params: expect.objectContaining({ empresaId: "emp-9" }) }),
+    );
   });
 
   it("estadoSla CERRADO no tiene equivalente en el backend real -- se omite en vez de mandar un valor inventado", async () => {

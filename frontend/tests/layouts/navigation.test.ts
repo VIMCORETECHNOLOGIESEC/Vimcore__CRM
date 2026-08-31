@@ -59,22 +59,22 @@ describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
   });
 });
 
-describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges)", () => {
-  it("Oportunidades y Bridges están marcados con requiereVistaEmpresaSiHolding", () => {
+describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads)", () => {
+  it("Oportunidades, Bridges y Leads están marcados con requiereVistaEmpresaSiHolding", () => {
     const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
     const bridges = NAVIGATION_ITEMS.find((item) => item.label === "Bridges");
+    const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
     expect(oportunidades?.requiereVistaEmpresaSiHolding).toBe(true);
     expect(bridges?.requiereVistaEmpresaSiHolding).toBe(true);
-  });
-
-  it("Leads NO está marcado (fuera de alcance de este batch)", () => {
-    const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
-    expect(leads?.requiereVistaEmpresaSiHolding).toBeUndefined();
+    // Bloqueado antes por falta de soporte de `?empresaId=` en `GET /leads`
+    // -- ya resuelto en el backend (`leads.access.ts::aplicarFiltroEmpresa`,
+    // commit `0ea2742`), mismo criterio que Oportunidades/Bridges.
+    expect(leads?.requiereVistaEmpresaSiHolding).toBe(true);
   });
 
   it("Dashboard, Usuarios, Reportes, Apariencia y Empresas no están marcados", () => {
     const sinFlag = NAVIGATION_ITEMS.filter(
-      (item) => !["Oportunidades", "Bridges"].includes(item.label),
+      (item) => !["Oportunidades", "Bridges", "Leads"].includes(item.label),
     );
     for (const item of sinFlag) {
       expect(item.requiereVistaEmpresaSiHolding).toBeUndefined();
@@ -87,9 +87,9 @@ describe("resolveNavigationHref", () => {
   if (!oportunidades) {
     throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Oportunidades'");
   }
-  const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
-  if (!leads) {
-    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Leads'");
+  const dashboard = NAVIGATION_ITEMS.find((item) => item.label === "Dashboard");
+  if (!dashboard) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Dashboard'");
   }
 
   it("sesión holding sin vista de empresa: devuelve la ruta pelada para un ítem marcado", () => {
@@ -107,7 +107,7 @@ describe("resolveNavigationHref", () => {
   });
 
   it("un ítem sin requiereVistaEmpresaSiHolding nunca agrega ?empresaId=", () => {
-    expect(resolveNavigationHref(leads, "holding", "empresa-1")).toBe("/leads");
+    expect(resolveNavigationHref(dashboard, "holding", "empresa-1")).toBe("/panel");
   });
 
   it("codifica el id de empresa en la query string", () => {
