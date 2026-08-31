@@ -23,6 +23,8 @@
 | 3 | Listado de leads | ✅ | Leads |
 | 4 | Detalle de lead (datos, timeline, cierre, citas) | ✅ | Leads |
 | 5 | Chat de WhatsApp en detalle de lead | 🎨 | Leads |
+| 33 | Ingreso manual de leads (canal manual) | ✅ | Leads |
+| 34 | Carga masiva de leads por Excel | ✅ | Leads |
 | 6 | Listado de bridges (integraciones) | ✅ | Bridges / Integraciones |
 | 7 | Alta de bridge | ✅ | Bridges / Integraciones |
 | 8 | Detalle de bridge (credenciales, cuentas publicitarias, bitácora) | ✅ | Bridges / Integraciones |
@@ -47,7 +49,7 @@
 | 27 | Gestor de empresas (cards con isotipo) | ✅ | Gestión de Empresas / Holding |
 | 28 | Detalle de empresa (usuarios y bridges de esa empresa) | ✅ | Gestión de Empresas / Holding |
 | 29 | Acceder a empresa / salir de vista de empresa | ✅ | Gestión de Empresas / Holding |
-| 30 | Alta de empresa nueva | ⏳ | Gestión de Empresas / Holding |
+| 30 | Alta de empresa nueva | ✅ | Gestión de Empresas / Holding |
 | 31 | Configuración de empresa (single-company legacy) | ✅ | Configuración / Apariencia |
 | 32 | Apariencia de la propia empresa (self-service) | ✅ | Configuración / Apariencia |
 
@@ -69,6 +71,8 @@
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
 **Notas técnicas**: la sesión resultante queda marcada internamente como `holding` (acceso a todo el grupo de empresas) o `company` (acotada a una sola empresa), según la credencial usada. Esto determina qué pantallas y datos ve la persona más adelante.
+
+El panel de isotipo/colores de esta pantalla (y la cortina de arranque de la SPA, `AppBoot.tsx`) se pintan ANTES de que exista sesión, así que consumen el único endpoint público sin autenticación (`GET /marca-publica`, `skipAuth: true`) vía `obtenerMarcaPublicaConFallback()` (`frontend/src/funcionalidades/configuracion-empresa/marca-publica.api.ts`). Este helper nunca debe romper el boot/login: si la respuesta demora más de 1200ms, o si `GET /marca-publica` responde `200` con body `null` (holding/empresa sin marca pública configurada todavía), cae en silencio a `CONFIGURACION_EMPRESA_DEFAULT`. El caso de `null` fue un bug real encontrado en verificación E2E contra producción (causaba `TypeError: Cannot read properties of null` en `AppBoot.tsx`/`LoginPage.tsx`); corregido devolviendo `marca ?? CONFIGURACION_EMPRESA_DEFAULT` en vez de asumir que solo un rechazo de promesa necesitaba fallback. 5 tests en `frontend/tests/configuracion-empresa/marca-publica.api.test.ts`, verificados en verde. **Sin commitear al momento de esta revisión** — el fix vive en el working tree del worktree `test/gpt`.
 
 ### Perfil de usuario
 
@@ -137,6 +141,37 @@
 
 **Notas técnicas**: la interfaz visual ya está construida (incluida la animación de apertura/cierre), pero hoy muestra una conversación de ejemplo fija — no envía ni recibe mensajes reales todavía. Falta conectarla al módulo de mensajería de WhatsApp del backend (ver "Integración WhatsApp Business" más abajo), que sí está listo del lado del servidor.
 
+### Ingreso manual de leads (canal manual)
+
+**Estado**: ✅ Implementado y funcional
+
+**Descripción funcional**: Permite a Administrador, Supervisor o Asesor de una sesión de empresa cargar un lead a mano (sin pasar por un bridge), eligiendo un "canal manual" (por ejemplo Referido, Llamada telefónica, Feria/evento). El Administrador también puede gestionar el catálogo de canales manuales de su empresa (alta, activar/desactivar).
+
+**Pasos de uso**:
+1. Desde "Leads", usar el botón de carga manual.
+2. Completar los datos del lead (nombre obligatorio; teléfono o correo, al menos uno) y elegir el canal manual.
+3. Confirmar — el lead queda registrado en el listado real y aparece de inmediato en "Leads".
+
+**Captura de pantalla**: _[CAPTURA PENDIENTE]_
+
+**Notas técnicas**: `CargarLeadManualDialog.tsx`/`GestionarCanalesManualesDialog.tsx` + `canal-manual.api.ts`/`useCanalesManuales.ts`, botones nuevos en `LeadsPage.tsx` — exclusivo de sesión `company` (no aplica a una vista holding-wide). Backend real: `POST /canales-manuales` (alta), `GET /canales-manuales` (listado), `PATCH /canales-manuales/:id` (rename/activar-desactivar) y `POST /leads` (alta de lead manual, `origen: MANUAL`) — ver `backend/src/routes/canal-manual.routes.ts`, `backend/src/routes/leads.routes.ts` y `backend/src/services/leads-manual.service.ts`. Gestión del catálogo exclusiva de Administrador; Supervisor/Asesor solo eligen de la lista.
+
+### Carga masiva de leads por Excel
+
+**Estado**: ✅ Implementado y funcional
+
+**Descripción funcional**: Permite cargar muchos leads de una vez subiendo un archivo Excel, en vez de uno por uno. Valida cada fila del lado del cliente (requiere nombre, y al menos teléfono o correo) antes de enviar, y muestra un resumen de creados/duplicados/fallidos por fila.
+
+**Pasos de uso**:
+1. Desde "Leads", usar el botón de carga masiva.
+2. Elegir el archivo Excel y, opcionalmente, un canal manual para todo el lote (el template también admite una columna opcional `canalManualId` por fila, para pisar ese canal de lote en filas puntuales).
+3. Revisar los errores de validación de fila que se muestran antes de enviar.
+4. Confirmar — el sistema envía el lote en tandas de hasta 100 leads y muestra el resumen final (creados/duplicados/fallidos), con el número real de fila del Excel para cada error.
+
+**Captura de pantalla**: _[CAPTURA PENDIENTE]_
+
+**Notas técnicas**: `CargaMasivaLeadsDialog.tsx` + `carga-masiva.api.ts`/`carga-masiva.utils.ts` (parseo de Excel con la dependencia `xlsx`, aprobada y documentada en `AGENTS.md` §2.1) + `useCargaMasiva.ts`, misma gate de rol que "Ingreso manual de leads" (reusa `puedeCargarLeadManual`). Backend real: `POST /leads/carga-masiva` (`backend/src/controllers/leads.controller.ts::postLeadsCargaMasiva`, `backend/src/services/leads-manual.service.ts::crearLeadsManualEnLote`), máximo 100 leads por request, respuesta siempre 200 con reporte por fila (nunca all-or-nothing).
+
 ---
 
 ## Bridges / Integraciones
@@ -153,6 +188,8 @@
 3. Hacer clic en un bridge para ver su detalle.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
+
+**Notas técnicas**: para una sesión holding-wide, "Bridges" queda oculto del menú lateral (y bloqueado por URL directa) hasta que el holding "entre" a la vista de una empresa puntual (`useVistaEmpresa`, ver ítem 29) — un holding-wide no gestiona bridges de ninguna empresa en particular sin haber elegido una primero. Sesión `company` no se ve afectada por este gate. Implementado en `router.tsx` (`ProtectedRoute requiereVistaEmpresaSiHolding`) y `layouts/navigation.ts`/`components/app-sidebar.tsx` para el ítem de menú — mismo mecanismo que "Oportunidades" (ítem 17).
 
 ### Alta de bridge
 
@@ -278,7 +315,7 @@
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: commit `33968fe` (frontend, `SelectorEmpresaDashboard.tsx`, `empresaId` threadeado a las 13 queries de `useMetricas.ts`, gateado a `ADMINISTRADOR` + sesión holding). El schema `empresaId` opcional (`resolveEmpresaId`, 3 ramas: company-scoped lo ignora, holding-wide con `empresaId` hace drill-down, sin él ve todo el holding) llegó a `test/gpt` con el merge `main→test/gpt` (`f6ce0be`, 2026-08-30) — verificado presente en `backend/src/schemas/metricas.schema.ts`. El filtro ya es real de punta a punta. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, mismo bloque que el ítem 13).
+**Notas técnicas**: commit `33968fe` (frontend, `SelectorEmpresaDashboard.tsx`, `empresaId` threadeado a las 13 queries de `useMetricas.ts`, gateado a `ADMINISTRADOR` + sesión holding). El schema `empresaId` opcional (`resolveEmpresaId`, 3 ramas: company-scoped lo ignora, holding-wide con `empresaId` hace drill-down, sin él ve todo el holding) llegó a `test/gpt` con el merge `main→test/gpt` (`f6ce0be`, 2026-08-30) — verificado presente en `backend/src/schemas/metricas.schema.ts`. El filtro ya es real de punta a punta. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, mismo bloque que el ítem 13). **Fix de búsqueda (commit `a5be2f0`)**: el selector reemplazó un `pageSize: 500` fijo (rompía con 400 — el tope real del backend, `listEmpresasQuerySchema`, es 100) por búsqueda server-side con debounce, mismo criterio que `GestorEmpresasPage.tsx` (ítem 26).
 
 ---
 
@@ -322,7 +359,7 @@
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: commit `0a0ab91`, pusheado a `origin/test/gpt`. Rutas `oportunidades`/`oportunidades/:id` en `router.tsx`, ítem de menú "Oportunidades" en `layouts/navigation.ts`. 17 archivos de test / 110 tests propios (892/892 en la suite completa al momento de esta verificación). Las reglas de negocio D7 (autoridad de cierre) y D9 (reasignación) ya estaban implementadas en backend — el frontend solo las consume. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, por indicación directa del usuario) — no incluye dashboards jerárquicos (ver ítem anterior) ni el "corte" de columnas de negociación en `Lead`, que sigue como fase separada sin arrancar.
+**Notas técnicas**: commit `0a0ab91`, pusheado a `origin/test/gpt`. Rutas `oportunidades`/`oportunidades/:id` en `router.tsx`, ítem de menú "Oportunidades" en `layouts/navigation.ts`. 17 archivos de test / 110 tests propios (892/892 en la suite completa al momento de esta verificación). Las reglas de negocio D7 (autoridad de cierre) y D9 (reasignación) ya estaban implementadas en backend — el frontend solo las consume. Excepción de alcance documentada en `AGENTS.md` §7 (2026-08-30, por indicación directa del usuario) — no incluye dashboards jerárquicos (ver ítem anterior) ni el "corte" de columnas de negociación en `Lead`, que sigue como fase separada sin arrancar. **Gate de vista de empresa (commit `0ea8e06`)**: para una sesión holding-wide, "Oportunidades" queda oculto del menú lateral (y bloqueado por URL directa) hasta que el holding "entre" a la vista de una empresa puntual — un holding-wide no gestiona oportunidades de ninguna empresa en particular hasta elegir una (`useVistaEmpresa`, ver ítem 29). Sesión `company` no se ve afectada. Leads queda deliberadamente afuera de este gate: sigue visible sin restricción. Mismo mecanismo que "Bridges" (ítem 6).
 
 ---
 
@@ -439,10 +476,11 @@
 2. Buscar una empresa por nombre (con debounce).
 3. Navegar entre páginas de resultados (25 por página).
 4. Editar la apariencia de una empresa desde su tarjeta.
+5. Dar de alta una empresa nueva con el botón "Nueva empresa" (ver ítem 30).
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: `GestorEmpresasPage.tsx` — rediseño a grid de tarjetas (commit `23069cd`) y agregado de paginación/búsqueda (commit `18752ee`), ambos en `origin/test/gpt`. Conectado a `GET /empresas` real, sin mocks.
+**Notas técnicas**: `GestorEmpresasPage.tsx` — rediseño a grid de tarjetas (commit `23069cd`) y agregado de paginación/búsqueda (commit `18752ee`), ambos en `origin/test/gpt`. Conectado a `GET /empresas` real, sin mocks. Botón "Nueva empresa" agregado en commit `8cdfbb0` (ver ítem 30).
 
 ### Gestor de empresas (cards con isotipo)
 
@@ -456,37 +494,43 @@
 
 ### Detalle de empresa
 
-**Estado**: ✅ Implementado y funcional (sin punto de entrada desde el gestor, ver nota)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional**: Pantalla que muestra el nombre de la empresa y enlaces a "Usuarios" y "Bridges" de esa empresa específica, ya filtrados de verdad del lado del servidor.
+**Descripción funcional**: Pantalla que muestra el nombre/isotipo de la empresa y tres accesos: "Usuarios" y "Bridges" de esa empresa específica (ya filtrados de verdad del lado del servidor), y — para un Administrador — "Nuevo administrador" (ver ítem 23). **No muestra leads todavía** (ver nota de gap más abajo).
 
-**Pasos de uso (estado actual)**:
-1. El botón "Ver detalles" de cada tarjeta del gestor sigue navegando directo a `/usuarios?empresaId=...` (mecanismo ya establecido para "Acceder a empresa", ver ítem siguiente) y **no** pasa por esta pantalla — es una decisión de producto ya confirmada, no un defecto pendiente.
-2. La pantalla de detalle en sí (`/empresas/:empresaId`) existe y funciona accediendo directamente a esa URL.
+**Pasos de uso**:
+1. Desde el gestor de empresas (ítem 26), usar el botón "Ver detalles" de una tarjeta — navega directo a `/empresas/:empresaId`, esta pantalla.
+2. Hacer clic en "Usuarios" o "Bridges" para ir a la vista dedicada de esa empresa (`/empresas/:empresaId/usuarios`, `/empresas/:empresaId/bridges` — ver ítem 29).
+3. Usar "Nuevo administrador" para dar de alta un administrador de esa empresa (Administrador únicamente).
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: commit `1ce7359` cerró los dos gaps de backend que quedaban abiertos: `EmpresaDetallePage.tsx` ahora resuelve la empresa vía `GET /empresas/:empresaId` real (`useEmpresaHolding`, con manejo de 404) en vez del parche que buscaba en memoria sobre una página de hasta 500 registros; y se confirmó que `GET /usuarios`/`GET /bridges` **ya filtran por `empresaId` del lado del servidor** (`usuarios.service.ts`/`bridge.service.ts`), tras el merge `main→test/gpt` (`f6ce0be`) — ya no es una vista simulada sin scope real.
+**Notas técnicas**: commit `1ce7359` cerró los dos gaps de backend que quedaban abiertos: `EmpresaDetallePage.tsx` resuelve la empresa vía `GET /empresas/:empresaId` real (`useEmpresaHolding`, con manejo de 404); y `GET /usuarios`/`GET /bridges` **ya filtran por `empresaId` del lado del servidor** (`usuarios.service.ts`/`bridge.service.ts`). **Punto de entrada corregido (commit `8cdfbb0`)**: el botón "Ver detalles" del gestor ya no salta directo a `/usuarios?empresaId=...` — ahora pasa por esta pantalla, que a su vez enlaza a las vistas dedicadas de Usuarios/Bridges de esa empresa (ver ítem 29 para el detalle del mecanismo, que cambió de un query param compartido a rutas propias). **Gap confirmado, sin implementar todavía**: el backend (`GET /leads`, `leads.access.ts::aplicarFiltroEmpresa`, mergeado a este worktree desde `main`) ya soporta un `empresaId` opcional para que una sesión holding-wide filtre leads por empresa puntual, pero el frontend no lo consume en ningún lado — en particular, esta pantalla no tiene ninguna sección ni acceso a leads de la empresa. Queda como brecha frontend pendiente (ver `docs/00-estado-documentacion.md`, tabla de brechas abiertas).
 
 ### Acceder a empresa / salir de vista de empresa
 
 **Estado**: ✅ Implementado y funcional (mecanismo distinto al descrito originalmente, ver nota)
 
-**Descripción funcional**: Desde el gestor de empresas, el botón "Ver detalles" de una tarjeta pone al holding en "vista de esa empresa" (de solo lectura, sin un cambio real de sesión/token); mientras está en ese modo, un botón flotante visible en toda la aplicación permite salir en cualquier momento y volver al panel general del holding.
+**Descripción funcional**: Desde el gestor de empresas, el botón "Ver detalles" de una tarjeta lleva a "Detalle de empresa" (ítem 28) y, al mismo tiempo, pone al holding en "vista de esa empresa" (de solo lectura, sin un cambio real de sesión/token); mientras está en ese modo, un botón flotante visible en toda la aplicación permite salir en cualquier momento y volver al panel general del holding.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: implementado sobre un query param (`?empresaId=`) centralizado en `useVistaEmpresa.ts`, consumido por `UsuariosPage.tsx` y `BridgesPage.tsx` para acotar su propio fetch, y por `SalirVistaEmpresaButton.tsx` (montado en `AppLayout.tsx`) para salir — commits `10f6dcb` (botón de salir) y `1b43c8f` (centralización del hook), ambos en `origin/test/gpt`. **Diferencia con la descripción original de este ítem**: "entrar" no ocurre desde la pantalla de "Detalle de empresa" (ítem anterior) sino directamente desde la tarjeta del gestor de empresas — el resultado funcional (vista acotada + botón para salir) es el mismo. Por decisión de producto, sigue siendo una vista de solo lectura (no un cambio real de sesión), pero el filtro por `empresaId` que el frontend envía **ya lo aplica el servidor de verdad** desde el merge `main→test/gpt` (`f6ce0be`) — confirmado en `usuarios.service.ts`/`bridge.service.ts`.
+**Notas técnicas**: "entrar"/"salir" de la vista siguen centralizados en `useVistaEmpresa.ts` (`entrarAEmpresa`/`salirDeEmpresa`, query param `?empresaId=`) — commits `10f6dcb` (botón de salir) y `1b43c8f` (centralización del hook), ambos en `origin/test/gpt`. **Mecanismo de entrada actualizado**: ya no es el botón del gestor el que llama a `entrarAEmpresa` directamente — el botón navega a `/empresas/:empresaId` (ítem 28), y es el `useEffect` de `EmpresaDetallePage.tsx` el que entra/sale de la vista al montar/desmontar. **Usuarios/Bridges de esa empresa ya NO pasan por el query param**: desde "Detalle de empresa" navegan a rutas dedicadas (`/empresas/:empresaId/usuarios`, `/empresas/:empresaId/bridges` — `EmpresaUsuariosPage.tsx`/`EmpresaBridgesPage.tsx`, con `empresaId` fijo del path), separadas de `UsuariosPage.tsx`/`BridgesPage.tsx` (las pantallas que un holding-wide usa para SUS PROPIOS usuarios/bridges holding-wide). `useVistaEmpresa`/`?empresaId=` sigue vigente para otros consumidores que si dependen de ese query param al navegar tras entrar a una empresa: `SelectorEmpresaDashboard.tsx` (ítem 14), "Oportunidades" (ítem 17) y el botón flotante de salir. El filtro por `empresaId` que estas vistas envían ya lo aplica el servidor de verdad (`usuarios.service.ts`/`bridge.service.ts`, confirmado tras el merge `main→test/gpt` `f6ce0be`).
 
 ### Alta de empresa nueva
 
-**Estado**: ⏳ Pendiente (bloqueado por backend)
+**Estado**: ✅ Implementado y funcional
 
-**Descripción funcional esperada**: Permite al holding dar de alta una empresa nueva dentro del grupo.
+**Descripción funcional**: Permite al holding dar de alta una empresa nueva dentro del grupo, con nombre y (opcionalmente) colores de marca e isotipo — mismo formulario que usa "Apariencia de la propia empresa" (ítem 32).
+
+**Pasos de uso**:
+1. Desde el gestor de empresas (ítem 26), usar el botón "Nueva empresa".
+2. Completar el nombre (requerido) y, opcionalmente, colores de marca e isotipo.
+3. Confirmar la creación.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: hoy no existe ninguna vía, ni de aplicación ni de backend, para crear una empresa nueva fuera de la configuración inicial del sistema — todas las empresas existentes se cargaron por ese medio, no por esta pantalla.
+**Notas técnicas**: commit `8cdfbb0` — `CrearEmpresaHoldingDialog.tsx` + `useCreateEmpresaHolding` (`useEmpresaAparienciaHolding.ts`) contra `POST /empresas` real (`empresa-apariencia.routes.ts`, exclusivo `sessionScope: holding` + `requireRole("ADMINISTRADOR")`), sin mocks. Antes de este commit, todas las empresas existentes en producción se habían cargado por bootstrap, no por esta pantalla.
 
 ---
 

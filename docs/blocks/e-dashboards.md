@@ -10,10 +10,14 @@
 > Bloque D provea `Oportunidad`/`Producto`: el embudo de negociación y el
 > rendimiento por producto dependen de esas entidades.
 
-## Estado real (2026-08-30)
+## Estado real (2026-08-30, actualizado)
 
-**Backend cerrado. Frontend de "Extensiones de dashboard" ya construido y
-pusheado; frontend de reportes y de conexión de Meta Ads sigue pendiente.**
+**Backend cerrado. Frontend de "Extensiones de dashboard", del filtro por
+empresa y de reportes (PDF/XLSX) ya construido, pusheado y ruteado
+(`frontend/src/funcionalidades/reportes/ReportesPage.tsx`, entrada de
+navegación "Reportes" en `layouts/navigation.ts`, ver
+`docs/23-alcance-funcional-manual-tecnico.md` ítems 13-15, todos ✅). Solo
+la UI de conexión de Meta Ads sigue pendiente (ítem 16, ⏳).**
 Commit `e1f2dca` en `origin/test/gpt` conecta `GraficoEmbudoOportunidad.tsx`,
 `GraficoPorProducto.tsx`, `CascadaLeadOportunidad.tsx` y
 `GraficoRankingProductosPorEmpresa.tsx` a los 4 endpoints `/metricas/*` ya
@@ -38,7 +42,8 @@ abajo, no cuenta todavía como cerrado.
 
 **Pendiente, fuera de este backend**: `GraficoEmbudoOportunidad.tsx` y
 `GraficoPorProducto.tsx` ya se conectaron (commit `e1f2dca`, ver nota arriba);
-siguen pendientes la UI de reportes y la UI de conexión de Meta Ads — ver
+la UI de reportes también se conectó (commit `c8f80a5`, `docs/23` ítem 15).
+Solo sigue pendiente la UI de conexión de Meta Ads — ver
 `docs/contrato-frontend-general.md` (distribuido aparte, no vive en el
 repo). Desglose por empresa en reportes
 holding-wide (el PDF/XLSX, `pdf-reporte.ts`) sigue como TODO explícito en el
