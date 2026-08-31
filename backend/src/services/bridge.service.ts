@@ -2,6 +2,7 @@ import { Prisma, RedSocial, type Bridge, type BridgeLog, type EstadoBridge, type
 import { AppError } from "../lib/app-error.js";
 import { generarClaveBridge, hashClaveBridge } from "../lib/clave-bridge.js";
 import { BRIDGE_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
+import { pollUnBridgeSeguro } from "../jobs/bridgeApi/poll.job.js";
 import * as bridgeLogRepository from "../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../repositories/bridge.repository.js";
 import type { BridgeConCuentas } from "../repositories/bridge.repository.js";
@@ -202,6 +203,20 @@ export async function updateBridge(
     throw bridgeNotFound();
   }
   const actualizado = await bridgeRepository.update(id, input);
+
+  // Fix (backfill inmediato al activar, 2026-08-31): sin esto, un bridge
+  // API_EXTERNA recién activado esperaba hasta 2 minutos (el tick del job)
+  // para traer los leads que la API del cliente ya tenía cargados desde
+  // antes. `pollUnBridgeSeguro` se autoguarda (config incompleta/estado
+  // distinto de ACTIVO -> no-op) y ya maneja su propio try/catch +
+  // `bridge_logs`, así que es seguro dispararla sin condición extra ni
+  // `.catch` propio acá. Fire-and-forget a propósito: la activación del
+  // bridge nunca debe esperar ni fallar por una API externa lenta o caída
+  // -- el tick de 2 minutos reintenta solo de cualquier forma.
+  if (actualizado.redSocial === "API_EXTERNA") {
+    void pollUnBridgeSeguro(actualizado);
+  }
+
   return toBridgeDto(actualizado);
 }
 

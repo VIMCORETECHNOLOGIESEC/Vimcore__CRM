@@ -49,7 +49,19 @@ async function registrarLogSeguro(
   }
 }
 
+/**
+ * Privada -- el punto de entrada público es `pollUnBridgeSeguro` (más abajo),
+ * que agrega el try/catch + `bridge_logs` compartido por todos los callers
+ * (tick de 2 minutos, y los disparos inmediatos de `bridge.service.ts`/
+ * `bridgeApi/configuracion.service.ts`).
+ *
+ * Auto-contenida a propósito (guardas de config/estado adentro, no en el
+ * caller): segura de llamar desde CUALQUIER punto sin que ese caller tenga
+ * que replicar la lógica de "¿está lista para pollearse?".
+ */
 async function pollUnBridge(bridge: Bridge): Promise<void> {
+  if (bridge.estado !== "ACTIVO") return;
+
   const configuracion = bridge.configuracionJson as Partial<ConfiguracionBridgeApi> | null;
 
   // Config incompleta (admin todavía cargando conexión/mapeo): estado
@@ -133,6 +145,28 @@ async function pollUnBridge(bridge: Bridge): Promise<void> {
 }
 
 /**
+ * Envoltorio de `pollUnBridge` con el mismo manejo de errores para
+ * CUALQUIER caller (el tick de 2 minutos de abajo, y los disparos
+ * inmediatos de `bridge.service.ts`/`bridgeApi/configuracion.service.ts`) --
+ * extraído acá (2026-08-31) para no duplicar el try/catch + `bridge_logs` en
+ * cada call site nuevo. Un fallo inesperado (p. ej. el bug de RLS ya
+ * corregido) queda visible en la pestaña "Logs" del bridge, no solo en los
+ * logs del contenedor, sin importar quién haya disparado el poll.
+ */
+export async function pollUnBridgeSeguro(bridge: Bridge): Promise<void> {
+  try {
+    await pollUnBridge(bridge);
+  } catch (err) {
+    logger.error({ err, bridgeId: bridge.id }, "bridgeApi: fallo inesperado en el poll de un bridge");
+    await registrarLogSeguro(
+      bridge,
+      "ERROR",
+      `bridgeApi: fallo inesperado en el poll -- ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
  * `RedSocial.API_EXTERNA`: recorre todos los bridges activos de este tipo y
  * hace un poll cada uno. Igual que `ingesta-inbox.job.ts`, corre fuera de un
  * ciclo HTTP -- `empresaId: null` (holding-wide, D3) bajo el rol `crm_app`
@@ -143,22 +177,7 @@ export async function pollBridgesApiExterna(): Promise<void> {
   await runWithTenantContext({ empresaId: null }, async () => {
     const bridges = await bridgeRepository.findBridgesApiExternaActivos();
     for (const bridge of bridges) {
-      try {
-        await pollUnBridge(bridge);
-      } catch (err) {
-        logger.error({ err, bridgeId: bridge.id }, "bridgeApi: fallo inesperado en el poll de un bridge");
-        // Fix (visibilidad, 2026-08-31): antes esta rama SOLO quedaba en los
-        // logs del contenedor -- invisible para un administrador mirando la
-        // pestaña "Logs" del bridge en el panel (`registrarLogSeguro` de
-        // arriba sí escribe `bridge_logs`, esta rama no lo hacía). Un fallo
-        // inesperado (p. ej. el mismo bug de RLS de más arriba) quedaba
-        // indistinguible de "todavía no corrió" desde la UI.
-        await registrarLogSeguro(
-          bridge,
-          "ERROR",
-          `bridgeApi: fallo inesperado en el poll -- ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      await pollUnBridgeSeguro(bridge);
     }
   });
 }
