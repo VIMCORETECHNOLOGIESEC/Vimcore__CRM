@@ -112,6 +112,13 @@ export interface CreateLeadData {
    * resolverlo.
    */
   empresaId: Lead["empresaId"];
+  /**
+   * Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"):
+   * poblado únicamente por el camino manual/carga masiva
+   * (`leads-manual.service.ts`) — `undefined` en cualquier otro llamador
+   * (webhook/bridge), Prisma lo deja NULL, sin cambio de comportamiento.
+   */
+  canalManualId?: Lead["canalManualId"];
 }
 
 export async function createLead(

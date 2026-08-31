@@ -263,6 +263,29 @@ export interface LeadCierre extends LeadAcceso {
  * pruebas todavía la referencian — inerte en producción, no dead code sin
  * dueño.
  */
+/**
+ * Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico",
+ * docs/blocks/d-routing-oportunidad.md:286): "Administrador, Supervisor y
+ * Asesor pueden cargar un lead manual — requiere Membresia activa en la
+ * empresa destino". VENDEDOR queda deliberadamente excluido (spec, no
+ * gestiona ingreso de leads, solo su cartera ya asignada). Solo chequeo de
+ * rol, a diferencia de `canRead`/`canEdit`/etc: no hay `LeadAcceso` que
+ * evaluar todavía (el lead no existe) — "Membresia activa en la empresa
+ * destino" ya está garantizada por cómo `require-authentication.middleware.ts`
+ * resuelve `usuario.empresaId` en la sesión (Bloque C, D2), así que no hace
+ * falta un query adicional acá.
+ */
+export function canCreateManual(usuario: UsuarioAcceso): boolean {
+  const ROLES_INGRESO_MANUAL: readonly RolUsuario[] = [
+    "ADMINISTRADOR",
+    "SUPERVISOR",
+    "ASESOR",
+    "SUPERVISOR_HOLDING",
+    "SUPER_ADMIN",
+  ];
+  return ROLES_INGRESO_MANUAL.includes(usuario.rol);
+}
+
 export function canClose(usuario: UsuarioAcceso, lead: LeadCierre): MotivoDenegacion | null {
   if (!empresaCoincide(usuario, lead)) return "no_es_titular";
   if (lead.etapa === "NUEVO") return "etapa_no_cerrable";
