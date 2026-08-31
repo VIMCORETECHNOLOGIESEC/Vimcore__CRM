@@ -17,6 +17,7 @@ import type {
   MensajesListResultDto,
 } from "../../types/whatsappMessages/conversacion.dto.js";
 import { publishCommittedEvents } from "../committed-events.service.js";
+import { aplicarFiltroEmpresa } from "../leads.access.js";
 import { canReply, canView, ROLES_ACCESO_TOTAL, type UsuarioAccesoConversacion } from "./conversaciones.access.js";
 import { enviarMensajeTexto } from "./whatsapp-cloud-api.service.js";
 
@@ -64,13 +65,21 @@ function permisoDenegado(): AppError {
  * combinan con AND por defecto en Prisma) — un asesor pidiendo el
  * `clienteId` de una conversación ajena sigue sin verla, `asesorId` sigue
  * exigiéndose igual.
+ *
+ * Fix (drill-down holding-wide, 2026-08-31): `aplicarFiltroEmpresa`
+ * (`leads.access.ts`, ya reusado por `metricas.access.ts`) agrega la tercera
+ * rama que faltaba acá -- sesión holding-wide CON `query.empresaId` acota a
+ * esa empresa puntual; sin él, sigue agregando todo el holding (sin cambio
+ * de comportamiento). Antes de este fix, una sesión holding-wide "entrando"
+ * a la vista de una empresa seguía viendo TODAS las conversaciones
+ * mezcladas -- no era una fuga cross-empresa (cada `Conversacion` ya tenía
+ * su `empresaId` real correcto), pero el listado nunca las separaba.
  */
 export async function listConversaciones(
   usuario: UsuarioAccesoConversacion,
   query: ListConversacionesQuery,
 ): Promise<ConversacionListResultDto> {
-  const where: Prisma.ConversacionWhereInput = {};
-  if (usuario.empresaId !== null) where.empresaId = usuario.empresaId;
+  const where: Prisma.ConversacionWhereInput = aplicarFiltroEmpresa({}, usuario, query);
   if (!ROLES_ACCESO_TOTAL.includes(usuario.rol)) where.asesorId = usuario.id;
   if (query.clienteId) where.clienteId = query.clienteId;
 
