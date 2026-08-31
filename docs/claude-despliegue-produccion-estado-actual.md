@@ -173,6 +173,26 @@ Verificado el 2026-08-30 contra las variables reales del Container App
   configuración de Meta de arriba (App Review + modo Live + Verificación de
   Negocio), no backend.
 
+## Frontend en VPS — preparación agregada (2026-08-31)
+
+Se agregó la base operativa para desplegar solo el frontend en una VPS, mientras
+el backend se mantiene en Azure Container Apps:
+
+- `frontend/Dockerfile.prod`: imagen productiva multi-stage, build de Vite con
+  `VITE_API_BASE_URL` y servidor Nginx.
+- `deploy/frontend/nginx.conf`: fallback de SPA, cache de assets y endpoint
+  `/health`.
+- `deploy/frontend/docker-compose.yml`: Compose mínimo para la VPS, exponiendo
+  puerto 80.
+- `.github/workflows/deploy-frontend-vps.yml`: tests y build de frontend antes
+  de publicar imagen en GHCR y actualizar la VPS por SSH.
+- `docs/despliegue-frontend-vps.md`: guía de secrets, variables, dominio,
+  HTTPS y verificación.
+
+El dominio se configura fuera del repo, en DNS: registro `A` del subdominio al
+IP público de la VPS. Antes de uso real con usuarios, activar HTTPS y cambiar
+`CORS_ORIGIN` del backend desde `*` al origen exacto del frontend.
+
 ## Pendiente / gaps conocidos
 
 - **Incidente cerrado (2026-08-31): `tests/setup.ts` truncó producción.**
@@ -189,9 +209,9 @@ Verificado el 2026-08-30 contra las variables reales del Container App
   en la base real (`usuario-seed-*@t.local`, `passwordHash: "x"`, no son
   credenciales usables pero ensucian los datos) antes de que empiece a
   haber clientes reales.
-- Frontend todavía no desplegado (va a un VPS aparte) — `CORS_ORIGIN` sigue
-  en `*` temporalmente, cambiar al dominio real del frontend en cuanto
-  exista.
+- Frontend todavía no desplegado en la VPS — ya existen los artefactos base de
+  CI/CD, Docker, Nginx y documentación; falta preparar la VPS, configurar DNS,
+  activar HTTPS y cambiar `CORS_ORIGIN` al dominio real del frontend.
 - WhatsApp/Meta Ads: falta App Review + modo Live + Verificación de Negocio
   del Business Portfolio para uso productivo con clientes reales (ver
   sección arriba) — la config técnica (env vars, webhooks, casos de uso) ya
