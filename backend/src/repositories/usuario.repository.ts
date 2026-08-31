@@ -86,8 +86,53 @@ export interface FindUsuariosOptions {
   orderBy: Prisma.UsuarioOrderByWithRelationInput;
 }
 
+/**
+ * Fix (Josu, panel de holding — subtítulo "Holding"/"Empresa X" por fila del
+ * listado): select PROPIO del listado, deliberadamente separado de
+ * `adminUsuarioSelect` — ese select es compartido por `create`/`update`/
+ * `findPublicById`, ninguno de los cuales pidió este campo. Solo trae
+ * `Membresia` ACTIVA (mismo criterio "activa" que `existsEnEmpresa` y
+ * `buildWhere` en `usuarios.service.ts` — una membresía desactivada no cuenta
+ * como pertenencia vigente a esa empresa).
+ */
+const usuarioListSelect = {
+  ...adminUsuarioSelect,
+  membresias: {
+    where: { activa: true },
+    select: { empresa: { select: { id: true, nombre: true } } },
+  },
+} satisfies Prisma.UsuarioSelect;
+
+type UsuarioListRaw = Prisma.UsuarioGetPayload<{ select: typeof usuarioListSelect }>;
+
+/**
+ * `AdminUsuarioView` + `empresas`: array aplanado de `{id, nombre}` (una
+ * entrada por `Membresia` activa) en vez del `membresias` crudo de Prisma —
+ * contrato HTTP más simple para el frontend (pedido explícito de Josu).
+ * Deduplicado por `empresa.id`: el `@@unique([usuarioId, empresaId, rol])` de
+ * `Membresia` permite, en teoría, más de una fila activa para la misma
+ * empresa (ej. `ASESOR` + otro rol) — sin dedupe el listado repetiría el
+ * nombre de esa empresa.
+ */
+export type AdminUsuarioListView = AdminUsuarioView & {
+  empresas: { id: string; nombre: string }[];
+};
+
+function toListView(usuario: UsuarioListRaw): AdminUsuarioListView {
+  const { membresias, ...rest } = usuario;
+  const vistos = new Set<string>();
+  const empresas = membresias
+    .map((m) => m.empresa)
+    .filter((empresa) => {
+      if (vistos.has(empresa.id)) return false;
+      vistos.add(empresa.id);
+      return true;
+    });
+  return { ...rest, empresas };
+}
+
 export interface FindUsuariosResult {
-  usuarios: AdminUsuarioView[];
+  usuarios: AdminUsuarioListView[];
   total: number;
 }
 
@@ -103,14 +148,14 @@ export async function findUsuarios(
   const [usuarios, total] = await Promise.all([
     prisma.usuario.findMany({
       where,
-      select: adminUsuarioSelect,
+      select: usuarioListSelect,
       skip: options.skip,
       take: options.take,
       orderBy: options.orderBy,
     }),
     prisma.usuario.count({ where }),
   ]);
-  return { usuarios, total };
+  return { usuarios: usuarios.map(toListView), total };
 }
 
 export async function findPublicById(id: string): Promise<AdminUsuarioView | null> {
