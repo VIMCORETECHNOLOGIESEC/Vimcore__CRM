@@ -40,6 +40,14 @@ function descubrimientoFallido(): AppError {
   );
 }
 
+function suscripcionFallida(): AppError {
+  return new AppError(
+    "whatsapp_suscripcion_fallida",
+    502,
+    "No se pudo suscribir la cuenta de WhatsApp Business al webhook de mensajes",
+  );
+}
+
 export interface EnvioMensajeResultado {
   wamid: string;
 }
@@ -77,6 +85,37 @@ export async function enviarMensajeTexto(
   if (!parsed.success) throw envioFallido();
 
   return { wamid: parsed.data.messages[0]!.id };
+}
+
+/**
+ * Fix (mensajes entrantes de WhatsApp, 2026-08-31): sin este llamado, Meta
+ * NUNCA manda `POST /webhooks/whatsapp` para un WABA, sin importar que el
+ * webhook de la App esté bien configurado/verificado -- Embedded Signup deja
+ * a la App con el token y el número, pero cada WABA necesita esta
+ * confirmación explícita aparte (`POST /{waba-id}/subscribed_apps`, Meta
+ * WhatsApp Cloud API). `createWhatsAppConexion` (`whatsapp-oauth.service.ts`)
+ * lo llama ANTES de persistir la conexión -- si falla, la conexión no se crea
+ * en vez de quedar en un estado "conectado" engañoso que en realidad nunca
+ * va a recibir un mensaje.
+ */
+export async function suscribirWaba(
+  wabaId: string,
+  tokenAcceso: string,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<void> {
+  let ok: boolean;
+  try {
+    const respuesta = await fetchFn(`${GRAPH_API_BASE_URL}/${encodeURIComponent(wabaId)}/subscribed_apps`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${tokenAcceso}` },
+      signal: AbortSignal.timeout(WHATSAPP_CLOUD_API_TIMEOUT_MS),
+    });
+    ok = respuesta.ok;
+    await respuesta.json().catch(() => null);
+  } catch {
+    throw suscripcionFallida();
+  }
+  if (!ok) throw suscripcionFallida();
 }
 
 async function getJson(url: string, fetchFn: typeof globalThis.fetch): Promise<unknown> {

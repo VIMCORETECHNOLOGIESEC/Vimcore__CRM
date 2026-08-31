@@ -17,7 +17,7 @@ import type {
   WhatsAppOAuthStartDto,
 } from "../../types/whatsappMessages/whatsapp-oauth.dto.js";
 import { GRAPH_API_BASE_URL } from "../meta-webhook.service.js";
-import { descubrirNumeros } from "./whatsapp-cloud-api.service.js";
+import { descubrirNumeros, suscribirWaba } from "./whatsapp-cloud-api.service.js";
 
 /**
  * Diálogo de autorización de Meta ("Facebook Login for Business") — host
@@ -278,6 +278,13 @@ export async function createWhatsAppConexion(
       "El número indicado no está entre los descubiertos para esta cuenta",
     );
   }
+
+  // Fix (mensajes entrantes, 2026-08-31): confirmar la suscripción del WABA
+  // ANTES de persistir -- ver `whatsapp-cloud-api.service.ts::suscribirWaba`.
+  // Si falla, la conexión no se crea (mismo criterio que
+  // `linkedin-subscription.service.ts::activar`: "activar solo confirma
+  // después de que el proveedor confirme").
+  await suscribirWaba(numero.wabaId, payload.accessToken);
 
   const conexion = await whatsappConexionRepository.upsertConexion({
     empresaId: payload.empresaId,
