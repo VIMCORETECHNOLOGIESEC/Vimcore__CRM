@@ -41,6 +41,10 @@ services:
       db:
         condition: service_healthy
     environment:
+      # Evita que pnpm pida confirmacion interactiva (TTY) para purgar
+      # node_modules si detecta drift al arrancar `pnpm dev` -- un contenedor
+      # nunca tiene TTY, así que sin esto el arranque aborta.
+      CI: "true"
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_URL_APP: ${DATABASE_URL_APP}
       CRM_APP_DB_PASSWORD: ${CRM_APP_DB_PASSWORD}
@@ -103,6 +107,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      # Forma lista con nombre sin `=valor`: pasa VITE_API_BASE_URL solo si
+      # está exportada en el entorno de quien corre `docker compose` -- si no
+      # lo está, queda AUSENTE del contenedor (no vacía), para que
+      # `httpClient.ts` caiga en su default de `localhost:3000` como antes.
+      - CI=true
+      - VITE_API_BASE_URL
     ports:
       - "5173:5173"
     volumes:
