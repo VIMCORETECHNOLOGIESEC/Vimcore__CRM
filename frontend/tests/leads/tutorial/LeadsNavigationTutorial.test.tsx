@@ -20,6 +20,7 @@ describe("LeadsNavigationTutorial", () => {
       '[data-tour="lead-workspace-progreso"]',
       '[data-tour="lead-workspace-cita"]',
       '[data-tour="lead-workspace-cierre"]',
+      '[data-tour="lead-workspace-oportunidad"]',
     ]);
   });
 

@@ -3,18 +3,43 @@
  * `RolUsuario` refleja el enum Prisma `RolUsuario` (backend/prisma/schema.prisma).
  * Mantenerlos sincronizados manualmente: el frontend no comparte el cliente
  * de Prisma generado.
+ *
+ * `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (Bloque F, aditivo): mismo alcance
+ * máximo entre los dos -- acceso total holding-wide, sin restricción de
+ * `empresaId`, tratados como bypass total en cualquier chequeo de autoridad
+ * "acceso total" ya existente (mismo criterio que `ADMINISTRADOR` hoy, ver
+ * el comentario de `backend/prisma/schema.prisma::RolUsuario`). No son
+ * seleccionables al crear/editar un usuario desde el frontend
+ * (`catalogos.ts::ROLES_USUARIO_SELECCIONABLES` no los incluye) -- se
+ * provisionan por otro camino, fuera de este alcance.
  */
-export type RolUsuario = "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR";
+export type RolUsuario =
+  | "ADMINISTRADOR"
+  | "SUPERVISOR"
+  | "SUPERVISOR_HOLDING"
+  | "SUPER_ADMIN"
+  | "ASESOR"
+  | "VENDEDOR";
 
 /**
  * `as const satisfies` (no solo `readonly RolUsuario[]`) para que el tipo se
  * infiera como tupla literal -- necesario para reutilizarla directamente en
  * `z.enum(ROLES_USUARIO)` (F7, formularios de alta/edición de usuario) sin
  * duplicar la lista de roles en un segundo lugar.
+ *
+ * Incluye los 6 valores del enum ampliado (Bloque F) -- necesario para que
+ * `EditarUsuarioDialog.tsx::editarUsuarioSchema` (`z.enum(ROLES_USUARIO)`)
+ * acepte como `defaultValues.rol` el `rol` real de CUALQUIER `AdminUsuario`,
+ * incluido uno `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (visible vía el filtro
+ * "solo holding-wide", Item 25). No cambia qué se puede SELECCIONAR desde
+ * cero -- eso sigue acotado a `catalogos.ts::ROLES_USUARIO_SELECCIONABLES`,
+ * que deliberadamente no los incluye.
  */
 export const ROLES_USUARIO = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "SUPERVISOR_HOLDING",
+  "SUPER_ADMIN",
   "ASESOR",
   "VENDEDOR",
 ] as const satisfies readonly RolUsuario[];
@@ -79,7 +104,7 @@ export interface AuthenticatedUser extends PublicUser {
 
 /**
  * Vista administrativa de un usuario (F7, `GET/POST/PATCH /usuarios`).
- * Forma de `AdminUsuarioView` en `backend/src/repositories/usuario.repository.ts`
+ * Forma de `AdminUsuarioListView` en `backend/src/repositories/usuario.repository.ts`
  * (`adminUsuarioSelect`) -- nunca incluye `passwordHash`. `creadoEn`/`actualizadoEn`
  * llegan como ISO 8601 (`Date` de Prisma serializado por `res.json`), igual
  * criterio que `Lead.ingresadoEn`.
@@ -92,4 +117,19 @@ export interface AdminUsuario {
   activo: boolean;
   creadoEn: string;
   actualizadoEn: string;
+  /**
+   * Empresas con `Membresia` activa del usuario (deduplicadas, backend real
+   * -- `AdminUsuarioListView::empresas`). Array vacío `[]` para un usuario
+   * holding-wide puro, sin ninguna `Membresia`. Solo se usa en el listado
+   * (`UsuariosTable.tsx`) cuando la vista actual es "todas las empresas"
+   * (`!filtros.soloHoldingWide`, `UsuariosPage.tsx`) -- ver el docblock de
+   * `UsuariosTable.tsx::mostrarEmpresas`.
+   *
+   * Opcional (no `empresas: [...]` a secas) a propósito: el backend real
+   * SIEMPRE lo manda, pero hay fixtures de `AdminUsuario` en otras
+   * suites de test (fuera de este alcance, ver `EmpresaUsuariosPage.test.tsx`)
+   * que no lo setean -- forzarlo a obligatorio rompería su typecheck sin
+   * necesidad. `UsuariosTable.tsx` hace `usuario.empresas ?? []` al leerlo.
+   */
+  empresas?: { id: string; nombre: string }[];
 }

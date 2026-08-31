@@ -110,6 +110,16 @@ export interface BridgeLog {
 export interface CrearBridgeInput {
   redSocial: RedSocial;
   nombre: string;
+  /**
+   * Empresa destino cuando el alta se dispara desde una "vista de empresa"
+   * de un holding-wide (`BridgesPage.tsx` -> `useVistaEmpresa().empresaVistaId`,
+   * mismo criterio que `usuarios.api.ts::CreateUsuarioInput.empresaId`).
+   * `createBridgeBodySchema` (`backend/src/schemas/bridges.schema.ts`) YA
+   * acepta este campo en `POST /bridges` -- una sesión holding-wide sin él
+   * recibe 400 `empresa_requerida`. Sin empresa en vista, no se manda: el
+   * backend resuelve la empresa solo a partir de la sesión.
+   */
+  empresaId?: string;
 }
 
 /**
@@ -127,4 +137,81 @@ export interface RespuestaClaveBridge {
 export interface ResultadoBajaBridge {
   resultado: "BAJA_FISICA" | "BAJA_LOGICA";
   bridge: Bridge;
+}
+
+/**
+ * Bridge genérico tipo *pull* (`docs/contrato-frontend-bridge-api_mat_01.md`,
+ * material de prueba fuera de la secuencia numerada de `docs/`): en vez de un
+ * adaptador de código por proveedor, el admin carga la URL, la API key y un
+ * mapeo de campos de cualquier API propia del cliente que devuelva un array
+ * JSON de leads. Creado con el mismo `POST /bridges` genérico
+ * (`redSocial: "API_EXTERNA"`) -- estos tipos cubren los 3 endpoints
+ * siguientes que cargan/prueban su configuración
+ * (`bridge-api-externa.api.ts`). El job de backend que efectivamente hace el
+ * polling de leads todavía NO EXISTE (gap de backend documentado
+ * explícitamente en el contrato) -- estos endpoints solo configuran y
+ * prueban, nunca sincronizan leads reales todavía.
+ */
+
+/**
+ * Campo interno válido como valor de `mapeoCampos` -- cualquier otro valor es
+ * rechazado por Zod en el backend (`bridges.schema.ts::CAMPOS_LEAD_MAPEABLES`).
+ * `idExternoLead` es OBLIGATORIO: al menos una clave del mapeo debe apuntar
+ * acá, es la clave de idempotencia contra `LeadRecibido`.
+ */
+export type CampoInternoApiExterna =
+  | "idExternoLead"
+  | "nombre"
+  | "telefono"
+  | "correo"
+  | "idExternoCampania"
+  | "nombreCampania"
+  | "idExternoCuenta";
+
+/** Forma de `configuracionJson` dentro de `BridgeApiExternaConfig` (ver más abajo). */
+export interface ConfiguracionApiExterna {
+  url: string;
+  nombreHeaderApiKey: string;
+  mapeoCampos: Record<string, CampoInternoApiExterna>;
+  /** Nombre del query param de fecha (ISO 8601 UTC) que soporta el GET del cliente, si lo hay. */
+  parametroFecha?: string;
+}
+
+/**
+ * Respuesta compartida por `PATCH /bridges/:id/api-externa/conexion` y
+ * `PATCH /bridges/:id/api-externa/mapeo` -- ninguna de las dos devuelve
+ * `credencialExterna`, ni cifrada ni en claro (nunca sale por la API).
+ */
+export interface BridgeApiExternaConfig {
+  id: string;
+  redSocial: "API_EXTERNA";
+  configuracionJson: ConfiguracionApiExterna;
+}
+
+/** Body de `PATCH /bridges/:id/api-externa/conexion` -- idempotente, no toca el mapeo si ya estaba cargado. */
+export interface SaveConexionApiExternaInput {
+  url: string;
+  /** API key en texto plano del sistema externo; se cifra en el server, nunca se devuelve. */
+  credencialExterna: string;
+  /** Opcional, default `"X-Api-Key"` en el backend si se omite. */
+  nombreHeaderApiKey?: string;
+}
+
+/** Body de `PATCH /bridges/:id/api-externa/mapeo` -- idempotente, no toca `url`/credencial ya cargados. */
+export interface SaveMapeoApiExternaInput {
+  mapeoCampos: Record<string, CampoInternoApiExterna>;
+  parametroFecha?: string;
+}
+
+/**
+ * Respuesta de `POST /bridges/:id/api-externa/probar-conexion` -- puramente
+ * diagnóstica, SIEMPRE 200 (nunca falla con un error HTTP por un problema de
+ * la API externa: red, HTTP no-2xx, forma inesperada, credencial no cargada,
+ * etc. viajan todos como `ok: false` + `mensaje`).
+ */
+export interface ResultadoPruebaConexionApiExterna {
+  ok: boolean;
+  mensaje: string;
+  /** Solo presente cuando `ok: true`. */
+  cantidadLeads?: number;
 }

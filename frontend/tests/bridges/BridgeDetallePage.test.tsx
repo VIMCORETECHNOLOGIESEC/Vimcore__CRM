@@ -1,5 +1,5 @@
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,30 +11,47 @@ vi.mock("@/funcionalidades/bridges/bridges.api", () => ({
   toggleCuentaActivaApi: vi.fn(),
   fetchBridgeLogsApi: vi.fn(),
 }));
+// `BridgeDetallePage.tsx` importa `LinkedInIntegracionSection` de forma
+// incondicional (el branch por `redSocial` es en render, no en el import) --
+// se mockea acá para que las suites FACEBOOK de abajo no disparen ningún
+// fetch real por accidente; el describe "LinkedIn Lead Sync" más abajo
+// sobreescribe estos valores por test.
+vi.mock("@/funcionalidades/linkedin/linkedin.api", () => ({
+  fetchLinkedInConexionApi: vi.fn(),
+  fetchLinkedInFuentesApi: vi.fn(),
+}));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const bridgesApi = await import("@/funcionalidades/bridges/bridges.api");
+const linkedinApi = await import("@/funcionalidades/linkedin/linkedin.api");
 const { toast } = await import("sonner");
 const { BridgeDetallePage } = await import("@/funcionalidades/bridges/detalle/BridgeDetallePage");
 
 const fetchBridgeDetalleApiMock = vi.mocked(bridgesApi.fetchBridgeDetalleApi);
 const toggleCuentaActivaApiMock = vi.mocked(bridgesApi.toggleCuentaActivaApi);
 const fetchBridgeLogsApiMock = vi.mocked(bridgesApi.fetchBridgeLogsApi);
+const fetchLinkedInConexionApiMock = vi.mocked(linkedinApi.fetchLinkedInConexionApi);
+const fetchLinkedInFuentesApiMock = vi.mocked(linkedinApi.fetchLinkedInFuentesApi);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
 
 /**
- * `redSocial: "LINKEDIN"` a propósito: el token/prueba de conexión POR
- * CUENTA (gap de contrato confirmado, ver `bridges.api.ts`) ya no vive en
- * `BridgeDetallePage` -- se movió a `CuentasPublicitariasList` y se prueba
- * en `tests/bridges/detalle/CuentasPublicitariasList.test.tsx`, con un
- * bridge FACEBOOK (único estilo con adaptador real conectado hoy).
+ * `redSocial: "FACEBOOK"` a propósito (cambiado desde "LINKEDIN" -- ver
+ * `funcionalidades/linkedin/LinkedInIntegracionSection.tsx`, que ahora
+ * reemplaza por completo estas dos secciones para un bridge LinkedIn real):
+ * el token/prueba de conexión POR CUENTA (gap de contrato confirmado, ver
+ * `bridges.api.ts`) ya no vive en `BridgeDetallePage` -- se movió a
+ * `CuentasPublicitariasList` y se prueba en
+ * `tests/bridges/detalle/CuentasPublicitariasList.test.tsx`, con Facebook
+ * como único estilo con adaptador real de ESTE modelo (cuenta publicitaria)
+ * conectado hoy. El describe "LinkedIn Lead Sync" más abajo cubre el branch
+ * real de LinkedIn con su propio fixture.
  */
 function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
   return {
     id: "bridge-1",
-    redSocial: "LINKEDIN",
-    nombre: "LinkedIn Lead Sync",
+    redSocial: "FACEBOOK",
+    nombre: "Facebook Ads Sync",
     estado: "ACTIVO",
     tokenExpiraEn: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     ultimoLeadEn: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
@@ -42,14 +59,28 @@ function bridgeFake(overrides: Partial<Bridge> = {}): Bridge {
       {
         id: "c1",
         bridgeId: "bridge-1",
-        idExterno: "li-org-1",
-        nombre: "LinkedIn Ads Empresa",
+        idExterno: "fb-page-1",
+        nombre: "Facebook Ads Empresa",
         instagramAccountId: null,
         activa: true,
         estadoToken: "VALIDO",
         tokenExpiraEn: null,
       },
     ],
+    ...overrides,
+  };
+}
+
+/** Fixture de un bridge LinkedIn real (branch `LinkedInIntegracionSection`, sin cuentas publicitarias). */
+function bridgeLinkedInFake(overrides: Partial<Bridge> = {}): Bridge {
+  return {
+    id: "bridge-2",
+    redSocial: "LINKEDIN",
+    nombre: "LinkedIn Lead Sync",
+    estado: "ACTIVO",
+    tokenExpiraEn: null,
+    ultimoLeadEn: null,
+    cuentasPublicitarias: [],
     ...overrides,
   };
 }
@@ -87,6 +118,8 @@ beforeEach(() => {
   fetchBridgeDetalleApiMock.mockReset();
   toggleCuentaActivaApiMock.mockReset();
   fetchBridgeLogsApiMock.mockReset();
+  fetchLinkedInConexionApiMock.mockReset();
+  fetchLinkedInFuentesApiMock.mockReset();
   toastSuccessMock.mockReset();
   toastErrorMock.mockReset();
   fetchBridgeLogsApiMock.mockResolvedValue([]);
@@ -101,7 +134,7 @@ describe("BridgeDetallePage — encabezado", () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    expect(await screen.findByRole("heading", { name: "Sincronización de LinkedIn" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sincronización de Facebook" })).toBeInTheDocument();
     expect(screen.getByText("Activo")).toBeInTheDocument();
     expect(screen.getByText("Último lead recibido")).toBeInTheDocument();
     expect(screen.getByText("Expiración de token más próxima")).toBeInTheDocument();
@@ -125,8 +158,8 @@ describe("BridgeDetallePage — aviso destacado ante token expirado o sin activi
           {
             id: "c1",
             bridgeId: "bridge-1",
-            idExterno: "li-org-1",
-            nombre: "LinkedIn Ads Empresa",
+            idExterno: "fb-page-1",
+            nombre: "Facebook Ads Empresa",
             instagramAccountId: null,
             activa: true,
             estadoToken: "TOKEN_EXPIRADO",
@@ -137,14 +170,14 @@ describe("BridgeDetallePage — aviso destacado ante token expirado o sin activi
     );
     renderBridgeDetallePage();
 
-    expect(await screen.findByText("LinkedIn Lead Sync necesita atención")).toBeInTheDocument();
+    expect(await screen.findByText("Facebook Ads Sync necesita atención")).toBeInTheDocument();
   });
 
   it("no muestra ningún aviso para un bridge activo con actividad reciente", async () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    await screen.findByRole("heading", { name: "Sincronización de LinkedIn" });
+    await screen.findByRole("heading", { name: "Sincronización de Facebook" });
     expect(screen.queryByText(/necesita atención/)).not.toBeInTheDocument();
   });
 });
@@ -154,9 +187,15 @@ describe("BridgeDetallePage — credenciales (a nivel de bridge)", () => {
     fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
     renderBridgeDetallePage();
 
-    await screen.findByRole("heading", { name: "Sincronización de LinkedIn" });
-    expect(screen.queryByLabelText("Token")).not.toBeInTheDocument();
-    expect(screen.getByText(/buscá la sección/i)).toBeInTheDocument();
+    const seccionCredenciales = (
+      await screen.findByRole("heading", { name: "Credenciales" })
+    ).closest("section")!;
+    // Facebook SÍ tiene un `TokenForm` real, pero a nivel de CUENTA
+    // publicitaria (`CuentasPublicitariasList`, sección aparte) -- este test
+    // solo verifica que la sección "Credenciales" A NIVEL DE BRIDGE no
+    // renderiza uno propio, mismo criterio que antes del cambio de fixture.
+    expect(within(seccionCredenciales).queryByLabelText("Token")).not.toBeInTheDocument();
+    expect(within(seccionCredenciales).getByText(/buscá la sección/i)).toBeInTheDocument();
   });
 });
 
@@ -166,15 +205,15 @@ describe("BridgeDetallePage — cuentas publicitarias asociadas", () => {
     toggleCuentaActivaApiMock.mockResolvedValue({
       id: "c1",
       bridgeId: "bridge-1",
-      idExterno: "li-org-1",
-      nombre: "LinkedIn Ads Empresa",
+      idExterno: "fb-page-1",
+      nombre: "Facebook Ads Empresa",
       instagramAccountId: null,
       activa: false,
     });
     const user = userEvent.setup();
     renderBridgeDetallePage();
 
-    expect(await screen.findByText("LinkedIn Ads Empresa")).toBeInTheDocument();
+    expect(await screen.findByText("Facebook Ads Empresa")).toBeInTheDocument();
     expect(screen.getByText("Activa")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Desactivar" }));
@@ -208,7 +247,7 @@ describe("BridgeDetallePage — bitácora de errores con filtro por nivel y fech
     fetchBridgeLogsApiMock.mockResolvedValue([]);
     const user = userEvent.setup();
     renderBridgeDetallePage();
-    await screen.findByRole("heading", { name: "Sincronización de LinkedIn" });
+    await screen.findByRole("heading", { name: "Sincronización de Facebook" });
 
     await waitFor(() => expect(fetchBridgeLogsApiMock).toHaveBeenCalledWith("bridge-1", {}));
 
@@ -226,5 +265,36 @@ describe("BridgeDetallePage — bitácora de errores con filtro por nivel y fech
     renderBridgeDetallePage();
 
     expect(await screen.findByText("Sin entradas en la bitácora")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Smoke-level a propósito: el comportamiento real de conexión/fuentes de
+ * LinkedIn se prueba a fondo en
+ * `tests/linkedin/LinkedInIntegracionSection.test.tsx` -- acá solo se
+ * confirma que `BridgeDetallePage` elige el branch correcto según
+ * `bridge.redSocial` (LinkedIn reemplaza Credenciales/Cuentas
+ * publicitarias, nunca las muestra a la vez).
+ */
+describe("BridgeDetallePage — LinkedIn Lead Sync (branch por redSocial)", () => {
+  it("para un bridge LINKEDIN, muestra la sección de LinkedIn Lead Sync en vez de Credenciales/Cuentas publicitarias", async () => {
+    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeLinkedInFake());
+    fetchLinkedInConexionApiMock.mockResolvedValue(null);
+    renderBridgeDetallePage();
+
+    expect(await screen.findByRole("heading", { name: "LinkedIn Lead Sync" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Credenciales" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Cuentas publicitarias asociadas" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("para un bridge no-LinkedIn (FACEBOOK), nunca muestra la sección de LinkedIn Lead Sync", async () => {
+    fetchBridgeDetalleApiMock.mockResolvedValue(bridgeFake());
+    renderBridgeDetallePage();
+
+    await screen.findByRole("heading", { name: "Sincronización de Facebook" });
+    expect(screen.queryByRole("heading", { name: "LinkedIn Lead Sync" })).not.toBeInTheDocument();
+    expect(fetchLinkedInConexionApiMock).not.toHaveBeenCalled();
   });
 });

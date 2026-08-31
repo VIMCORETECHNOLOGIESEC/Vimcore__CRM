@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/funcionalidades/autenticacion/authContext";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import type { Notificacion } from "@/tipos/notificacion";
 import {
   connectNotificacionesSse,
@@ -37,6 +37,25 @@ export function useNotificacionesRealtime(onNuevaNotificacion?: (value: Notifica
       }
       if (event.type === "metricas.actualizadas") {
         void queryClient.invalidateQueries({ queryKey: ["metricas"] });
+        return;
+      }
+      if (
+        event.type === "reporte.iniciado" ||
+        event.type === "reporte.listo" ||
+        event.type === "reporte.error"
+      ) {
+        // Bandeja de reportes: clave "reportes" en
+        // funcionalidades/reportes/useReportes.ts (REPORTES_QUERY_KEY).
+        void queryClient.invalidateQueries({ queryKey: ["reportes", event.data.jobId] });
+        return;
+      }
+      if (event.type === "whatsapp.mensaje-nuevo") {
+        // Bandeja de conversaciones: clave "conversaciones" en
+        // funcionalidades/whatsapp/useConversaciones.ts (CONVERSACIONES_QUERY_KEY).
+        void queryClient.invalidateQueries({
+          queryKey: ["conversaciones", event.data.conversacionId, "mensajes"],
+        });
+        void queryClient.invalidateQueries({ queryKey: ["conversaciones"] });
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["notificaciones", userId], exact: true });

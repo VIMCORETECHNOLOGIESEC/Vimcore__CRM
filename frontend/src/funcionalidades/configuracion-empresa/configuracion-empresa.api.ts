@@ -2,10 +2,11 @@ import { httpClient } from "@/api/httpClient";
 
 /**
  * Capa de datos de la configuración de marca de la empresa (tema empresarial
- * -- integración login + splash de bienvenida). App single-tenant
- * (AGENTS.md §1): esta es la ÚNICA configuración para todo el despliegue, no
- * hay selector de empresa ni tabla de tenants -- ver la nota de alcance en
- * `ConfiguracionEmpresaPage.tsx`.
+ * -- integración login + splash de bienvenida). Esta es la ÚNICA
+ * configuración global del holding -- no hay selector de empresa acá porque
+ * este endpoint edita el único registro de configuración global, no porque
+ * la infraestructura multi-tenant (`Empresa`/`Membresia`/RLS, AGENTS.md §1)
+ * no exista -- ver la nota de alcance en `ConfiguracionEmpresaPage.tsx`.
  *
  * Contrato confirmado con el backend en paralelo (mismo cambio,
  * `feature/tema-empresarial-integracion`):
@@ -31,17 +32,24 @@ export interface ConfiguracionEmpresa {
 export type UpdateConfiguracionEmpresaInput = Partial<ConfiguracionEmpresa>;
 
 /**
- * Defaults si nunca se configuró nada -- mismos valores que ya devuelve el
- * backend por defecto (contrato confirmado) y que hoy están hardcodeados en
- * el tema empresarial (`tema-empresarial.css`, `--indigo`/`--cat-2`). Se usa
- * como *fallback* del frontend cuando `GET /configuracion-empresa` falla o
- * no llega a tiempo (ver `LoginPage.tsx`), nunca como sustituto silencioso
- * de una respuesta exitosa del backend.
+ * Defaults si nunca se configuró nada -- se usa como *fallback* del frontend
+ * cuando `GET /configuracion-empresa` falla o no llega a tiempo (ver
+ * `LoginPage.tsx`), nunca como sustituto silencioso de una respuesta exitosa
+ * del backend.
+ *
+ * Línea gráfica ARCANO CRM (rebrandeo de cliente, `docs/branding/arcano-
+ * linea-grafica.md` en la rama `cliente/arcano-crm`): grafito `#241F1B`
+ * (`--arcano-graphite-900`) + dorado `#B98A4E` (`--arcano-gold`), paleta
+ * extraída del isotipo del cliente y verificada por contraste WCAG en ese
+ * doc. Ya NO coincide con el default de fábrica del backend ("CRM Embudo de
+ * Leads", `#1e2a5e`/`#2563eb`) -- divergencia intencional para este cliente,
+ * solo visible en el instante breve de un fallback (el nombre/color real en
+ * uso normal viaja siempre por `GET /configuracion-empresa`).
  */
 export const CONFIGURACION_EMPRESA_DEFAULT: ConfiguracionEmpresa = {
-  nombre: "CRM Embudo de Leads",
-  colorPrimario: "#1e2a5e",
-  colorSecundario: "#2563eb",
+  nombre: "ARCANO CRM",
+  colorPrimario: "#241F1B",
+  colorSecundario: "#B98A4E",
   logoUrl: null,
 };
 
@@ -59,4 +67,22 @@ export async function updateConfiguracionEmpresaApi(
   input: UpdateConfiguracionEmpresaInput,
 ): Promise<ConfiguracionEmpresa> {
   return httpClient.patch<ConfiguracionEmpresa>("/configuracion-empresa", input);
+}
+
+/**
+ * `POST /configuracion-empresa/logo` -- solo `ADMINISTRADOR`
+ * (`postConfiguracionEmpresaLogo`,
+ * `backend/src/controllers/configuracion-empresa.controller.ts`). Multipart
+ * con un único campo `logo` (`uploadLogoMiddleware`, Multer). El backend
+ * devuelve la `ConfiguracionEmpresa` completa ya actualizada; acá solo se
+ * expone la URL nueva porque es lo único que le importa a `CampoLogoUpload`.
+ */
+export async function uploadLogoHoldingApi(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("logo", file);
+  const configuracion = await httpClient.postFormData<ConfiguracionEmpresa>(
+    "/configuracion-empresa/logo",
+    formData,
+  );
+  return configuracion.logoUrl ?? "";
 }

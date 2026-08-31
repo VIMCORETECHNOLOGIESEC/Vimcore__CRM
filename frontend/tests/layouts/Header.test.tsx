@@ -5,14 +5,14 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar";
 
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 vi.mock("@/funcionalidades/notificaciones/CampanaNotificaciones", () => ({
   CampanaNotificaciones: () => null,
 }));
 
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { Header } = await import("@/layouts/Header");
 const { PageHeaderProvider, usePageHeader } = await import("@/layouts/PageHeaderContext");
 

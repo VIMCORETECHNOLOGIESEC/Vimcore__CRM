@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAVIGATION_ITEMS, resolveNavigationRoute } from "@/layouts/navigation";
+import { NAVIGATION_ITEMS, resolveNavigationHref, resolveNavigationRoute } from "@/layouts/navigation";
 
 describe("resolveNavigationRoute", () => {
   const apariencia = NAVIGATION_ITEMS.find((item) => item.label === "Apariencia");
@@ -37,5 +37,93 @@ describe("NAVIGATION_ITEMS -- consolidación de Apariencia", () => {
   it("tiene exactamente un ítem con icono de Apariencia (Palette)", () => {
     const itemsApariencia = NAVIGATION_ITEMS.filter((item) => item.label.startsWith("Apariencia"));
     expect(itemsApariencia).toHaveLength(1);
+  });
+});
+
+describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
+  const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
+  if (!oportunidades) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Oportunidades'");
+  }
+
+  it("apunta a /oportunidades y es visible para cualquier rol y scope", () => {
+    expect(oportunidades.route).toBe("/oportunidades");
+    expect(oportunidades.allowedRoles).toBeUndefined();
+    expect(oportunidades.allowedScopes).toBeUndefined();
+    expect(oportunidades.routeByScope).toBeUndefined();
+  });
+
+  it("resuelve /oportunidades para holding y company", () => {
+    expect(resolveNavigationRoute(oportunidades, "holding")).toBe("/oportunidades");
+    expect(resolveNavigationRoute(oportunidades, "company")).toBe("/oportunidades");
+  });
+});
+
+describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads/Conversaciones/Usuarios)", () => {
+  it("Oportunidades, Bridges, Leads, Conversaciones y Usuarios están marcados con requiereVistaEmpresaSiHolding", () => {
+    const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
+    const bridges = NAVIGATION_ITEMS.find((item) => item.label === "Bridges");
+    const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
+    const conversaciones = NAVIGATION_ITEMS.find((item) => item.label === "Conversaciones");
+    const usuarios = NAVIGATION_ITEMS.find((item) => item.label === "Usuarios");
+    expect(oportunidades?.requiereVistaEmpresaSiHolding).toBe(true);
+    expect(bridges?.requiereVistaEmpresaSiHolding).toBe(true);
+    // Bloqueado antes por falta de soporte de `?empresaId=` en `GET /leads`
+    // -- ya resuelto en el backend (`leads.access.ts::aplicarFiltroEmpresa`,
+    // commit `0ea2742`), mismo criterio que Oportunidades/Bridges.
+    expect(leads?.requiereVistaEmpresaSiHolding).toBe(true);
+    // WhatsApp Parte 2 (mensajería real): mismo criterio -- un holding-wide
+    // no gestiona conversaciones de ninguna empresa en particular sin entrar
+    // a la vista de una concreta.
+    expect(conversaciones?.requiereVistaEmpresaSiHolding).toBe(true);
+    // Bug real de QA manual ("Usuarios" rompía el routing dentro de "Ver en
+    // vivo"): mismo criterio -- un holding-wide no gestiona cuentas de
+    // ninguna empresa en particular sin entrar a la vista de una concreta.
+    expect(usuarios?.requiereVistaEmpresaSiHolding).toBe(true);
+  });
+
+  it("Dashboard, Reportes, Apariencia y Empresas no están marcados", () => {
+    const sinFlag = NAVIGATION_ITEMS.filter(
+      (item) =>
+        !["Oportunidades", "Bridges", "Leads", "Conversaciones", "Usuarios"].includes(item.label),
+    );
+    for (const item of sinFlag) {
+      expect(item.requiereVistaEmpresaSiHolding).toBeUndefined();
+    }
+  });
+});
+
+describe("resolveNavigationHref", () => {
+  const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
+  if (!oportunidades) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Oportunidades'");
+  }
+  const dashboard = NAVIGATION_ITEMS.find((item) => item.label === "Dashboard");
+  if (!dashboard) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Dashboard'");
+  }
+
+  it("sesión holding sin vista de empresa: devuelve la ruta pelada para un ítem marcado", () => {
+    expect(resolveNavigationHref(oportunidades, "holding", null)).toBe("/oportunidades");
+  });
+
+  it("sesión holding con vista de empresa activa: agrega ?empresaId= para un ítem marcado", () => {
+    expect(resolveNavigationHref(oportunidades, "holding", "empresa-1")).toBe(
+      "/oportunidades?empresaId=empresa-1",
+    );
+  });
+
+  it("sesión company: nunca agrega ?empresaId=, aunque exista un empresaVistaId en la URL", () => {
+    expect(resolveNavigationHref(oportunidades, "company", "empresa-1")).toBe("/oportunidades");
+  });
+
+  it("un ítem sin requiereVistaEmpresaSiHolding nunca agrega ?empresaId=", () => {
+    expect(resolveNavigationHref(dashboard, "holding", "empresa-1")).toBe("/panel");
+  });
+
+  it("codifica el id de empresa en la query string", () => {
+    expect(resolveNavigationHref(oportunidades, "holding", "empresa con espacio")).toBe(
+      "/oportunidades?empresaId=empresa%20con%20espacio",
+    );
   });
 });

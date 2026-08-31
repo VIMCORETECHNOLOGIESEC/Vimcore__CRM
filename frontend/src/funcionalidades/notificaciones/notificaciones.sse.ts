@@ -7,7 +7,11 @@ export type EventoNotificaciones =
   | { id: string; type: "notificacion.nueva"; data: Notificacion }
   | { id: string; type: "lead.asignado" | "lead.etapa-cambiada"; data: { leadId: string; [key: string]: unknown } }
   | { id: string; type: "sincronizacion.requerida"; data: unknown }
-  | { id: string; type: "metricas.actualizadas"; data: Record<string, never> };
+  | { id: string; type: "metricas.actualizadas"; data: Record<string, never> }
+  | { id: string; type: "reporte.iniciado"; data: { jobId: string; tipo: "pdf" | "xlsx" } }
+  | { id: string; type: "reporte.listo"; data: { jobId: string; archivoUrl: string } }
+  | { id: string; type: "reporte.error"; data: { jobId: string; error: string } }
+  | { id: string; type: "whatsapp.mensaje-nuevo"; data: { conversacionId: string } };
 
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000] as const;
 const TIPOS_NOTIFICACION = new Set<TipoNotificacion>([
@@ -56,7 +60,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
-  const known = ["notificacion.nueva", "lead.asignado", "lead.etapa-cambiada", "sincronizacion.requerida", "metricas.actualizadas"];
+  const known = [
+    "notificacion.nueva",
+    "lead.asignado",
+    "lead.etapa-cambiada",
+    "sincronizacion.requerida",
+    "metricas.actualizadas",
+    "reporte.iniciado",
+    "reporte.listo",
+    "reporte.error",
+    "whatsapp.mensaje-nuevo",
+  ];
   if (!known.includes(frame.event)) return null;
   const data: unknown = JSON.parse(frame.data);
   if (frame.event === "notificacion.nueva") {
@@ -71,6 +85,28 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
   }
   if (frame.event === "sincronizacion.requerida") return { id: frame.id, type: frame.event, data };
   if (frame.event === "metricas.actualizadas") return { id: frame.id, type: frame.event, data: {} };
+  if (frame.event === "reporte.iniciado") {
+    if (!isRecord(data) || typeof data.jobId !== "string" || (data.tipo !== "pdf" && data.tipo !== "xlsx")) {
+      throw new Error("evento_malformado");
+    }
+    return { id: frame.id, type: frame.event, data: { jobId: data.jobId, tipo: data.tipo } };
+  }
+  if (frame.event === "reporte.listo") {
+    if (!isRecord(data) || typeof data.jobId !== "string" || typeof data.archivoUrl !== "string") {
+      throw new Error("evento_malformado");
+    }
+    return { id: frame.id, type: frame.event, data: { jobId: data.jobId, archivoUrl: data.archivoUrl } };
+  }
+  if (frame.event === "reporte.error") {
+    if (!isRecord(data) || typeof data.jobId !== "string" || typeof data.error !== "string") {
+      throw new Error("evento_malformado");
+    }
+    return { id: frame.id, type: frame.event, data: { jobId: data.jobId, error: data.error } };
+  }
+  if (frame.event === "whatsapp.mensaje-nuevo") {
+    if (!isRecord(data) || typeof data.conversacionId !== "string") throw new Error("evento_malformado");
+    return { id: frame.id, type: frame.event, data: { conversacionId: data.conversacionId } };
+  }
   if (!isRecord(data) || typeof data.leadId !== "string") throw new Error("evento_malformado");
   return {
     id: frame.id,

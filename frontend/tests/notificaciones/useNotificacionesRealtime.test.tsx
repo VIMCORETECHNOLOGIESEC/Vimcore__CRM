@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { Notificacion } from "@/tipos/notificacion";
 
 let userId = "u1";
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: () => ({ user: userId ? { id: userId } : null }),
 }));
 vi.mock("@/funcionalidades/notificaciones/notificaciones.sse", () => ({
@@ -87,6 +87,39 @@ it("invalida metricas ante metricas.actualizadas sin caer en el catch-all genér
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["lead-detalle"] });
+});
+
+it("invalida la bandeja de reportes por jobId ante los 3 eventos de reporte, sin catch-all", () => {
+  const context = setup();
+  const invalidate = vi.spyOn(context.client, "invalidateQueries");
+  act(() => {
+    context.options.onEvent({ type: "reporte.iniciado", data: { jobId: "job-1", tipo: "pdf" }, id: "e6" });
+    context.options.onEvent({
+      type: "reporte.listo",
+      data: { jobId: "job-1", archivoUrl: "/api/v1/reportes/jobs/job-1/descargar" },
+      id: "e7",
+    });
+    context.options.onEvent({ type: "reporte.error", data: { jobId: "job-2", error: "boom" }, id: "e8" });
+  });
+  expect(invalidate).toHaveBeenCalledTimes(3);
+  expect(invalidate).toHaveBeenNthCalledWith(1, { queryKey: ["reportes", "job-1"] });
+  expect(invalidate).toHaveBeenNthCalledWith(2, { queryKey: ["reportes", "job-1"] });
+  expect(invalidate).toHaveBeenNthCalledWith(3, { queryKey: ["reportes", "job-2"] });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
+});
+
+it("invalida la bandeja de conversaciones ante whatsapp.mensaje-nuevo sin tocar leads/notificaciones", () => {
+  const context = setup();
+  const invalidate = vi.spyOn(context.client, "invalidateQueries");
+  act(() => {
+    context.options.onEvent({ type: "whatsapp.mensaje-nuevo", data: { conversacionId: "conv-9" }, id: "e6" });
+  });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["conversaciones", "conv-9", "mensajes"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["conversaciones"] });
+  expect(invalidate).toHaveBeenCalledTimes(2);
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
 });
 
 it("aborta la conexión vieja al cambiar usuario y al desmontar", () => {

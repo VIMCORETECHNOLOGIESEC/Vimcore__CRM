@@ -18,6 +18,7 @@ import {
 } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 import { obtenerMarcaPublicaConFallback } from "@/funcionalidades/configuracion-empresa/marca-publica.api";
 import { CONFIGURACION_EMPRESA_QUERY_KEY } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
+import { resolveMarcaCompleta } from "@/lib/color-marca";
 // Tema visual "Propuesta B -- Consejo directivo" (indigo), aprobado como
 // línea gráfica del login (ver docs/09-linea-grafica-frontend.md). El CSS
 // está scopeado bajo `.tema-empresarial` (ver ese archivo): importarlo acá
@@ -25,8 +26,7 @@ import { CONFIGURACION_EMPRESA_QUERY_KEY } from "@/funcionalidades/configuracion
 // esta página que lleva esa clase.
 import "@/temas/variante-empresarial/tema-empresarial.css";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
-import type { AuthenticatedUser } from "@/tipos/usuario";
-import { useAuth } from "./authContext";
+import { useAuth } from "./auth-context";
 import { getLandingRoute } from "./permissions";
 
 type LoginFormValues = z.infer<typeof loginBodySchema>;
@@ -103,37 +103,6 @@ async function obtenerConfiguracionEmpresaConFallback(
   }
 }
 
-/**
- * tema-empresarial-integracion (Parte 2, decisión explícita del usuario):
- * cada empresa tiene su propio color REAL -- prioridad simple, sin agregar
- * una tercera fuente de verdad: color propio de la `Empresa` (sesión
- * `company` con AMBOS colores seteados, `empresaColorPrimario`/
- * `empresaColorSecundario` de `GET /auth/perfil`) antes que la paleta global
- * de la instancia (`configuracionGlobal`, ya resuelta con fallback arriba).
- * Una empresa sin color propio (`null` en cualquiera de los dos) o una
- * sesión `holding` usan la paleta global sin cambios -- mismo comportamiento
- * que antes de este cambio.
- */
-function resolveColorMarca(
-  usuario: AuthenticatedUser,
-  configuracionGlobal: ConfiguracionEmpresa,
-): Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> {
-  if (
-    usuario.sessionScope === "company" &&
-    usuario.empresaColorPrimario !== null &&
-    usuario.empresaColorSecundario !== null
-  ) {
-    return {
-      colorPrimario: usuario.empresaColorPrimario,
-      colorSecundario: usuario.empresaColorSecundario,
-    };
-  }
-  return {
-    colorPrimario: configuracionGlobal.colorPrimario,
-    colorSecundario: configuracionGlobal.colorSecundario,
-  };
-}
-
 /** Pantalla de inicio de sesión (F2, docs/07). */
 export function LoginPage() {
   const { login } = useAuth();
@@ -146,9 +115,10 @@ export function LoginPage() {
   // Nombre/colores de marca reales para la cortina de bienvenida (gap ya
   // identificado, ver INTEGRACION-BACKEND-GAP previo) -- arranca con los
   // defaults y se reemplaza por la configuración real justo antes de
-  // mostrar la cortina, ver `onSubmit`.
-  const [configuracionMarca, setConfiguracionMarca] =
-    useState<ConfiguracionEmpresa>(CONFIGURACION_EMPRESA_DEFAULT);
+  // mostrar la cortina, ver `onSubmit`. Fuente única `resolveMarcaCompleta`
+  // (`lib/color-marca.ts`) -- ya no una función local desincronizada que
+  // nunca resolvía `nombre` por empresa.
+  const [marcaSplash, setMarcaSplash] = useState(() => resolveMarcaCompleta(null, undefined));
   // PASO 6 (tema-empresarial-integracion): isotipo del holding para el panel
   // izquierdo -- `null` mientras no llegó nada (placeholder de diseño ya
   // existente, ver el JSX de abajo) o directamente no hay ninguno
@@ -203,10 +173,11 @@ export function LoginPage() {
       // `obtenerConfiguracionEmpresaConFallback`). El login ya se completó
       // arriba: esta llamada es cosmética y nunca lo bloquea ni lo revierte.
       const configuracion = await obtenerConfiguracionEmpresaConFallback(queryClient);
-      // Color de marca REAL por empresa (Parte 2) tiene prioridad sobre la
-      // paleta global cuando la sesión `company` lo tiene seteado --
-      // `nombre` no cambia de fuente, sigue viniendo de `configuracion`.
-      setConfiguracionMarca({ ...configuracion, ...resolveColorMarca(usuario, configuracion) });
+      // Nombre y color de marca REALES por empresa (fix real, tema-empresarial-
+      // integracion): `resolveMarcaCompleta` resuelve AMBOS con la misma
+      // jerarquía de 3 niveles -- antes solo el color tenía prioridad por
+      // empresa, `nombre` seguía viniendo siempre del holding global.
+      setMarcaSplash(resolveMarcaCompleta(usuario, configuracion));
 
       // Cortina de bienvenida (`WelcomeSplashLoader`, tema empresarial):
       // cubre la pantalla -> se sostiene brevemente ya 100% opaca -> recién
@@ -230,25 +201,20 @@ export function LoginPage() {
   return (
     <div className="tema-empresarial patron-papel flex min-h-screen w-full flex-col lg:flex-row">
       {/*
-        React 19 hoista automáticamente <link> renderizados en cualquier
-        parte del árbol hacia <head> -- mismo patrón que
-        `FlujoIntegracionDemo.tsx`/`StyleguidePage.tsx` para cargar las
-        fuentes de esta variante.
+        Las fuentes de esta variante (Fraunces/Source Sans 3) se cargan una
+        sola vez a nivel raíz en `index.html` -- fix "FOUT entre los dos
+        splashes de bienvenida": antes este componente y `AppBoot.tsx` cada
+        uno declaraba su propio <link>, ver el comentario en `AppBoot.tsx`
+        para el detalle completo.
       */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap"
-      />
 
       <div className="chrome-gradiente chrome-sombra-derecha hidden shrink-0 flex-col items-center justify-center gap-6 px-10 py-16 lg:flex lg:w-2/5">
         {logoHolding ? (
           <img src={logoHolding} alt="Isotipo del holding" className="h-20 w-20 object-contain" />
         ) : (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[#F5F3EE]/35 px-10 py-12">
-            <ImageIcon className="size-9 text-[#F5F3EE]/60" aria-hidden="true" />
-            <p className="max-w-[16rem] text-center text-sm leading-relaxed text-[#F5F3EE]/70">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-background/35 px-10 py-12">
+            <ImageIcon className="size-9 text-background/60" aria-hidden="true" />
+            <p className="max-w-[16rem] text-center text-sm leading-relaxed text-background/70">
               Isotipo del holding
               <br />
               <span className="text-xs opacity-80">(personalizable por empresa)</span>
@@ -256,7 +222,7 @@ export function LoginPage() {
           </div>
         )}
         <p className="headline text-lg font-semibold tracking-wide !text-[var(--papel)]">
-          CRM Embudo de Leads
+          ARCANO CRM
         </p>
       </div>
 
@@ -329,13 +295,13 @@ export function LoginPage() {
 
       {splashActivo ? (
         <WelcomeSplashLoader
-          contexto={configuracionMarca.nombre}
+          contexto={marcaSplash.nombre}
           mensaje="Preparando tu panel…"
           visible={splashVisible}
           style={
             {
-              "--marca-color-1": configuracionMarca.colorPrimario,
-              "--marca-color-2": configuracionMarca.colorSecundario,
+              "--marca-color-1": marcaSplash["--marca-color-1"],
+              "--marca-color-2": marcaSplash["--marca-color-2"],
             } as CSSProperties
           }
         />

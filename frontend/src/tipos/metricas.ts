@@ -25,6 +25,17 @@ export type RangoMetricas = "hoy" | "7d" | "30d" | "mes_actual" | "mes_anterior"
  * -- si lo manda un asesor/vendedor, el backend lo ignora en silencio.
  * `campania` es texto libre (`ILIKE` contra `payload_original ->>
  * 'nombreCampania'`), no un id de catálogo.
+ *
+ * `empresaId` (docs/23 item 14, "Dashboard con filtro por empresa (holding)")
+ * -- forward-compatible con `resolveEmpresaId` de
+ * `backend/src/services/metricas.access.ts` (todavía sin mergear a esta
+ * rama, el schema real de este branch descarta en silencio cualquier query
+ * param desconocido, mismo criterio que `usuarios.api.ts`/`bridges.api.ts`
+ * con su propio `empresaId` no-vigente-todavía). Solo tiene efecto real para
+ * una sesión holding-wide -- una sesión `company` ya trae su `empresaId`
+ * forzado del lado del servidor, así que el frontend nunca lo manda para
+ * ese caso (`DashboardPage.tsx` solo lo setea vía `useVistaEmpresa`, que a
+ * su vez solo se expone a `ADMINISTRADOR` + `sessionScope holding`).
  */
 export interface MetricasFiltros {
   rango: RangoMetricas;
@@ -33,6 +44,7 @@ export interface MetricasFiltros {
   redSocial?: RedSocial;
   campania?: string;
   responsableId?: string;
+  empresaId?: string;
 }
 
 /**
@@ -163,4 +175,74 @@ export interface RedSocialPorSemaforo {
   sinCalificar: number;
   /** `null` cuando `total` de la red es 0. */
   pctVerde: number | null;
+}
+
+/**
+ * `GET /metricas/embudo-oportunidad` (docs/23 item 13) -- ESTRUCTURALMENTE
+ * IDÉNTICO a `MetricasEmbudo`: mismos 4 pasos NUEVO→CONTACTADO→CITA→VENTA
+ * (`EmbudoPaso`, con `caidaPct`) y `noVenta` reportado aparte, pero medido
+ * sobre `Oportunidad` en vez de `Lead`. Alias explícito (no un `type X =
+ * MetricasEmbudo` anónimo importado como si nada) para que las firmas de
+ * `metricas.api.ts`/`useMetricas.ts` dejen trazable qué fuente alimenta cada
+ * gráfico.
+ */
+export type MetricasEmbudoOportunidad = MetricasEmbudo;
+
+/**
+ * `GET /metricas/por-producto` (docs/23 item 13). Ranking GLOBAL plano, NO
+ * agrupado por empresa -- a diferencia de `RankingProductoPorEmpresa`, este
+ * no trae `empresaId`/`nombreEmpresa`; el recorte a la empresa del caller ya
+ * lo resuelve el backend de forma invisible.
+ */
+export interface MetricasPorProducto {
+  productoId: string;
+  nombreProducto: string;
+  total: number;
+  ventas: number;
+  noVentas: number;
+  /** `null` cuando no hay cerrados de ese producto en el período (denominador 0). */
+  tasaConversionPct: number | null;
+}
+
+/**
+ * `GET /metricas/cascada-lead-oportunidad` (docs/23 item 13) -- objeto
+ * CRUDO, no una lista: 3 conteos de cohorte + 2 tasas. Cuenta leads que
+ * ingresaron en el rango seleccionado y si alguna vez (sin un segundo filtro
+ * de fecha sobre `Oportunidad`) llegaron a tener una oportunidad / cerraron
+ * en venta. Distinto de `MetricasEmbudoOportunidad`: acá NO hay pasos
+ * intermedios, es una vista compacta de apertura/cierre.
+ */
+export interface MetricasCascadaLeadOportunidad {
+  leads: number;
+  conOportunidad: number;
+  ventaOportunidad: number;
+  /** `null` cuando `leads` es 0. */
+  tasaAperturaPct: number | null;
+  /** `null` cuando `conOportunidad` es 0. */
+  tasaCierrePct: number | null;
+}
+
+/**
+ * `GET /metricas/ranking-productos-por-empresa` (docs/23 item 13). Lista
+ * PLANA, una fila por par (empresa, producto) -- cada fila repite
+ * `empresaId`/`nombreEmpresa`, sin recorte top-N por empresa (deliberado).
+ * Ordenada por el backend por `nombreEmpresa` y luego `total` desc.
+ *
+ * GAP CONOCIDO (E5, `docs/blocks/e-dashboards.md`): hay un test de backend
+ * fallando (`metricas.service.test.ts`, describe "getRankingProductosPorEmpresa
+ * (E5)") donde una sesión holding-wide puede no ver la fila de una segunda
+ * empresa. Se integra igual (decisión ya tomada, no ocultar la gráfica); el
+ * aviso visible para sesión holding vive en
+ * `GraficoRankingProductosPorEmpresa.tsx`.
+ */
+export interface MetricasRankingProductoPorEmpresa {
+  empresaId: string;
+  nombreEmpresa: string;
+  productoId: string;
+  nombreProducto: string;
+  total: number;
+  ventas: number;
+  noVentas: number;
+  /** `null` cuando no hay cerrados de ese par (empresa, producto) en el período (denominador 0). */
+  tasaConversionPct: number | null;
 }

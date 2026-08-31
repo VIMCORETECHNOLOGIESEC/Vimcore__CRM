@@ -45,7 +45,11 @@ export async function obtenerMarcaPublicaConFallback(): Promise<MarcaPublica> {
     );
   });
   try {
-    return await Promise.race([fetchMarcaPublicaApi(), timeout]);
+    const marca = await Promise.race([fetchMarcaPublicaApi(), timeout]);
+    // `GET /marca-publica` responde 200 con body `null` cuando no hay marca
+    // configurada (holding/empresa sin branding público) -- una resolución
+    // válida, no un rechazo, así que el `catch` de abajo no la cubre.
+    return marca ?? CONFIGURACION_EMPRESA_DEFAULT;
   } catch {
     return CONFIGURACION_EMPRESA_DEFAULT;
   } finally {
