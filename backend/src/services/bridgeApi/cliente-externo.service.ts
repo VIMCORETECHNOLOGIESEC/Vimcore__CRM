@@ -8,6 +8,16 @@ export type RespuestaApiExterna =
   | { ok: false; mensaje: string };
 
 /**
+ * Fix (mismo gap ya corregido hoy en whatsapp-oauth.service.ts/
+ * whatsapp-cloud-api.service.ts): este `fetch` no tenía timeout ni
+ * `AbortSignal` -- si el servidor del cliente no respondía, la request
+ * quedaba colgada indefinidamente. Se vuelve más importante todavía ahora
+ * que `pollUnBridge` puede dispararse sincrónicamente desde un request HTTP
+ * (activar el bridge/guardar el mapeo), no solo desde el job de 2 minutos.
+ */
+const CLIENTE_EXTERNO_TIMEOUT_MS = 10_000;
+
+/**
  * bridgeApi: GET real contra la API del cliente, con la credencial en el
  * header configurado (`nombreHeaderApiKey`, default `X-Api-Key`) y el
  * parámetro de fecha configurado (`parametroFecha`) si hay `desde` y el
@@ -35,7 +45,10 @@ export async function consultarLeadsExternos(
   let respuesta: Response;
   let cuerpo: unknown;
   try {
-    respuesta = await fetch(url, { headers: { [nombreHeader]: credencial } });
+    respuesta = await fetch(url, {
+      headers: { [nombreHeader]: credencial },
+      signal: AbortSignal.timeout(CLIENTE_EXTERNO_TIMEOUT_MS),
+    });
     cuerpo = await respuesta.json().catch(() => null);
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : "Error de red desconocido";

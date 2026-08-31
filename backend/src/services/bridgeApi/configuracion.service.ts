@@ -1,6 +1,7 @@
 import type { Bridge, RedSocial } from "@prisma/client";
 import { AppError } from "../../lib/app-error.js";
 import { decrypt, encrypt } from "../../lib/cifrado-token.js";
+import { pollUnBridgeSeguro } from "../../jobs/bridgeApi/poll.job.js";
 import * as bridgeRepository from "../../repositories/bridge.repository.js";
 import type { ConexionBridgeApiBody, MapeoBridgeApiBody } from "../../schemas/bridges.schema.js";
 import type { AuthenticatedUser } from "../../types/authenticated-user.js";
@@ -110,6 +111,14 @@ export async function actualizarMapeo(
   const actualizado = await bridgeRepository.update(bridgeId, {
     configuracionJson: configuracionActualizada,
   });
+
+  // Fix (backfill inmediato, 2026-08-31): si el bridge ya estaba ACTIVO
+  // (solo faltaba esta última pieza de config), no hace falta esperar el
+  // próximo tick de 2 minutos para traer los leads que la API externa ya
+  // tenía. Mismo criterio y misma función que `bridge.service.ts::
+  // updateBridge` -- ver el comentario ahí (auto-guardada, fire-and-forget,
+  // errores van a `bridge_logs` solos).
+  void pollUnBridgeSeguro(actualizado);
 
   return toBridgeApiConfigDto(actualizado, configuracionActualizada);
 }
