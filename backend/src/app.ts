@@ -9,7 +9,11 @@ import { logger } from "./lib/logger.js";
 export function createApp(): Express {
   const app = express();
 
-  app.use(pinoHttp({ logger }));
+  // `customProps`: marca cada línea de request/response de pino-http con
+  // `accessLog: true` para que `logger.ts::loggerOptions` no la suprima --
+  // método/URL/status/duración no son datos de negocio, no dependen de
+  // contexto tenant para ser seguros de ver en los logs.
+  app.use(pinoHttp({ logger, customProps: () => ({ accessLog: true }) }));
   // El frontend (SPA en otro origen) autentica con `Authorization: Bearer`,
   // no con cookies -- no hace falta `credentials: true`. `cors` resuelve el
   // preflight `OPTIONS` automáticamente para el POST JSON de login.

@@ -25,7 +25,17 @@ function loggerOptions(useTransport: boolean): LoggerOptions {
         const fields = typeof args[0] === "object" && args[0] !== null
           ? args[0] as Record<string, unknown>
           : undefined;
-        const explicitScope = fields?.holdingWide === true || typeof fields?.empresaId === "string";
+        // `accessLog`: marca las líneas de request/response de `pino-http`
+        // (`app.ts::customProps`) -- método/URL/status/duración no son datos
+        // de negocio, no hace falta esperar contexto tenant para verlos.
+        // `customProps` de pino-http se aplica vía `.child()` (bindings), no
+        // como argumento de la llamada -- por eso se lee de `this.bindings()`
+        // acá, igual que `req` sobrevive el hook por ser binding y no arg.
+        const bindings = this.bindings();
+        const explicitScope =
+          fields?.holdingWide === true ||
+          typeof fields?.empresaId === "string" ||
+          bindings.accessLog === true;
         if (!context && !explicitScope) {
           return method.apply(this, [
             { event: "tenant_output_suppressed" },
