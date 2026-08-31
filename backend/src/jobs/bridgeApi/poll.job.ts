@@ -2,7 +2,7 @@ import type { Bridge } from "@prisma/client";
 import { adaptApiExterna } from "../../adapters/bridgeApi/api-externa.adapter.js";
 import { decrypt } from "../../lib/cifrado-token.js";
 import { logger } from "../../lib/logger.js";
-import { runWithTenantContext } from "../../lib/prisma.js";
+import { INGESTA_ACCEPT_TRANSACTION_BOUNDS, runInTransaction, runWithTenantContext } from "../../lib/prisma.js";
 import * as bridgeLogRepository from "../../repositories/bridge-log.repository.js";
 import * as bridgeRepository from "../../repositories/bridge.repository.js";
 import * as leadRecibidoRepository from "../../repositories/lead-recibido.repository.js";
@@ -105,7 +105,21 @@ async function pollUnBridge(bridge: Bridge): Promise<void> {
       continue;
     }
 
-    await leadRecibidoRepository.aceptarLeadRecibido(leadEntrante);
+    // Fix (RLS, 2026-08-31): `aceptarLeadRecibido` hace un `$queryRaw` suelto
+    // -- `lib/prisma.ts::$allOperations` nunca aplica las GUCs de tenant a una
+    // operación raw fuera de una transacción explícita, sin importar que este
+    // job ya corra dentro del `runWithTenantContext({ empresaId: null })` de
+    // `pollBridgesApiExterna`. Mismo gap y mismo fix ya aplicado en
+    // `ingesta.service.ts::ingestarLead`/`meta-webhook.service.ts::
+    // encolarLeadgenMeta` -- sin esto, todo poll de un bridge API_EXTERNA
+    // fallaba con 42501 en cuanto `leads_recibidos` pasó a tener RLS real, y
+    // el error caía en el catch genérico de `pollBridgesApiExterna` (solo
+    // `logger.error`, sin `bridge_logs`), así que nunca se veía en el panel.
+    await runInTransaction(
+      undefined,
+      (tx) => leadRecibidoRepository.aceptarLeadRecibido(leadEntrante, new Date(), tx),
+      INGESTA_ACCEPT_TRANSACTION_BOUNDS,
+    );
     aceptados++;
   }
 
@@ -133,6 +147,17 @@ export async function pollBridgesApiExterna(): Promise<void> {
         await pollUnBridge(bridge);
       } catch (err) {
         logger.error({ err, bridgeId: bridge.id }, "bridgeApi: fallo inesperado en el poll de un bridge");
+        // Fix (visibilidad, 2026-08-31): antes esta rama SOLO quedaba en los
+        // logs del contenedor -- invisible para un administrador mirando la
+        // pestaña "Logs" del bridge en el panel (`registrarLogSeguro` de
+        // arriba sí escribe `bridge_logs`, esta rama no lo hacía). Un fallo
+        // inesperado (p. ej. el mismo bug de RLS de más arriba) quedaba
+        // indistinguible de "todavía no corrió" desde la UI.
+        await registrarLogSeguro(
+          bridge,
+          "ERROR",
+          `bridgeApi: fallo inesperado en el poll -- ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   });
