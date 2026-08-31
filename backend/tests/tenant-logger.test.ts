@@ -23,4 +23,21 @@ describe("tenant logger", () => {
     expect(records[2]).not.toHaveProperty("foreignPayload");
     expect(records[2]?.msg).not.toBe("ambiguous");
   });
+
+  it("no suprime logs de acceso HTTP marcados con accessLog (binding, no argumento)", () => {
+    const { logger, lines } = captureLogs();
+
+    // Mismo mecanismo que `app.ts::customProps` de pino-http: `accessLog`
+    // llega como binding de `.child()`, no como argumento de la llamada.
+    const accessLogger = logger.child({ req: { url: "/api/v1/salud" } }).child({ accessLog: true });
+    accessLogger.info({ res: { statusCode: 401 }, responseTime: 12 }, "request completed");
+
+    const record = JSON.parse(lines[0]) as Record<string, unknown>;
+    expect(record).toMatchObject({
+      accessLog: true,
+      res: { statusCode: 401 },
+      msg: "request completed",
+    });
+    expect(record.event).not.toBe("tenant_output_suppressed");
+  });
 });
