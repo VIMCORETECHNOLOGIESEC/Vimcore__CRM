@@ -1,4 +1,4 @@
-import { ApiError, authenticatedFetch, httpClient } from "@/api/httpClient";
+import { httpClient } from "@/api/httpClient";
 import type { ReporteJob, ReporteParametros, TipoReporte } from "@/tipos/reporte";
 
 /**
@@ -8,13 +8,18 @@ import type { ReporteJob, ReporteParametros, TipoReporte } from "@/tipos/reporte
  *
  * Mismo patrón que `conversaciones.api.ts` para los 3 endpoints JSON (una
  * función `async` por endpoint, envoltura `{ job }` desenvuelta acá). La
- * descarga (`descargarReporteApi`) es distinta a propósito: el endpoint real
- * es un stream autenticado (`res.download` del backend), NO una URL firmada
- * -- por eso usa `authenticatedFetch` (que expone la `Response` cruda) en vez
- * de `httpClient` (que siempre asume JSON). Queda aislada en esta única
- * función porque hay un commit futuro sin mergear (`ad64e8b`, no en esta
- * rama) que cambia el mecanismo a una URL firmada de Azure Blob -- el día
- * que eso pase, este es el único punto de cambio.
+ * descarga (`descargarReporteApi`) YA es una URL firmada de Azure Blob
+ * Storage, no un stream autenticado del backend: `getReporteJobDescarga`
+ * (`reportes.controller.ts:59-72`, desplegado 2026-08-30) dejó de proxear/
+ * streamear el archivo -- ahora responde `{ url }` (una SAS de solo
+ * lectura, vigente unos minutos) vía JSON normal. Por eso esta función usa
+ * `httpClient.get` (como el resto de este archivo) y no
+ * `authenticatedFetch`/`.blob()`: la URL SAS no necesita `Authorization`
+ * (es Azure Blob Storage directo, no el backend) y el navegador la consume
+ * navegando a ella, mismo patrón que
+ * `whatsapp.utils.ts::redirectTo` (`window.location.assign`, envuelto en su
+ * propia función para poder mockearlo en tests sin pelear con la navegación
+ * real de jsdom).
  */
 
 interface CrearReporteJobResponse {
@@ -67,75 +72,35 @@ export async function fetchReporteJobApi(id: string): Promise<ReporteJob> {
   return job;
 }
 
-const MENSAJE_ERROR_DESCARGA_GENERICO =
-  "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.";
-const MENSAJE_ERROR_RED =
-  "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.";
-
-interface CuerpoErrorDescarga {
-  code?: string;
-  message?: string;
-}
-
-function extraerNombreArchivo(headers: Headers, jobId: string, tipo: TipoReporte): string {
-  const disposition = headers.get("Content-Disposition") ?? headers.get("content-disposition");
-  if (disposition) {
-    const coincidencia = /filename="?([^";]+)"?/i.exec(disposition);
-    if (coincidencia?.[1]) return coincidencia[1];
-  }
-  return `reporte-${jobId}.${tipo}`;
-}
-
-function guardarBlob(blob: Blob, nombreArchivo: string): void {
-  const url = URL.createObjectURL(blob);
-  const enlace = document.createElement("a");
-  enlace.href = url;
-  enlace.download = nombreArchivo;
-  enlace.style.display = "none";
-  document.body.appendChild(enlace);
-  enlace.click();
-  window.setTimeout(() => {
-    enlace.remove();
-    URL.revokeObjectURL(url);
-  }, 1000);
+interface DescargaReporteResponse {
+  url: string;
 }
 
 /**
- * `GET /reportes/jobs/:id/descargar`. Descarga autenticada del archivo ya
- * generado (`estado === "LISTO"`) y dispara el guardado en el navegador vía
- * un `<a>` sintético sobre un `Blob` (mismo mecanismo de limpieza que
- * `exportarDashboard.ts::descargarArchivo`, adaptado a un `Blob` que viene
- * de una `Response` fetch en vez de contenido en memoria).
- *
- * Ante un error HTTP, lanza un `ApiError` con el mensaje accionable del
- * backend (`{ code, message }`, ej. 409 `reporte_no_disponible`, 404
- * `archivo_no_encontrado`) o uno genérico si el cuerpo no es JSON legible --
- * así el `MutationCache` global (`api/queryClient.ts`) ya sabe mostrarlo sin
- * que este módulo dispare su propio toast.
+ * Dispara la navegación real del navegador hacia la URL SAS -- envuelto en
+ * su propia función (igual que `whatsapp.utils.ts::redirectTo`) para poder
+ * mockearla en tests sin pelear con la navegación real de jsdom.
  */
-export async function descargarReporteApi(jobId: string, tipo: TipoReporte): Promise<void> {
-  let response: Response;
-  try {
-    response = await authenticatedFetch(`/reportes/jobs/${jobId}/descargar`);
-  } catch {
-    throw new ApiError("error_red", 0, MENSAJE_ERROR_RED);
-  }
+export function redirigirADescarga(url: string): void {
+  window.location.assign(url);
+}
 
-  if (!response.ok) {
-    let cuerpo: CuerpoErrorDescarga | null = null;
-    try {
-      cuerpo = (await response.json()) as CuerpoErrorDescarga;
-    } catch {
-      // Cuerpo no JSON (o vacío) -- se conserva el mensaje genérico.
-    }
-    throw new ApiError(
-      cuerpo?.code ?? "error_desconocido",
-      response.status,
-      cuerpo?.message ?? MENSAJE_ERROR_DESCARGA_GENERICO,
-    );
-  }
-
-  const blob = await response.blob();
-  const nombreArchivo = extraerNombreArchivo(response.headers, jobId, tipo);
-  guardarBlob(blob, nombreArchivo);
+/**
+ * `GET /reportes/jobs/:id/descargar`. Pide la URL SAS del archivo ya
+ * generado (`estado === "LISTO"`) vía JSON normal (`httpClient.get`, no
+ * `authenticatedFetch`/`.blob()` -- ver docblock del módulo) y navega el
+ * navegador directo a ella. `httpClient.get` ya mapea cualquier error HTTP a
+ * un `ApiError` con el mensaje accionable del backend (409
+ * `reporte_no_disponible`, 404 `archivo_no_encontrado`) o de red, y el
+ * `MutationCache` global (`api/queryClient.ts`) ya sabe mostrarlo sin que
+ * este módulo dispare su propio toast.
+ *
+ * `tipo` no se usa acá (era solo para nombrar el archivo del `Blob` en el
+ * mecanismo viejo) -- se conserva en la firma para no tocar
+ * `useReportes.ts::useDescargarReporte`/`DescargarReporteButton.tsx`, que
+ * siguen pasando `job.tipo`.
+ */
+export async function descargarReporteApi(jobId: string, _tipo: TipoReporte): Promise<void> {
+  const { url } = await httpClient.get<DescargaReporteResponse>(`/reportes/jobs/${jobId}/descargar`);
+  redirigirADescarga(url);
 }

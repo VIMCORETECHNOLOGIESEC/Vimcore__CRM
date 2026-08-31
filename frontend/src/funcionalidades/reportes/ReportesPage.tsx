@@ -133,6 +133,11 @@ export function ReportesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <p className="text-sm text-muted-foreground">
+        Reportes formales, con más alcance y trazabilidad que la exportación rápida del
+        Dashboard.
+      </p>
+
       <form
         onSubmit={enviar}
         noValidate

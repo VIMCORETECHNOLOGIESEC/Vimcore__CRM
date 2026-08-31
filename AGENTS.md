@@ -86,6 +86,18 @@ Reglas para los agentes:
   fase. Cada dependencia es superficie de ataque heredada.
 - Ante una dependencia con script de post-instalación, decláralo explícitamente
   en el `proposal.md` antes de incorporarla.
+- **Excepción documentada (2026-08-30):** `xlsx` (^0.18.5, `frontend/`) agrega
+  parseo de Excel en el cliente para la carga masiva de leads (docs/blocks/
+  d-routing-oportunidad.md, "Canal de ingreso manual") — el backend
+  (`POST /leads/carga-masiva`, contrato ya definido por Mateo) recibe JSON ya
+  armado, nunca el archivo crudo. Sin script de post-instalación conocido.
+  Aprobada por decisión explícita del usuario, sin artefacto SDD formal por
+  la prontitud del batch — este párrafo cumple ese rol retroactivamente.
+  **Ampliación de uso (2026-08-31):** la misma dependencia también se usa
+  para GENERAR (no solo parsear) workbooks XLSX en
+  `funcionalidades/dashboard/exportarDashboard.ts` (exportación de
+  dashboard, ver excepción de alcance en §7) — mismo paquete, capacidad
+  distinta, sin dependencia nueva.
 
 ### 2.2 Ejecución y despliegue en contenedor
 
@@ -394,11 +406,23 @@ de modificar código, datos o despliegue:
   los eventos SSE `reporte.iniciado`/`reporte.listo`/`reporte.error`
   (extensión aditiva de `notificaciones/notificaciones.sse.ts` y
   `useNotificacionesRealtime.ts`, mismo mecanismo ya usado para
-  `whatsapp.mensaje-nuevo`), nunca polling. Construido contra el mecanismo
-  de descarga ACTUAL de `test/gpt` (stream autenticado desde disco local,
-  `res.download`) — el commit `ad64e8b` (Azure Blob Storage privado) sigue
-  sin mergear a esta rama, no está cubierto por esta excepción hasta que se
-  integre.
+  `whatsapp.mensaje-nuevo`), nunca polling. **Actualización (2026-08-31):**
+  el commit `ad64e8b` (Azure Blob Storage privado, URL firmada/SAS de solo
+  lectura devuelta por `GET /reportes/jobs/:id/descargar` en vez de
+  streamear el archivo) ya está mergeado a `test/gpt` (confirmado con
+  `git merge-base --is-ancestor ad64e8b HEAD`) — `reportes.api.ts` ya está
+  construido contra ese contrato vigente, no contra el `res.download`
+  anterior. La nota previa que decía lo contrario quedó obsoleta y se
+  corrige acá.
+  **Excepción documentada (2026-08-31):** por indicación directa del
+  usuario, la exportación de dashboard a Excel/PDF del lado del cliente
+  (`funcionalidades/dashboard/DashboardExportar.tsx`,
+  `exportarDashboard.ts`, usa `xlsx` además de su uso ya declarado para
+  carga masiva de leads — ver §2.1) entra también en el alcance del
+  despliegue vigente, como decisión 1 de 3 de
+  `docs/propuesta-consolidacion-exportacion-reportes.md` (consolidación
+  entre esta exportación ad-hoc y el módulo async de `funcionalidades/
+  reportes/` de arriba).
 - Integración con calendarios externos (Google Calendar, Outlook)
 - Notificaciones por correo, SMS o WhatsApp (solo in-app). **Excepción
   documentada (2026-08-30):** `LeadDetallePage.tsx` (commit `34e49db`,
@@ -418,7 +442,13 @@ de modificar código, datos o despliegue:
   `/whatsapp/callback` en `router.tsx`) — Embedded Signup, callback OAuth
   y persistencia de la conexión (`GET /whatsapp/conectar`,
   `GET /whatsapp/callback`, `POST /whatsapp/conexion`), ver
-  `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3. El envío
+  `docs/contrato-frontend-whatsapp-api_mat_04.md` secciones 1-3.
+  **Adenda (2026-08-31):** el mismo flujo de conexión se reemplazó el
+  redirect de página completa por una ventana emergente real
+  (`frontend/src/hooks/useOAuthPopup.ts`, infra genérica reusable, y
+  `frontend/src/funcionalidades/whatsapp/WhatsAppConexionOverlay.tsx`) —
+  ambos archivos quedan explícitamente dentro de esta misma excepción, ya
+  que sirven exclusivamente al flujo de conexión ya aprobado. El envío
   y recepción real de mensajes de WhatsApp (lo que el panel
   `WhatsAppChat` sigue simulando con datos mock) **no** está cubierto por
   esta ampliación y sigue fuera de alcance salvo que se decida aparte.

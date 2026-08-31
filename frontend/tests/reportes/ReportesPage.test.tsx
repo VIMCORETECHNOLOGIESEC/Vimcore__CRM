@@ -101,6 +101,15 @@ describe("ReportesPage — estado inicial", () => {
     expect(await screen.findByText("Todavía no generaste ningún reporte")).toBeInTheDocument();
   });
 
+  it("explica la diferencia con la exportación rápida del Dashboard", async () => {
+    renderPage();
+    expect(
+      await screen.findByText(
+        "Reportes formales, con más alcance y trazabilidad que la exportación rápida del Dashboard.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("resync al montar: si /activo trae un job en curso, lo muestra sin necesidad de generar uno nuevo", async () => {
     fetchReporteJobActivoApiMock.mockResolvedValue(jobFake({ id: "job-9", estado: "PROCESANDO" }));
     fetchReporteJobApiMock.mockResolvedValue(jobFake({ id: "job-9", estado: "PROCESANDO" }));

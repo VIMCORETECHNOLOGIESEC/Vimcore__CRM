@@ -3,9 +3,10 @@ import type { ReporteJob, ReporteParametros } from "@/tipos/reporte";
 
 /**
  * `reportes.api.ts` -- docs/23 item 15. Mismo patrón que
- * `conversaciones.api.test.ts`: `httpClient` mockeado para los 3 endpoints
- * JSON, `authenticatedFetch` mockeado aparte para la descarga binaria (no
- * puede usar `httpClient`, que siempre llama `.json()`).
+ * `conversaciones.api.test.ts`: `httpClient` mockeado para los 4 endpoints
+ * JSON (incluida la descarga, que desde `getReporteJobDescarga`
+ * (`reportes.controller.ts:59-72`, 2026-08-30) devuelve `{ url }` -- una SAS
+ * de Azure Blob Storage -- en vez de streamear el archivo).
  */
 vi.mock("@/api/httpClient", async () => {
   const actual = await vi.importActual<typeof import("@/api/httpClient")>("@/api/httpClient");
@@ -17,11 +18,10 @@ vi.mock("@/api/httpClient", async () => {
       patch: vi.fn(),
       delete: vi.fn(),
     },
-    authenticatedFetch: vi.fn(),
   };
 });
 
-const { httpClient, authenticatedFetch, ApiError } = await import("@/api/httpClient");
+const { httpClient, ApiError } = await import("@/api/httpClient");
 const {
   crearReporteJobApi,
   fetchReporteJobActivoApi,
@@ -31,7 +31,6 @@ const {
 
 const getMock = vi.mocked(httpClient.get);
 const postMock = vi.mocked(httpClient.post);
-const authenticatedFetchMock = vi.mocked(authenticatedFetch);
 
 function jobFake(overrides: Partial<ReporteJob> = {}): ReporteJob {
   return {
@@ -51,7 +50,6 @@ function jobFake(overrides: Partial<ReporteJob> = {}): ReporteJob {
 beforeEach(() => {
   getMock.mockReset();
   postMock.mockReset();
-  authenticatedFetchMock.mockReset();
 });
 
 afterEach(() => {
@@ -119,116 +117,72 @@ describe("fetchReporteJobApi — GET /reportes/jobs/:id", () => {
 });
 
 describe("descargarReporteApi — GET /reportes/jobs/:id/descargar", () => {
-  function respuestaFake(overrides: Partial<Response> = {}): Response {
-    return {
-      ok: true,
-      status: 200,
-      headers: new Headers({ "Content-Disposition": 'attachment; filename="reporte-job-1.pdf"' }),
-      blob: () => Promise.resolve(new Blob(["contenido"], { type: "application/pdf" })),
-      json: () => Promise.resolve({}),
-      ...overrides,
-    } as Response;
-  }
+  // jsdom no permite redefinir `Location.prototype.assign` con `vi.spyOn`
+  // (propiedad no configurable en esta versión) -- se reemplaza el objeto
+  // `window.location` completo, mismo criterio que
+  // `whatsapp.utils.test.ts::redirectTo`.
+  let assignMock: ReturnType<typeof vi.fn>;
+  let originalLocation: Location;
 
-  it("pide la ruta autenticada correcta", async () => {
-    authenticatedFetchMock.mockResolvedValue(respuestaFake());
-    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-url");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-
-    await descargarReporteApi("job-1", "pdf");
-
-    expect(authenticatedFetchMock).toHaveBeenCalledWith("/reportes/jobs/job-1/descargar");
-    expect(createObjectURLSpy).toHaveBeenCalled();
-    expect(clickSpy).toHaveBeenCalled();
-  });
-
-  it("usa el filename de Content-Disposition cuando está presente", async () => {
-    authenticatedFetchMock.mockResolvedValue(respuestaFake());
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-url");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    let nombreDescargado = "";
-    const originalCreateElement = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
-      const el = originalCreateElement(tag);
-      if (tag === "a") {
-        Object.defineProperty(el, "click", {
-          value: () => {
-            nombreDescargado = (el as HTMLAnchorElement).download;
-          },
-        });
-      }
-      return el;
+  beforeEach(() => {
+    originalLocation = window.location;
+    assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...originalLocation, assign: assignMock },
+      configurable: true,
+      writable: true,
     });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it("pide la ruta JSON correcta y navega a la URL SAS devuelta", async () => {
+    getMock.mockResolvedValue({ url: "https://storage.blob.core.windows.net/reportes/job-1.pdf?sig=abc" });
 
     await descargarReporteApi("job-1", "pdf");
 
-    expect(nombreDescargado).toBe("reporte-job-1.pdf");
-    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-  });
-
-  it("cae al nombre por defecto reporte-<id>.<tipo> sin Content-Disposition", async () => {
-    authenticatedFetchMock.mockResolvedValue(
-      respuestaFake({ headers: new Headers() }),
+    expect(getMock).toHaveBeenCalledWith("/reportes/jobs/job-1/descargar");
+    expect(assignMock).toHaveBeenCalledWith(
+      "https://storage.blob.core.windows.net/reportes/job-1.pdf?sig=abc",
     );
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-url");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    let nombreDescargado = "";
-    const originalCreateElement = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
-      const el = originalCreateElement(tag);
-      if (tag === "a") {
-        Object.defineProperty(el, "click", {
-          value: () => {
-            nombreDescargado = (el as HTMLAnchorElement).download;
-          },
-        });
-      }
-      return el;
-    });
-
-    await descargarReporteApi("job-9", "xlsx");
-
-    expect(nombreDescargado).toBe("reporte-job-9.xlsx");
   });
 
-  it("con 409 reporte_no_disponible, lanza un ApiError con el mensaje del backend", async () => {
-    authenticatedFetchMock.mockResolvedValue(
-      respuestaFake({
-        ok: false,
-        status: 409,
-        json: () =>
-          Promise.resolve({
-            code: "reporte_no_disponible",
-            message: "El reporte todavía no está listo para descargar.",
-          }),
-      }),
+  it("con 409 reporte_no_disponible, propaga el ApiError con el mensaje del backend sin navegar", async () => {
+    getMock.mockRejectedValue(
+      new ApiError("reporte_no_disponible", 409, "El reporte todavía no está listo para descargar."),
     );
 
     await expect(descargarReporteApi("job-1", "pdf")).rejects.toThrow(
       "El reporte todavía no está listo para descargar.",
     );
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
-  it("con un cuerpo de error no JSON, lanza un mensaje genérico accionable", async () => {
-    authenticatedFetchMock.mockResolvedValue(
-      respuestaFake({
-        ok: false,
-        status: 404,
-        json: () => Promise.reject(new Error("no body")),
-      }),
+  it("con 404 archivo_no_encontrado, propaga el ApiError del backend sin navegar", async () => {
+    getMock.mockRejectedValue(
+      new ApiError("archivo_no_encontrado", 404, "El archivo del reporte ya no está disponible"),
     );
 
     await expect(descargarReporteApi("job-1", "pdf")).rejects.toThrow(
-      "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      "El archivo del reporte ya no está disponible",
     );
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
-  it("ante una falla de red (fetch rechaza), lanza un mensaje accionable de conexión", async () => {
-    authenticatedFetchMock.mockRejectedValue(new TypeError("failed to fetch"));
+  it("ante una falla de red, propaga el ApiError accionable de conexión de httpClient sin navegar", async () => {
+    getMock.mockRejectedValue(
+      new ApiError("error_red", 0, "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente."),
+    );
 
     await expect(descargarReporteApi("job-1", "pdf")).rejects.toThrow(
       "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.",
     );
+    expect(assignMock).not.toHaveBeenCalled();
   });
 });
