@@ -18,6 +18,10 @@ export const ESTILO_AUTENTICACION_POR_RED: Record<RedSocial, EstiloAutenticacion
   INSTAGRAM: "TOKEN_PROVEEDOR",
   LINKEDIN: "TOKEN_PROVEEDOR",
   API_EXTERNA: "CLAVE_API",
+  // WhatsApp NUNCA tiene un `Bridge` propio (ver comentario del enum en
+  // `schema.prisma`) -- esta entrada solo satisface el `Record<RedSocial,_>`
+  // exhaustivo, no se lee para ningún flujo de bridges real.
+  WHATSAPP: "TOKEN_PROVEEDOR",
 };
 
 /**

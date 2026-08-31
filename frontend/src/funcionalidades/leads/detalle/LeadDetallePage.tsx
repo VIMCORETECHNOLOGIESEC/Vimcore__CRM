@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Handshake, Send, X } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Handshake, X } from "lucide-react";
 import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
@@ -21,6 +21,8 @@ import { CierreNoVentaForm } from "./CierreNoVentaForm";
 import { CierreVentaForm } from "./CierreVentaForm";
 import { useLeadDetalle } from "./useLeadDetalle";
 import { ETAPA_ETIQUETAS } from "../catalogos";
+import { ConversacionAbierta } from "@/funcionalidades/whatsapp/ConversacionAbierta";
+import { useConversaciones } from "@/funcionalidades/whatsapp/useConversaciones";
 import type { Lead, EtapaLead } from "@/tipos/lead";
 
 type VistaDetalle = "progreso" | "cita" | "cierre" | "oportunidad";
@@ -205,85 +207,38 @@ function CierreLeadPanel({ leadId, cerrado }: { leadId: string; cerrado: boolean
   );
 }
 
-function WhatsAppChat({
-  leadName,
-  onClose,
-  expanded = false,
-}: {
-  leadName: string;
-  onClose: () => void;
-  expanded?: boolean;
-}) {
+function WhatsAppChat({ clienteId }: { clienteId: string }) {
+  const { data, isLoading } = useConversaciones({ clienteId, pagina: 1, limite: 10 });
+
+  if (isLoading) {
+    return (
+      <section
+        data-tour="lead-whatsapp-chat"
+        className="flex min-h-0 flex-col overflow-hidden h-full rounded-none border-0 border-l border-primary/20 shadow-none"
+        aria-label="Chat de WhatsApp"
+      >
+        <LoadingState rows={5} rowHeight="h-12" className="p-4" />
+      </section>
+    );
+  }
+
+  const conversacion = data?.conversaciones[0] ?? null;
+
   return (
     <section
-      data-tour={expanded ? "lead-whatsapp-chat" : undefined}
-      className={`flex min-h-0 flex-col overflow-hidden border-border bg-background ${
-        expanded ? "h-full rounded-none border-0 border-l border-primary/20 shadow-none" : "h-[min(680px,calc(100vh-15rem))] min-h-[520px] rounded-lg border shadow-sm"
-      }`}
+      data-tour="lead-whatsapp-chat"
+      className="flex min-h-0 flex-col overflow-hidden h-full rounded-none border-0 border-l border-primary/20 shadow-none"
       aria-label="Chat de WhatsApp"
     >
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-primary/20 px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-            {leadName.charAt(0).toUpperCase()}
-          </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{leadName}</h2>
-            <p className="text-xs text-muted-foreground">WhatsApp</p>
-          </div>
-        </div>
-        {!expanded ? (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar chat de WhatsApp"
-            className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        ) : null}
-      </header>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-muted p-4">
-        <p className="mx-auto rounded-full bg-secondary px-3 py-1 text-[11px] text-muted-foreground">Hoy</p>
-        <div className="flex items-end gap-2">
-          <span className="size-6 shrink-0 rounded-full bg-secondary" aria-hidden="true" />
-          <p className="max-w-[82%] rounded-2xl rounded-bl-sm bg-card px-3 py-2 text-sm text-foreground shadow-sm">
-            Hola, ¿cómo estás? Vi que pediste información.
-            <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:42</span>
-          </p>
-        </div>
-        <div className="flex items-end justify-end gap-2">
-          <p className="max-w-[82%] rounded-2xl rounded-br-sm bg-primary/10 px-3 py-2 text-sm text-foreground">
-            Hola, sí. Me gustaría conocer más detalles.
-            <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:44</span>
-          </p>
-        </div>
-        <div className="flex items-end gap-2">
-          <span className="size-6 shrink-0 rounded-full bg-secondary" aria-hidden="true" />
-          <p className="max-w-[82%] rounded-2xl rounded-bl-sm bg-card px-3 py-2 text-sm text-foreground shadow-sm">
-            Perfecto. Puedo ayudarte a coordinar una llamada cuando te quede cómodo.
-            <span className="mt-1 block text-right text-[10px] text-muted-foreground">10:45</span>
-          </p>
-        </div>
-      </div>
-
-      <form className="flex items-center gap-2 border-t border-border bg-background p-3" onSubmit={(event) => event.preventDefault()}>
-        <label htmlFor="mensaje-whatsapp" className="sr-only">Escribir mensaje</label>
-        <input
-          id="mensaje-whatsapp"
-          type="text"
-          placeholder="Escribí un mensaje..."
-          className="h-10 min-w-0 flex-1 rounded-md border border-primary/40 bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
+      {conversacion ? (
+        <ConversacionAbierta conversacionId={conversacion.id} encabezado={conversacion} />
+      ) : (
+        <EmptyState
+          title="Todavía no hay conversación"
+          description="Este cliente todavía no escribió por WhatsApp."
+          className="m-4"
         />
-        <button
-          type="submit"
-          aria-label="Enviar mensaje"
-          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          <Send className="size-4" aria-hidden="true" />
-        </button>
-      </form>
+      )}
     </section>
   );
 }
@@ -469,13 +424,15 @@ export function LeadDetallePage() {
                 {vistaActiva === "oportunidad" ? <OportunidadesLeadTab leadId={lead.id} /> : null}
               </div>
             </section>
-            <div className="min-h-0 min-w-0">
-              <WhatsAppChat leadName={lead.cliente.nombre} onClose={() => setChatAbierto(false)} expanded />
-            </div>
+            {lead.redSocial === "WHATSAPP" ? (
+              <div className="min-h-0 min-w-0">
+                <WhatsAppChat clienteId={lead.cliente.id} />
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
-      {!chatAbierto ? (
+      {!chatAbierto && lead.redSocial === "WHATSAPP" ? (
         <button
           type="button"
           onClick={() => setChatAbierto(true)}

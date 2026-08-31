@@ -14,7 +14,9 @@ export type RedSocial =
   | "X"
   | "LINKEDIN"
   | "GOOGLE_FORMS"
-  | "API_EXTERNA";
+  | "API_EXTERNA"
+  /** Origen de un lead auto-creado desde una `Conversacion` de WhatsApp. */
+  | "WHATSAPP";
 
 export type EtapaLead = "NUEVO" | "CONTACTADO" | "CITA" | "VENTA" | "NO_VENTA";
 

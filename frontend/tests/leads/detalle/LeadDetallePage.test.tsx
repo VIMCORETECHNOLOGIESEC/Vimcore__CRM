@@ -41,12 +41,24 @@ vi.mock("@/funcionalidades/leads/detalle/OportunidadesLeadTab", () => ({
   OportunidadesLeadTab: () => <div>Oportunidades lead tab mock</div>,
 }));
 
+vi.mock("@/funcionalidades/whatsapp/useConversaciones", () => ({
+  useConversaciones: vi.fn(),
+}));
+
+vi.mock("@/funcionalidades/whatsapp/ConversacionAbierta", () => ({
+  ConversacionAbierta: ({ conversacionId }: { conversacionId: string }) => (
+    <div>ConversacionAbierta mock — {conversacionId}</div>
+  ),
+}));
+
 const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useLeadDetalle } = await import("@/funcionalidades/leads/detalle/useLeadDetalle");
+const { useConversaciones } = await import("@/funcionalidades/whatsapp/useConversaciones");
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 
 const useAuthMock = vi.mocked(useAuth);
 const useLeadDetalleMock = vi.mocked(useLeadDetalle);
+const useConversacionesMock = vi.mocked(useConversaciones);
 
 function buildLead(overrides: Partial<Lead> = {}): Lead {
   return {
@@ -117,6 +129,11 @@ beforeEach(() => {
     error: null,
     refetch: vi.fn(),
   });
+
+  useConversacionesMock.mockReturnValue({
+    data: { conversaciones: [], total: 0 },
+    isLoading: false,
+  } as unknown as ReturnType<typeof useConversaciones>);
 });
 
 describe("LeadDetallePage — useVistaEmpresa().esVistaSoloLectura", () => {
@@ -149,6 +166,16 @@ describe("LeadDetallePage — useVistaEmpresa().esVistaSoloLectura", () => {
 });
 
 describe("LeadDetallePage tutorial anchors", () => {
+  beforeEach(() => {
+    useLeadDetalleMock.mockReturnValue({
+      data: buildLead({ redSocial: "WHATSAPP" }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
   it("renderiza anclas reales para encabezado, tarjetas de detalle y panel de WhatsApp", async () => {
     renderPage();
 
@@ -180,6 +207,94 @@ describe("LeadDetallePage tutorial anchors", () => {
       expect(screen.queryByLabelText("Chat de WhatsApp")).not.toBeInTheDocument();
       expect(document.querySelector('[data-tour="lead-whatsapp"]')).not.toBeNull();
     });
+  });
+});
+
+describe("LeadDetallePage — chat de WhatsApp", () => {
+  it("lead WHATSAPP con conversación existente: resuelve por clienteId y muestra ConversacionAbierta", async () => {
+    useLeadDetalleMock.mockReturnValue({
+      data: buildLead({ redSocial: "WHATSAPP" }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    useConversacionesMock.mockReturnValue({
+      data: {
+        conversaciones: [
+          {
+            id: "conv-9",
+            clienteId: "cliente-01",
+            clienteNombre: "Roberto Salazar",
+            clienteTelefono: "+593991234567",
+            asesorId: "u1",
+            asesorNombre: "Marta Herrera",
+            ultimoMensajeEn: "2026-08-30T10:00:00.000Z",
+            creadaEn: "2026-08-29T09:00:00.000Z",
+          },
+        ],
+        total: 1,
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof useConversaciones>);
+
+    renderPage();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    expect(await screen.findByText("ConversacionAbierta mock — conv-9")).toBeInTheDocument();
+    expect(useConversacionesMock).toHaveBeenCalledWith({
+      clienteId: "cliente-01",
+      pagina: 1,
+      limite: 10,
+    });
+  });
+
+  it("lead WHATSAPP sin conversación todavía: muestra estado vacío", async () => {
+    useLeadDetalleMock.mockReturnValue({
+      data: buildLead({ redSocial: "WHATSAPP" }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    useConversacionesMock.mockReturnValue({
+      data: { conversaciones: [], total: 0 },
+      isLoading: false,
+    } as unknown as ReturnType<typeof useConversaciones>);
+
+    renderPage();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    expect(await screen.findByText("Todavía no hay conversación")).toBeInTheDocument();
+    expect(
+      screen.getByText("Este cliente todavía no escribió por WhatsApp."),
+    ).toBeInTheDocument();
+  });
+
+  it("lead de otro origen (FACEBOOK): no muestra el botón flotante ni el panel de chat", async () => {
+    useLeadDetalleMock.mockReturnValue({
+      data: buildLead({ redSocial: "FACEBOOK" }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    useConversacionesMock.mockClear();
+
+    renderPage();
+    await screen.findByText("Roberto Salazar");
+
+    expect(screen.queryByLabelText("Abrir chat de WhatsApp")).not.toBeInTheDocument();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-tour="lead-workspace-tabs"]')).not.toBeNull();
+    });
+    expect(screen.queryByLabelText("Chat de WhatsApp")).not.toBeInTheDocument();
+    expect(useConversacionesMock).not.toHaveBeenCalled();
   });
 });
 

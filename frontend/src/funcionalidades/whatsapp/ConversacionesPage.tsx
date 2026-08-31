@@ -1,17 +1,9 @@
 import { MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router";
-import type { ConversacionListItem } from "@/tipos/conversacion";
-import { CajaRespuesta } from "./CajaRespuesta";
-import { nombreConversacion } from "./conversaciones.utils";
-import { HiloMensajes } from "./HiloMensajes";
+import { ConversacionAbierta } from "./ConversacionAbierta";
 import { ListaConversaciones } from "./ListaConversaciones";
-import {
-  LIMITE_CONVERSACIONES_DEFECTO,
-  useConversaciones,
-  useEnviarMensaje,
-  useMensajesConversacion,
-} from "./useConversaciones";
+import { LIMITE_CONVERSACIONES_DEFECTO, useConversaciones } from "./useConversaciones";
 
 /**
  * Bandeja de conversaciones de WhatsApp: panel de listado a la izquierda,
@@ -73,50 +65,6 @@ function PlaceholderSinSeleccion() {
       <p className="text-sm text-muted-foreground">
         Elegí una conversación del panel de la izquierda.
       </p>
-    </div>
-  );
-}
-
-interface ConversacionAbiertaProps {
-  conversacionId: string;
-  encabezado?: ConversacionListItem;
-}
-
-function ConversacionAbierta({ conversacionId, encabezado }: ConversacionAbiertaProps) {
-  const historial = useMensajesConversacion(conversacionId);
-  const enviarMensaje = useEnviarMensaje(conversacionId);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header
-        data-testid="encabezado-conversacion"
-        className="flex h-14 shrink-0 flex-col justify-center border-b border-border px-4"
-      >
-        <p className="truncate text-sm font-semibold text-foreground">
-          {encabezado ? nombreConversacion(encabezado) : "Conversación"}
-        </p>
-        <p className="truncate text-xs text-muted-foreground">
-          {encabezado?.clienteTelefono
-            ? encabezado.clienteTelefono
-            : "Sin teléfono registrado"}
-          {encabezado?.asesorNombre ? ` · Asesor: ${encabezado.asesorNombre}` : ""}
-        </p>
-      </header>
-
-      <HiloMensajes
-        mensajes={historial.mensajes}
-        hayMas={historial.hayMas}
-        isLoading={historial.isLoading}
-        isFetchingAnteriores={historial.isFetchingAnteriores}
-        isError={historial.isError}
-        onCargarAnteriores={historial.cargarAnteriores}
-        onReintentar={historial.refetch}
-      />
-
-      <CajaRespuesta
-        onEnviar={(texto) => enviarMensaje.mutateAsync(texto)}
-        enviando={enviarMensaje.isPending}
-      />
     </div>
   );
 }

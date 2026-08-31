@@ -16,6 +16,7 @@ export const RED_SOCIAL_ETIQUETAS: Record<RedSocial, string> = {
   LINKEDIN: "LinkedIn",
   GOOGLE_FORMS: "Google Forms",
   API_EXTERNA: "API externa",
+  WHATSAPP: "WhatsApp",
 };
 
 /**

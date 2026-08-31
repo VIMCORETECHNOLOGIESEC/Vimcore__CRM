@@ -33,6 +33,8 @@ export interface ConversacionesQueryParams {
   pagina: number;
   /** Uno de `LIMITES_CONVERSACIONES`; default 25 en el backend. */
   limite: LimiteConversaciones;
+  /** Aditivo al scope RBAC (`empresaId`/`asesorId`): acota a las conversaciones de un cliente puntual. */
+  clienteId?: string;
 }
 
 export interface ListarConversacionesResponse {
@@ -41,8 +43,10 @@ export interface ListarConversacionesResponse {
 }
 
 /**
- * `GET /conversaciones`: listado paginado. El backend ignora cualquier param
- * fuera de `pagina`/`limite` (no hay filtro por cliente, empresa ni texto).
+ * `GET /conversaciones`: listado paginado. Además de `pagina`/`limite`
+ * acepta `clienteId` opcional, aditivo al scope RBAC existente
+ * (`empresaId`/`asesorId`), para acotar a las conversaciones de un cliente
+ * puntual (un cliente tiene como mucho una conversación de WhatsApp).
  */
 export async function listarConversacionesApi(
   params: ConversacionesQueryParams,

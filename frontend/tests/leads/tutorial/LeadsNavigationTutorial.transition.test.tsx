@@ -56,9 +56,14 @@ vi.mock("@/funcionalidades/leads/detalle/CierreNoVentaForm", () => ({
   CierreNoVentaForm: () => <div>Cierre no venta mock</div>,
 }));
 
+vi.mock("@/funcionalidades/whatsapp/useConversaciones", () => ({
+  useConversaciones: vi.fn(),
+}));
+
 const { ACTIONS, EVENTS } = await import("react-joyride");
 const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useLeadDetalle } = await import("@/funcionalidades/leads/detalle/useLeadDetalle");
+const { useConversaciones } = await import("@/funcionalidades/whatsapp/useConversaciones");
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 const {
   LeadsNavigationTutorialProvider,
@@ -66,6 +71,7 @@ const {
 
 const useAuthMock = vi.mocked(useAuth);
 const useLeadDetalleMock = vi.mocked(useLeadDetalle);
+const useConversacionesMock = vi.mocked(useConversaciones);
 
 function buildLead(overrides: Partial<Lead> = {}): Lead {
   return {
@@ -80,7 +86,10 @@ function buildLead(overrides: Partial<Lead> = {}): Lead {
     },
     campania: { id: "camp-1", nombre: "Verano 2026" },
     origen: "NUEVO",
-    redSocial: "FACEBOOK",
+    // WHATSAPP a propósito: el paso 8 del tutorial apunta al panel de chat
+    // de WhatsApp (`[data-tour="lead-whatsapp-chat"]`), que ahora solo se
+    // monta para leads de ese origen -- ver LeadDetallePage.tsx.
+    redSocial: "WHATSAPP",
     etapa: "CONTACTADO",
     semaforo: "AMARILLO",
     puntuacion: 55,
@@ -134,6 +143,11 @@ beforeEach(() => {
     error: null,
     refetch: vi.fn(),
   });
+
+  useConversacionesMock.mockReturnValue({
+    data: { conversaciones: [], total: 0 },
+    isLoading: false,
+  } as unknown as ReturnType<typeof useConversaciones>);
 });
 
 describe("LeadsNavigationTutorial workspace transition", () => {

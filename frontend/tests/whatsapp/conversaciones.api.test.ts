@@ -40,6 +40,16 @@ describe("listarConversacionesApi — GET /conversaciones", () => {
     });
     expect(resultado).toEqual({ conversaciones: [], total: 0 });
   });
+
+  it("manda clienteId cuando se lo pasa, aditivo a pagina/limite", async () => {
+    getMock.mockResolvedValue({ conversaciones: [], total: 0 });
+
+    await listarConversacionesApi({ pagina: 1, limite: 1, clienteId: "cliente-01" });
+
+    expect(getMock).toHaveBeenCalledWith("/conversaciones", {
+      params: { pagina: 1, limite: 1, clienteId: "cliente-01" },
+    });
+  });
 });
 
 describe("listarMensajesApi — GET /conversaciones/:id/mensajes", () => {
