@@ -61,6 +61,7 @@ workflow también la escribe como archivo PEM válido.
 | Variable | Uso |
 |---|---|
 | `FRONTEND_API_BASE_URL` | URL del backend con `/api/v1`, por ejemplo `https://arcano-crm.happyground-63307e62.eastus.azurecontainerapps.io/api/v1`. |
+| `FRONTEND_DOMAIN` | Dominio público que Traefik debe enrutar al frontend. Si no existe usa `crm.nexuscorpec.com`. |
 | `FRONTEND_HEALTH_URL` | Opcional; health check público del workflow. Usar cuando el dominio ya tenga HTTPS, por ejemplo `https://crm.tudominio.com/health`. Si no existe, el workflow solo valida salud interna desde la VPS. |
 | `FRONTEND_HTTP_PORT` | Opcional; puerto público del contenedor en la VPS. Si no existe usa `30080` para no chocar con un proxy o web server existente en `80`/`8080`. |
 | `VPS_DEPLOY_PATH` | Opcional; si no existe usa `/opt/crm-frontend`. |
@@ -83,17 +84,18 @@ sudo mkdir -p /opt/crm-frontend
 sudo chown -R $USER:$USER /opt/crm-frontend
 ```
 
-Compose expone el contenedor en el puerto `30080` de la VPS por defecto:
+Compose conecta el contenedor a la red externa `coolify`, publica el puerto
+`30080` solo en loopback para diagnóstico interno y agrega labels de Traefik
+para que Coolify enrute `FRONTEND_DOMAIN` por HTTPS:
 
 ```yaml
 ports:
-  - "${FRONTEND_HTTP_PORT:-30080}:80"
+  - "127.0.0.1:${FRONTEND_HTTP_PORT:-30080}:80"
 ```
 
-Si se quiere publicar directamente por HTTP sin reverse proxy, configurar
-`FRONTEND_HTTP_PORT=80`. Si en la VPS ya existe otro servicio escuchando en
-`80` o `8080`, dejar `30080` y hacer que el proxy externo apunte a
-`http://127.0.0.1:30080`.
+No publicar `30080` como puerto público si Traefik/Coolify ya maneja `80/443`.
+La entrada pública debe ser el dominio, por ejemplo
+`https://crm.nexuscorpec.com`.
 
 ## Dominio
 
@@ -102,7 +104,7 @@ El dominio no se agrega en Docker ni en GitHub. Se configura en el proveedor DNS
 1. Crear un registro `A` para el dominio o subdominio.
 2. Apuntarlo al IP público de la VPS.
 3. Esperar propagación DNS.
-4. Probar `http://<dominio>:30080/health` mientras no haya reverse proxy en `80`.
+4. Probar `https://<dominio>/health` cuando Traefik haya emitido el certificado.
 
 Ejemplo:
 
@@ -128,17 +130,18 @@ usuarios, HTTPS debe quedar activo y el backend debe cambiar `CORS_ORIGIN` de
 Después del despliegue, primero verificar desde la VPS:
 
 ```bash
-curl -f http://127.0.0.1:30080/health
+cd /root/service/crm-frontend
+docker compose exec -T frontend wget -qO- http://127.0.0.1/health
 ```
 
-Si eso responde `ok`, el contenedor está sano. Si desde tu máquina local no
-responde, el problema está en firewall/security group del proveedor o en el
-reverse proxy, no en la imagen frontend.
+Si eso responde `ok`, el contenedor está sano. Si el dominio no responde, el
+problema está en DNS, Traefik/Let's Encrypt o el proxy de Coolify, no en la
+imagen frontend.
 
-Verificación pública, cuando el puerto esté abierto o exista dominio/proxy:
+Verificación pública:
 
 ```bash
-curl -f http://<dominio-o-ip>:30080/health
+curl -f https://crm.nexuscorpec.com/health
 ```
 
 Luego abrir la app y verificar:

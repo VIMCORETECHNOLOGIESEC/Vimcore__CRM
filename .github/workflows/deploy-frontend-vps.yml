@@ -25,6 +25,7 @@ env:
   VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
   VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/opt/crm-frontend' }}
   FRONTEND_HTTP_PORT: ${{ vars.FRONTEND_HTTP_PORT || '30080' }}
+  FRONTEND_DOMAIN: ${{ vars.FRONTEND_DOMAIN || 'crm.nexuscorpec.com' }}
 
 jobs:
   test:
@@ -128,7 +129,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
             "cd '${VPS_DEPLOY_PATH}' && \
-            printf 'FRONTEND_IMAGE=%s\nFRONTEND_HTTP_PORT=%s\n' '${IMAGE_NAME}:${GITHUB_SHA}' '${FRONTEND_HTTP_PORT}' > .env && \
+            printf 'FRONTEND_IMAGE=%s\nFRONTEND_HTTP_PORT=%s\nFRONTEND_DOMAIN=%s\n' '${IMAGE_NAME}:${GITHUB_SHA}' '${FRONTEND_HTTP_PORT}' '${FRONTEND_DOMAIN}' > .env && \
             echo '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
             docker compose pull && \
             docker compose up -d && \
@@ -140,7 +141,7 @@ jobs:
       - name: Verify VPS internal health
         run: |
           ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
-            "curl --fail --silent --show-error --connect-timeout 5 --max-time 10 'http://127.0.0.1:${FRONTEND_HTTP_PORT}/health'"
+            "cd '${VPS_DEPLOY_PATH}' && docker compose exec -T frontend wget -qO- http://127.0.0.1/health"
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}

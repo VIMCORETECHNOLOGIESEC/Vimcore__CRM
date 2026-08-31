@@ -3,10 +3,33 @@ services:
     image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
     restart: unless-stopped
     ports:
-      - "${FRONTEND_HTTP_PORT:-30080}:80"
+      - "127.0.0.1:${FRONTEND_HTTP_PORT:-30080}:80"
+    networks:
+      - default
+      - coolify
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.middlewares.crm-frontend-gzip.compress: "true"
+      traefik.http.middlewares.crm-frontend-redirect.redirectscheme.scheme: https
+      traefik.http.routers.crm-frontend-http.entryPoints: http
+      traefik.http.routers.crm-frontend-http.middlewares: crm-frontend-redirect
+      traefik.http.routers.crm-frontend-http.rule: "Host(`${FRONTEND_DOMAIN:?Set FRONTEND_DOMAIN}`)"
+      traefik.http.routers.crm-frontend-http.service: crm-frontend
+      traefik.http.routers.crm-frontend-https.entryPoints: https
+      traefik.http.routers.crm-frontend-https.middlewares: crm-frontend-gzip
+      traefik.http.routers.crm-frontend-https.rule: "Host(`${FRONTEND_DOMAIN:?Set FRONTEND_DOMAIN}`)"
+      traefik.http.routers.crm-frontend-https.service: crm-frontend
+      traefik.http.routers.crm-frontend-https.tls: "true"
+      traefik.http.routers.crm-frontend-https.tls.certresolver: letsencrypt
+      traefik.http.services.crm-frontend.loadbalancer.server.port: "80"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  coolify:
+    external: true
