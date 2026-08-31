@@ -175,6 +175,20 @@ Verificado el 2026-08-30 contra las variables reales del Container App
 
 ## Pendiente / gaps conocidos
 
+- **Incidente cerrado (2026-08-31): `tests/setup.ts` truncó producción.**
+  El `globalSetup` de vitest (TRUNCATE de `usuarios`/`clientes`/`bridges`/
+  `refresh_tokens`/`configuracion_empresa` antes de cada corrida) solo
+  validaba `NODE_ENV=test`, nunca a qué base apuntaba `DATABASE_URL` — en
+  algún momento la suite corrió con `NODE_ENV=test` pero `DATABASE_URL`
+  apuntando a la base real de Azure en vez de `.env.dev`, confirmado por
+  filas de fixture (`usuario-seed-N-*@t.local`) apareciendo en producción.
+  Sin datos reales todavía en ese momento (fase de pruebas de
+  integración), así que no hubo pérdida real. Corregido en `e2d6374`:
+  allowlist de host (`db`/`localhost`/`127.0.0.1`/`::1`) que falla
+  CERRADO. **Queda pendiente**: limpiar las filas de fixture que siguen
+  en la base real (`usuario-seed-*@t.local`, `passwordHash: "x"`, no son
+  credenciales usables pero ensucian los datos) antes de que empiece a
+  haber clientes reales.
 - Frontend todavía no desplegado (va a un VPS aparte) — `CORS_ORIGIN` sigue
   en `*` temporalmente, cambiar al dominio real del frontend en cuanto
   exista.
