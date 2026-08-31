@@ -65,6 +65,35 @@ export function hasScopeAccess(
 }
 
 /**
+ * Regla pura de autorización por "vista de empresa" (Bloque D/E, gate
+ * holding-wide sin empresa) -- espejo de `hasRoleAccess`/`hasScopeAccess`:
+ * un holding-wide (sesión `holding`) sin haber "entrado" a una empresa
+ * concreta (`useVistaEmpresa()::empresaVistaId`, query param `?empresaId=`)
+ * no gestiona leads/oportunidades/bridges de ninguna empresa en particular,
+ * así que un ítem marcado con `requiereVistaEmpresaSiHolding` (Oportunidades,
+ * Bridges) queda oculto/bloqueado hasta que entre a una. Sesión `company`
+ * nunca se ve afectada por este flag -- una empresa siempre gestiona lo
+ * suyo, sin necesitar "entrar" a nada.
+ *
+ * Sin `requiereVistaEmpresaSiHolding` (o `false`), el acceso es libre --
+ * mismo criterio "sin restricción por defecto" que el resto de estas
+ * funciones.
+ */
+export function hasVistaEmpresaAccess(
+  scope: SessionScope | null | undefined,
+  empresaVistaId: string | null | undefined,
+  requiereVistaEmpresaSiHolding?: boolean,
+): boolean {
+  if (!requiereVistaEmpresaSiHolding) {
+    return true;
+  }
+  if (scope !== "holding") {
+    return true;
+  }
+  return Boolean(empresaVistaId);
+}
+
+/**
  * Ruta de aterrizaje tras iniciar sesión, según rol (F2, "Redirección
  * post-login según rol"). Primer ítem de `NAVIGATION_ITEMS` accesible para el
  * rol -- única fuente de verdad, ya usada por la barra lateral.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAVIGATION_ITEMS, resolveNavigationRoute } from "@/layouts/navigation";
+import { NAVIGATION_ITEMS, resolveNavigationHref, resolveNavigationRoute } from "@/layouts/navigation";
 
 describe("resolveNavigationRoute", () => {
   const apariencia = NAVIGATION_ITEMS.find((item) => item.label === "Apariencia");
@@ -56,5 +56,63 @@ describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
   it("resuelve /oportunidades para holding y company", () => {
     expect(resolveNavigationRoute(oportunidades, "holding")).toBe("/oportunidades");
     expect(resolveNavigationRoute(oportunidades, "company")).toBe("/oportunidades");
+  });
+});
+
+describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges)", () => {
+  it("Oportunidades y Bridges están marcados con requiereVistaEmpresaSiHolding", () => {
+    const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
+    const bridges = NAVIGATION_ITEMS.find((item) => item.label === "Bridges");
+    expect(oportunidades?.requiereVistaEmpresaSiHolding).toBe(true);
+    expect(bridges?.requiereVistaEmpresaSiHolding).toBe(true);
+  });
+
+  it("Leads NO está marcado (fuera de alcance de este batch)", () => {
+    const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
+    expect(leads?.requiereVistaEmpresaSiHolding).toBeUndefined();
+  });
+
+  it("Dashboard, Usuarios, Reportes, Apariencia y Empresas no están marcados", () => {
+    const sinFlag = NAVIGATION_ITEMS.filter(
+      (item) => !["Oportunidades", "Bridges"].includes(item.label),
+    );
+    for (const item of sinFlag) {
+      expect(item.requiereVistaEmpresaSiHolding).toBeUndefined();
+    }
+  });
+});
+
+describe("resolveNavigationHref", () => {
+  const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
+  if (!oportunidades) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Oportunidades'");
+  }
+  const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
+  if (!leads) {
+    throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Leads'");
+  }
+
+  it("sesión holding sin vista de empresa: devuelve la ruta pelada para un ítem marcado", () => {
+    expect(resolveNavigationHref(oportunidades, "holding", null)).toBe("/oportunidades");
+  });
+
+  it("sesión holding con vista de empresa activa: agrega ?empresaId= para un ítem marcado", () => {
+    expect(resolveNavigationHref(oportunidades, "holding", "empresa-1")).toBe(
+      "/oportunidades?empresaId=empresa-1",
+    );
+  });
+
+  it("sesión company: nunca agrega ?empresaId=, aunque exista un empresaVistaId en la URL", () => {
+    expect(resolveNavigationHref(oportunidades, "company", "empresa-1")).toBe("/oportunidades");
+  });
+
+  it("un ítem sin requiereVistaEmpresaSiHolding nunca agrega ?empresaId=", () => {
+    expect(resolveNavigationHref(leads, "holding", "empresa-1")).toBe("/leads");
+  });
+
+  it("codifica el id de empresa en la query string", () => {
+    expect(resolveNavigationHref(oportunidades, "holding", "empresa con espacio")).toBe(
+      "/oportunidades?empresaId=empresa%20con%20espacio",
+    );
   });
 });

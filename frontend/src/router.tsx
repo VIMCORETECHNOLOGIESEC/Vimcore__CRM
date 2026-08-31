@@ -107,15 +107,35 @@ export const router = createBrowserRouter([
           { path: "panel", element: <DashboardPage /> },
           { path: "leads", element: <LeadsPage /> },
           { path: "leads/:id", element: <LeadDetallePage /> },
-          { path: "oportunidades", element: <OportunidadesPage /> },
-          { path: "oportunidades/:id", element: <OportunidadDetallePage /> },
+          {
+            // Oportunidades (Bloque D/E, gate holding-wide sin empresa): un
+            // holding-wide (sesión `holding`) no gestiona oportunidades de
+            // ninguna empresa en particular hasta "entrar" a la vista de una
+            // concreta (`?empresaId=`, `useVistaEmpresa()`) -- mismo gate real
+            // que Bridges más abajo, no solo cosmético del sidebar (ver
+            // `AppSidebar.tsx`/`ProtectedRoute.tsx::requiereVistaEmpresaSiHolding`).
+            // Sesión `company` no se ve afectada por este grupo.
+            element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
+            children: [
+              { path: "oportunidades", element: <OportunidadesPage /> },
+              { path: "oportunidades/:id", element: <OportunidadDetallePage /> },
+            ],
+          },
           { path: "perfil", element: <PerfilPage /> },
           {
             element: <ProtectedRoute allowedRoles={["ADMINISTRADOR"]} />,
             children: [
               { path: "usuarios", element: <UsuariosPage /> },
-              { path: "bridges", element: <BridgesPage /> },
-              { path: "bridges/:id", element: <BridgeDetallePage /> },
+              {
+                // Mismo gate de vista de empresa que Oportunidades arriba,
+                // anidado dentro del grupo ADMINISTRADOR-only ya existente
+                // (Bridges sigue exigiendo ambas condiciones).
+                element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
+                children: [
+                  { path: "bridges", element: <BridgesPage /> },
+                  { path: "bridges/:id", element: <BridgeDetallePage /> },
+                ],
+              },
               { path: "configuracion-empresa", element: <ConfiguracionEmpresaPage /> },
             ],
           },
