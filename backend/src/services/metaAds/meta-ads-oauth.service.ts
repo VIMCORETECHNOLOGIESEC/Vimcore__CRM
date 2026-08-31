@@ -159,13 +159,22 @@ export async function completeMetaAdsOAuthCallback(
     // del intercambio, error transitorio de Graph API). Nunca se expone al
     // cliente HTTP (el mensaje de arriba sigue siendo genérico) -- solo se
     // loguea para poder diagnosticar sin adivinar.
+    //
+    // `holdingWide: true` explícito (no alcanza con que el punto anterior
+    // haya usado `runWithTenantContext` -- ese `with` ya cerró): sin esto,
+    // `logger.ts::loggerOptions` (fix de logs de negocio sin contexto tenant,
+    // ver `3c62698`) suprime la línea entera con "Salida de log suprimida
+    // por contexto tenant ausente" -- confirmado en producción, el primer
+    // intento de este mismo fix no dejó rastro por esto mismo. Mismo
+    // criterio que `whatsapp-webhook.service.ts` para logs sin actor
+    // autenticado.
     if (error instanceof MetaAdsApiError) {
       logger.error(
-        { kind: error.kind, status: error.status, body: error.body },
+        { holdingWide: true, kind: error.kind, status: error.status, body: error.body },
         "meta-ads-oauth: fallo discoverAdAccounts",
       );
     } else {
-      logger.error({ err: error }, "meta-ads-oauth: fallo inesperado en discoverAdAccounts");
+      logger.error({ holdingWide: true, err: error }, "meta-ads-oauth: fallo inesperado en discoverAdAccounts");
     }
     throw new AppError("meta_ads_descubrimiento_fallido", 502, "No se pudieron consultar las cuentas de anuncios disponibles");
   });
