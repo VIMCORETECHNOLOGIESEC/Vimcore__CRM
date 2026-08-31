@@ -2,10 +2,11 @@ import { httpClient } from "@/api/httpClient";
 
 /**
  * Capa de datos de la configuración de marca de la empresa (tema empresarial
- * -- integración login + splash de bienvenida). App single-tenant
- * (AGENTS.md §1): esta es la ÚNICA configuración para todo el despliegue, no
- * hay selector de empresa ni tabla de tenants -- ver la nota de alcance en
- * `ConfiguracionEmpresaPage.tsx`.
+ * -- integración login + splash de bienvenida). Esta es la ÚNICA
+ * configuración global del holding -- no hay selector de empresa acá porque
+ * este endpoint edita el único registro de configuración global, no porque
+ * la infraestructura multi-tenant (`Empresa`/`Membresia`/RLS, AGENTS.md §1)
+ * no exista -- ver la nota de alcance en `ConfiguracionEmpresaPage.tsx`.
  *
  * Contrato confirmado con el backend en paralelo (mismo cambio,
  * `feature/tema-empresarial-integracion`):
@@ -59,4 +60,22 @@ export async function updateConfiguracionEmpresaApi(
   input: UpdateConfiguracionEmpresaInput,
 ): Promise<ConfiguracionEmpresa> {
   return httpClient.patch<ConfiguracionEmpresa>("/configuracion-empresa", input);
+}
+
+/**
+ * `POST /configuracion-empresa/logo` -- solo `ADMINISTRADOR`
+ * (`postConfiguracionEmpresaLogo`,
+ * `backend/src/controllers/configuracion-empresa.controller.ts`). Multipart
+ * con un único campo `logo` (`uploadLogoMiddleware`, Multer). El backend
+ * devuelve la `ConfiguracionEmpresa` completa ya actualizada; acá solo se
+ * expone la URL nueva porque es lo único que le importa a `CampoLogoUpload`.
+ */
+export async function uploadLogoHoldingApi(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("logo", file);
+  const configuracion = await httpClient.postFormData<ConfiguracionEmpresa>(
+    "/configuracion-empresa/logo",
+    formData,
+  );
+  return configuracion.logoUrl ?? "";
 }

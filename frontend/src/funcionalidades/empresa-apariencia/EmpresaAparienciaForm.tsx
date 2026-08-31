@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CampoColorHex } from "@/componentes/formularios/CampoColorHex";
+import { CampoLogoUpload } from "@/componentes/formularios/CampoLogoUpload";
 import { contrastRatio, foregroundForContrast, hexToRgbTriplet } from "@/lib/color-marca";
 
 /**
@@ -72,6 +73,16 @@ interface EmpresaAparienciaFormProps {
   enviando: boolean;
   onSubmit: (valores: EmpresaAparienciaSubmitValues) => void;
   submitLabel?: string;
+  /**
+   * Sube el archivo de isotipo elegido y resuelve con su URL pública. Cada
+   * consumidor real pasa su propia función (`uploadLogoEmpresaApi` en
+   * `EmpresaAparienciaPage.tsx`); se omite en el editor cross-empresa de
+   * holding sobre OTRA empresa (`EditarEmpresaHoldingDialog.tsx` /
+   * `CrearEmpresaHoldingDialog.tsx`) porque ese endpoint todavía no existe
+   * (`POST /empresas/:empresaId/apariencia/logo`) -- el campo queda
+   * deshabilitado en ese caso, ver `CampoLogoUpload`.
+   */
+  onSubirLogo?: (file: File) => Promise<string>;
 }
 
 export function EmpresaAparienciaForm({
@@ -80,6 +91,7 @@ export function EmpresaAparienciaForm({
   enviando,
   onSubmit,
   submitLabel = "Guardar cambios",
+  onSubirLogo,
 }: EmpresaAparienciaFormProps) {
   const schema = mostrarNombre
     ? empresaAparienciaSchema.extend({ nombre: nombreMarcaSchema })
@@ -90,6 +102,7 @@ export function EmpresaAparienciaForm({
     control,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<EmpresaAparienciaValues>({
     resolver: zodResolver(schema),
@@ -185,20 +198,15 @@ export function EmpresaAparienciaForm({
         Dejá un color en blanco para usar el color heredado del holding en su lugar.
       </p>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="empresa-apariencia-logo-url">URL del isotipo (opcional)</Label>
-        <Input
-          id="empresa-apariencia-logo-url"
-          type="url"
-          placeholder="https://cdn.miempresa.com/logo.svg"
-          disabled={enviando}
-          aria-invalid={errors.logoUrl ? "true" : undefined}
-          {...register("logoUrl")}
-        />
-        {errors.logoUrl ? (
-          <p className="text-sm text-destructive">{errors.logoUrl.message}</p>
-        ) : null}
-      </div>
+      <CampoLogoUpload
+        id="empresa-apariencia-logo"
+        label="Isotipo"
+        valorActual={watch("logoUrl")}
+        disabled={enviando}
+        onSubirLogo={onSubirLogo}
+        onLogoUrlChange={(url) => setValue("logoUrl", url, { shouldValidate: true })}
+      />
+      {errors.logoUrl ? <p className="text-sm text-destructive">{errors.logoUrl.message}</p> : null}
 
       <div className="flex flex-col gap-2">
         <Label>Vista previa</Label>

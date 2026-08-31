@@ -258,32 +258,15 @@ export function authenticatedFetch(
   return fetchAuthenticatedResponse(path, options, false);
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuth, headers, params, ...rest } = options;
-
-  const finalHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(headers as Record<string, string> | undefined),
-  };
-  if (!skipAuth && accessToken) {
-    finalHeaders.Authorization = `Bearer ${accessToken}`;
-  }
-
-  let response: Response;
-  try {
-    const fetchOptions = {
-      ...rest,
-      headers: finalHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      params,
-    };
-    response = skipAuth
-      ? await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, fetchOptions)
-      : await authenticatedFetch(path, fetchOptions);
-  } catch {
-    throw new ApiError("error_red", 0, NETWORK_ERROR_MESSAGE);
-  }
-
+/**
+ * Extraído de `request()` para compartirlo con `requestFormData()` (subida de
+ * archivos, `postFormData`): ambos hacen `fetch`/`authenticatedFetch` con
+ * cuerpos distintos (JSON serializado vs. `FormData`), pero el mapeo de
+ * `Response` -> `T`/`ApiError` es idéntico. `skipAuth` solo importa para el
+ * caso 401: en un endpoint sin auth (login) un 401 es un error de dominio
+ * normal con su propio `code`/`message` del backend, no una sesión expirada.
+ */
+async function parseResponse<T>(response: Response, skipAuth: boolean): Promise<T> {
   if (response.status === 401 && !skipAuth) {
     throw new ApiError("sesion_expirada", 401, SESSION_EXPIRED_MESSAGE);
   }
@@ -311,6 +294,56 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return payload as T;
 }
 
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { body, skipAuth, headers, params, ...rest } = options;
+
+  const finalHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(headers as Record<string, string> | undefined),
+  };
+  if (!skipAuth && accessToken) {
+    finalHeaders.Authorization = `Bearer ${accessToken}`;
+  }
+
+  let response: Response;
+  try {
+    const fetchOptions = {
+      ...rest,
+      headers: finalHeaders,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      params,
+    };
+    response = skipAuth
+      ? await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, fetchOptions)
+      : await authenticatedFetch(path, fetchOptions);
+  } catch {
+    throw new ApiError("error_red", 0, NETWORK_ERROR_MESSAGE);
+  }
+
+  return parseResponse<T>(response, Boolean(skipAuth));
+}
+
+/**
+ * Subida de archivo (`multipart/form-data`) autenticada -- a propósito NO pasa
+ * por `request()`: ese helper siempre serializa `body` a JSON y fuerza
+ * `Content-Type: application/json`, lo que rompería un `FormData` (el
+ * navegador necesita fijar `Content-Type: multipart/form-data; boundary=...`
+ * él mismo a partir del `FormData`, y solo lo hace si el header queda
+ * ausente). Por eso acá no se pasa ningún `headers` a `authenticatedFetch`
+ * más que el `Authorization` que ya inyecta internamente -- nunca se setea
+ * `Content-Type` a mano.
+ */
+async function requestFormData<T>(path: string, formData: FormData): Promise<T> {
+  let response: Response;
+  try {
+    response = await authenticatedFetch(path, { method: "POST", body: formData });
+  } catch {
+    throw new ApiError("error_red", 0, NETWORK_ERROR_MESSAGE);
+  }
+
+  return parseResponse<T>(response, false);
+}
+
 export const httpClient = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "GET" }),
@@ -320,6 +353,8 @@ export const httpClient = {
     request<T>(path, { ...options, method: "PATCH", body }),
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { ...options, method: "DELETE" }),
+  /** `POST` con `FormData` (subida de archivos) -- ver `requestFormData()`. */
+  postFormData: <T>(path: string, formData: FormData) => requestFormData<T>(path, formData),
 };
 
 /** Extrae un mensaje accionable en español de cualquier error de una petición. */
