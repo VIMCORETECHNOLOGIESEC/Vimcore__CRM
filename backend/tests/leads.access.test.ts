@@ -2,6 +2,7 @@ import type { EtapaLead, RolUsuario } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import {
   canClose,
+  canCreateManual,
   canEdit,
   canRead,
   type LeadAcceso,
@@ -182,5 +183,25 @@ describe("services/leads.access — aislamiento entre empresas (Bloque C, Fase 2
     const adminEmpresaB = usuario(OTRO, "ADMINISTRADOR", EMPRESA_B);
 
     expect(canClose(adminEmpresaB, leadContactado)).toBe("no_es_titular");
+  });
+});
+
+/**
+ * Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"): matriz
+ * completa de roles — "Administrador, Supervisor y Asesor pueden cargar un
+ * lead manual" (spec), VENDEDOR explícitamente excluido. Solo chequeo de rol
+ * (pura, sin BD) — no hay `LeadAcceso` que evaluar, el lead todavía no
+ * existe.
+ */
+describe("services/leads.access — canCreateManual (Bloque D, ingreso manual)", () => {
+  it.each<[RolUsuario, boolean]>([
+    ["ADMINISTRADOR", true],
+    ["SUPERVISOR", true],
+    ["ASESOR", true],
+    ["SUPERVISOR_HOLDING", true],
+    ["SUPER_ADMIN", true],
+    ["VENDEDOR", false],
+  ])("rol %s → %s", (rol, esperado) => {
+    expect(canCreateManual(usuario(OTRO, rol))).toBe(esperado);
   });
 });

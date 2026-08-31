@@ -1,4 +1,4 @@
-import type { Lead, Prisma, RedSocial } from "@prisma/client";
+import type { Lead, OrigenLead, Prisma, RedSocial } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { normalizeCorreo } from "../lib/correo.js";
 import { logger } from "../lib/logger.js";
@@ -48,6 +48,36 @@ export interface DeduplicacionInput {
   idExternoCuenta?: string | null;
   idExternoCampania?: string | null;
   nombreCampania?: string | null;
+  /**
+   * Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"):
+   * resuelto por el llamador (`leads-manual.service.ts`) para el camino
+   * sin-bridge — ingreso manual y carga masiva. Cuando `bridgeId` está
+   * presente, este campo se ignora por completo (el camino de webhook NO
+   * cambia de comportamiento, sigue resolviendo `empresaId` exclusivamente
+   * vía `resolverEmpresaIdDesdeBridge`).
+   */
+  empresaId?: string;
+  /**
+   * Bloque D (diseño): `origen = MANUAL` referencia un `CanalManual` de la
+   * empresa resuelta — igual criterio de opcionalidad que el resto de los
+   * campos de atribución de este archivo.
+   */
+  canalManualId?: string;
+  /**
+   * Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"):
+   * `decideAccionDeduplicacion` (deduplicacion.decider.ts) SOLO conoce dos
+   * valores de `origen` para `crear_lead` (`NUEVO`/`REINGRESO`, derivados del
+   * estado del cliente — primera vez vs. reingreso tras cierre) y no acepta
+   * un tercer valor por diseño (esa distinción temporal es ortogonal al
+   * canal de entrada). `leads-manual.service.ts` necesita forzar `MANUAL`
+   * incondicionalmente, sin importar si el cliente ya tuvo un lead cerrado
+   * antes — así que este override gana sobre `accion.origen` SOLO en la rama
+   * `crear_lead`, cuando viene poblado. `undefined` en cualquier otro
+   * llamador (webhook/bridge, ~25 casos existentes de
+   * `deduplicacion.service.test.ts`) preserva el comportamiento previo
+   * exacto: `accion.origen` decide, sin cambio.
+   */
+  origenOverride?: OrigenLead;
 }
 
 export interface DeduplicacionResult {
@@ -249,7 +279,18 @@ export async function deduplicateLead(
         // inválido para crear un lead real, nunca un estado normal de
         // producción (la ingesta real siempre trae `bridgeId`, y
         // `Bridge.empresaId` es NOT NULL desde esta misma migración).
-        if (atribucion.empresaId === null) {
+        //
+        // Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"):
+        // fallback ADITIVO — solo se evalúa cuando `entrada.bridgeId` está
+        // ausente (el camino de webhook con `bridgeId` no cambia: sigue
+        // resolviendo exclusivamente vía `resolverAtribucion`, arriba).
+        // `entrada.empresaId` lo resuelve SIEMPRE el llamador nuevo
+        // (`leads-manual.service.ts`) antes de invocar `deduplicateLead` — si
+        // de todos modos llegara ausente acá (nunca debería, defensa en
+        // profundidad), se preserva el mismo 422 `empresa_no_resuelta` de
+        // siempre en vez de crear un lead huérfano.
+        const empresaIdResuelta = atribucion.empresaId ?? entrada.empresaId ?? null;
+        if (empresaIdResuelta === null) {
           throw new AppError(
             "empresa_no_resuelta",
             422,
@@ -260,7 +301,7 @@ export async function deduplicateLead(
         const lead = await leadRepository.createLead(
           {
             clienteId,
-            origen: accion.origen,
+            origen: entrada.origenOverride ?? accion.origen,
             ingresadoEn: entrada.ingresadoEn,
             // M5 (DD1 fix): antes de esta rebanada estos tres campos nunca
             // se pasaban pese a venir en `entrada` (LeadEntrante completo
@@ -280,7 +321,11 @@ export async function deduplicateLead(
             // Bloque B (Fase 3, spec lead-empresa-derivation): dual-write —
             // los campos legado de arriba quedan intactos, `empresaId` es
             // puramente aditivo.
-            empresaId: atribucion.empresaId,
+            empresaId: empresaIdResuelta,
+            // Bloque D (diseño): `undefined` en todo camino con bridge —
+            // `createLead`/Prisma preservan el comportamiento previo (columna
+            // NULL), sin romper ninguna llamada existente.
+            canalManualId: entrada.canalManualId,
           },
           tx,
         );

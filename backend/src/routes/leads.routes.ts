@@ -4,10 +4,12 @@ import {
   getLeads,
   getLeadsRedesSociales,
   patchLeadEtapa,
+  postLead,
   postLeadAsignar,
   postLeadFormulario,
   postLeadReasignar,
   postLeadsAsignarLote,
+  postLeadsCargaMasiva,
   postLeadTraspasar,
 } from "../controllers/leads.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
@@ -23,6 +25,18 @@ leadsRouter.get("/leads", requireAuthentication, getLeads);
 // "/usuarios/responsables" en usuarios.routes.ts) — si se registrara después,
 // Express capturaría "catalogo" como el parámetro `:id`.
 leadsRouter.get("/leads/catalogo/redes-sociales", requireAuthentication, getLeadsRedesSociales);
+
+// Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"): sin
+// `requireRole` -- la regla híbrida rol+recurso (`canCreateManual`) vive en
+// `leads.access.ts`, evaluada dentro de `leads-manual.service.ts`, mismo
+// criterio que `/leads/:id/reasignar`/`/leads/:id/traspasar` arriba.
+// Registradas ANTES de "/leads/:id" (mismo cuidado de orden que
+// "/leads/catalogo/redes-sociales" arriba), aunque no colisionan en la
+// práctica (POST vs. GET, y ningún otro POST "/leads/:id" de 2 segmentos
+// existe en este router).
+leadsRouter.post("/leads", requireAuthentication, postLead);
+leadsRouter.post("/leads/carga-masiva", requireAuthentication, postLeadsCargaMasiva);
+
 leadsRouter.get("/leads/:id", requireAuthentication, getLeadById);
 leadsRouter.patch("/leads/:id/etapa", requireAuthentication, patchLeadEtapa);
 // D16: recalificación sin mover la etapa — reutiliza applyFormulario (PR2).

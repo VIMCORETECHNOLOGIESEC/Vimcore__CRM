@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authRouter } from "./auth.routes.js";
 import { bridgesRouter } from "./bridges.routes.js";
+import { canalManualRouter } from "./canal-manual.routes.js";
 import { citasRouter } from "./citas.routes.js";
 import { configuracionEmpresaRouter } from "./configuracion-empresa.routes.js";
 import { empresaAparienciaRouter } from "./empresa-apariencia.routes.js";
@@ -33,6 +34,10 @@ apiRouter.use(marcaPublicaRouter);
 apiRouter.use(bridgesRouter);
 apiRouter.use(ingestaRouter);
 apiRouter.use(leadsRouter);
+// Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"): catálogo
+// dinámico por empresa, consumido por el ingreso manual de leads de
+// `leadsRouter` (arriba).
+apiRouter.use(canalManualRouter);
 apiRouter.use(formulariosRouter);
 apiRouter.use(citasRouter);
 apiRouter.use(metricasRouter);
