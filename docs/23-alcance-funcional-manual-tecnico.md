@@ -45,7 +45,7 @@
 | 25 | Tab usuarios holding-wide vs. usuarios por empresa | ✅ | Usuarios y Membresías |
 | 26 | Gestor de empresas (listado) | ✅ | Gestión de Empresas / Holding |
 | 27 | Gestor de empresas (cards con isotipo) | ✅ | Gestión de Empresas / Holding |
-| 28 | Detalle de empresa (usuarios y bridges de esa empresa) | 🚧 | Gestión de Empresas / Holding |
+| 28 | Detalle de empresa (usuarios y bridges de esa empresa) | ✅ | Gestión de Empresas / Holding |
 | 29 | Acceder a empresa / salir de vista de empresa | ✅ | Gestión de Empresas / Holding |
 | 30 | Alta de empresa nueva | ⏳ | Gestión de Empresas / Holding |
 | 31 | Configuración de empresa (single-company legacy) | ✅ | Configuración / Apariencia |
@@ -456,27 +456,27 @@
 
 ### Detalle de empresa
 
-**Estado**: 🚧 En curso — pantalla construida y pusheada, pero sin punto de entrada desde la navegación principal todavía
+**Estado**: ✅ Implementado y funcional (sin punto de entrada desde el gestor, ver nota)
 
-**Descripción funcional esperada**: Pantalla accesible desde el gestor de empresas — muestra accesos a los usuarios y los bridges de esa empresa específica.
+**Descripción funcional**: Pantalla que muestra el nombre de la empresa y enlaces a "Usuarios" y "Bridges" de esa empresa específica, ya filtrados de verdad del lado del servidor.
 
 **Pasos de uso (estado actual)**:
-1. Hoy, el botón "Ver detalles" de cada tarjeta del gestor navega directo a `/usuarios?empresaId=...` (el atajo que ya existía en producción) y **no** pasa por esta pantalla de detalle.
-2. La pantalla de detalle en sí (`/empresas/:empresaId`) existe y funciona si se accede directamente a esa URL — muestra el nombre de la empresa y enlaces a "Usuarios" y "Bridges" de esa empresa.
+1. El botón "Ver detalles" de cada tarjeta del gestor sigue navegando directo a `/usuarios?empresaId=...` (mecanismo ya establecido para "Acceder a empresa", ver ítem siguiente) y **no** pasa por esta pantalla — es una decisión de producto ya confirmada, no un defecto pendiente.
+2. La pantalla de detalle en sí (`/empresas/:empresaId`) existe y funciona accediendo directamente a esa URL.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: `EmpresaDetallePage.tsx` está commiteado y pusheado (commit `1b43c8f`, `origin/test/gpt`), pero el gestor de empresas todavía no enlaza a esta pantalla — llegar a ella hoy requiere escribir la URL a mano. Además, según un comentario explícito en el propio código (`EmpresaDetallePage.tsx`), los enlaces a "Usuarios"/"Bridges" de esa empresa **todavía no filtran del lado del servidor** — el backend ignora el parámetro `empresaId` (gap ya reportado a Mateo, prioridad 1, según ese mismo comentario) y por ahora muestran el listado completo del holding sin acotar. **Pendiente de que Mateo confirme el estado actual de ese filtro server-side** antes de dar la pantalla por cerrada de punta a punta. También hay un límite de escala documentado en el código: la pantalla resuelve la empresa buscando en memoria sobre una página de hasta 500 registros (funciona a la escala real actual, ~478 empresas, pero no escalaría a miles).
+**Notas técnicas**: commit `1ce7359` cerró los dos gaps de backend que quedaban abiertos: `EmpresaDetallePage.tsx` ahora resuelve la empresa vía `GET /empresas/:empresaId` real (`useEmpresaHolding`, con manejo de 404) en vez del parche que buscaba en memoria sobre una página de hasta 500 registros; y se confirmó que `GET /usuarios`/`GET /bridges` **ya filtran por `empresaId` del lado del servidor** (`usuarios.service.ts`/`bridge.service.ts`), tras el merge `main→test/gpt` (`f6ce0be`) — ya no es una vista simulada sin scope real.
 
 ### Acceder a empresa / salir de vista de empresa
 
 **Estado**: ✅ Implementado y funcional (mecanismo distinto al descrito originalmente, ver nota)
 
-**Descripción funcional**: Desde el gestor de empresas, el botón "Ver detalles" de una tarjeta pone al holding en "vista de esa empresa" (una vista de solo lectura simulada, no un cambio real de sesión); mientras está en ese modo, un botón flotante visible en toda la aplicación permite salir en cualquier momento y volver al panel general del holding.
+**Descripción funcional**: Desde el gestor de empresas, el botón "Ver detalles" de una tarjeta pone al holding en "vista de esa empresa" (de solo lectura, sin un cambio real de sesión/token); mientras está en ese modo, un botón flotante visible en toda la aplicación permite salir en cualquier momento y volver al panel general del holding.
 
 **Captura de pantalla**: _[CAPTURA PENDIENTE]_
 
-**Notas técnicas**: implementado sobre un query param (`?empresaId=`) centralizado en `useVistaEmpresa.ts`, consumido por `UsuariosPage.tsx` y `BridgesPage.tsx` para acotar su propio fetch, y por `SalirVistaEmpresaButton.tsx` (montado en `AppLayout.tsx`) para salir — commits `10f6dcb` (botón de salir) y `1b43c8f` (centralización del hook), ambos en `origin/test/gpt`. **Diferencia con la descripción original de este ítem**: "entrar" no ocurre desde la pantalla de "Detalle de empresa" (ítem anterior, todavía sin punto de entrada en la navegación) sino directamente desde la tarjeta del gestor de empresas — el resultado funcional (vista acotada + botón para salir) es el mismo. Por decisión de producto, sigue siendo una vista de solo lectura. Mismo gap de backend que el ítem anterior: el filtro por `empresaId` que el frontend ya envía todavía no lo aplica el servidor (pendiente de que Mateo lo confirme/cierre).
+**Notas técnicas**: implementado sobre un query param (`?empresaId=`) centralizado en `useVistaEmpresa.ts`, consumido por `UsuariosPage.tsx` y `BridgesPage.tsx` para acotar su propio fetch, y por `SalirVistaEmpresaButton.tsx` (montado en `AppLayout.tsx`) para salir — commits `10f6dcb` (botón de salir) y `1b43c8f` (centralización del hook), ambos en `origin/test/gpt`. **Diferencia con la descripción original de este ítem**: "entrar" no ocurre desde la pantalla de "Detalle de empresa" (ítem anterior) sino directamente desde la tarjeta del gestor de empresas — el resultado funcional (vista acotada + botón para salir) es el mismo. Por decisión de producto, sigue siendo una vista de solo lectura (no un cambio real de sesión), pero el filtro por `empresaId` que el frontend envía **ya lo aplica el servidor de verdad** desde el merge `main→test/gpt` (`f6ce0be`) — confirmado en `usuarios.service.ts`/`bridge.service.ts`.
 
 ### Alta de empresa nueva
 
