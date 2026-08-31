@@ -13,12 +13,6 @@ instalación y cuándo usar cada una): ver `docs/10-skills-agente-frontend.md`.
 
 ## Estructura
 
-El árbol de abajo cubre los 8 módulos F1-F8 originales de este documento.
-Módulos posteriores (LinkedIn, WhatsApp, Oportunidad/negociación, reportes,
-gestión de empresas/holding) se agregaron después, fuera del alcance F1-F8 —
-ver `docs/23-alcance-funcional-manual-tecnico.md` para su estado real; no
-tienen checklist propio acá.
-
 ```
 frontend/src/
 ├── api/            Clientes HTTP y hooks de TanStack Query
@@ -29,13 +23,7 @@ frontend/src/
 │   ├── dashboard/
 │   ├── usuarios/
 │   ├── bridges/
-│   ├── notificaciones/
-│   ├── linkedin/                 (post-F1-F8, ver docs/23)
-│   ├── whatsapp/                 (post-F1-F8, ver docs/23)
-│   ├── oportunidades/            (post-F1-F8, ver docs/23)
-│   ├── reportes/                 (post-F1-F8, ver docs/blocks/e-dashboards.md)
-│   ├── configuracion-empresa/    (post-F1-F8, ver docs/23)
-│   └── empresa-apariencia/       (post-F1-F8, ver docs/23)
+│   └── notificaciones/
 ├── layouts/
 ├── hooks/
 ├── tipos/          Tipos compartidos con el backend

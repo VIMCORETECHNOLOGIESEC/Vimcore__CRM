@@ -17,7 +17,7 @@ import type {
   WhatsAppOAuthStartDto,
 } from "../../types/whatsappMessages/whatsapp-oauth.dto.js";
 import { GRAPH_API_BASE_URL } from "../meta-webhook.service.js";
-import { descubrirNumeros } from "./whatsapp-cloud-api.service.js";
+import { descubrirNumeros, suscribirWaba } from "./whatsapp-cloud-api.service.js";
 
 /**
  * Diálogo de autorización de Meta ("Facebook Login for Business") — host
@@ -27,6 +27,15 @@ import { descubrirNumeros } from "./whatsapp-cloud-api.service.js";
  * módulo (ver `whatsapp-cloud-api.service.ts`).
  */
 const OFFICIAL_AUTH_DIALOG_BASE_URL = "https://www.facebook.com/dialog/oauth";
+/**
+ * Fix (WhatsApp OAuth connect, 2026-08-31): `exchangeAuthorizationCode`
+ * llamaba a `fetch(url)` sin timeout ni `AbortSignal` -- si Meta no
+ * respondía, la request de Express quedaba colgada indefinidamente en vez de
+ * fallar con un error visible (nada queda logueado, ni éxito ni error: el
+ * bug se manifestaba como "no pasa nada" del lado del usuario). Mismo valor
+ * que `linkedin-api.service.ts::LINKEDIN_API_TIMEOUT_MS`, por consistencia.
+ */
+const META_TOKEN_EXCHANGE_TIMEOUT_MS = 10_000;
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
 const OAUTH_STATE_BYTES = 32;
 /** El blob `seleccion` (ver `WhatsAppOAuthCallbackDto`) vive el mismo TTL que el state que lo originó. */
@@ -150,7 +159,7 @@ async function exchangeAuthorizationCode(
   let cuerpo: unknown;
   let ok: boolean;
   try {
-    const respuesta = await fetch(url);
+    const respuesta = await fetch(url, { signal: AbortSignal.timeout(META_TOKEN_EXCHANGE_TIMEOUT_MS) });
     ok = respuesta.ok;
     cuerpo = await respuesta.json().catch(() => null);
   } catch {
@@ -269,6 +278,13 @@ export async function createWhatsAppConexion(
       "El número indicado no está entre los descubiertos para esta cuenta",
     );
   }
+
+  // Fix (mensajes entrantes, 2026-08-31): confirmar la suscripción del WABA
+  // ANTES de persistir -- ver `whatsapp-cloud-api.service.ts::suscribirWaba`.
+  // Si falla, la conexión no se crea (mismo criterio que
+  // `linkedin-subscription.service.ts::activar`: "activar solo confirma
+  // después de que el proveedor confirme").
+  await suscribirWaba(numero.wabaId, payload.accessToken);
 
   const conexion = await whatsappConexionRepository.upsertConexion({
     empresaId: payload.empresaId,

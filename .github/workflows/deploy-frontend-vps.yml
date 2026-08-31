@@ -1,0 +1,154 @@
+name: Deploy Frontend VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "packages/schemas/**"
+      - "deploy/frontend/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/deploy-frontend-vps.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/dinnzart/crm_comercial-frontend
+  NODE_VERSION: 22.23.2
+  PNPM_VERSION: 11.21.0
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+  VPS_DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || '/opt/crm-frontend' }}
+  FRONTEND_HTTP_PORT: ${{ vars.FRONTEND_HTTP_PORT || '30080' }}
+  FRONTEND_DOMAIN: ${{ vars.FRONTEND_DOMAIN || 'crm.nexuscorpec.com' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter frontend...
+
+      - name: Run frontend tests
+        run: pnpm --filter frontend test
+
+      - name: Validate frontend build variables
+        run: test -n "${VITE_API_BASE_URL}" || { echo "Missing repository variable FRONTEND_API_BASE_URL"; exit 1; }
+        env:
+          VITE_API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL }}
+
+      - name: Build frontend
+        run: pnpm --filter frontend build
+        env:
+          VITE_API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL }}
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deploy variables
+        run: |
+          test -n "${FRONTEND_API_BASE_URL}" || { echo "Missing repository variable FRONTEND_API_BASE_URL"; exit 1; }
+          test -n "${VPS_HOST}" || { echo "Missing secret VPS_HOST"; exit 1; }
+          test -n "${VPS_USER}" || { echo "Missing secret VPS_USER"; exit 1; }
+          test -n "${VPS_SSH_KEY}${VPS_SSH_KEY_B64}" || { echo "Missing secret VPS_SSH_KEY or VPS_SSH_KEY_B64"; exit 1; }
+        env:
+          FRONTEND_API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
+
+      - name: Login GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL="${FRONTEND_API_BASE_URL}" \
+            -t "${IMAGE_NAME}:${GITHUB_SHA}" \
+            -t "${IMAGE_NAME}:latest" \
+            -f frontend/Dockerfile.prod .
+        env:
+          FRONTEND_API_BASE_URL: ${{ vars.FRONTEND_API_BASE_URL }}
+
+      - name: Push Docker image
+        run: |
+          docker push "${IMAGE_NAME}:${GITHUB_SHA}"
+          docker push "${IMAGE_NAME}:latest"
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          if test -n "${VPS_SSH_KEY}"; then
+            printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/vps_key
+          elif printf '%s' "${VPS_SSH_KEY_B64}" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+            printf '%s\n' "${VPS_SSH_KEY_B64}" > ~/.ssh/vps_key
+          else
+            printf '%s' "${VPS_SSH_KEY_B64}" | tr -d '[:space:]' | base64 -d > ~/.ssh/vps_key
+          fi
+          chmod 600 ~/.ssh/vps_key
+          ssh-keygen -y -f ~/.ssh/vps_key >/dev/null
+          ssh-keyscan -p "${VPS_PORT}" "${VPS_HOST}" >> ~/.ssh/known_hosts
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
+
+      - name: Copy deploy files
+        run: |
+          ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" "mkdir -p '${VPS_DEPLOY_PATH}'"
+          scp -i ~/.ssh/vps_key -P "${VPS_PORT}" deploy/frontend/docker-compose.yml "${VPS_USER}@${VPS_HOST}:${VPS_DEPLOY_PATH}/docker-compose.yml"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+
+      - name: Deploy on VPS
+        run: |
+          ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
+            "cd '${VPS_DEPLOY_PATH}' && \
+            printf 'FRONTEND_IMAGE=%s\nFRONTEND_HTTP_PORT=%s\nFRONTEND_DOMAIN=%s\n' '${IMAGE_NAME}:${GITHUB_SHA}' '${FRONTEND_HTTP_PORT}' '${FRONTEND_DOMAIN}' > .env && \
+            echo '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
+            docker compose pull && \
+            docker compose up -d && \
+            docker logout ghcr.io"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+
+      - name: Verify VPS internal health
+        run: |
+          ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
+            "cd '${VPS_DEPLOY_PATH}' && docker compose exec -T frontend wget -qO- http://127.0.0.1/health"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+
+      - name: Verify public health
+        if: vars.FRONTEND_HEALTH_URL != ''
+        run: |
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${FRONTEND_HEALTH_URL}"
+        env:
+          FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}

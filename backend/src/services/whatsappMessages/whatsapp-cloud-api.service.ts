@@ -18,6 +18,16 @@ import type { WhatsAppNumeroDescubiertoDto } from "../../types/whatsappMessages/
  * versión default configurada en el dashboard de la Meta App cuando no se
  * especifica una.
  */
+/**
+ * Fix (WhatsApp OAuth connect, 2026-08-31): ninguna llamada de este archivo
+ * tenía timeout -- mismo bug y mismo criterio de fix que
+ * `whatsapp-oauth.service.ts::META_TOKEN_EXCHANGE_TIMEOUT_MS`. `getJson`
+ * encadena varias llamadas en secuencia (`descubrirNumeros`, un business →
+ * varias WABAs → varios números) -- sin esto, UNA sola llamada colgada
+ * bloquea todo el descubrimiento sin ningún error visible.
+ */
+const WHATSAPP_CLOUD_API_TIMEOUT_MS = 10_000;
+
 function envioFallido(): AppError {
   return new AppError("whatsapp_envio_fallido", 502, "No se pudo enviar el mensaje de WhatsApp");
 }
@@ -27,6 +37,14 @@ function descubrimientoFallido(): AppError {
     "whatsapp_descubrimiento_fallido",
     502,
     "No se pudo consultar los números de WhatsApp Business disponibles",
+  );
+}
+
+function suscripcionFallida(): AppError {
+  return new AppError(
+    "whatsapp_suscripcion_fallida",
+    502,
+    "No se pudo suscribir la cuenta de WhatsApp Business al webhook de mensajes",
   );
 }
 
@@ -54,6 +72,7 @@ export async function enviarMensajeTexto(
         type: "text",
         text: { body: texto },
       }),
+      signal: AbortSignal.timeout(WHATSAPP_CLOUD_API_TIMEOUT_MS),
     });
     ok = respuesta.ok;
     cuerpo = await respuesta.json().catch(() => null);
@@ -68,9 +87,40 @@ export async function enviarMensajeTexto(
   return { wamid: parsed.data.messages[0]!.id };
 }
 
+/**
+ * Fix (mensajes entrantes de WhatsApp, 2026-08-31): sin este llamado, Meta
+ * NUNCA manda `POST /webhooks/whatsapp` para un WABA, sin importar que el
+ * webhook de la App esté bien configurado/verificado -- Embedded Signup deja
+ * a la App con el token y el número, pero cada WABA necesita esta
+ * confirmación explícita aparte (`POST /{waba-id}/subscribed_apps`, Meta
+ * WhatsApp Cloud API). `createWhatsAppConexion` (`whatsapp-oauth.service.ts`)
+ * lo llama ANTES de persistir la conexión -- si falla, la conexión no se crea
+ * en vez de quedar en un estado "conectado" engañoso que en realidad nunca
+ * va a recibir un mensaje.
+ */
+export async function suscribirWaba(
+  wabaId: string,
+  tokenAcceso: string,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<void> {
+  let ok: boolean;
+  try {
+    const respuesta = await fetchFn(`${GRAPH_API_BASE_URL}/${encodeURIComponent(wabaId)}/subscribed_apps`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${tokenAcceso}` },
+      signal: AbortSignal.timeout(WHATSAPP_CLOUD_API_TIMEOUT_MS),
+    });
+    ok = respuesta.ok;
+    await respuesta.json().catch(() => null);
+  } catch {
+    throw suscripcionFallida();
+  }
+  if (!ok) throw suscripcionFallida();
+}
+
 async function getJson(url: string, fetchFn: typeof globalThis.fetch): Promise<unknown> {
   try {
-    const respuesta = await fetchFn(url);
+    const respuesta = await fetchFn(url, { signal: AbortSignal.timeout(WHATSAPP_CLOUD_API_TIMEOUT_MS) });
     const cuerpo: unknown = await respuesta.json().catch(() => null);
     if (!respuesta.ok) throw descubrimientoFallido();
     return cuerpo;

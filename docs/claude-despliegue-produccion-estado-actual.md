@@ -173,6 +173,99 @@ Verificado el 2026-08-30 contra las variables reales del Container App
   configuración de Meta de arriba (App Review + modo Live + Verificación de
   Negocio), no backend.
 
+## Frontend en VPS — preparación agregada (2026-08-31)
+
+Se agregó la base operativa para desplegar solo el frontend en una VPS, mientras
+el backend se mantiene en Azure Container Apps:
+
+- `frontend/Dockerfile.prod`: imagen productiva multi-stage, build de Vite con
+  `VITE_API_BASE_URL` y servidor Nginx.
+- `deploy/frontend/nginx.conf`: fallback de SPA, cache de assets y endpoint
+  `/health`.
+- `deploy/frontend/docker-compose.yml`: Compose mínimo para la VPS, exponiendo
+  puerto 30080 por defecto para no chocar con un proxy o web server existente
+  en 80/8080.
+- `.github/workflows/deploy-frontend-vps.yml`: tests y build de frontend antes
+  de publicar imagen en GHCR y actualizar la VPS por SSH; valida salud interna
+  desde la VPS y solo valida salud pública si `FRONTEND_HEALTH_URL` está
+  configurada.
+- `docs/despliegue-frontend-vps.md`: guía de secrets, variables, dominio,
+  HTTPS y verificación.
+
+El dominio se configura fuera del repo, en DNS: registro `A` del subdominio al
+IP público de la VPS. Antes de uso real con usuarios, activar HTTPS y cambiar
+`CORS_ORIGIN` del backend desde `*` al origen exacto del frontend.
+
+## Pre-deploy 2026-08-31: 3 bloqueantes reportados por frontend, cerrados y verificados en producción
+
+El equipo de frontend reportó 3 puntos que bloqueaban funciones ya construidas
+del lado de UI. Verificados letra por letra contra el código antes de tocar
+nada (los 3 eran reales, no suposiciones), implementados y confirmados en
+producción real — commit `0db6b69`, imagen
+`nexuscorp.azurecr.io/arcano-crm:0db6b69d9996f119cc3ca06e0955a222a519d713`
+(`az containerapp show` → `provisioningState: Succeeded`, `runningStatus:
+Running`; `/api/v1/salud` → `200`).
+
+1. **403 determinístico en "Ver en vivo"** — `leads.access.ts::canRead`
+   (línea 96) usaba `ROLES_ACCESO_TOTAL` (`ADMINISTRADOR`/`SUPERVISOR`), sin
+   incluir `SUPERVISOR_HOLDING`/`SUPER_ADMIN` — un holding-wide viendo el
+   detalle de un lead no asignado a él directamente recibía 403 siempre.
+   Fix: se agregó el chequeo de `ROLES_HOLDING_TOTAL` (constante ya existente
+   del Bloque F) a `canRead`. `canEdit` queda deliberadamente SIN este bypass
+   — es el modo solo-lectura de "Ver en vivo", no un descuido.
+2. **`POST /notificaciones` — aviso manual de canal/producto faltante.**
+   Supervisor/Asesor puede notificar al Administrador activo de su propia
+   empresa cuando falta un canal o producto para cargar un lead (el frontend
+   ya bloqueaba esa acción sin forma de avisar). Nuevo campo `Notificacion.metadata`
+   (`Json?`) para que, al hacer click en la notificación, el admin sea
+   redirigido con los datos precargados. `empresaId` sale siempre de la
+   sesión autenticada, nunca del body; una sesión holding-wide (sin empresa
+   fija) recibe 422 en vez de que se le asuma una empresa.
+3. **Webhook receptor de LinkedIn.** La integración (OAuth, descubrir/activar
+   fuentes) ya suscribía la fuente contra la API real de LinkedIn apuntando a
+   `/api/v1/integraciones/linkedin/webhook`, pero no existía ningún
+   controller/ruta ahí — ningún lead real entraba al CRM pese a que la UI
+   "parecía" funcionar. Se agregó el receptor completo (`GET` challenge +
+   `POST` notificación, verificado contra la documentación oficial de
+   LinkedIn — el payload real es un objeto plano `LEAD_ACTION`, distinto del
+   schema especulativo que ya estaba escrito en el repo, que se reescribió) y
+   se conectó al mismo patrón de buzón durable (`leads_recibidos`) que ya usa
+   Meta. Decisión de alcance deliberada: el mapeo fino de
+   `nombre`/`telefono`/`correo` vía `predefinedField` requiere un segundo
+   llamado a la definición del formulario, no integrado todavía — el lead
+   igual entra al CRM, con las respuestas crudas preservadas en
+   `camposDinamicos` en vez de adivinar el mapeo (mejora futura documentada,
+   no un gap silencioso).
+
+**Bug real encontrado en la revisión, no en el reporte original:** el campo
+`metadata` nuevo (punto 2) no tipaba contra Prisma (`tsc --noEmit` fallaba —
+un `null` literal no es válido para una columna `Json?` en un input de
+escritura, hace falta el sentinel `Prisma.JsonNull` o, más simple, sacar el
+`| null` del tipo si ningún caller lo necesita) y faltaba un call site en
+`asignacion.service.ts`. Los tests con `vitest run` pasaban igual porque no
+typechequean — quedó como lección: correr `tsc --noEmit` además de la suite
+antes de dar por buena una verificación, no alcanza con "los tests pasan".
+
+**CI de GitHub Actions rota desde el fix del incidente TRUNCATE (`e2d6374`,
+ver más abajo):** `tests/setup.ts` fuerza la lectura de `.env.dev` sin
+condición — correcto para defender de que `docker compose` local resuelva
+`DATABASE_URL` desde el `.env` equivocado, pero el runner de CI nunca tuvo
+ni necesitó ese archivo (el job `test` de `deploy-backend.yml` ya inyecta
+`DATABASE_URL`/etc. de forma explícita y confiable vía `env:` del workflow).
+Fix: si `.env.dev` no existe Y `process.env.CI === "true"` (variable que
+setea GitHub Actions solo, no manipulable por un `.env` local), se salta el
+forzado y se sigue directo al allowlist de host — la guarda real de
+seguridad del incidente sigue intacta en ambos casos, local y CI.
+
+**Nota de proceso (para quien corra la suite completa en Docker local):**
+dos corridas completas de `docker compose run backend vitest run` pegándole
+a la MISMA base al mismo tiempo (la propia + otra en paralelo) produce
+timeouts falsos de 5000ms en tests no relacionados entre sí — confirmado en
+esta sesión (`metricas.service.test.ts` mostró 6-12 fallas espurias así, que
+desaparecieron corriendo en aislamiento y confirmaron limpias en el run de
+CI, con su propio Postgres efímero). No es una señal de que el código esté
+roto — es contención de recursos, no una regresión.
+
 ## Pendiente / gaps conocidos
 
 - **Incidente cerrado (2026-08-31): `tests/setup.ts` truncó producción.**
@@ -189,9 +282,9 @@ Verificado el 2026-08-30 contra las variables reales del Container App
   en la base real (`usuario-seed-*@t.local`, `passwordHash: "x"`, no son
   credenciales usables pero ensucian los datos) antes de que empiece a
   haber clientes reales.
-- Frontend todavía no desplegado (va a un VPS aparte) — `CORS_ORIGIN` sigue
-  en `*` temporalmente, cambiar al dominio real del frontend en cuanto
-  exista.
+- Frontend todavía no desplegado en la VPS — ya existen los artefactos base de
+  CI/CD, Docker, Nginx y documentación; falta preparar la VPS, configurar DNS,
+  activar HTTPS y cambiar `CORS_ORIGIN` al dominio real del frontend.
 - WhatsApp/Meta Ads: falta App Review + modo Live + Verificación de Negocio
   del Business Portfolio para uso productivo con clientes reales (ver
   sección arriba) — la config técnica (env vars, webhooks, casos de uso) ya
