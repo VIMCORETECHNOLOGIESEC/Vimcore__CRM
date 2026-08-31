@@ -184,7 +184,13 @@ export function BridgesPage() {
             // (`redSocial: "API_EXTERNA"`), así que se dispara la misma
             // mutación `crear` que usa cualquier otro alta.
             crear.mutate(
-              { redSocial: "API_EXTERNA", nombre },
+              // Alta dentro de una empresa puntual (holding-wide mirando una
+              // empresa vía `?empresaId=`, ver `useVistaEmpresa`): manda
+              // `empresaId` en el body de `POST /bridges`, mismo criterio
+              // que `UsuariosPage.tsx`. Sin empresa en vista, no se agrega.
+              empresaVistaId
+                ? { redSocial: "API_EXTERNA", nombre, empresaId: empresaVistaId }
+                : { redSocial: "API_EXTERNA", nombre },
               {
                 onSuccess: (respuesta) => {
                   setDialogAltaAbierto(false);
@@ -198,7 +204,7 @@ export function BridgesPage() {
             );
           }}
           onSubmit={(valores) =>
-            crear.mutate(valores, {
+            crear.mutate(empresaVistaId ? { ...valores, empresaId: empresaVistaId } : valores, {
               onSuccess: (respuesta) => {
                 setDialogAltaAbierto(false);
                 setClaveModal({ bridgeNombre: respuesta.bridge.nombre, claveApi: respuesta.claveApi });

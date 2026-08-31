@@ -110,6 +110,16 @@ export interface BridgeLog {
 export interface CrearBridgeInput {
   redSocial: RedSocial;
   nombre: string;
+  /**
+   * Empresa destino cuando el alta se dispara desde una "vista de empresa"
+   * de un holding-wide (`BridgesPage.tsx` -> `useVistaEmpresa().empresaVistaId`,
+   * mismo criterio que `usuarios.api.ts::CreateUsuarioInput.empresaId`).
+   * `createBridgeBodySchema` (`backend/src/schemas/bridges.schema.ts`) YA
+   * acepta este campo en `POST /bridges` -- una sesión holding-wide sin él
+   * recibe 400 `empresa_requerida`. Sin empresa en vista, no se manda: el
+   * backend resuelve la empresa solo a partir de la sesión.
+   */
+  empresaId?: string;
 }
 
 /**

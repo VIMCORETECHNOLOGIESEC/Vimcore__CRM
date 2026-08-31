@@ -159,7 +159,16 @@ export function UsuariosPage() {
           }}
           enviando={crear.isPending}
           onSubmit={(valores) =>
-            crear.mutate(valores, { onSuccess: () => setDialogAltaAbierto(false) })
+            // Alta dentro de una empresa puntual (holding-wide mirando una
+            // empresa vía `?empresaId=`, ver `useVistaEmpresa`): manda
+            // `empresaId` en el body de `POST /usuarios` (`usuarios.api.ts`,
+            // el backend ya lo acepta). Sin empresa en vista (sesión
+            // company-scoped normal, o holding-wide sin drill-down) no se
+            // agrega el campo -- comportamiento sin cambios.
+            crear.mutate(
+              empresaVistaId ? { ...valores, empresaId: empresaVistaId } : valores,
+              { onSuccess: () => setDialogAltaAbierto(false) },
+            )
           }
         />
       ) : null}

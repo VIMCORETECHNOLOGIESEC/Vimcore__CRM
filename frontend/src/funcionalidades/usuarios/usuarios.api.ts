@@ -26,6 +26,19 @@ export interface CreateUsuarioInput {
   correo: string;
   password: string;
   rol: RolUsuario;
+  /**
+   * Empresa destino cuando el alta se dispara desde una "vista de empresa"
+   * de un holding-wide (`UsuariosPage.tsx` -> `useVistaEmpresa().empresaVistaId`,
+   * llegada vía `EmpresaDetallePage.tsx` -> tarjeta "Usuarios"). A diferencia
+   * de `UsuariosQueryParams.empresaId` (que el backend de esta rama todavía
+   * ignora en el listado), `createUsuarioBodySchema`
+   * (`backend/src/schemas/usuarios.schema.ts`) YA acepta este campo en
+   * `POST /usuarios` -- una sesión holding-wide sin él recibe 400
+   * `empresa_requerida` (comentario del propio schema). Sin este campo (sesión
+   * company-scoped normal, o holding-wide sin empresa en vista), no se manda:
+   * el backend resuelve la empresa solo a partir de la sesión.
+   */
+  empresaId?: string;
 }
 
 export interface CreateEmpresaAdministradorInput {

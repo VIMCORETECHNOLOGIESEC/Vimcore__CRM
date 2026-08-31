@@ -22,13 +22,13 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // holding-wide" (Item 25) -- se mockea acá también, default company-scoped
 // (mismo criterio que `tests/oportunidades/OportunidadesFiltros.test.tsx`),
 // para no romper ninguno de los tests existentes que no le importa el scope.
-vi.mock("@/funcionalidades/autenticacion/authContext", () => ({
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
 }));
 
 const usuariosApi = await import("@/funcionalidades/usuarios/usuarios.api");
 const { toast } = await import("sonner");
-const { useAuth } = await import("@/funcionalidades/autenticacion/authContext");
+const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { UsuariosPage } = await import("@/funcionalidades/usuarios/UsuariosPage");
 
 const fetchUsuariosApiMock = vi.mocked(usuariosApi.fetchUsuariosApi);
@@ -85,8 +85,14 @@ function usuariosResponse(
   return { users, total: users.length, pagina: 1, limite: 10, ...overrides };
 }
 
-/** Mismo `mutationCache` que `api/queryClient.ts` -- así las pruebas de error de mutaciones son fieles al comportamiento real. */
-function renderUsuariosPage() {
+/**
+ * Mismo `mutationCache` que `api/queryClient.ts` -- así las pruebas de error
+ * de mutaciones son fieles al comportamiento real. `initialEntries` permite
+ * simular la "vista de empresa" de un holding-wide (`useVistaEmpresa`,
+ * llegada real vía `EmpresaDetallePage.tsx` -> tarjeta "Usuarios" ->
+ * `/usuarios?empresaId=`).
+ */
+function renderUsuariosPage(initialEntries: string[] = ["/usuarios"]) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     mutationCache: new MutationCache({
@@ -94,7 +100,7 @@ function renderUsuariosPage() {
     }),
   });
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <UsuariosPage />
@@ -134,6 +140,15 @@ async function abrirMenuAcciones(user: ReturnType<typeof userEvent.setup>, nombr
 
 async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Filtros" }));
+}
+
+/** Completa nombre/correo/rol del formulario de alta (queda pendiente la contraseña, distinta por test). */
+async function completarFormularioAlta(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
+  await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
+  await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
+  await user.click(screen.getByRole("combobox", { name: "Rol" }));
+  await user.click(await screen.findByRole("option", { name: "Asesor" }));
 }
 
 describe("UsuariosPage — estados de carga, vacío y error", () => {
@@ -348,14 +363,6 @@ describe("UsuariosPage — paginación (F7)", () => {
 });
 
 describe("UsuariosPage — alta de usuario", () => {
-  async function completarFormularioAlta(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
-    await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
-    await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
-    await user.click(screen.getByRole("combobox", { name: "Rol" }));
-    await user.click(await screen.findByRole("option", { name: "Asesor" }));
-  }
-
   it("rechaza una contraseña inicial de menos de 12 caracteres antes de llamar al backend", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     const user = userEvent.setup();
@@ -409,6 +416,46 @@ describe("UsuariosPage — alta de usuario", () => {
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("El correo ya está en uso"));
+  });
+});
+
+describe("UsuariosPage — alta de usuario dentro de una empresa puntual (vista de holding, useVistaEmpresa)", () => {
+  it("con `?empresaId=` en la URL (vista de empresa), manda `empresaId` en el body de POST /usuarios", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createUsuarioApiMock.mockResolvedValue(usuarioFake());
+    const user = userEvent.setup();
+    renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
+    await screen.findByText("Todavía no hay usuarios registrados");
+
+    await completarFormularioAlta(user);
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() =>
+      expect(createUsuarioApiMock).toHaveBeenCalledWith({
+        nombre: "Marta Herrera",
+        correo: "marta@crm.test",
+        rol: "ASESOR",
+        password: "una-contraseña-larga-1",
+        empresaId: "empresa-77",
+      }),
+    );
+  });
+
+  it("sin `?empresaId=` en la URL, NO manda empresaId en el body de POST /usuarios", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createUsuarioApiMock.mockResolvedValue(usuarioFake());
+    const user = userEvent.setup();
+    renderUsuariosPage(["/usuarios"]);
+    await screen.findByText("Todavía no hay usuarios registrados");
+
+    await completarFormularioAlta(user);
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() => expect(createUsuarioApiMock).toHaveBeenCalled());
+    const body = createUsuarioApiMock.mock.calls.at(-1)?.[0];
+    expect(body).not.toHaveProperty("empresaId");
   });
 });
 
