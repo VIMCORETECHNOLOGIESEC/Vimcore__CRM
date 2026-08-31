@@ -2,6 +2,7 @@ import { createHash, randomBytes as nodeRandomBytes } from "node:crypto";
 import { env } from "../../config/env.js";
 import { AppError } from "../../lib/app-error.js";
 import { decrypt, encrypt } from "../../lib/cifrado-token.js";
+import { runWithTenantContext } from "../../lib/prisma.js";
 import * as conexionRepository from "../../repositories/metaAds/cuenta-anuncios-conexion.repository.js";
 import type { CuentaAnunciosConexionSafe } from "../../repositories/metaAds/cuenta-anuncios-conexion.repository.js";
 import * as oauthStateRepository from "../../repositories/metaAds/cuenta-anuncios-oauth-state.repository.js";
@@ -124,7 +125,24 @@ export async function completeMetaAdsOAuthCallback(
   const redirectUri = requireRedirectUri();
   if (!callback.state) throw invalidState();
 
-  const consumedState = await oauthStateRepository.consumeValidState(sha256(callback.state));
+  // Fix (RLS, 2026-08-31): esta ruta NUNCA pasa por `requireAuthentication`
+  // (Meta redirige el navegador acá sin JWT -- la identidad se resuelve
+  // recién al consumir el state), así que no hay ningún `TenantContext`
+  // ambiente fijado para este request. `cuentas_anuncios_oauth_states` SÍ
+  // tiene RLS real (a diferencia de `whatsapp_oauth_states`, que no la
+  // tiene y por eso nunca mostró este bug) -- sin `app.tenant_unrestricted`
+  // fijado, la política filtraba la fila del state aunque existiera, no
+  // hubiera vencido y no estuviera usada: el `UPDATE` de
+  // `consumeValidState` matcheaba cero filas en silencio (no falla con
+  // 42501 como un INSERT, un UPDATE que RLS filtra completo simplemente no
+  // afecta ninguna fila) y esto se veía indistinguible de "state realmente
+  // inválido/expirado". Mismo criterio holding-wide que
+  // `meta-webhook.service.ts::procesarNotificacionMeta`/
+  // `bridgeApi/poll.job.ts::pollBridgesApiExterna` para código sin actor
+  // autenticado.
+  const consumedState = await runWithTenantContext({ empresaId: null }, () =>
+    oauthStateRepository.consumeValidState(sha256(callback.state as string)),
+  );
   if (!consumedState) throw invalidState();
   if (callback.error) throw cancellationReported();
   if (!callback.code) {
