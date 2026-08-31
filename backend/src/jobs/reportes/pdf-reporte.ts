@@ -112,6 +112,33 @@ function renderHtml(datos: DatosReporte): string {
  * contenedor Docker de este proyecto (sin `CAP_SYS_ADMIN`, patrón estándar de
  * Puppeteer en Docker) -- no es una relajación de seguridad del proceso host,
  * solo del propio sandbox interno de Chromium.
+ *
+ * PENDIENTE (decisión 2026-08-31, no implementado todavía): migrar este
+ * archivo de Puppeteer/Chromium a `pdfmake`. Motivo real: la imagen de
+ * producción del backend nunca descarga el binario de Chrome (bug de
+ * allowlist de postinstall en `pnpm-workspace.yaml`/pnpm 11, fuera de
+ * alcance de este archivo), por lo que la generación de PDF falla en caliente
+ * con "Could not find Chrome" -- ver `docs/claude-despliegue-produccion-estado-actual.md`
+ * para el estado de despliegue. Se evaluó arreglar esa allowlist (fix de una
+ * línea, sin tocar código de la app) como alternativa más chica, pero se
+ * decidió en cambio sacar la dependencia de un navegador headless por
+ * completo: `pdfmake` es JavaScript puro (basado en pdfkit), sin binario
+ * nativo ni script de postinstall, así que no puede volver a romper el build
+ * de Docker de esta forma.
+ *
+ * Alcance de la migración pendiente: reemplazar `puppeteer.launch()` +
+ * `renderHtml()` de abajo por un `PdfPrinter` de `pdfmake` con una
+ * "document definition" declarativa (estilos con `defaultStyle`/`styles`
+ * nombrados) que reproduzca las mismas secciones -- portada, resumen
+ * ejecutivo, embudo, rendimiento por canal, rendimiento por asesor.
+ * `generarPdfReporte(datos: DatosReporte): Promise<Buffer>` mantiene la
+ * misma firma, así que `reporte-generacion.job.ts` no cambia. Requiere sumar
+ * `pdfmake` a `backend/package.json` y bundlear archivos `.ttf` (normal/
+ * bold/italics/bolditalics) para el objeto `fonts` del `PdfPrinter` -- a
+ * diferencia de Puppeteer/Prisma/esbuild, `pdfmake` no necesita entrar en el
+ * `onlyBuiltDependencies` de `pnpm-workspace.yaml` (paquete puro, sin script
+ * de build). Una vez migrado, `puppeteer` queda sin uso y se puede sacar de
+ * `backend/package.json` y de esa allowlist.
  */
 export async function generarPdfReporte(datos: DatosReporte): Promise<Buffer> {
   const browser = await puppeteer.launch({
