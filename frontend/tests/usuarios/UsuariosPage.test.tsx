@@ -636,8 +636,17 @@ describe("UsuariosPage — filtro de estado por defecto (F7)", () => {
   });
 });
 
-describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración con useVistaEmpresa)", () => {
-  it("con sesión holding-wide, activar el toggle manda `soloHoldingWide: true` a fetchUsuariosApi", async () => {
+describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración con useVistaEmpresa, default invertido)", () => {
+  it("con sesión holding-wide, la primera consulta ya manda `soloHoldingWide: true` (default nuevo, sin tocar nada)", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    expect(fetchUsuariosApiMock.mock.calls[0]?.[0]?.soloHoldingWide).toBe(true);
+  });
+
+  it("con sesión holding-wide, tildar «Ver usuarios de todas las empresas» quita `soloHoldingWide` de la consulta a fetchUsuariosApi", async () => {
     mockearAuth("holding");
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
     const user = userEvent.setup();
@@ -645,10 +654,10 @@ describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración c
     await screen.findByText("Marta Herrera");
 
     await abrirFiltros(user);
-    await user.click(screen.getByRole("checkbox", { name: /holding-wide/i }));
+    await user.click(screen.getByRole("checkbox", { name: /todas las empresas/i }));
 
     await waitFor(() => {
-      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.soloHoldingWide).toBe(true);
+      expect(fetchUsuariosApiMock.mock.calls.at(-1)?.[0]?.soloHoldingWide).toBeUndefined();
     });
   });
 
@@ -661,6 +670,30 @@ describe("UsuariosPage — filtro «solo holding-wide» (Item 25, integración c
 
     await abrirFiltros(user);
 
-    expect(screen.queryByRole("checkbox", { name: /holding-wide/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /todas las empresas/i })).not.toBeInTheDocument();
+  });
+
+  it("`hayFiltrosActivos` (criterio invertido): con el default `soloHoldingWide: true` sin resultados, el estado vacío es el de 'sin usuarios registrados' (no cuenta como filtro activo)", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    renderUsuariosPage();
+
+    expect(await screen.findByText("Todavía no hay usuarios registrados")).toBeInTheDocument();
+  });
+
+  it("`hayFiltrosActivos` (criterio invertido): tildar «Ver usuarios de todas las empresas» sin resultados sí cuenta como filtro activo -- estado vacío de 'no coinciden con estos filtros'", async () => {
+    mockearAuth("holding");
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([usuarioFake()]));
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Marta Herrera");
+
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    await abrirFiltros(user);
+    await user.click(screen.getByRole("checkbox", { name: /todas las empresas/i }));
+
+    expect(
+      await screen.findByText("No hay usuarios que coincidan con estos filtros"),
+    ).toBeInTheDocument();
   });
 });

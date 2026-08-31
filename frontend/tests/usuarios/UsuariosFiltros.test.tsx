@@ -49,7 +49,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("UsuariosFiltros — toggle «solo holding-wide» (Item 25)", () => {
+describe("UsuariosFiltros — toggle «ver usuarios de todas las empresas» (Item 25, semántica invertida)", () => {
   it("no se muestra para una sesión company-scoped", async () => {
     mockearAuth("company");
     const user = userEvent.setup();
@@ -57,29 +57,39 @@ describe("UsuariosFiltros — toggle «solo holding-wide» (Item 25)", () => {
 
     await user.click(screen.getByRole("button", { name: "Filtros" }));
 
-    expect(screen.queryByRole("checkbox", { name: /holding-wide/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /todas las empresas/i })).not.toBeInTheDocument();
   });
 
-  it("se muestra para una sesión holding-wide, y activarlo propaga `soloHoldingWide: true`", async () => {
+  it("se muestra para una sesión holding-wide, arranca sin tildar (default `soloHoldingWide: true`) y tildarlo propaga `soloHoldingWide: false`", async () => {
     mockearAuth("holding");
     const user = userEvent.setup();
     const { onChange } = renderFiltros();
 
     await user.click(screen.getByRole("button", { name: "Filtros" }));
-    await user.click(screen.getByRole("checkbox", { name: /holding-wide/i }));
+    const checkbox = screen.getByRole("checkbox", { name: /todas las empresas/i });
+    expect(checkbox).not.toBeChecked();
+
+    await user.click(checkbox);
+
+    expect(onChange).toHaveBeenCalledWith({ ...FILTROS_USUARIOS_VACIOS, soloHoldingWide: false });
+  });
+
+  it("cuando `soloHoldingWide: false` (checkbox tildado), aparece como chip de filtro activo, con botón para quitarlo que restaura el default `soloHoldingWide: true`", async () => {
+    mockearAuth("holding");
+    const user = userEvent.setup();
+    const { onChange } = renderFiltros({ ...FILTROS_USUARIOS_VACIOS, soloHoldingWide: false });
+
+    expect(screen.getByText(/todas las empresas/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /quitar filtro/i }));
 
     expect(onChange).toHaveBeenCalledWith({ ...FILTROS_USUARIOS_VACIOS, soloHoldingWide: true });
   });
 
-  it("cuando está activado, aparece como chip de filtro activo, con botón para quitarlo", async () => {
+  it("con el default `soloHoldingWide: true`, no aparece chip de filtro activo (es el estado normal, no un filtro aplicado)", async () => {
     mockearAuth("holding");
-    const user = userEvent.setup();
-    const { onChange } = renderFiltros({ ...FILTROS_USUARIOS_VACIOS, soloHoldingWide: true });
+    renderFiltros();
 
-    expect(screen.getByText(/holding-wide/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /quitar filtro/i }));
-
-    expect(onChange).toHaveBeenCalledWith({ ...FILTROS_USUARIOS_VACIOS, soloHoldingWide: false });
+    expect(screen.queryByText(/todas las empresas/i)).not.toBeInTheDocument();
   });
 });

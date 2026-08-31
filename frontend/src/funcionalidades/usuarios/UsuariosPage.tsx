@@ -77,11 +77,16 @@ export function UsuariosPage() {
     setPagina(1);
   }
 
+  // `soloHoldingWide` invertido (default `true` ahora, ver
+  // `usuarios.utils.ts::FILTROS_USUARIOS_VACIOS`): lo que cuenta como filtro
+  // activo es `soloHoldingWide === false` (alguien tildó "ver usuarios de
+  // todas las empresas" en `UsuariosFiltros.tsx`), no `true` -- ese es el
+  // estado normal por defecto, no un filtro aplicado.
   const hayFiltrosActivos =
     filtros.busqueda !== "" ||
     filtros.rol !== FILTRO_TODOS ||
     filtros.estado !== FILTROS_USUARIOS_VACIOS.estado ||
-    filtros.soloHoldingWide;
+    !filtros.soloHoldingWide;
 
   const usuarios = data?.users ?? [];
   const total = data?.total ?? 0;

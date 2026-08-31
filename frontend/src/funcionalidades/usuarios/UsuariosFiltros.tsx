@@ -18,14 +18,33 @@ import { ROLES_USUARIO } from "@/tipos/usuario";
 import { ROL_ETIQUETAS } from "./catalogos";
 import { FILTRO_TODOS, FILTROS_USUARIOS_VACIOS, type UsuariosFiltrosState } from "./usuarios.utils";
 
-/** Etiqueta del toggle "solo holding-wide" -- misma cadena en el `<Label>`, el chip y `aria-label` del `Checkbox`. */
-const ETIQUETA_SOLO_HOLDING_WIDE = "Solo usuarios holding-wide (sin empresa)";
+/**
+ * Etiqueta del toggle -- misma cadena en el `<Label>`, el `aria-label` del
+ * `Checkbox` y (via `ETIQUETA_TODAS_LAS_EMPRESAS_ACTIVO`) el chip. Semántica
+ * invertida respecto del campo `soloHoldingWide` (default `true` ahora, ver
+ * `usuarios.utils.ts::FILTROS_USUARIOS_VACIOS`): tildado ==
+ * `soloHoldingWide: false`, la vista cruzada de todas las empresas.
+ */
+const ETIQUETA_VER_TODAS_LAS_EMPRESAS = "Ver usuarios de todas las empresas";
+/** Texto del chip cuando el checkbox de arriba está tildado (filtro activo -- ver `filtrosActivos`). */
+const ETIQUETA_TODAS_LAS_EMPRESAS_ACTIVO = "Todas las empresas";
 
 interface UsuariosFiltrosProps {
   filtros: UsuariosFiltrosState;
   onChange: (filtros: UsuariosFiltrosState) => void;
   /** Abre el diálogo de alta de usuario (el estado del diálogo vive en `UsuariosPage`). */
   onNuevo: () => void;
+  /**
+   * `false` fuerza a ocultar el toggle "solo holding-wide" sin importar el
+   * `sessionScope` de la sesión -- usado por `empresa-apariencia/EmpresaUsuariosPage.tsx`
+   * (Usuarios de UNA empresa puntual, `empresaId` fijo por la ruta): el
+   * control no tiene sentido ahí ("ver usuarios sin empresa" dentro de la
+   * vista de una empresa concreta es contradictorio), a diferencia de
+   * `UsuariosPage.tsx` (su único otro consumidor), donde sigue dependiendo
+   * de `sessionScope` como siempre. Default `true` para no afectar ese
+   * comportamiento existente.
+   */
+  mostrarFiltroHoldingWide?: boolean;
 }
 
 /**
@@ -35,7 +54,12 @@ interface UsuariosFiltrosProps {
  * su `X` para quitarlos. El popover agrupa los filtros acotados (rol,
  * estado) que antes estaban como selects inline.
  */
-export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosProps) {
+export function UsuariosFiltros({
+  filtros,
+  onChange,
+  onNuevo,
+  mostrarFiltroHoldingWide = true,
+}: UsuariosFiltrosProps) {
   const { user } = useAuth();
   /**
    * El toggle "solo holding-wide" solo tiene sentido para una sesión
@@ -45,7 +69,7 @@ export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosP
    * siquiera ve el control (backend lo ignora igual, ver el docblock de
    * `UsuariosQueryParams::soloHoldingWide`).
    */
-  const esHoldingWide = user?.sessionScope === "holding";
+  const esHoldingWide = user?.sessionScope === "holding" && mostrarFiltroHoldingWide;
 
   function update<K extends keyof UsuariosFiltrosState>(campo: K, valor: UsuariosFiltrosState[K]) {
     onChange({ ...filtros, [campo]: valor });
@@ -65,8 +89,12 @@ export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosP
         filtros.estado === "INACTIVOS" ? "Inactivos" : filtros.estado === "TODOS" ? "Todos" : filtros.estado;
       chips.push({ campo: "estado", etiqueta: "Estado", valorLegible: estadoLegible });
     }
-    if (filtros.soloHoldingWide) {
-      chips.push({ campo: "soloHoldingWide", etiqueta: "Alcance", valorLegible: ETIQUETA_SOLO_HOLDING_WIDE });
+    // Invertido respecto del campo (default `true` ahora): lo que cuenta
+    // como filtro activo es `soloHoldingWide === false` -- alguien tildó
+    // "ver todas las empresas", apartándose del alcance holding-wide-only
+    // por defecto. `true` es el estado normal, no un filtro aplicado.
+    if (!filtros.soloHoldingWide) {
+      chips.push({ campo: "soloHoldingWide", etiqueta: "Alcance", valorLegible: ETIQUETA_TODAS_LAS_EMPRESAS_ACTIVO });
     }
     return chips;
   }, [filtros]);
@@ -145,12 +173,12 @@ export function UsuariosFiltros({ filtros, onChange, onNuevo }: UsuariosFiltrosP
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="filtro-solo-holding-wide"
-                      checked={filtros.soloHoldingWide}
-                      onCheckedChange={(marcado) => update("soloHoldingWide", marcado === true)}
-                      aria-label={ETIQUETA_SOLO_HOLDING_WIDE}
+                      checked={!filtros.soloHoldingWide}
+                      onCheckedChange={(marcado) => update("soloHoldingWide", marcado !== true)}
+                      aria-label={ETIQUETA_VER_TODAS_LAS_EMPRESAS}
                     />
                     <Label htmlFor="filtro-solo-holding-wide" className="text-sm font-normal">
-                      {ETIQUETA_SOLO_HOLDING_WIDE}
+                      {ETIQUETA_VER_TODAS_LAS_EMPRESAS}
                     </Label>
                   </div>
                 ) : null}
