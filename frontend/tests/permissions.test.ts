@@ -25,6 +25,13 @@ describe("hasRoleAccess", () => {
   it("deniega el acceso cuando no hay rol de usuario (undefined) y hay roles restringidos", () => {
     expect(hasRoleAccess(undefined, ["ADMINISTRADOR"])).toBe(false);
   });
+
+  it.each(["SUPERVISOR_HOLDING", "SUPER_ADMIN"] as const)(
+    "permite el acceso a %s aunque la lista de roles permitidos no lo incluya (mismo bypass que require-role.middleware.ts::ROLES_HOLDING_BYPASS en el backend)",
+    (rol) => {
+      expect(hasRoleAccess(rol, ["ADMINISTRADOR"])).toBe(true);
+    },
+  );
 });
 
 describe("hasScopeAccess", () => {

@@ -2,6 +2,19 @@ import { NAVIGATION_ITEMS } from "@/layouts/navigation";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
 /**
+ * Espejo exacto de `ROLES_HOLDING_BYPASS` en
+ * `backend/src/middlewares/require-role.middleware.ts` (Bloque F, aditivo):
+ * el backend ya bypasea CUALQUIER `requireRole(...)` para estos dos roles
+ * antes de validar la lista fija -- sin este mismo bypass acá, `hasRoleAccess`
+ * ocultaba del sidebar/rutas protegidas todo lo gateado con
+ * `allowedRoles: ["ADMINISTRADOR"]` (Usuarios, Bridges, Apariencia, Empresas)
+ * para una sesión `SUPER_ADMIN`/`SUPERVISOR_HOLDING`, aunque el backend ya le
+ * daba acceso total -- bug real detectado en verificación E2E contra
+ * producción (2026-08-30).
+ */
+const ROLES_HOLDING_BYPASS: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
+
+/**
  * Regla pura de autorización por rol para el enrutado del frontend.
  *
  * IMPORTANTE: esto es cosmético (AGENTS.md §6 -- "el filtrado por rol en el
@@ -21,6 +34,9 @@ export function hasRoleAccess(
   }
   if (!rol) {
     return false;
+  }
+  if (ROLES_HOLDING_BYPASS.includes(rol)) {
+    return true;
   }
   return allowedRoles.includes(rol);
 }
