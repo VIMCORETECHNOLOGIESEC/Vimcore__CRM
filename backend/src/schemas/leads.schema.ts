@@ -63,6 +63,11 @@ export const listLeadsQuerySchema = z.object({
   // Filtro explícito por responsable operativo, solo útil para
   // Admin/Supervisor (D4) — para Asesor/Vendedor el where de rol ya acota.
   responsableId: z.uuid().optional(),
+  // Drill-down de empresa para sesión holding-wide (D2/D6), mismo criterio
+  // que `listBridgesQuerySchema`/`listUsuariosQuerySchema` — para una sesión
+  // company-scoped `leads.access.ts::aplicarFiltroEmpresa` lo ignora, nunca
+  // puede escalar a otra empresa.
+  empresaId: z.uuid().optional(),
   // M-hardening Bloque A (WU8, spec lead-listing): "activos" → cerradoEn
   // null; "cerrados" → cerradoEn no nulo; omitido → sin filtro (comportamiento
   // sin cambios).

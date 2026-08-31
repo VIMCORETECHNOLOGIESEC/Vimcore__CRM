@@ -1,4 +1,5 @@
 import type { EtapaLead, RolUsuario, Semaforo } from "@prisma/client";
+import type { ListLeadsQuery } from "../schemas/leads.schema.js";
 
 export interface UsuarioAcceso {
   id: string;
@@ -52,13 +53,28 @@ function empresaCoincide(usuario: UsuarioAcceso, lead: LeadAcceso): boolean {
  * y `metricas.access.ts::resolveAlcanceBase` — antes duplicado idéntico en
  * ambos archivos. Mutación in-place deliberada (mismo patrón que el resto de
  * `buildWhere`/`resolveAlcanceBase`, que arman su `where` incrementalmente).
+ *
+ * Fix (drill-down holding-wide, vista de empresa desde el panel de holding):
+ * mismo criterio de 3 ramas que `metricas.access.ts::resolveEmpresaId` — (1)
+ * sesión company-scoped: forzada a su propia empresa, `query.empresaId` se
+ * ignora (nunca puede escalar a otra empresa); (2) sesión holding-wide con
+ * `query.empresaId`: drill-down opcional a UNA empresa puntual del holding;
+ * (3) sesión holding-wide sin `query.empresaId`: sin filtro, agregado de todo
+ * el holding (D2/D6, comportamiento previo sin cambios). Esto NO es una
+ * relajación del aislamiento — `Lead.empresaId` sigue NOT NULL/indexado y RLS
+ * sigue protegiendo la vía company-scoped igual que antes; la rama nueva solo
+ * habilita que una sesión YA sin restricción (`empresaId: null`) elija acotar
+ * su propio agregado a una empresa puntual.
  */
 export function aplicarFiltroEmpresa<T extends { empresaId?: string }>(
   where: T,
   usuario: Pick<UsuarioAcceso, "empresaId">,
+  query: Pick<ListLeadsQuery, "empresaId">,
 ): T {
   if (usuario.empresaId !== null) {
     where.empresaId = usuario.empresaId;
+  } else if (query.empresaId) {
+    where.empresaId = query.empresaId;
   }
   return where;
 }
