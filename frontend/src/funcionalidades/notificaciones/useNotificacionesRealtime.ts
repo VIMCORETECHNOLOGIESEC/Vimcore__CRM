@@ -49,6 +49,15 @@ export function useNotificacionesRealtime(onNuevaNotificacion?: (value: Notifica
         void queryClient.invalidateQueries({ queryKey: ["reportes", event.data.jobId] });
         return;
       }
+      if (event.type === "whatsapp.mensaje-nuevo") {
+        // Bandeja de conversaciones: clave "conversaciones" en
+        // funcionalidades/whatsapp/useConversaciones.ts (CONVERSACIONES_QUERY_KEY).
+        void queryClient.invalidateQueries({
+          queryKey: ["conversaciones", event.data.conversacionId, "mensajes"],
+        });
+        void queryClient.invalidateQueries({ queryKey: ["conversaciones"] });
+        return;
+      }
       void queryClient.invalidateQueries({ queryKey: ["notificaciones", userId], exact: true });
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
       void queryClient.invalidateQueries({ queryKey: ["lead-detalle"] });

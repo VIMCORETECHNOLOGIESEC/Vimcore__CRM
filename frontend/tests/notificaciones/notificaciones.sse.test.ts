@@ -134,6 +134,40 @@ describe("connectNotificacionesSse", () => {
     connection.abort();
   });
 
+  it("entrega un evento whatsapp.mensaje-nuevo con su conversacionId", async () => {
+    const onEvent = vi.fn();
+    const fetcher = vi.fn().mockResolvedValue(
+      streamResponse('id: evt-w\nevent: whatsapp.mensaje-nuevo\ndata: {"conversacionId":"conv-1"}\n\n'),
+    );
+
+    const connection = connectNotificacionesSse({ onEvent, fetcher });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith({
+      id: "evt-w",
+      type: "whatsapp.mensaje-nuevo",
+      data: { conversacionId: "conv-1" },
+    });
+    expect(connection.getCursor()).toBe("evt-w");
+    connection.abort();
+  });
+
+  it("un whatsapp.mensaje-nuevo sin conversacionId termina sin adelantar el cursor", async () => {
+    const estados: string[] = [];
+    const connection = connectNotificacionesSse({
+      cursor: "evt-previo",
+      onEvent: vi.fn(),
+      onStateChange: (estado) => estados.push(estado),
+      fetcher: vi.fn().mockResolvedValue(
+        streamResponse('id: evt-malo\nevent: whatsapp.mensaje-nuevo\ndata: {}\n\n'),
+      ),
+    });
+
+    await waitFor(() => expect(estados).toContain("terminal"));
+    expect(connection.getCursor()).toBe("evt-previo");
+    connection.abort();
+  });
+
   it("un frame conocido malformado termina sin adelantar el cursor", async () => {
     const estados: string[] = [];
     const connection = connectNotificacionesSse({

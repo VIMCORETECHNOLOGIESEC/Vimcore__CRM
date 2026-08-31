@@ -109,6 +109,19 @@ it("invalida la bandeja de reportes por jobId ante los 3 eventos de reporte, sin
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
 });
 
+it("invalida la bandeja de conversaciones ante whatsapp.mensaje-nuevo sin tocar leads/notificaciones", () => {
+  const context = setup();
+  const invalidate = vi.spyOn(context.client, "invalidateQueries");
+  act(() => {
+    context.options.onEvent({ type: "whatsapp.mensaje-nuevo", data: { conversacionId: "conv-9" }, id: "e6" });
+  });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["conversaciones", "conv-9", "mensajes"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["conversaciones"] });
+  expect(invalidate).toHaveBeenCalledTimes(2);
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
+});
+
 it("aborta la conexión vieja al cambiar usuario y al desmontar", () => {
   const context = setup();
   const firstAbort = context.aborts[0];

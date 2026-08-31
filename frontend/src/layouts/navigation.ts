@@ -1,4 +1,4 @@
-import { Building2, FileText, Handshake, LayoutDashboard, Palette, Plug, UserCog, Users } from "lucide-react";
+import { Building2, FileText, Handshake, LayoutDashboard, MessageSquare, Palette, Plug, UserCog, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
@@ -81,6 +81,16 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     label: "Leads",
     route: "/leads",
     icon: Users,
+    requiereVistaEmpresaSiHolding: true,
+  },
+  {
+    // WhatsApp Parte 2 (mensajería real): mismo criterio que Leads/
+    // Oportunidades/Bridges -- un holding-wide no gestiona conversaciones de
+    // ninguna empresa en particular hasta "entrar" a la vista de una
+    // concreta.
+    label: "Conversaciones",
+    route: "/conversaciones",
+    icon: MessageSquare,
     requiereVistaEmpresaSiHolding: true,
   },
   {

@@ -59,22 +59,27 @@ describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
   });
 });
 
-describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads)", () => {
-  it("Oportunidades, Bridges y Leads están marcados con requiereVistaEmpresaSiHolding", () => {
+describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads/Conversaciones)", () => {
+  it("Oportunidades, Bridges, Leads y Conversaciones están marcados con requiereVistaEmpresaSiHolding", () => {
     const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
     const bridges = NAVIGATION_ITEMS.find((item) => item.label === "Bridges");
     const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
+    const conversaciones = NAVIGATION_ITEMS.find((item) => item.label === "Conversaciones");
     expect(oportunidades?.requiereVistaEmpresaSiHolding).toBe(true);
     expect(bridges?.requiereVistaEmpresaSiHolding).toBe(true);
     // Bloqueado antes por falta de soporte de `?empresaId=` en `GET /leads`
     // -- ya resuelto en el backend (`leads.access.ts::aplicarFiltroEmpresa`,
     // commit `0ea2742`), mismo criterio que Oportunidades/Bridges.
     expect(leads?.requiereVistaEmpresaSiHolding).toBe(true);
+    // WhatsApp Parte 2 (mensajería real): mismo criterio -- un holding-wide
+    // no gestiona conversaciones de ninguna empresa en particular sin entrar
+    // a la vista de una concreta.
+    expect(conversaciones?.requiereVistaEmpresaSiHolding).toBe(true);
   });
 
   it("Dashboard, Usuarios, Reportes, Apariencia y Empresas no están marcados", () => {
     const sinFlag = NAVIGATION_ITEMS.filter(
-      (item) => !["Oportunidades", "Bridges", "Leads"].includes(item.label),
+      (item) => !["Oportunidades", "Bridges", "Leads", "Conversaciones"].includes(item.label),
     );
     for (const item of sinFlag) {
       expect(item.requiereVistaEmpresaSiHolding).toBeUndefined();

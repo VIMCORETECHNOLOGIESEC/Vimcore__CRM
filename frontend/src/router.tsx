@@ -2,10 +2,12 @@ import { createBrowserRouter, Navigate } from "react-router";
 import { NotFoundPage } from "@/componentes/NotFoundPage";
 import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
+import { EmpresaBridgesPage } from "@/funcionalidades/bridges/EmpresaBridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
 import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { EmpresaAparienciaPage } from "@/funcionalidades/empresa-apariencia/EmpresaAparienciaPage";
 import { EmpresaDetallePage } from "@/funcionalidades/empresa-apariencia/EmpresaDetallePage";
+import { EmpresaUsuariosPage } from "@/funcionalidades/empresa-apariencia/EmpresaUsuariosPage";
 import { GestorEmpresasPage } from "@/funcionalidades/empresa-apariencia/GestorEmpresasPage";
 import { PerfilPage } from "@/funcionalidades/autenticacion/PerfilPage";
 import { ProtectedRoute } from "@/funcionalidades/autenticacion/ProtectedRoute";
@@ -17,6 +19,7 @@ import { OportunidadDetallePage } from "@/funcionalidades/oportunidades/detalle/
 import { OportunidadesPage } from "@/funcionalidades/oportunidades/OportunidadesPage";
 import { ReportesPage } from "@/funcionalidades/reportes/ReportesPage";
 import { UsuariosPage } from "@/funcionalidades/usuarios/UsuariosPage";
+import { ConversacionesPage } from "@/funcionalidades/whatsapp/ConversacionesPage";
 import { WhatsAppCallbackPage } from "@/funcionalidades/whatsapp/WhatsAppCallbackPage";
 import { AppLayout } from "@/layouts/AppLayout";
 import { FlujoIntegracionDemo } from "@/temas/variante-empresarial/FlujoIntegracionDemo";
@@ -108,6 +111,17 @@ export const router = createBrowserRouter([
           { path: "leads", element: <LeadsPage /> },
           { path: "leads/:id", element: <LeadDetallePage /> },
           {
+            // Conversaciones de WhatsApp (Parte 2): mismo gate real que
+            // Oportunidades/Bridges -- un holding-wide no gestiona
+            // conversaciones de ninguna empresa en particular hasta "entrar"
+            // a la vista de una concreta.
+            element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
+            children: [
+              { path: "conversaciones", element: <ConversacionesPage /> },
+              { path: "conversaciones/:id", element: <ConversacionesPage /> },
+            ],
+          },
+          {
             // Oportunidades (Bloque D/E, gate holding-wide sin empresa): un
             // holding-wide (sesión `holding`) no gestiona oportunidades de
             // ninguna empresa en particular hasta "entrar" a la vista de una
@@ -177,6 +191,18 @@ export const router = createBrowserRouter([
               // (para eso ya existe `apariencia-empresa`/`usuarios`/`bridges`
               // sin necesitar este id explícito en la URL).
               { path: "empresas/:empresaId", element: <EmpresaDetallePage /> },
+              // Usuarios/Bridges de ESA empresa puntual (rutas propias,
+              // reemplazan el redirect anterior a `/usuarios?empresaId=`/
+              // `/bridges?empresaId=` -- la MISMA pantalla que un
+              // holding-wide usa para sus propias cuentas/bridges
+              // holding-wide, confuso al reusarla tal cual para el drill-down
+              // de una empresa). Mismo grupo/`allowedScopes` que
+              // `empresas/:empresaId` de arriba -- el `empresaId` fijo viene
+              // del path, no de `?empresaId=` (`useVistaEmpresa`), así que no
+              // hace falta el gate `requiereVistaEmpresaSiHolding` que sí usa
+              // `bridges` más arriba.
+              { path: "empresas/:empresaId/usuarios", element: <EmpresaUsuariosPage /> },
+              { path: "empresas/:empresaId/bridges", element: <EmpresaBridgesPage /> },
             ],
           },
         ],

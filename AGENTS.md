@@ -452,6 +452,19 @@ de modificar código, datos o despliegue:
   y recepción real de mensajes de WhatsApp (lo que el panel
   `WhatsAppChat` sigue simulando con datos mock) **no** está cubierto por
   esta ampliación y sigue fuera de alcance salvo que se decida aparte.
+  **Excepción WIP documentada (2026-08-31), por confirmación directa del
+  usuario:** el frontend de WhatsApp Parte 2 (mensajería real -- bandeja de
+  conversaciones, envío/recepción) se construyó y se COMMITEA localmente
+  íntegro y testeado (`funcionalidades/whatsapp/{CajaRespuesta,
+  ConversacionesPage,HiloMensajes,ListaConversaciones}.tsx`,
+  `conversaciones.{api,utils}.ts`, `useConversaciones.ts`,
+  `tipos/conversacion.ts`, extensión del evento SSE
+  `whatsapp.mensaje-nuevo`, ítem de menú "Conversaciones" y ruta
+  `/conversaciones` en `router.tsx`) — esta excepción autoriza SOLO que el
+  código exista en el historial local de `test/gpt`, NO que entre al
+  despliegue vigente: Mateo todavía no confirmó si esta ronda lo incluye ni
+  con qué mecanismo (SDD formal vs. excepción definitiva). No pushear ni
+  dar por aprobado este módulo hasta esa confirmación.
 - App móvil nativa
 - Bridges de TikTok y sitio web propio (no implementados ni modelados como
   canales; el endpoint genérico actual registra el origen como `GOOGLE_FORMS`)

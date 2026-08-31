@@ -10,7 +10,8 @@ export type EventoNotificaciones =
   | { id: string; type: "metricas.actualizadas"; data: Record<string, never> }
   | { id: string; type: "reporte.iniciado"; data: { jobId: string; tipo: "pdf" | "xlsx" } }
   | { id: string; type: "reporte.listo"; data: { jobId: string; archivoUrl: string } }
-  | { id: string; type: "reporte.error"; data: { jobId: string; error: string } };
+  | { id: string; type: "reporte.error"; data: { jobId: string; error: string } }
+  | { id: string; type: "whatsapp.mensaje-nuevo"; data: { conversacionId: string } };
 
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000] as const;
 const TIPOS_NOTIFICACION = new Set<TipoNotificacion>([
@@ -68,6 +69,7 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
     "reporte.iniciado",
     "reporte.listo",
     "reporte.error",
+    "whatsapp.mensaje-nuevo",
   ];
   if (!known.includes(frame.event)) return null;
   const data: unknown = JSON.parse(frame.data);
@@ -100,6 +102,10 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
       throw new Error("evento_malformado");
     }
     return { id: frame.id, type: frame.event, data: { jobId: data.jobId, error: data.error } };
+  }
+  if (frame.event === "whatsapp.mensaje-nuevo") {
+    if (!isRecord(data) || typeof data.conversacionId !== "string") throw new Error("evento_malformado");
+    return { id: frame.id, type: frame.event, data: { conversacionId: data.conversacionId } };
   }
   if (!isRecord(data) || typeof data.leadId !== "string") throw new Error("evento_malformado");
   return {
