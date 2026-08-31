@@ -8,6 +8,10 @@ import {
   postLinkedInProbarConexion,
   postLinkedInOAuthStart,
 } from "../../controllers/linkedin/linkedin.controller.js";
+import {
+  getLinkedInWebhookHandshake,
+  postLinkedInWebhook,
+} from "../../controllers/linkedin/linkedin-webhook.controller.js";
 import { requireAuthentication } from "../../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../../middlewares/require-role.middleware.js";
 
@@ -17,6 +21,14 @@ linkedinRouter.get(
   "/integraciones/linkedin/oauth/callback",
   getLinkedInOAuthCallback,
 );
+
+// Webhook de Lead Sync (docs/05-bridges.md, patrón de buzón durable):
+// se autentica por challenge/`X-LI-Signature`, NUNCA por
+// `requireAuthentication`/JWT — mismo criterio que Meta/WhatsApp. El path
+// debe calzar byte a byte con `linkedin-subscription.service.ts::
+// productionWebhookUrl()`.
+linkedinRouter.get("/integraciones/linkedin/webhook", getLinkedInWebhookHandshake);
+linkedinRouter.post("/integraciones/linkedin/webhook", postLinkedInWebhook);
 
 linkedinRouter.post(
   "/bridges/:id/linkedin/oauth/iniciar",

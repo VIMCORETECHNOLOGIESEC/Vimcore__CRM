@@ -170,6 +170,7 @@ describe("procesarRecepcion — notificacion LEAD_DATO_INCOMPLETO (M-hardening B
     });
     return {
       recepcionId: row.id,
+      bridgeId: row.bridgeId,
       leaseOwner: owner,
       intento: 1,
       leaseHasta: row.leaseHasta!,

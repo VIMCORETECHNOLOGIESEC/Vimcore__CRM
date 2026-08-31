@@ -23,14 +23,15 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"
 
 /**
  * Bloque F (aditivo, decisión cerrada con el usuario): constante LOCAL y
- * DISTINTA de `ROLES_ACCESO_TOTAL` de arriba a propósito — esa constante la
- * comparte `canRead` y `canEdit`, y `canEdit` queda explícitamente FUERA de
- * este batch (el propio diseño original la deja pendiente para antes de F,
- * ver `docs/blocks/d-routing-oportunidad.md`). Agregar los roles nuevos acá
- * en vez de a `ROLES_ACCESO_TOTAL` evita cambiar el comportamiento de
- * `canRead`/`canEdit` como efecto secundario de este cambio. Solo
- * `canReassign`/`canTransfer`/`canClose` (abajo) la usan — las tres
- * autoridades que este batch sí reescribe/retoca.
+ * DISTINTA de `ROLES_ACCESO_TOTAL` de arriba a propósito — `canEdit` queda
+ * explícitamente FUERA de este batch (el propio diseño original la deja
+ * pendiente para antes de F, ver `docs/blocks/d-routing-oportunidad.md`).
+ * Agregar los roles nuevos acá en vez de a `ROLES_ACCESO_TOTAL` evita cambiar
+ * el comportamiento de `canEdit` como efecto secundario de este cambio.
+ * `canReassign`/`canTransfer`/`canClose` (abajo) la usan desde este batch;
+ * `canRead` se sumó después (fix "Ver en vivo" 403 determinístico, roadmap
+ * backend pre-deploy) — sigue siendo el mismo criterio "acceso total de
+ * lectura", `canEdit` es la única función que la deja fuera a propósito.
  */
 const ROLES_HOLDING_TOTAL: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
 
@@ -92,10 +93,18 @@ export function aplicarFiltroEmpresa<T extends { empresaId?: string }>(
  * Bloque C (Fase 2/Stage 2): la compuerta de empresa se evalúa PRIMERO y
  * bloquea a TODOS los roles por igual — spec "Direct id access is denied,
  * not leaked": un lead de otra empresa nunca llega a evaluarse por rol.
+ *
+ * Fix ("Ver en vivo" 403 determinístico, roadmap backend pre-deploy):
+ * `ROLES_ACCESO_TOTAL` no incluye `SUPERVISOR_HOLDING`/`SUPER_ADMIN`, así que
+ * una sesión holding-wide caía siempre al fallback de titularidad
+ * (`asesorId`/`vendedorId`), falso para cualquier lead no asignado
+ * directamente. Se agrega `ROLES_HOLDING_TOTAL` (mismo criterio que
+ * `canReassign`/`canTransfer`/`canClose` más abajo) SOLO acá — `canEdit`
+ * queda deliberadamente sin este bypass (modo solo lectura de "Ver en vivo").
  */
 export function canRead(usuario: UsuarioAcceso, lead: LeadAcceso): boolean {
   if (!empresaCoincide(usuario, lead)) return false;
-  if (ROLES_ACCESO_TOTAL.includes(usuario.rol)) return true;
+  if (ROLES_ACCESO_TOTAL.includes(usuario.rol) || ROLES_HOLDING_TOTAL.includes(usuario.rol)) return true;
   return usuario.id === lead.asesorId || usuario.id === lead.vendedorId;
 }
 

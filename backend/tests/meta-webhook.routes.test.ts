@@ -268,6 +268,7 @@ describe("POST /api/v1/ingesta/meta → worker — pipeline completo (docs/05-br
     });
     const claim: leadRecibidoRepository.InboxClaim = {
       recepcionId: row.id,
+      bridgeId: row.bridgeId,
       leaseOwner: owner,
       intento: 1,
       leaseHasta: row.leaseHasta!,

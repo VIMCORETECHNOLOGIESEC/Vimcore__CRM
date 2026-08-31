@@ -10,6 +10,7 @@ vi.mock("../src/repositories/notificacion.repository.js", () => ({
 
 const repository = await import("../src/repositories/notificacion.repository.js");
 const {
+  createCanalOProductoFaltanteNotification,
   createForActiveRoles,
   createForActiveSupervisorsAndAdmins,
   createHoldingForActiveRoles,
@@ -68,6 +69,69 @@ describe("notificaciones company scope", () => {
   it("rechaza un scope de empresa ausente en vez de degradar a holding", async () => {
     await expect(
       createForActiveRoles(["SUPERVISOR"], input, undefined as never),
+    ).rejects.toMatchObject({ code: "contexto_empresa_no_resuelto", statusHttp: 422 });
+    expect(repository.createNotificacion).not.toHaveBeenCalled();
+  });
+});
+
+describe("createCanalOProductoFaltanteNotification (pre-deploy, aviso Supervisor/Asesor → Administrador)", () => {
+  it("arma titulo/mensaje por default y siempre notifica solo a ADMINISTRADOR con metadata estructurada", async () => {
+    await createCanalOProductoFaltanteNotification(
+      { recurso: "canal", nombreSugerido: "WhatsApp Business" },
+      "empresa-A",
+    );
+
+    expect(repository.findActiveRecipientIds).toHaveBeenCalledWith(
+      ["ADMINISTRADOR"],
+      "empresa-A",
+      expect.anything(),
+    );
+    expect(repository.createNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usuarioId: "usuario-1",
+        tipo: "CANAL_O_PRODUCTO_FALTANTE",
+        titulo: "Falta un canal activo",
+        mensaje:
+          'Un asesor necesita cargar un lead pero no hay canal activo con nombre sugerido "WhatsApp Business".',
+        metadata: { recurso: "canal", nombreSugerido: "WhatsApp Business" },
+        empresaId: "empresa-A",
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("usa el mensaje del cliente y mergea metadata extra sin perder recurso/nombreSugerido (triangulación)", async () => {
+    await createCanalOProductoFaltanteNotification(
+      {
+        recurso: "producto",
+        nombreSugerido: "Plan Premium",
+        mensaje: "Mensaje custom del asesor",
+        metadata: { origenPantalla: "wizard-carga-lead" },
+      },
+      "empresa-B",
+    );
+
+    expect(repository.createNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        titulo: "Falta un producto activo",
+        mensaje: "Mensaje custom del asesor",
+        metadata: {
+          recurso: "producto",
+          nombreSugerido: "Plan Premium",
+          origenPantalla: "wizard-carga-lead",
+        },
+        empresaId: "empresa-B",
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("rechaza empresaId null (alcance holding-wide) en vez de asumir una empresa", async () => {
+    await expect(
+      createCanalOProductoFaltanteNotification(
+        { recurso: "canal", nombreSugerido: "WhatsApp Business" },
+        null,
+      ),
     ).rejects.toMatchObject({ code: "contexto_empresa_no_resuelto", statusHttp: 422 });
     expect(repository.createNotificacion).not.toHaveBeenCalled();
   });

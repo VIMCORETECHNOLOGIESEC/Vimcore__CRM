@@ -11,6 +11,7 @@ import { deduplicateLead } from "./deduplicacion.service.js";
 import { registrarBridgeLog } from "./bridge-log.service.js";
 import { createForActiveRoles } from "./notificaciones.service.js";
 import { resolverLeadgenMeta } from "./meta-webhook.service.js";
+import { resolverLinkedInLeadFormResponse } from "./linkedin/linkedin-webhook.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 
 export interface IngestaResultado {
@@ -65,6 +66,7 @@ export async function ingestarLead(entrada: LeadEntrante): Promise<IngestaResult
  */
 async function resolverEntradaProcesamiento(
   envelope: leadRecibidoRepository.PersistedEntradaProcesamiento,
+  bridgeId: string,
 ): Promise<{ entrada: LeadEntrante; recibidoEn: Date }> {
   if (envelope.version === 1) {
     return {
@@ -76,13 +78,22 @@ async function resolverEntradaProcesamiento(
     const entrada = await resolverLeadgenMeta({ leadgenId: envelope.leadgenId, pageId: envelope.pageId });
     return { entrada, recibidoEn: new Date(envelope.recibidoEn) };
   }
+  if (envelope.version === 2 && envelope.tipo === "LINKEDIN_PENDIENTE_DETALLE") {
+    const entrada = await resolverLinkedInLeadFormResponse({
+      leadFormResponseId: envelope.leadFormResponseId,
+      leadGenFormResponse: envelope.leadGenFormResponse,
+      occurredAt: envelope.occurredAt,
+      bridgeId,
+    });
+    return { entrada, recibidoEn: new Date(envelope.recibidoEn) };
+  }
   throw new AppError("sobre_ingesta_invalido", 500, "El sobre de ingesta no es procesable");
 }
 
 export async function procesarRecepcion(
   claim: leadRecibidoRepository.InboxClaim,
 ): Promise<boolean> {
-  const resuelto = await resolverEntradaProcesamiento(claim.entradaProcesamiento);
+  const resuelto = await resolverEntradaProcesamiento(claim.entradaProcesamiento, claim.bridgeId);
   const resultado = await runInTransaction(
     undefined,
     async (tx) => {

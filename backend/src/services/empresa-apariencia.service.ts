@@ -117,11 +117,6 @@ export async function updateAparienciaHolding(
   return toHoldingView(actualizada);
 }
 
-export interface ListEmpresasResult {
-  items: EmpresaAparienciaHoldingView[];
-  total: number;
-}
-
 /**
  * `GET /empresas/:empresaId` (gap reportado por frontend: `EmpresaDetallePage
  * .tsx` traía las 500 filas de `GET /empresas` y buscaba en memoria).
@@ -157,6 +152,11 @@ export async function createEmpresa(
     logoUrl: input.logoUrl,
   });
   return toHoldingView(creada);
+}
+
+export interface ListEmpresasResult {
+  items: EmpresaAparienciaHoldingView[];
+  total: number;
 }
 
 /**

@@ -87,6 +87,7 @@ async function encolarYReclamar(
   });
   return {
     recepcionId: row.id,
+    bridgeId: row.bridgeId,
     leaseOwner: owner,
     intento: 1,
     leaseHasta: row.leaseHasta!,

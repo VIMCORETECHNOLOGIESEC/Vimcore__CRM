@@ -518,6 +518,11 @@ export async function applyAsignacionesEnLote(
       empresaId: notificacionData.empresaId ?? null,
       leidaEn: null,
       creadaEn: notificacionData.creadaEn,
+      // Este flujo (lead asignado/traspasado) nunca setea `metadata` — el
+      // campo es de escritura (`Prisma.InputJsonValue`, arrays readonly) y no
+      // tipa contra la salida (`JsonValue`, arrays mutables) sin narrowing
+      // extra que no vale la pena para un caso que siempre es null acá.
+      metadata: null,
     };
     return [
       ...notificationEvents(notification),
