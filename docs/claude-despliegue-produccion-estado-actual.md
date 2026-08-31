@@ -175,6 +175,20 @@ Verificado el 2026-08-30 contra las variables reales del Container App
 
 ## Pendiente / gaps conocidos
 
+- **Incidente cerrado (2026-08-31): `tests/setup.ts` truncó producción.**
+  El `globalSetup` de vitest (TRUNCATE de `usuarios`/`clientes`/`bridges`/
+  `refresh_tokens`/`configuracion_empresa` antes de cada corrida) solo
+  validaba `NODE_ENV=test`, nunca a qué base apuntaba `DATABASE_URL` — en
+  algún momento la suite corrió con `NODE_ENV=test` pero `DATABASE_URL`
+  apuntando a la base real de Azure en vez de `.env.dev`, confirmado por
+  filas de fixture (`usuario-seed-N-*@t.local`) apareciendo en producción.
+  Sin datos reales todavía en ese momento (fase de pruebas de
+  integración), así que no hubo pérdida real. Corregido en `e2d6374`:
+  allowlist de host (`db`/`localhost`/`127.0.0.1`/`::1`) que falla
+  CERRADO. **Queda pendiente**: limpiar las filas de fixture que siguen
+  en la base real (`usuario-seed-*@t.local`, `passwordHash: "x"`, no son
+  credenciales usables pero ensucian los datos) antes de que empiece a
+  haber clientes reales.
 - Frontend todavía no desplegado (va a un VPS aparte) — `CORS_ORIGIN` sigue
   en `*` temporalmente, cambiar al dominio real del frontend en cuanto
   exista.
@@ -187,9 +201,23 @@ Verificado el 2026-08-30 contra las variables reales del Container App
   además "instalar la app en la Página" (`POST /{page-id}/subscribed_apps
   ?subscribed_fields=leadgen`) por cada Página conectada — paso manual
   aparte de suscribir el campo `leadgen` en el panel de Webhooks.
-- Fix de seguridad multitenant (scope por empresa en `/usuarios` y
-  `/bridges` + 4 gaps relacionados) — commit `dd2c1da` en `main`,
-  verificado con 107/107 tests reales en verde. Punto 3 del roadmap
-  original (endpoint para crear administrador de empresa,
-  `Membresia(rol: ADMINISTRADOR)`) y `empresaId` opcional en
-  `metricasQuerySchema` todavía no arrancaron — próximos en la cola.
+- Roadmap de seguridad multitenant (2026-08-30) — **completo**: scope por
+  empresa en `/usuarios`/`/bridges` (`dd2c1da`), `empresaId` opcional en
+  las 13 funciones de métricas (`5b4cea9`), alta de administrador de
+  empresa (`6996f90`), bypass holding-wide completo + filtro
+  `soloHoldingWide` (`a76c62b`), cutover de "Vendedor" a permiso + fix P0
+  de traspaso sin asesor (`6083399`), `GET/POST /empresas` +
+  `GET /empresas/:id` (`8843b99`, `f523699`). Todos verificados con tests
+  reales, todos en `main`. Sigue pendiente, sin código involucrado: cutover
+  de `ROLES_ACCESO_TOTAL` en los 8→3 archivos reales que faltaban ya se
+  cerró también (`a76c62b`); lo único que queda del roadmap original es
+  administrativo (App Review de Meta, definición de alcance de WhatsApp
+  Parte 2).
+- Logs de producción: los access logs HTTP (método/URL/**status
+  code**/duración) no se veían — el filtro de supresión de logs sin
+  contexto tenant (`logger.ts`, para no filtrar datos de negocio sin
+  límite de tenant confirmado) los borraba también a ellos, aunque no son
+  datos de negocio. Corregido (`3c62698`): se marcan con `accessLog: true`
+  vía `customProps` de `pino-http` en `app.ts`, exentos del filtro. Ya se
+  puede ver el status code real de cualquier request en los logs del
+  Container App.
