@@ -34,6 +34,11 @@ const TABLAS_TENANT_SCOPED = [
   "productos",
   "oportunidades",
   "oportunidad_eventos",
+  // Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"): RLS
+  // agregado en la misma migración que crea la tabla (a diferencia de las
+  // tres de arriba, que necesitaron un fix aparte) -- ver
+  // 20260831040556_bloque_d_ingreso_manual_leads.
+  "canales_manuales",
 ] as const;
 
 afterAll(async () => {

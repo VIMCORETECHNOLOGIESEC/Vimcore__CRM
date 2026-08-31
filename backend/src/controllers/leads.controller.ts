@@ -4,6 +4,8 @@ import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   asignarBodySchema,
   asignarLoteBodySchema,
+  cargaMasivaLeadsBodySchema,
+  crearLeadManualBodySchema,
   idParamSchema,
   listLeadsQuerySchema,
   patchEtapaBodySchema,
@@ -12,6 +14,7 @@ import {
   traspasarBodySchema,
 } from "../schemas/leads.schema.js";
 import { assignLead, assignLeadsBatch, reassignLead, transferLead } from "../services/asignacion.service.js";
+import { crearLeadManual, crearLeadsManualEnLote } from "../services/leads-manual.service.js";
 import {
   findLeadById,
   findLeads,
@@ -79,6 +82,42 @@ export async function patchLeadEtapa(req: Request, res: Response): Promise<void>
 
   const lead = await transitionEtapa(usuario, parsedId.data.id, parsedBody.data);
   res.status(200).json({ lead });
+}
+
+/**
+ * `POST /leads` (Bloque D, "Canal de ingreso manual y catálogo dinámico"):
+ * traducción HTTP pura -- `leads-manual.service.ts::crearLeadManual` hace
+ * todo el trabajo de negocio (rol, resolución de empresa, dedup D2,
+ * auto-assignment D3). 201 si `deduplicateLead` creó un lead nuevo; 200 si
+ * ancló el evento a un lead existente (duplicado) -- mismo criterio que
+ * `deduplicateLead` ya expone vía `leadCreado`, sin inventar un tercer
+ * estado nuevo (la ingesta vía webhook nunca devuelve esto de forma
+ * síncrona al llamador HTTP, así que no hay un precedente propio que
+ * replicar más allá de este campo).
+ */
+export async function postLead(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedBody = crearLeadManualBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const resultado = await crearLeadManual(usuario, parsedBody.data);
+  res.status(resultado.duplicado ? 200 : 201).json({ lead: resultado.lead });
+}
+
+/**
+ * `POST /leads/carga-masiva` (aditivo, contrato JSON ya comunicado a
+ * frontend): calco de `postLeadsAsignarLote` -- siempre 200 si el request
+ * pasó Zod; el reporte por fila no es all-or-nothing.
+ */
+export async function postLeadsCargaMasiva(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedBody = cargaMasivaLeadsBodySchema.safeParse(req.body);
+  if (!parsedBody.success) throw zodValidationError();
+
+  const resultado = await crearLeadsManualEnLote(usuario, parsedBody.data);
+  res.status(200).json(resultado);
 }
 
 export async function postLeadFormulario(req: Request, res: Response): Promise<void> {

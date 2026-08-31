@@ -356,6 +356,64 @@ describe("deduplicacion.service — deduplicateLead", () => {
         statusHttp: 422,
       });
     }));
+
+  // Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"): fix
+  // aditivo — sin `bridgeId`, `entrada.empresaId` (resuelto por el llamador
+  // nuevo, `leads-manual.service.ts`) es un fallback VÁLIDO, no otro caso de
+  // rechazo. El test de arriba (sin bridgeId NI empresaId) sigue rechazando
+  // exactamente igual — este cubre el camino nuevo específicamente.
+  it("Bloque D (fix aditivo): sin bridgeId pero CON empresaId, deduplicateLead crea el lead usando ese empresaId (camino manual)", () =>
+    conContexto(async () => {
+      const entrada: DeduplicacionInput = {
+        ...entradaBase(),
+        bridgeId: undefined,
+        empresaId: EMPRESA_BOOTSTRAP_ID,
+      };
+
+      const resultado = await deduplicateLead(entrada);
+
+      expect(resultado.leadCreado).toBe(true);
+      expect(resultado.empresaId).toBe(EMPRESA_BOOTSTRAP_ID);
+      const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+      expect(lead.empresaId).toBe(EMPRESA_BOOTSTRAP_ID);
+      // Sin `origenOverride`: el decisor sigue mandando (NUEVO, sin estado
+      // previo) — el fallback de empresa no cambia esta otra regla.
+      expect(lead.origen).toBe("NUEVO");
+    }));
+
+  it("Bloque D (fix aditivo): origenOverride fuerza MANUAL en la rama crear_lead, sin afectar ningún llamador que no lo pase", () =>
+    conContexto(async () => {
+      const entrada: DeduplicacionInput = {
+        ...entradaBase(),
+        bridgeId: undefined,
+        empresaId: EMPRESA_BOOTSTRAP_ID,
+        origenOverride: "MANUAL",
+      };
+
+      const resultado = await deduplicateLead(entrada);
+
+      const lead = await prisma.lead.findUniqueOrThrow({ where: { id: resultado.leadId } });
+      expect(lead.origen).toBe("MANUAL");
+    }));
+
+  it("Bloque D (fix aditivo): el camino CON bridgeId (webhook real) sigue intacto — ignora entrada.empresaId por completo", () =>
+    conContexto(async () => {
+      const otraEmpresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa distinta ${randomUUID()}` },
+      });
+      const entrada: DeduplicacionInput = {
+        ...entradaBase(),
+        bridgeId: DEFAULT_BRIDGE_ID,
+        // `DEFAULT_BRIDGE_ID` pertenece a `EMPRESA_BOOTSTRAP_ID` — si este
+        // campo se colara en el camino con bridge, el lead terminaría en
+        // `otraEmpresa` en vez de en la empresa real del bridge.
+        empresaId: otraEmpresa.id,
+      };
+
+      const resultado = await deduplicateLead(entrada);
+
+      expect(resultado.empresaId).toBe(EMPRESA_BOOTSTRAP_ID);
+    }));
 });
 
 describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + dedupe shadow scope", () => {

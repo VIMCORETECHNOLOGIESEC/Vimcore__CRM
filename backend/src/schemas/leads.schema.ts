@@ -158,6 +158,61 @@ export const asignarLoteBodySchema = z.object({
   asesorId: z.uuid().optional(),
 });
 
+/**
+ * Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico",
+ * docs/blocks/d-routing-oportunidad.md:259-299): `POST /leads`. Mismo
+ * criterio de `empresaId` opcional que `producto.schema.ts::crearProductoBodySchema`
+ * -- una sesión company-scoped lo ignora, una sesión holding-wide lo exige.
+ * `.refine` (mismo patrón que `listLeadsQuerySchema.superRefine`): al menos
+ * teléfono o correo, rechazado en el borde antes de llegar a dedup.
+ */
+export const crearLeadManualBodySchema = z
+  .object({
+    empresaId: z.uuid().optional(),
+    nombre: z.string().trim().min(1),
+    telefono: z.string().trim().min(1).optional(),
+    correo: z.string().trim().min(1).optional(),
+    canalManualId: z.uuid().optional(),
+  })
+  .refine((data) => data.telefono !== undefined || data.correo !== undefined, {
+    message: "Debes indicar teléfono o correo",
+    path: ["telefono"],
+  });
+
+/**
+ * `POST /leads/carga-masiva`: cada fila requiere el mismo mínimo que
+ * `crearLeadManualBodySchema` (teléfono o correo) -- sin `empresaId` propio,
+ * se resuelve una sola vez a nivel de lote (`cargaMasivaLeadsBodySchema.empresaId`
+ * abajo), igual para toda fila del batch.
+ */
+const leadManualItemSchema = z
+  .object({
+    nombre: z.string().trim().min(1),
+    telefono: z.string().trim().min(1).optional(),
+    correo: z.string().trim().min(1).optional(),
+    canalManualId: z.uuid().optional(),
+  })
+  .refine((data) => data.telefono !== undefined || data.correo !== undefined, {
+    message: "Debes indicar teléfono o correo",
+    path: ["telefono"],
+  });
+
+/**
+ * `empresaId` a nivel de lote: mismo criterio que `crearLeadManualBodySchema`
+ * -- sesión company-scoped lo ignora, sesión holding-wide lo exige (resuelto
+ * en `leads-manual.service.ts::resolveEmpresaId`, una sola vez para todo el
+ * batch, no por fila -- el frontend ya sabe en qué empresa está cargando y
+ * manda ese id una vez para todos los leads del archivo). `canalManualId` a
+ * nivel de lote aplica a toda fila que no traiga el suyo propio (resuelto en
+ * el servicio, no acá). `leads.max(100)`: mismo tope que `asignarLoteBodySchema`
+ * (diseño D-A1, "Tamaño máximo = 100").
+ */
+export const cargaMasivaLeadsBodySchema = z.object({
+  empresaId: z.uuid().optional(),
+  canalManualId: z.uuid().optional(),
+  leads: z.array(leadManualItemSchema).min(1).max(100),
+});
+
 export type PatchEtapaBody = z.infer<typeof patchEtapaBodySchema>;
 export type ListLeadsQuery = z.infer<typeof listLeadsQuerySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
@@ -166,3 +221,5 @@ export type AsignarBody = z.infer<typeof asignarBodySchema>;
 export type ReasignarBody = z.infer<typeof reasignarBodySchema>;
 export type TraspasarBody = z.infer<typeof traspasarBodySchema>;
 export type AsignarLoteBody = z.infer<typeof asignarLoteBodySchema>;
+export type CrearLeadManualBody = z.infer<typeof crearLeadManualBodySchema>;
+export type CargaMasivaLeadsBody = z.infer<typeof cargaMasivaLeadsBodySchema>;

@@ -201,6 +201,10 @@ model Empresa {
   productos           Producto[]
   oportunidades       Oportunidad[]
   oportunidadEventos  OportunidadEvento[]
+  // Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"):
+  // catálogo dinámico por empresa de canales sin bridge (referido, llamada,
+  // feria) — ver el modelo `CanalManual` abajo.
+  canalesManuales     CanalManual[]
   // reportes (Bloque E): `null` = configuración default holding-wide
   // (`ConfiguracionReporte.empresaId` nullable, ver ese modelo). `ReporteJob`
   // deliberadamente NO tiene relación acá -- no declara `empresaId` propio
@@ -276,6 +280,16 @@ model RefreshToken {
 enum OrigenLead {
   NUEVO
   REINGRESO
+  // Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico",
+  // docs/blocks/d-routing-oportunidad.md:284): agregados AL FINAL, mismo
+  // criterio que `TipoEventoLead.SIN_ASIGNAR`/`ASIGNACION_FALLIDA` arriba —
+  // `ADD VALUE` sin BEFORE/AFTER anexa al final del orden físico de PG;
+  // declararlos en otra posición crearía deriva permanente entre
+  // `schema.prisma` y `pg_enum`. `RECOMENDACION` no tiene ingesta propia
+  // todavía en este cambio (reservado, mismo patrón sin-bridge que
+  // `MANUAL` cuando se implemente) — solo `MANUAL` tiene un endpoint real.
+  RECOMENDACION
+  MANUAL
 
   @@map("origen_lead")
 }
@@ -390,6 +404,12 @@ model Lead {
   // esperado — la migración M5 hace un backfill NULL-only (D14-safe) para
   // los que sí tienen recepción vinculada.
   redSocial         RedSocial? @map("red_social")
+  // Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico"):
+  // usado únicamente cuando `origen = MANUAL`, mutuamente excluyente con
+  // `redSocial` (regla de negocio, no una constraint de BD — igual que el
+  // resto de la atribución de este modelo, degrada en silencio en vez de
+  // fallar si ambos vinieran poblados).
+  canalManualId     String?    @map("canal_manual_id") @db.Uuid
   camposDinamicos   Json?      @map("campos_dinamicos") @db.JsonB
   payloadOriginal   Json?      @map("payload_original") @db.JsonB
   // M5 (D14): nullable — los leads que M4 ya creó (sin calificar) quedan en
@@ -452,6 +472,11 @@ model Lead {
   // referencia.
   cuentaPublicitaria   CuentaPublicitaria?   @relation(fields: [cuentaPublicitariaId], references: [id], onDelete: SetNull)
   campania             Campania?             @relation(fields: [campaniaId], references: [id], onDelete: SetNull)
+  // Bloque D (diseño): SetNull, mismo criterio que `asesor`/`vendedor` — un
+  // canal manual desactivado/borrado del catálogo (`activo: false` es la vía
+  // normal de retiro) nunca debe borrar leads históricos que ya lo
+  // referencian.
+  canalManual          CanalManual?          @relation(fields: [canalManualId], references: [id], onDelete: SetNull)
   eventos              LeadEvento[]
   leadsRecibidos       LeadRecibido[]
   respuestasFormulario RespuestaFormulario[]
@@ -484,7 +509,28 @@ model Lead {
   @@index([redSocial], map: "idx_leads_red_social")
   @@index([campaniaId], map: "idx_leads_campania")
   @@index([cuentaPublicitariaId], map: "idx_leads_cuenta_publicitaria")
+  @@index([canalManualId], map: "idx_leads_canal_manual")
   @@map("leads")
+}
+
+// Bloque D (diseño, "Canal de ingreso manual y catálogo dinámico",
+// docs/blocks/d-routing-oportunidad.md:266-279): catálogo dinámico por
+// empresa de canales sin bridge (referido, llamada, feria) — shape exacto
+// del diseño ya cerrado, sin cambios. Gestión del catálogo en manos de
+// Administrador; Supervisor y Asesor solo eligen de la lista al cargar un
+// lead manual.
+model CanalManual {
+  id        String   @id @default(uuid()) @db.Uuid
+  empresaId String   @map("empresa_id") @db.Uuid
+  nombre    String   @db.Text
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  leads   Lead[]
+
+  @@unique([empresaId, nombre])
+  @@map("canales_manuales")
 }
 
 // ---------------------------------------------------------------------------
