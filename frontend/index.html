@@ -14,14 +14,19 @@
       sidebar) en cuanto la marca se resuelve, vía
       `lib/favicon-marca.ts::actualizarThemeColor`.
 
-      El favicon (`<link rel="icon">`) NO se declara acá a propósito: sin
-      sesión resuelta no hay forma de saber si la empresa tiene logo propio
-      o si corresponde el fallback con inicial (canvas), así que
-      `actualizarFavicon` (mismo archivo) crea el `<link>` en runtime la
-      primera vez que corre, en vez de arrancar con un ícono genérico que
-      después haya que reemplazar.
+      Favicon (`<link rel="icon">`): default ESTÁTICO del proyecto (isotipo
+      ARCANO CRM, `public/favicon-arcano.png`), no un placeholder vacío --
+      antes de este cambio, sin sesión resuelta (login, boot) la pestaña
+      quedaba con un ícono indefinido del navegador, porque `updateFavicon`
+      (`lib/favicon-marca.ts`) solo corre en runtime desde `AppLayout.tsx`
+      (shell YA autenticado). Ese mismo `updateFavicon` sigue actualizando
+      este `<link>` (lo busca por `link[rel="icon"]`, no lo recrea) en
+      cuanto resuelve el logo real de la empresa o, si no tiene uno propio,
+      el fallback con inicial -- este default solo cubre el instante previo
+      a que exista sesión.
     -->
     <meta name="theme-color" content="#241F1B" />
+    <link rel="icon" type="image/png" href="/favicon-arcano.png" />
     <title>ARCANO CRM</title>
     <!--
       Google Fonts de la variante "Propuesta B -- Consejo directivo"
