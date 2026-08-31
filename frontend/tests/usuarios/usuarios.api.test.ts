@@ -114,9 +114,11 @@ describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
     expect(resultado).toEqual(nuevo);
   });
 
-  it("createEmpresaAdministradorApi llama a POST /empresas/:empresaId/administradores (SIN prefijo /usuarios) con el cuerpo dado y devuelve `user`", async () => {
-    const nuevoAdmin = usuarioFake({ id: "admin-1", rol: "ADMINISTRADOR" });
-    postMock.mockResolvedValue({ user: nuevoAdmin });
+  it("createEmpresaAdministradorApi llama a POST /empresas/:empresaId/administradores (SIN prefijo /usuarios) con el cuerpo dado, sin devolver nada", async () => {
+    // Shape real del endpoint (ver `usuarios.api.ts::createEmpresaAdministradorApi`):
+    // responde `{ administrador }`, nunca `{ user }` -- el llamador
+    // (`useCreateEmpresaAdministrador`) no usa el valor devuelto.
+    postMock.mockResolvedValue({ administrador: usuarioFake({ id: "admin-1", rol: "ADMINISTRADOR" }) });
 
     const resultado = await createEmpresaAdministradorApi("empresa-1", {
       nombre: "Ana Gómez",
@@ -129,7 +131,7 @@ describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
       correo: "ana@crm.test",
       password: "una-contraseña-larga-1",
     });
-    expect(resultado).toEqual(nuevoAdmin);
+    expect(resultado).toBeUndefined();
   });
 
   it("updateUsuarioApi llama a PATCH /usuarios/:id con nombre/correo/rol, sin password", async () => {
