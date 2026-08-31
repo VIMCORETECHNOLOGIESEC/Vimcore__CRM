@@ -2,6 +2,7 @@ import { createHash, randomBytes as nodeRandomBytes } from "node:crypto";
 import { env } from "../../config/env.js";
 import { AppError } from "../../lib/app-error.js";
 import { encrypt } from "../../lib/cifrado-token.js";
+import { runWithTenantContext } from "../../lib/prisma.js";
 import * as bridgeRepository from "../../repositories/bridge.repository.js";
 import * as linkedinConexionRepository from "../../repositories/linkedin/linkedin-conexion.repository.js";
 import type {
@@ -204,64 +205,83 @@ export function createLinkedInOAuthService(
     return { authorizationUrl: authorizationUrl.toString(), expiraEn: expiraEn.toISOString() };
   }
 
+  /**
+   * Fix (RLS, 2026-08-31): esta ruta NUNCA pasa por `requireAuthentication`
+   * (LinkedIn redirige el navegador acá sin JWT -- la identidad se resuelve
+   * recién al consumir el state), así que no hay ningún `TenantContext`
+   * ambiente fijado para este request. `linkedin_oauth_states` Y
+   * `linkedin_conexiones` tienen RLS real (a diferencia de
+   * `whatsapp_oauth_states`, que no la tiene y por eso ese flujo nunca
+   * mostró este bug) -- sin `app.tenant_unrestricted` fijado, la política
+   * filtraba tanto el `UPDATE` de `consumeValidState` (matcheaba cero filas
+   * en silencio, indistinguible de "state inválido/expirado") como el
+   * `upsertFromAuthorization` final. Se envuelve la función completa (no
+   * solo el consumo del state) porque acá, a diferencia de Meta Ads, la
+   * conexión se persiste en esta misma llamada -- LinkedIn se autocompleta
+   * server-side, sin un paso 3 autenticado aparte. Mismo criterio
+   * holding-wide que `meta-webhook.service.ts::procesarNotificacionMeta`/
+   * `bridgeApi/poll.job.ts::pollBridgesApiExterna`.
+   */
   async function completeOAuth(
     callback: LinkedInOAuthCallbackQuery,
   ): Promise<LinkedInConexionDto> {
-    const config = requireConfig(dependencies.config);
-    if (!callback.state) throw invalidState();
+    return runWithTenantContext({ empresaId: null }, async () => {
+      const config = requireConfig(dependencies.config);
+      if (!callback.state) throw invalidState();
 
-    const consumedState = await dependencies.consumeValidState(sha256(callback.state));
-    if (!consumedState) throw invalidState();
-    if (callback.error) throw cancellationReported();
-    if (!callback.code) {
-      throw new AppError(
-        "linkedin_oauth_callback_invalido",
-        400,
-        "El callback de LinkedIn no contiene un código de autorización",
+      const consumedState = await dependencies.consumeValidState(sha256(callback.state));
+      if (!consumedState) throw invalidState();
+      if (callback.error) throw cancellationReported();
+      if (!callback.code) {
+        throw new AppError(
+          "linkedin_oauth_callback_invalido",
+          400,
+          "El callback de LinkedIn no contiene un código de autorización",
+        );
+      }
+
+      // I/O externo deliberadamente fuera de cualquier transacción de base de datos.
+      const tokenResponse = await exchangeAuthorizationCode(
+        callback.code,
+        config,
+        oauthBaseUrl,
+        dependencies.fetch,
+        createTimeoutSignal(tokenExchangeTimeoutMs),
       );
-    }
-
-    // I/O externo deliberadamente fuera de cualquier transacción de base de datos.
-    const tokenResponse = await exchangeAuthorizationCode(
-      callback.code,
-      config,
-      oauthBaseUrl,
-      dependencies.fetch,
-      createTimeoutSignal(tokenExchangeTimeoutMs),
-    );
-    const issuedAt = dependencies.now();
-    const accessTokenExpiraEn = new Date(issuedAt.getTime() + tokenResponse.expires_in * 1_000);
-    const hasRefreshToken = tokenResponse.refresh_token !== undefined;
-    const refreshTokenExpiraEn = hasRefreshToken && tokenResponse.refresh_token_expires_in !== undefined
-      ? new Date(issuedAt.getTime() + tokenResponse.refresh_token_expires_in * 1_000)
-      : null;
-
-    let connection: LinkedInConexionSafe;
-    try {
-      const accessTokenCifrado = dependencies.encryptToken(tokenResponse.access_token);
-      const refreshTokenCifrado = hasRefreshToken
-        ? dependencies.encryptToken(tokenResponse.refresh_token as string)
+      const issuedAt = dependencies.now();
+      const accessTokenExpiraEn = new Date(issuedAt.getTime() + tokenResponse.expires_in * 1_000);
+      const hasRefreshToken = tokenResponse.refresh_token !== undefined;
+      const refreshTokenExpiraEn = hasRefreshToken && tokenResponse.refresh_token_expires_in !== undefined
+        ? new Date(issuedAt.getTime() + tokenResponse.refresh_token_expires_in * 1_000)
         : null;
-      connection = await dependencies.upsertFromAuthorization({
-        bridgeId: consumedState.bridgeId,
-        autorizadoPorUsuarioId: consumedState.usuarioId,
-        accessTokenCifrado,
-        refreshTokenCifrado,
-        accessTokenExpiraEn,
-        refreshTokenExpiraEn,
-        scopes: parseScopes(tokenResponse.scope),
-      });
-    } catch {
-      // Prisma puede incluir argumentos en errores internos; no se permite que
-      // el ciphertext ni los tokens alcancen la capa HTTP o los logs superiores.
-      throw new AppError(
-        "linkedin_oauth_persistencia_fallida",
-        500,
-        "No se pudo guardar la conexión de LinkedIn",
-      );
-    }
 
-    return toSafeConnectionDto(connection, hasRefreshToken);
+      let connection: LinkedInConexionSafe;
+      try {
+        const accessTokenCifrado = dependencies.encryptToken(tokenResponse.access_token);
+        const refreshTokenCifrado = hasRefreshToken
+          ? dependencies.encryptToken(tokenResponse.refresh_token as string)
+          : null;
+        connection = await dependencies.upsertFromAuthorization({
+          bridgeId: consumedState.bridgeId,
+          autorizadoPorUsuarioId: consumedState.usuarioId,
+          accessTokenCifrado,
+          refreshTokenCifrado,
+          accessTokenExpiraEn,
+          refreshTokenExpiraEn,
+          scopes: parseScopes(tokenResponse.scope),
+        });
+      } catch {
+        // Prisma puede incluir argumentos en errores internos; no se permite que
+        // el ciphertext ni los tokens alcancen la capa HTTP o los logs superiores.
+        throw new AppError(
+          "linkedin_oauth_persistencia_fallida",
+          500,
+          "No se pudo guardar la conexión de LinkedIn",
+        );
+      }
+
+      return toSafeConnectionDto(connection, hasRefreshToken);
+    });
   }
 
   return { startOAuth, completeOAuth };
