@@ -137,10 +137,17 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
 
-      - name: Verify VPS health
+      - name: Verify VPS internal health
         run: |
-          HEALTH_URL="${FRONTEND_HEALTH_URL:-http://${VPS_HOST}:${FRONTEND_HTTP_PORT}/health}"
-          curl --fail --silent --show-error "${HEALTH_URL}"
+          ssh -i ~/.ssh/vps_key -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
+            "curl --fail --silent --show-error --connect-timeout 5 --max-time 10 'http://127.0.0.1:${FRONTEND_HTTP_PORT}/health'"
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+
+      - name: Verify public health
+        if: vars.FRONTEND_HEALTH_URL != ''
+        run: |
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${FRONTEND_HEALTH_URL}"
         env:
           FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}

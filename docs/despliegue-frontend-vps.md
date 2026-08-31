@@ -61,7 +61,7 @@ workflow también la escribe como archivo PEM válido.
 | Variable | Uso |
 |---|---|
 | `FRONTEND_API_BASE_URL` | URL del backend con `/api/v1`, por ejemplo `https://arcano-crm.happyground-63307e62.eastus.azurecontainerapps.io/api/v1`. |
-| `FRONTEND_HEALTH_URL` | Opcional; health check final del workflow. Usar cuando el dominio ya tenga HTTPS, por ejemplo `https://crm.tudominio.com/health`. |
+| `FRONTEND_HEALTH_URL` | Opcional; health check público del workflow. Usar cuando el dominio ya tenga HTTPS, por ejemplo `https://crm.tudominio.com/health`. Si no existe, el workflow solo valida salud interna desde la VPS. |
 | `FRONTEND_HTTP_PORT` | Opcional; puerto público del contenedor en la VPS. Si no existe usa `30080` para no chocar con un proxy o web server existente en `80`/`8080`. |
 | `VPS_DEPLOY_PATH` | Opcional; si no existe usa `/opt/crm-frontend`. |
 
@@ -125,7 +125,17 @@ usuarios, HTTPS debe quedar activo y el backend debe cambiar `CORS_ORIGIN` de
 
 ## Verificación
 
-Después del despliegue:
+Después del despliegue, primero verificar desde la VPS:
+
+```bash
+curl -f http://127.0.0.1:30080/health
+```
+
+Si eso responde `ok`, el contenedor está sano. Si desde tu máquina local no
+responde, el problema está en firewall/security group del proveedor o en el
+reverse proxy, no en la imagen frontend.
+
+Verificación pública, cuando el puerto esté abierto o exista dominio/proxy:
 
 ```bash
 curl -f http://<dominio-o-ip>:30080/health

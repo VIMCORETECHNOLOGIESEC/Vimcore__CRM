@@ -186,7 +186,9 @@ el backend se mantiene en Azure Container Apps:
   puerto 30080 por defecto para no chocar con un proxy o web server existente
   en 80/8080.
 - `.github/workflows/deploy-frontend-vps.yml`: tests y build de frontend antes
-  de publicar imagen en GHCR y actualizar la VPS por SSH.
+  de publicar imagen en GHCR y actualizar la VPS por SSH; valida salud interna
+  desde la VPS y solo valida salud pública si `FRONTEND_HEALTH_URL` está
+  configurada.
 - `docs/despliegue-frontend-vps.md`: guía de secrets, variables, dominio,
   HTTPS y verificación.
 
