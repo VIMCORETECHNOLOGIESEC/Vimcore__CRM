@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveEstilosMarca,
+  resolveEstilosMarcaEmpresaVista,
   contrastRatio,
   foregroundForContrast,
   hexToRgbTriplet,
@@ -215,6 +216,46 @@ describe("resolveEstilosMarca -- --marca-texto-contenido", () => {
     // "253 230 138" (H≈48°, S≈96.6%) a L 15% -> "75 60 1", ratio ~9.73:1 contra "245 243 238".
     expect(estilos?.["--marca-texto-contenido"]).toBe("75 60 1");
     expect(contrastRatio("245 243 238", estilos?.["--marca-texto-contenido"] ?? "")).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/**
+ * "Vista viva" holding-wide sobre una `Empresa` puntual (`EmpresaDetallePage`
+ * -> "Ver en vivo" -> `AppLayout.tsx`) -- a diferencia de `resolveEstilosMarca`
+ * (jerarquía de 3 niveles sobre la sesión), acá la fuente es directa: el
+ * `EmpresaAparienciaHoldingView` que se está mirando, sin depender de
+ * `AuthenticatedUser` ni de `configuracion-empresa` en vivo.
+ */
+describe("resolveEstilosMarcaEmpresaVista (vista viva de una Empresa puntual)", () => {
+  it("con ambos colores propios seteados, devuelve las mismas 12 variables que resolveEstilosMarca calcularía para ese par de colores", () => {
+    const estilos = resolveEstilosMarcaEmpresaVista({
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+    });
+    expect(estilos).toEqual({
+      "--primary": "249 115 22",
+      "--primary-foreground": "75 32 2",
+      "--ring": "249 115 22",
+      "--sidebar-primary": "249 115 22",
+      "--sidebar-primary-foreground": "75 32 2",
+      "--sidebar-accent": "249 115 22",
+      "--sidebar-accent-foreground": "75 32 2",
+      "--sidebar": "124 45 18",
+      "--sidebar-foreground": "255 255 255",
+      "--sidebar-border": "255 255 255",
+      "--sidebar-ring": "255 255 255",
+      "--marca-texto-contenido": "75 32 2",
+    });
+  });
+
+  it("con colorPrimario/colorSecundario null (empresa sin marca propia), cae al default de fábrica -- nunca un color inventado", () => {
+    const estilos = resolveEstilosMarcaEmpresaVista({ colorPrimario: null, colorSecundario: null });
+    expect(estilos["--primary"]).toBe("37 99 235");
+    expect(estilos["--sidebar"]).toBe("30 42 94");
+  });
+
+  it("nunca devuelve undefined (a diferencia de resolveEstilosMarca, no depende de una sesión sin resolver)", () => {
+    expect(resolveEstilosMarcaEmpresaVista({ colorPrimario: null, colorSecundario: null })).not.toBeUndefined();
   });
 });
 

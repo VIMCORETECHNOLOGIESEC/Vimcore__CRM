@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,15 @@ import type { RolUsuario } from "@/tipos/usuario";
 vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
   fetchEmpresaHoldingApi: vi.fn(),
 }));
+// "Ver en vivo": solo se mockea `useNavigate` -- `MemoryRouter`/`Routes`/
+// `Route`/`Link` (usados por el resto de este archivo) siguen siendo los
+// reales, mismo criterio que `CargaMasivaLeadsDialog.test.tsx` para mockear
+// parcialmente un módulo.
+const navigateMock = vi.fn();
+vi.mock("react-router", async (importOriginal) => {
+  const original = await importOriginal<typeof import("react-router")>();
+  return { ...original, useNavigate: () => navigateMock };
+});
 vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
   useVistaEmpresa: vi.fn(),
 }));
@@ -79,6 +88,7 @@ beforeEach(() => {
     salirDeEmpresa: salirDeEmpresaMock,
   });
   createEmpresaAdministradorApiMock.mockReset();
+  navigateMock.mockReset();
   mockUseAuth("ADMINISTRADOR");
 });
 
@@ -149,10 +159,10 @@ describe("EmpresaDetallePage — flujo principal", () => {
     expect(container.querySelector("img")).toHaveAttribute("src", "https://cdn.test/e1.png");
 
     const usuarios = screen.getByRole("link", { name: /usuarios/i });
-    expect(usuarios).toHaveAttribute("href", "/usuarios?empresaId=e1");
+    expect(usuarios).toHaveAttribute("href", "/empresas/e1/usuarios");
 
     const bridges = screen.getByRole("link", { name: /bridges/i });
-    expect(bridges).toHaveAttribute("href", "/bridges?empresaId=e1");
+    expect(bridges).toHaveAttribute("href", "/empresas/e1/bridges");
   });
 });
 
@@ -235,6 +245,81 @@ describe("EmpresaDetallePage — punto frágil: empresaId ausente en la URL", ()
 
     expect(screen.getByText("Falta el identificador de la empresa en la URL.")).toBeInTheDocument();
     expect(entrarAEmpresaMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("EmpresaDetallePage — 'Ver en vivo'", () => {
+  beforeEach(() => {
+    // `shouldAdvanceTime` deja que `findBy*` (que internamente poll-ea con
+    // `setTimeout` real) siga funcionando bajo fake timers -- mismo criterio
+    // que `ConectarWhatsAppCard.test.tsx` para combinar ambos.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("muestra el disparador «Ver en vivo» junto a los demás accesos", async () => {
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    expect(screen.getByRole("button", { name: /ver en vivo/i })).toBeInTheDocument();
+  });
+
+  it("al hacer clic, muestra la cortina de transición con la marca de la empresa y NO navega todavía", async () => {
+    fetchEmpresaHoldingApiMock.mockResolvedValue(
+      empresaFake({
+        id: "e1",
+        nombre: "Empresa A",
+        colorPrimario: "#7c2d12",
+        colorSecundario: "#f97316",
+      }),
+    );
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    await user.click(screen.getByRole("button", { name: /ver en vivo/i }));
+
+    const splash = screen.getByRole("status");
+    expect(splash).toHaveTextContent("Empresa A");
+    expect(splash.style.getPropertyValue("--marca-color-1")).toBe("#7c2d12");
+    expect(splash.style.getPropertyValue("--marca-color-2")).toBe("#f97316");
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("navega a /panel?empresaId= recién después de la misma duración que AppBoot.tsx (~1500ms), nunca antes", async () => {
+    fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake({ id: "e1", nombre: "Empresa A" }));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    await user.click(screen.getByRole("button", { name: /ver en vivo/i }));
+
+    // No navega de inmediato al hacer clic -- la cortina se sostiene primero.
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(navigateMock).toHaveBeenCalledWith("/panel?empresaId=e1");
+  });
+
+  it("empresa sin marca propia (colores null) cae al default de fábrica, nunca a un color inválido en la cortina", async () => {
+    fetchEmpresaHoldingApiMock.mockResolvedValue(
+      empresaFake({ id: "e1", nombre: "Empresa A", colorPrimario: null, colorSecundario: null }),
+    );
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage("/empresas/e1");
+
+    await screen.findByRole("heading", { name: "Empresa A" });
+    await user.click(screen.getByRole("button", { name: /ver en vivo/i }));
+
+    const splash = screen.getByRole("status");
+    expect(splash.style.getPropertyValue("--marca-color-1")).not.toBe("");
+    expect(splash.style.getPropertyValue("--marca-color-2")).not.toBe("");
   });
 });
 

@@ -1,5 +1,6 @@
 import type { ConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import type { EmpresaAparienciaHoldingView } from "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 
 /**
@@ -222,26 +223,15 @@ function textoMarcaSobreFondoNeutro(colorSecundarioTriplet: string): string {
  * jerarquía SIEMPRE hay un color activo -- la función ya no devuelve
  * `undefined` salvo que `usuario` sea `null` (sesión sin resolver todavía).
  */
-export function resolveEstilosMarca(
-  usuario: AuthenticatedUser | null,
-  configuracionHolding: Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> | undefined,
-): Record<string, string> | undefined {
-  if (!usuario) {
-    return undefined;
-  }
-
-  const tieneColorPropio =
-    usuario.sessionScope === "company" &&
-    usuario.empresaColorPrimario !== null &&
-    usuario.empresaColorSecundario !== null;
-
-  const colorPrimario = tieneColorPropio
-    ? (usuario.empresaColorPrimario as string)
-    : (configuracionHolding?.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario);
-  const colorSecundario = tieneColorPropio
-    ? (usuario.empresaColorSecundario as string)
-    : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
-
+/**
+ * Núcleo compartido de `resolveEstilosMarca` (sesión autenticada) y
+ * `resolveEstilosMarcaEmpresaVista` (vista viva de un holding-wide sobre una
+ * `Empresa` puntual, ver esa función más abajo) -- ambas terminan resolviendo
+ * el mismo objeto de 12 variables a partir de un par de colores hex
+ * (`colorPrimario`/`colorSecundario`), solo cambia CÓMO se llega a ese par.
+ * Extraído para no duplicar la matemática de contraste/tokens entre ambas.
+ */
+function construirEstilosMarca(colorPrimario: string, colorSecundario: string): Record<string, string> {
   const acento = hexToRgbTriplet(colorSecundario);
   const acentoForeground = foregroundForContrast(acento);
 
@@ -265,6 +255,50 @@ export function resolveEstilosMarca(
     // Consumo pendiente: migración de los 24 usos de `idec` (otra tarea).
     "--marca-texto-contenido": textoMarcaSobreFondoNeutro(acento),
   };
+}
+
+export function resolveEstilosMarca(
+  usuario: AuthenticatedUser | null,
+  configuracionHolding: Pick<ConfiguracionEmpresa, "colorPrimario" | "colorSecundario"> | undefined,
+): Record<string, string> | undefined {
+  if (!usuario) {
+    return undefined;
+  }
+
+  const tieneColorPropio =
+    usuario.sessionScope === "company" &&
+    usuario.empresaColorPrimario !== null &&
+    usuario.empresaColorSecundario !== null;
+
+  const colorPrimario = tieneColorPropio
+    ? (usuario.empresaColorPrimario as string)
+    : (configuracionHolding?.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario);
+  const colorSecundario = tieneColorPropio
+    ? (usuario.empresaColorSecundario as string)
+    : (configuracionHolding?.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario);
+
+  return construirEstilosMarca(colorPrimario, colorSecundario);
+}
+
+/**
+ * "Vista viva" de un holding-wide sobre una `Empresa` puntual
+ * (`EmpresaDetallePage.tsx` -> "Ver en vivo" -> `/panel?empresaId=`,
+ * `AppLayout.tsx` consume esto cuando `useVistaEmpresa().empresaVistaId` está
+ * activo con sesión `holding`): a diferencia de `resolveEstilosMarca`, que
+ * resuelve la marca de la SESIÓN autenticada (usuario/holding en vivo), acá
+ * la fuente es directamente la `Empresa` que se está mirando
+ * (`EmpresaAparienciaHoldingView`, `GET /empresas/:empresaId`) -- sin
+ * jerarquía de niveles, porque no hay ambigüedad de sesión: se está
+ * simulando la vista de ESA empresa puntual. `colorPrimario`/`colorSecundario`
+ * nulos (empresa sin marca propia configurada) caen al mismo default de
+ * fábrica que el resto del archivo, nunca a un color inventado.
+ */
+export function resolveEstilosMarcaEmpresaVista(
+  empresa: Pick<EmpresaAparienciaHoldingView, "colorPrimario" | "colorSecundario">,
+): Record<string, string> {
+  const colorPrimario = empresa.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario;
+  const colorSecundario = empresa.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario;
+  return construirEstilosMarca(colorPrimario, colorSecundario);
 }
 
 /**

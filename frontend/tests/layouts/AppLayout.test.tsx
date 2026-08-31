@@ -10,6 +10,19 @@ vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
 vi.mock("@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa", () => ({
   useConfiguracionEmpresa: vi.fn(),
 }));
+// "Ver en vivo" (vista de empresa de un holding-wide): `useVistaEmpresa` se
+// mockea directo (mismo criterio que `EmpresaDetallePage.test.tsx`) en vez
+// de forzar `?empresaId=` real vía `MemoryRouter`, para poder variar
+// `empresaVistaId` por test sin reescribir `renderAppLayout`.
+// `useEmpresaHolding` (el hook, no mockeado) sigue siendo real -- solo se
+// mockea la API de la que depende, para ejercitar el `useQuery` real
+// (loading/success) igual que en `EmpresaDetallePage.test.tsx`.
+vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
+  useVistaEmpresa: vi.fn(),
+}));
+vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
+  fetchEmpresaHoldingApi: vi.fn(),
+}));
 // Componentes pesados del shell real -- irrelevantes para lo que este test
 // verifica (el gate del splash), cada uno ya tiene su propia cobertura.
 vi.mock("@/components/app-sidebar", () => ({
@@ -36,10 +49,16 @@ const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context")
 const { useConfiguracionEmpresa } = await import(
   "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
 );
+const { useVistaEmpresa } = await import("@/funcionalidades/empresa-apariencia/useVistaEmpresa");
+const empresaAparienciaHoldingApi = await import(
+  "@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api"
+);
 const { AppLayout } = await import("@/layouts/AppLayout");
 
 const useAuthMock = vi.mocked(useAuth);
 const useConfiguracionEmpresaMock = vi.mocked(useConfiguracionEmpresa);
+const useVistaEmpresaMock = vi.mocked(useVistaEmpresa);
+const fetchEmpresaHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresaHoldingApi);
 
 const usuarioFake = {
   id: "u1",
@@ -78,6 +97,14 @@ beforeEach(() => {
     logout: vi.fn(),
     hasRole: vi.fn(),
   });
+  // Default sano: sin vista de empresa activa -- la mayoría de los tests de
+  // este archivo no la ejercitan.
+  useVistaEmpresaMock.mockReturnValue({
+    empresaVistaId: null,
+    entrarAEmpresa: vi.fn(),
+    salirDeEmpresa: vi.fn(),
+  });
+  fetchEmpresaHoldingApiMock.mockReset();
 });
 
 afterEach(() => {
@@ -290,5 +317,99 @@ describe("AppLayout — pestaña dinámica (theme-color + favicon con la marca d
 
     expect(document.querySelector('link[rel="icon"]')).not.toBeNull();
     expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
+  });
+});
+
+describe("AppLayout — 'Ver en vivo': marca de la empresa vista para un holding-wide", () => {
+  beforeEach(() => {
+    useConfiguracionEmpresaMock.mockReturnValue({
+      data: { nombre: "Holding X", colorPrimario: "#111111", colorSecundario: "#222222", logoUrl: null },
+      isLoading: false,
+    } as ReturnType<typeof useConfiguracionEmpresa>);
+  });
+
+  it("usa el color/nombre/logo de la EMPRESA VISTA, no los del holding, cuando hay una vista activa (sessionScope holding)", async () => {
+    useVistaEmpresaMock.mockReturnValue({
+      empresaVistaId: "empresa-a",
+      entrarAEmpresa: vi.fn(),
+      salirDeEmpresa: vi.fn(),
+    });
+    fetchEmpresaHoldingApiMock.mockResolvedValue({
+      id: "empresa-a",
+      nombre: "Empresa A",
+      colorPrimario: "#7c2d12",
+      colorSecundario: "#f97316",
+      logoUrl: "https://cdn.test/empresa-a.svg",
+    });
+
+    renderAppLayout();
+    // Deja resolver `GET /empresas/:empresaId` (microtarea) antes de avanzar
+    // el piso de 1500ms del splash -- mismo patrón que `AppBoot.test.tsx`.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(fetchEmpresaHoldingApiMock).toHaveBeenCalledWith("empresa-a");
+
+    const acento = hexToRgbTriplet("#f97316");
+    const sidebar = hexToRgbTriplet("#7c2d12");
+    const raiz = document.documentElement.style;
+    expect(raiz.getPropertyValue("--primary")).toBe(acento);
+    expect(raiz.getPropertyValue("--sidebar")).toBe(sidebar);
+    expect(document.querySelector('link[rel="icon"]')?.getAttribute("href")).toBe(
+      "https://cdn.test/empresa-a.svg",
+    );
+  });
+
+  it("mientras useEmpresaHolding todavía está cargando, no rompe el shell -- cae al fallback normal (marca del holding)", () => {
+    useVistaEmpresaMock.mockReturnValue({
+      empresaVistaId: "empresa-a",
+      entrarAEmpresa: vi.fn(),
+      salirDeEmpresa: vi.fn(),
+    });
+    // Promesa nunca resuelta -- simula el instante entre entrar a la vista y
+    // que `GET /empresas/:empresaId` responda.
+    fetchEmpresaHoldingApiMock.mockReturnValue(new Promise(() => {}));
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
+    const acento = hexToRgbTriplet("#222222");
+    const sidebar = hexToRgbTriplet("#111111");
+    const raiz = document.documentElement.style;
+    expect(raiz.getPropertyValue("--primary")).toBe(acento);
+    expect(raiz.getPropertyValue("--sidebar")).toBe(sidebar);
+  });
+
+  it("ignora empresaVistaId para una sesión company -- el filtro de empresa puntual es exclusivo de holding-wide", () => {
+    useAuthMock.mockReturnValue({
+      user: { ...usuarioFake, sessionScope: "company" },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: vi.fn(),
+    });
+    useVistaEmpresaMock.mockReturnValue({
+      empresaVistaId: "empresa-a",
+      entrarAEmpresa: vi.fn(),
+      salirDeEmpresa: vi.fn(),
+    });
+
+    renderAppLayout();
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(fetchEmpresaHoldingApiMock).not.toHaveBeenCalled();
+    const acento = hexToRgbTriplet("#222222");
+    const raiz = document.documentElement.style;
+    expect(raiz.getPropertyValue("--primary")).toBe(acento);
   });
 });

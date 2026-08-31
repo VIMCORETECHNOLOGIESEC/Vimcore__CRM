@@ -3,10 +3,18 @@ import { Outlet } from "react-router";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa";
+import { useEmpresaHolding } from "@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { LeadsNavigationTutorialProvider } from "@/funcionalidades/leads/tutorial/LeadsNavigationTutorial";
 import { useSplashGate } from "@/hooks/useSplashGate";
-import { resolveEstilosMarca, resolveLogoMarca, resolveMarcaCompleta } from "@/lib/color-marca";
+import {
+  resolveEstilosMarca,
+  resolveEstilosMarcaEmpresaVista,
+  resolveLogoMarca,
+  resolveMarcaCompleta,
+} from "@/lib/color-marca";
 import { updateFavicon, updateThemeColor, resolveFaviconHref } from "@/lib/favicon-marca";
 import { WelcomeSplashLoader } from "@/temas/variante-empresarial/WelcomeSplashLoader";
 import { Header } from "./Header";
@@ -40,12 +48,36 @@ export function AppLayout() {
   // `undefined` mientras carga o si la query falla -- `color-marca.ts` cae
   // al default de fábrica en ese caso, nunca bloquea ni rompe el shell.
   const { data: configuracionHolding, isLoading: isLoadingHolding } = useConfiguracionEmpresa();
+  // "Ver en vivo" (EmpresaDetallePage.tsx -> `/panel?empresaId=`): un
+  // holding-wide puede simular la vista de una `Empresa` puntual. Exclusivo
+  // de sessionScope `holding` -- una sesión `company` ya está acotada a la
+  // suya, `empresaVistaId` nunca debería aplicarle. `useEmpresaHolding` solo
+  // se dispara (`enabled`) cuando `vistaEmpresaActiva` es verdadero, para no
+  // pagar una query de más en el caso normal (sin vista activa).
+  const { empresaVistaId } = useVistaEmpresa();
+  const vistaEmpresaActiva = Boolean(empresaVistaId) && user?.sessionScope === "holding";
+  const { data: empresaVista } = useEmpresaHolding(
+    vistaEmpresaActiva ? (empresaVistaId as string) : undefined,
+  );
   // tema-empresarial-integracion (Parte 3): acentos por empresa
   // (`--primary`/`--ring`/`--sidebar-primary`/`--sidebar-accent`) en el
   // root de `SidebarProvider`, para que cubran sidebar Y contenido. Ver
   // `lib/color-marca.ts` para el alcance exacto y por qué `--sidebar`
   // (fondo sólido) queda afuera.
-  const estilosMarca = resolveEstilosMarca(user, configuracionHolding);
+  //
+  // Con vista de empresa activa, la fuente deja de ser la sesión
+  // autenticada (jerarquía de 3 niveles de `resolveEstilosMarca`) y pasa a
+  // ser DIRECTAMENTE la `Empresa` que se está mirando
+  // (`resolveEstilosMarcaEmpresaVista`, sin ambigüedad de niveles). Mientras
+  // `useEmpresaHolding` todavía no resolvió (`empresaVista` es `undefined`,
+  // primer render tras entrar a la vista), se mantiene el fallback normal de
+  // la sesión -- mismo criterio de resiliencia que el resto de este archivo:
+  // el shell nunca debe romperse ni quedar sin marca por esto, en el peor
+  // caso pinta un instante con la marca anterior hasta que llega la nueva.
+  const estilosMarca =
+    vistaEmpresaActiva && empresaVista
+      ? resolveEstilosMarcaEmpresaVista(empresaVista)
+      : resolveEstilosMarca(user, configuracionHolding);
   // Fix real (splash duplicado con el color índigo por defecto en vez del
   // color de marca real): `resolveMarcaCompleta` (`lib/color-marca.ts`) es
   // la misma fuente única que ahora usa `LoginPage.tsx`, con las variables
@@ -53,11 +85,29 @@ export function AppLayout() {
   // (`--marca-color-1`/`--marca-color-2`) -- `estilosMarca` de arriba son
   // tokens shadcn del shell (`--primary`/`--sidebar*`) que el splash nunca
   // consume, por eso antes caía al índigo default de `.tema-empresarial`.
-  const marcaSplash = resolveMarcaCompleta(user, configuracionHolding);
+  //
+  // Misma vista de empresa de arriba: mientras haya `empresaVista` resuelta,
+  // el nombre/colores del splash (y de la pestaña dinámica, más abajo) son
+  // los de la empresa mirada, no los de la sesión holding real -- de nuevo
+  // con el mismo fallback resiliente mientras la query no resolvió todavía.
+  const marcaSplash =
+    vistaEmpresaActiva && empresaVista
+      ? {
+          nombre: empresaVista.nombre,
+          "--marca-color-1": empresaVista.colorPrimario ?? CONFIGURACION_EMPRESA_DEFAULT.colorPrimario,
+          "--marca-color-2":
+            empresaVista.colorSecundario ?? CONFIGURACION_EMPRESA_DEFAULT.colorSecundario,
+        }
+      : resolveMarcaCompleta(user, configuracionHolding);
   // Pestaña dinámica (theme-color + favicon, ver efecto de abajo): mismo
   // isotipo de 2 niveles que ya usa `app-sidebar.tsx` (logo propio de la
   // empresa, o el del holding EN VIVO, o `null` si ninguno llegó todavía).
-  const logoMarca = resolveLogoMarca(user, configuracionHolding);
+  // Con vista de empresa activa y ya resuelta, el isotipo es el de esa
+  // `Empresa` puntual -- mismo fallback resiliente mientras carga.
+  const logoMarca =
+    vistaEmpresaActiva && empresaVista
+      ? empresaVista.logoUrl
+      : resolveLogoMarca(user, configuracionHolding);
   // Gap real corregido -- ver `useSplashGate.ts`: en una recarga en frío de
   // una ruta ya autenticada (F5 con sesión vigente) no hay ninguna precarga
   // de `useConfiguracionEmpresa()` como sí tiene `LoginPage.tsx`, así que el
