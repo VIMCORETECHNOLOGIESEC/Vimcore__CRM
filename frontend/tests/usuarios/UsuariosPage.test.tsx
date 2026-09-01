@@ -11,6 +11,14 @@ import type { AdminUsuario } from "@/tipos/usuario";
 vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   fetchUsuariosApi: vi.fn(),
   createUsuarioApi: vi.fn(),
+  // Fix (bug real: un admin de empresa no podía crear nada de su propia
+  // empresa desde esta pantalla) -- mismas 3 funciones ya mockeadas en
+  // `EmpresaUsuariosPage.test.tsx`, necesarias acá desde que `UsuariosPage.tsx`
+  // ramifica el diálogo de alta por `sessionScope` y usa estos mismos hooks
+  // para el camino company-scoped.
+  createEmpresaAdministradorApi: vi.fn(),
+  createEmpresaSupervisorApi: vi.fn(),
+  createEmpresaAsesorApi: vi.fn(),
   updateUsuarioApi: vi.fn(),
   resetPasswordApi: vi.fn(),
   deactivateUsuarioApi: vi.fn(),
@@ -33,6 +41,9 @@ const { UsuariosPage } = await import("@/funcionalidades/usuarios/UsuariosPage")
 
 const fetchUsuariosApiMock = vi.mocked(usuariosApi.fetchUsuariosApi);
 const createUsuarioApiMock = vi.mocked(usuariosApi.createUsuarioApi);
+const createEmpresaAdministradorApiMock = vi.mocked(usuariosApi.createEmpresaAdministradorApi);
+const createEmpresaSupervisorApiMock = vi.mocked(usuariosApi.createEmpresaSupervisorApi);
+const createEmpresaAsesorApiMock = vi.mocked(usuariosApi.createEmpresaAsesorApi);
 const updateUsuarioApiMock = vi.mocked(usuariosApi.updateUsuarioApi);
 const resetPasswordApiMock = vi.mocked(usuariosApi.resetPasswordApi);
 const deactivateUsuarioApiMock = vi.mocked(usuariosApi.deactivateUsuarioApi);
@@ -113,6 +124,9 @@ function renderUsuariosPage(initialEntries: string[] = ["/usuarios"]) {
 beforeEach(() => {
   fetchUsuariosApiMock.mockReset();
   createUsuarioApiMock.mockReset();
+  createEmpresaAdministradorApiMock.mockReset();
+  createEmpresaSupervisorApiMock.mockReset();
+  createEmpresaAsesorApiMock.mockReset();
   updateUsuarioApiMock.mockReset();
   resetPasswordApiMock.mockReset();
   deactivateUsuarioApiMock.mockReset();
@@ -366,6 +380,14 @@ describe("UsuariosPage — paginación (F7)", () => {
 });
 
 describe("UsuariosPage — alta de administrador de holding (CrearAdministradorHoldingDialog, sin selector de rol)", () => {
+  // Fix (bug real: esta describe testea específicamente el camino
+  // holding-wide -- el default del archivo (`mockearAuth("company")`, ver
+  // el `beforeEach` de arriba) ya no alcanza desde que `UsuariosPage.tsx`
+  // ramifica el diálogo de alta por `sessionScope`.
+  beforeEach(() => {
+    mockearAuth("holding");
+  });
+
   it("rechaza una contraseña inicial de menos de 12 caracteres antes de llamar al backend", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     const user = userEvent.setup();
@@ -421,21 +443,107 @@ describe("UsuariosPage — alta de administrador de holding (CrearAdministradorH
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("El correo ya está en uso"));
   });
 
-  it("con `?empresaId=` en la URL, NUNCA manda `empresaId` en el body de POST /usuarios (el holding solo crea administradores DE HOLDING)", async () => {
+  it("con `?empresaId=` en la URL (vista de empresa de un holding-wide, solo lectura -- `useVistaEmpresa().esVistaSoloLectura`), el botón «Nuevo usuario» no se muestra", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake({ rol: "ADMINISTRADOR" }));
-    const user = userEvent.setup();
     renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
     await screen.findByText("Todavía no hay usuarios registrados");
 
-    await completarFormularioAlta(user);
-    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear administrador" }));
+    expect(screen.queryByRole("button", { name: "Nuevo usuario" })).not.toBeInTheDocument();
+    expect(createUsuarioApiMock).not.toHaveBeenCalled();
+  });
+});
 
-    await waitFor(() => expect(createUsuarioApiMock).toHaveBeenCalled());
-    const body = createUsuarioApiMock.mock.calls.at(-1)?.[0];
-    expect(body).not.toHaveProperty("empresaId");
-    expect(body).toMatchObject({ rol: "ADMINISTRADOR" });
+/**
+ * Fix (bug real: un admin de empresa no podía crear NADA de su propia
+ * empresa desde acá -- el diálogo de alta ramifica por `sessionScope`, ver
+ * el docblock de `UsuariosPage.tsx`). Mismo patrón/aserciones que
+ * `EmpresaUsuariosPage.test.tsx` — "cada rol va por su ruta dedicada de
+ * empresa" — con `empresaId` resuelto de `user.empresaId` (mock:
+ * `"empresa-1"`), no de la URL.
+ */
+describe("UsuariosPage — alta de administrador/supervisor/asesor DE EMPRESA (CrearUsuarioDialog, sessionScope company)", () => {
+  beforeEach(() => {
+    mockearAuth("company");
+  });
+
+  async function completarFormularioAltaEmpresa(
+    user: ReturnType<typeof userEvent.setup>,
+    etiquetaRol: "Administrador" | "Supervisor" | "Asesor",
+  ) {
+    await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
+    await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
+    await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(await screen.findByRole("option", { name: etiquetaRol }));
+  }
+
+  it("rol Administrador llama a createEmpresaAdministradorApi('empresa-1', {...})", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createEmpresaAdministradorApiMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Todavía no hay usuarios registrados");
+
+    await completarFormularioAltaEmpresa(user, "Administrador");
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() =>
+      expect(createEmpresaAdministradorApiMock).toHaveBeenCalledWith("empresa-1", {
+        nombre: "Marta Herrera",
+        correo: "marta@crm.test",
+        password: "una-contraseña-larga-1",
+      }),
+    );
+    expect(createEmpresaSupervisorApiMock).not.toHaveBeenCalled();
+    expect(createEmpresaAsesorApiMock).not.toHaveBeenCalled();
+    expect(createUsuarioApiMock).not.toHaveBeenCalled();
+  });
+
+  it("rol Supervisor llama a createEmpresaSupervisorApi('empresa-1', {...})", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createEmpresaSupervisorApiMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Todavía no hay usuarios registrados");
+
+    await completarFormularioAltaEmpresa(user, "Supervisor");
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() =>
+      expect(createEmpresaSupervisorApiMock).toHaveBeenCalledWith("empresa-1", {
+        nombre: "Marta Herrera",
+        correo: "marta@crm.test",
+        password: "una-contraseña-larga-1",
+      }),
+    );
+    expect(createEmpresaAdministradorApiMock).not.toHaveBeenCalled();
+    expect(createEmpresaAsesorApiMock).not.toHaveBeenCalled();
+    expect(createUsuarioApiMock).not.toHaveBeenCalled();
+  });
+
+  it("rol Asesor llama a createEmpresaAsesorApi('empresa-1', {...})", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createEmpresaAsesorApiMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderUsuariosPage();
+    await screen.findByText("Todavía no hay usuarios registrados");
+
+    await completarFormularioAltaEmpresa(user, "Asesor");
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() =>
+      expect(createEmpresaAsesorApiMock).toHaveBeenCalledWith("empresa-1", {
+        nombre: "Marta Herrera",
+        correo: "marta@crm.test",
+        password: "una-contraseña-larga-1",
+      }),
+    );
+    expect(createEmpresaAdministradorApiMock).not.toHaveBeenCalled();
+    expect(createEmpresaSupervisorApiMock).not.toHaveBeenCalled();
+    expect(createUsuarioApiMock).not.toHaveBeenCalled();
   });
 });
 

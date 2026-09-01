@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
+import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { AdminUsuario } from "@/tipos/usuario";
 import { BajaUsuarioDialog } from "./BajaUsuarioDialog";
 import { CrearAdministradorHoldingDialog } from "./CrearAdministradorHoldingDialog";
+import { CrearUsuarioDialog } from "./CrearUsuarioDialog";
 import { EditarUsuarioDialog } from "./EditarUsuarioDialog";
 import { RestablecerPasswordDialog } from "./RestablecerPasswordDialog";
 import { UsuariosFiltros } from "./UsuariosFiltros";
@@ -21,6 +23,9 @@ import {
   type UsuariosFiltrosState,
 } from "./usuarios.utils";
 import {
+  useCreateEmpresaAdministrador,
+  useCreateEmpresaAsesor,
+  useCreateEmpresaSupervisor,
   useCreateUsuario,
   useDeactivateUsuario,
   useReactivateUsuario,
@@ -46,11 +51,19 @@ const USUARIOS_POR_PAGINA = 10;
  * confirmación (mismo criterio que `bridges/BridgesPage.tsx`): arranca con
  * cartera vacía, sin restaurar nada, acción reversible de un clic. La
  * columna "carga activa de leads" es de solo lectura -- ver el comentario de
- * brecha en `usuarios.api.ts`. El alta desde esta pantalla crea
- * exclusivamente administradores DE HOLDING (`CrearAdministradorHoldingDialog`,
- * `POST /usuarios` con `rol: "ADMINISTRADOR"` fijo, sin selector de rol ni
- * `empresaId`) -- para administrador/supervisor/asesor DE UNA EMPRESA
- * puntual, ver `empresa-apariencia/EmpresaUsuariosPage.tsx`.
+ * brecha en `usuarios.api.ts`.
+ *
+ * Fix (bug real: un admin de empresa no podía crear NADA de su propia
+ * empresa desde acá -- esta es la MISMA pantalla/ruta `/usuarios` que usa
+ * tanto un holding-wide como un admin de empresa desde su propio sidebar, no
+ * hay una ruta separada): el alta se ramifica por `user.sessionScope`.
+ * Holding-wide -> `CrearAdministradorHoldingDialog` (`POST /usuarios`,
+ * `rol: "ADMINISTRADOR"` fijo, sin selector -- crea holding-wide, sin
+ * cambios). Company-scoped -> el MISMO `CrearUsuarioDialog` de 3 roles y los
+ * MISMOS hooks que ya usa `empresa-apariencia/EmpresaUsuariosPage.tsx`
+ * (`useCreateEmpresaAdministrador`/`Supervisor`/`Asesor`), con
+ * `empresaId = user.empresaId` (implícito de la sesión, no de la URL) --
+ * scoped a la empresa del propio actor.
  */
 export function UsuariosPage() {
   usePageHeader({ title: "Usuarios" });
@@ -58,6 +71,8 @@ export function UsuariosPage() {
   const [filtros, setFiltros] = useState<UsuariosFiltrosState>(FILTROS_USUARIOS_VACIOS);
   const [pagina, setPagina] = useState(1);
   const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
+  const { user } = useAuth();
+  const esHolding = user?.sessionScope === "holding";
 
   const params = useMemo(
     () => buildUsuariosQueryParams(filtros, pagina, USUARIOS_POR_PAGINA, empresaVistaId ?? undefined),
@@ -66,6 +81,13 @@ export function UsuariosPage() {
 
   const { data, isLoading, isError, error, refetch } = useUsuarios(params);
   const crear = useCreateUsuario();
+  // Mismo criterio que `EmpresaUsuariosPage.tsx`: `user?.empresaId` es
+  // `undefined` para una sesión holding-wide -- `""` es un fallback inerte,
+  // nunca dispara una mutación real (el branch `esHolding` de abajo nunca
+  // monta `CrearUsuarioDialog` en ese caso).
+  const crearAdmin = useCreateEmpresaAdministrador(user?.empresaId ?? "");
+  const crearSupervisor = useCreateEmpresaSupervisor(user?.empresaId ?? "");
+  const crearAsesor = useCreateEmpresaAsesor(user?.empresaId ?? "");
   const actualizar = useUpdateUsuario();
   const restablecer = useResetPassword();
   const darDeBaja = useDeactivateUsuario();
@@ -167,7 +189,7 @@ export function UsuariosPage() {
         </div>
       )}
 
-      {dialogAltaAbierto ? (
+      {dialogAltaAbierto && esHolding ? (
         <CrearAdministradorHoldingDialog
           open
           onOpenChange={(abierto) => {
@@ -177,6 +199,29 @@ export function UsuariosPage() {
           onSubmit={(valores) =>
             crear.mutate(valores, { onSuccess: () => setDialogAltaAbierto(false) })
           }
+        />
+      ) : null}
+
+      {dialogAltaAbierto && !esHolding ? (
+        <CrearUsuarioDialog
+          open
+          onOpenChange={(abierto) => {
+            if (!abierto) setDialogAltaAbierto(false);
+          }}
+          enviando={crearAdmin.isPending || crearSupervisor.isPending || crearAsesor.isPending}
+          onSubmit={(valores) => {
+            const datos = { nombre: valores.nombre, correo: valores.correo, password: valores.password };
+            const cerrarAlExito = { onSuccess: () => setDialogAltaAbierto(false) };
+            if (valores.rol === "ADMINISTRADOR") {
+              crearAdmin.mutate(datos, cerrarAlExito);
+              return;
+            }
+            if (valores.rol === "SUPERVISOR") {
+              crearSupervisor.mutate(datos, cerrarAlExito);
+              return;
+            }
+            crearAsesor.mutate(datos, cerrarAlExito);
+          }}
         />
       ) : null}
 
