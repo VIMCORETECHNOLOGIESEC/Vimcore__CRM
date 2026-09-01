@@ -351,3 +351,73 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
     expect(desdeOtraEmpresa).toHaveLength(0);
   });
 });
+
+/**
+ * Fix (2026-09-01, hallazgo aparte durante el trabajo de leído/no leído):
+ * `conversaciones_whatsapp`/`mensajes_whatsapp`/`conversaciones_whatsapp_eventos`
+ * se crearon sin política RLS (20260829043249_add_whatsapp_messages), a
+ * diferencia de casi todo el resto del backend. Este bloque prueba el
+ * aislamiento a nivel de base de datos DIRECTO -- consultando con `prisma`
+ * (el cliente de la app, sujeto a RLS de verdad, `crm_app`) contra las 3
+ * tablas, nunca a través de un servicio -- para no depender de que el
+ * filtro de aplicación (`aplicarFiltroEmpresa`/`canView`) sea correcto: el
+ * punto es que la base de datos misma bloquee, aunque el código de arriba
+ * tuviera un bug.
+ */
+describe("RLS (2026-09-01): conversaciones_whatsapp/mensajes_whatsapp/conversaciones_whatsapp_eventos aislan por empresa a nivel de BD", () => {
+  it("una empresa distinta nunca ve la Conversacion, el Mensaje ni el ConversacionEvento de otra, aunque los ids sean exactos", async () => {
+    const { empresaId: empresaA, conexionId: conexionA } = await crearEmpresaConConexion();
+    const { empresaId: empresaB } = await crearEmpresaConConexion();
+    const cliente = await crearCliente("Cliente Empresa A");
+    const asesorA = await crearUsuario("ASESOR");
+    const conversacionA = await crearConversacion({
+      clienteId: cliente.id,
+      conexionId: conexionA,
+      empresaId: empresaA,
+      asesorId: asesorA.id,
+    });
+    const mensaje = await testAdminPrisma.mensaje.create({
+      data: {
+        conversacionId: conversacionA.id,
+        direccion: "ENTRANTE",
+        idExternoMensaje: `wamid-rls-${Date.now()}`,
+        texto: "hola",
+        enviadoEn: new Date(),
+      },
+    });
+    const evento = await testAdminPrisma.conversacionEvento.create({
+      data: { conversacionId: conversacionA.id, usuarioId: asesorA.id, tipo: "ASIGNADA", empresaId: empresaA },
+    });
+
+    // Control positivo: bajo el tenant correcto, las 3 filas son visibles.
+    const [conversacionVista, mensajesVistos, eventosVistos] = await runWithTenantContext(
+      { empresaId: empresaA },
+      () =>
+        Promise.all([
+          prisma.conversacion.findUnique({ where: { id: conversacionA.id } }),
+          prisma.mensaje.findMany({ where: { conversacionId: conversacionA.id } }),
+          prisma.conversacionEvento.findMany({ where: { conversacionId: conversacionA.id } }),
+        ]),
+    );
+    expect(conversacionVista?.id).toBe(conversacionA.id);
+    expect(mensajesVistos.map((m) => m.id)).toContain(mensaje.id);
+    expect(eventosVistos.map((e) => e.id)).toContain(evento.id);
+
+    // Mismos ids EXACTOS, bajo un tenant restringido a la empresa B -- RLS
+    // debe ocultar las 3 filas, no solo devolver una lista vacía porque el
+    // filtro de aplicación nunca se ejercitó (acá no hay filtro de
+    // aplicación: son consultas directas por id/FK).
+    const [conversacionOculta, mensajesOcultos, eventosOcultos] = await runWithTenantContext(
+      { empresaId: empresaB },
+      () =>
+        Promise.all([
+          prisma.conversacion.findUnique({ where: { id: conversacionA.id } }),
+          prisma.mensaje.findMany({ where: { conversacionId: conversacionA.id } }),
+          prisma.conversacionEvento.findMany({ where: { conversacionId: conversacionA.id } }),
+        ]),
+    );
+    expect(conversacionOculta).toBeNull();
+    expect(mensajesOcultos).toHaveLength(0);
+    expect(eventosOcultos).toHaveLength(0);
+  });
+});
