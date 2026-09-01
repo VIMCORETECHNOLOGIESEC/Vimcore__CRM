@@ -34,6 +34,23 @@ export interface NavigationItem {
    * `hasVistaEmpresaAccess` (permissions.ts) y `resolveNavigationHref` abajo.
    */
   requiereVistaEmpresaSiHolding?: boolean;
+  /**
+   * Fix (2026-09-01, bug real: "entrar" a Usuarios desde el sidebar
+   * mientras se está en vista de empresa perdía esa vista por completo, sin
+   * aviso, y no volvía al navegar de nuevo a Leads/Bridges). Antes,
+   * `requiereVistaEmpresaSiHolding` controlaba DOS cosas a la vez acá abajo
+   * en `resolveNavigationHref` -- (a) ocultar el ítem para un holding-wide
+   * sin vista activa (`hasVistaEmpresaAccess`, permissions.ts) y (b)
+   * propagar `?empresaId=` en el link. Usuarios necesita (b) pero NUNCA (a)
+   * -- tiene su propio tab holding-wide (`soloHoldingWide`, Item 25) y debe
+   * seguir siempre visible sin depender de ninguna empresa (ese es
+   * justamente el motivo por el que se le sacó `requiereVistaEmpresaSiHolding`
+   * en la corrección de la regresión de `e0cb7f8`) -- pero de paso perdió
+   * también (b), que sí necesitaba. Este flag nuevo es (b) sola, sin (a):
+   * nunca oculta el ítem, solo preserva `?empresaId=` cuando ya había una
+   * vista activa al hacer clic.
+   */
+  preservaVistaEmpresaSiHolding?: boolean;
 }
 
 /**
@@ -55,7 +72,9 @@ export function resolveNavigationRoute(
 /**
  * Resuelve el `href` efectivo (ruta + query string) de un ítem para
  * `NavMain`/`NavLink` -- envoltorio de `resolveNavigationRoute` que además
- * propaga `?empresaId=` cuando el ítem lo requiere (Oportunidades, Bridges):
+ * propaga `?empresaId=` cuando el ítem lo requiere (Oportunidades, Bridges,
+ * Leads, Conversaciones) O cuando solo lo preserva sin exigirlo (Usuarios,
+ * `preservaVistaEmpresaSiHolding` -- ver el docblock de ese flag arriba):
  * sin esto, un holding-wide que hizo clic en el sidebar mientras estaba en
  * vista de empresa perdería el filtro al navegar (esas páginas leen
  * `empresaVistaId` de la URL vía `useVistaEmpresa()`, no de un estado
@@ -68,7 +87,8 @@ export function resolveNavigationHref(
   empresaVistaId?: string | null,
 ): string {
   const route = resolveNavigationRoute(item, scope);
-  if (item.requiereVistaEmpresaSiHolding && scope === "holding" && empresaVistaId) {
+  const propagaEmpresaId = item.requiereVistaEmpresaSiHolding || item.preservaVistaEmpresaSiHolding;
+  if (propagaEmpresaId && scope === "holding" && empresaVistaId) {
     return `${route}?empresaId=${encodeURIComponent(empresaVistaId)}`;
   }
   return route;
@@ -105,10 +125,18 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     // (`soloHoldingWide`, Item 25) para que el admin de holding gestione su
     // propio staff sin depender de ninguna empresa. Ver el comentario
     // equivalente en `router.tsx`.
+    //
+    // Fix (2026-09-01): SÍ lleva `preservaVistaEmpresaSiHolding` -- ver su
+    // docblock en la interfaz de arriba. Sin este flag, entrar a Usuarios
+    // desde el sidebar mientras había una vista de empresa activa la
+    // perdía por completo (aterrizaba en `/usuarios` sin `?empresaId=`), y
+    // no volvía al navegar de nuevo a Leads/Bridges -- el sidebar recalcula
+    // esos links a partir de la URL actual, que ya no tenía el id.
     label: "Usuarios",
     route: "/usuarios",
     icon: UserCog,
     allowedRoles: ["ADMINISTRADOR"],
+    preservaVistaEmpresaSiHolding: true,
   },
   {
     label: "Bridges",

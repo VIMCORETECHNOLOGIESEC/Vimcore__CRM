@@ -96,6 +96,24 @@ describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportu
   });
 });
 
+describe("NAVIGATION_ITEMS -- Usuarios preserva (sin exigir) la vista de empresa (fix 2026-09-01)", () => {
+  // Bug real: entrar a Usuarios desde el sidebar mientras había una vista
+  // de empresa activa la perdía por completo (aterrizaba sin
+  // `?empresaId=`), y no volvía al navegar de nuevo a Leads/Bridges porque
+  // el sidebar recalcula esos links a partir de la URL actual.
+  it("Usuarios SÍ está marcado con preservaVistaEmpresaSiHolding", () => {
+    const usuarios = NAVIGATION_ITEMS.find((item) => item.label === "Usuarios");
+    expect(usuarios?.preservaVistaEmpresaSiHolding).toBe(true);
+  });
+
+  it("ningún otro ítem tiene preservaVistaEmpresaSiHolding -- es exclusivo de Usuarios", () => {
+    const conElFlag = NAVIGATION_ITEMS.filter((item) => item.label !== "Usuarios");
+    for (const item of conElFlag) {
+      expect(item.preservaVistaEmpresaSiHolding).toBeUndefined();
+    }
+  });
+});
+
 describe("resolveNavigationHref", () => {
   const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
   if (!oportunidades) {
@@ -128,5 +146,26 @@ describe("resolveNavigationHref", () => {
     expect(resolveNavigationHref(oportunidades, "holding", "empresa con espacio")).toBe(
       "/oportunidades?empresaId=empresa%20con%20espacio",
     );
+  });
+
+  describe("Usuarios (preservaVistaEmpresaSiHolding, fix 2026-09-01)", () => {
+    const usuarios = NAVIGATION_ITEMS.find((item) => item.label === "Usuarios");
+    if (!usuarios) {
+      throw new Error("Fixture inválida: NAVIGATION_ITEMS no tiene un ítem 'Usuarios'");
+    }
+
+    it("sesión holding sin vista de empresa: ruta pelada (el ítem sigue siendo visible, solo no lleva el id)", () => {
+      expect(resolveNavigationHref(usuarios, "holding", null)).toBe("/usuarios");
+    });
+
+    it("sesión holding CON vista de empresa activa: preserva ?empresaId= aunque el ítem no lo 'exija'", () => {
+      expect(resolveNavigationHref(usuarios, "holding", "empresa-1")).toBe(
+        "/usuarios?empresaId=empresa-1",
+      );
+    });
+
+    it("sesión company: nunca agrega ?empresaId=", () => {
+      expect(resolveNavigationHref(usuarios, "company", "empresa-1")).toBe("/usuarios");
+    });
   });
 });
