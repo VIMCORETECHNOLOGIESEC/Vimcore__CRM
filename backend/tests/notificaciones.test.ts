@@ -354,3 +354,96 @@ describe("POST /notificaciones — aviso manual de canal/producto faltante (pre-
     expect(response.body.notificaciones).toEqual([]);
   });
 });
+describe("POST /notificaciones/whatsapp-no-conectado — aviso manual de WhatsApp no conectado (pre-deploy)", () => {
+  it("un Supervisor autenticado notifica al Administrador activo de su empresa", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa whatsapp no conectado ${crypto.randomUUID()}` },
+    });
+    const admin = await createUserConMembresia("ADMINISTRADOR", true, empresa.id);
+    const supervisor = await createCompanyScopedUserConToken("SUPERVISOR", empresa.id);
+
+    const response = await request(app)
+      .post("/api/v1/notificaciones/whatsapp-no-conectado")
+      .set("Authorization", `Bearer ${supervisor.token}`)
+      .send({ mensaje: "El lead no tiene WhatsApp conectado, ¿lo pueden habilitar?" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificaciones).toHaveLength(1);
+    const [created] = response.body.notificaciones;
+    expect(created.tipo).toBe("WHATSAPP_NO_CONECTADO");
+    expect(created.usuarioId).toBe(admin.id);
+    expect(created.titulo).toBe("WhatsApp no conectado");
+    expect(created.mensaje).toBe("El lead no tiene WhatsApp conectado, ¿lo pueden habilitar?");
+  });
+  it("un Asesor autenticado notifica al Administrador activo de su empresa (triangulación de rol)", async () => {
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa whatsapp no conectado asesor ${crypto.randomUUID()}` },
+    });
+    const admin = await createUserConMembresia("ADMINISTRADOR", true, empresa.id);
+    const asesor = await createCompanyScopedUserConToken("ASESOR", empresa.id);
+
+    const response = await request(app)
+      .post("/api/v1/notificaciones/whatsapp-no-conectado")
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ mensaje: "Necesito que conecten el WhatsApp de este lead" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificaciones).toHaveLength(1);
+    const [created] = response.body.notificaciones;
+    expect(created.usuarioId).toBe(admin.id);
+    expect(created.mensaje).toBe("Necesito que conecten el WhatsApp de este lead");
+  });
+  it("rechaza con 403 a Administrador y a Vendedor, roles que no disparan este aviso", async () => {
+    const admin = await createUserConMembresia("ADMINISTRADOR");
+    const adminToken = await login(admin.correo);
+    const vendedor = await createVendedorConMembresia();
+    const vendedorToken = await login(vendedor.correo);
+
+    for (const token of [adminToken, vendedorToken]) {
+      const response = await request(app)
+        .post("/api/v1/notificaciones/whatsapp-no-conectado")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ mensaje: "El lead no tiene WhatsApp conectado" });
+      expect(response.status).toBe(403);
+    }
+  });
+  it("rechaza un body inválido con 400 (mensaje ausente o vacío)", async () => {
+    const missingMensaje = await request(app)
+      .post("/api/v1/notificaciones/whatsapp-no-conectado")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({});
+    expect(missingMensaje.status).toBe(400);
+
+    const emptyMensaje = await request(app)
+      .post("/api/v1/notificaciones/whatsapp-no-conectado")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ mensaje: "" });
+    expect(emptyMensaje.status).toBe(400);
+  });
+  it("responde 422 cuando la sesión no resuelve una empresa (alcance holding-wide)", async () => {
+    // `ownerToken` se loguea vía `Usuario.correo` (dual-login-routing), que
+    // siempre resuelve una sesión HOLDING (`empresaId: null`) sin importar
+    // su Membresia — mismo criterio documentado en
+    // `createCompanyScopedUserConToken` arriba en este archivo.
+    const response = await request(app)
+      .post("/api/v1/notificaciones/whatsapp-no-conectado")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ mensaje: "El lead no tiene WhatsApp conectado" });
+
+    expect(response.status).toBe(422);
+  });
+  it("devuelve 201 con arreglo vacío cuando la empresa no tiene ningún Administrador activo", async () => {
+    const empresaSinAdmin = await prisma.empresa.create({
+      data: { nombre: `Empresa whatsapp sin admin ${crypto.randomUUID()}` },
+    });
+    const asesor = await createCompanyScopedUserConToken("ASESOR", empresaSinAdmin.id);
+
+    const response = await request(app)
+      .post("/api/v1/notificaciones/whatsapp-no-conectado")
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({ mensaje: "El lead no tiene WhatsApp conectado" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificaciones).toEqual([]);
+  });
+});

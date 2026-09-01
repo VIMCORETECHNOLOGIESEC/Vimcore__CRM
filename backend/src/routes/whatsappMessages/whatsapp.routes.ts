@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getConversacionMensajes,
   getConversaciones,
+  postConversacionLeido,
   postConversacionMensaje,
 } from "../../controllers/whatsappMessages/conversaciones.controller.js";
 import {
@@ -62,4 +63,11 @@ whatsappRouter.post(
   "/conversaciones/:id/mensajes",
   requireAuthentication,
   postConversacionMensaje,
+);
+// D-mensajería (leído/no leído): misma titularidad que ver/responder, RBAC
+// por recurso vía `canView` dentro del servicio.
+whatsappRouter.post(
+  "/conversaciones/:id/leido",
+  requireAuthentication,
+  postConversacionLeido,
 );

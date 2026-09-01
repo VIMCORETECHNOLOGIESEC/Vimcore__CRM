@@ -14,6 +14,7 @@ const {
   createForActiveRoles,
   createForActiveSupervisorsAndAdmins,
   createHoldingForActiveRoles,
+  createWhatsAppNoConectadoNotification,
 } = await import("../src/services/notificaciones.service.js");
 
 const input = {
@@ -132,6 +133,41 @@ describe("createCanalOProductoFaltanteNotification (pre-deploy, aviso Supervisor
         { recurso: "canal", nombreSugerido: "WhatsApp Business" },
         null,
       ),
+    ).rejects.toMatchObject({ code: "contexto_empresa_no_resuelto", statusHttp: 422 });
+    expect(repository.createNotificacion).not.toHaveBeenCalled();
+  });
+});
+
+describe("createWhatsAppNoConectadoNotification (pre-deploy, aviso Supervisor/Asesor → Administrador)", () => {
+  it("notifica solo a ADMINISTRADOR con el mensaje del cliente y sin metadata", async () => {
+    await createWhatsAppNoConectadoNotification(
+      "El lead no tiene WhatsApp conectado, ¿lo pueden habilitar?",
+      "empresa-A",
+    );
+
+    expect(repository.findActiveRecipientIds).toHaveBeenCalledWith(
+      ["ADMINISTRADOR"],
+      "empresa-A",
+      expect.anything(),
+    );
+    expect(repository.createNotificacion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usuarioId: "usuario-1",
+        tipo: "WHATSAPP_NO_CONECTADO",
+        titulo: "WhatsApp no conectado",
+        mensaje: "El lead no tiene WhatsApp conectado, ¿lo pueden habilitar?",
+        empresaId: "empresa-A",
+      }),
+      expect.anything(),
+    );
+    expect(
+      vi.mocked(repository.createNotificacion).mock.calls[0]?.[0],
+    ).not.toHaveProperty("metadata");
+  });
+
+  it("rechaza empresaId null (alcance holding-wide) en vez de asumir una empresa", async () => {
+    await expect(
+      createWhatsAppNoConectadoNotification("Mensaje del asesor", null),
     ).rejects.toMatchObject({ code: "contexto_empresa_no_resuelto", statusHttp: 422 });
     expect(repository.createNotificacion).not.toHaveBeenCalled();
   });

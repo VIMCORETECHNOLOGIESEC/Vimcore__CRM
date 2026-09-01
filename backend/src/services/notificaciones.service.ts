@@ -116,6 +116,28 @@ export async function createCanalOProductoFaltanteNotification(
     client,
   );
 }
+/**
+ * Pre-deploy (endpoint manual de aviso Supervisor/Asesor → Administrador):
+ * el Asesor/Supervisor sin acceso a la pantalla de Bridges usa este aviso
+ * cuando el panel de WhatsApp del detalle de un lead detecta que no hay
+ * conexión activa, para que el Administrador de su propia empresa la
+ * conecte. `empresaId` viene SIEMPRE de la sesión autenticada (nunca del
+ * body) — si es `null` (alcance holding-wide), delega en el mismo guard de
+ * `createForActiveRoles` (`contexto_empresa_no_resuelto`, 422) en vez de
+ * asumir una empresa.
+ */
+export async function createWhatsAppNoConectadoNotification(
+  mensaje: string,
+  empresaId: string | null,
+  client: PrismaClientOrTransaction = prisma,
+) {
+  return createForActiveRoles(
+    ["ADMINISTRADOR"],
+    { tipo: "WHATSAPP_NO_CONECTADO", titulo: "WhatsApp no conectado", mensaje },
+    empresaId as string,
+    client,
+  );
+}
 export async function createForActiveSupervisorsAndAdmins(
   input: NotificationInput,
   empresaId: string,

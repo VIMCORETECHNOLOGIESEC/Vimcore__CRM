@@ -1,6 +1,7 @@
 import type { Mensaje, Prisma } from "@prisma/client";
 import { AppError } from "../../lib/app-error.js";
 import { decrypt } from "../../lib/cifrado-token.js";
+import * as conversacionLecturaRepository from "../../repositories/whatsappMessages/conversacion-lectura.repository.js";
 import * as conversacionRepository from "../../repositories/whatsappMessages/conversacion.repository.js";
 import type { ConversacionConRelaciones } from "../../repositories/whatsappMessages/conversacion.repository.js";
 import * as mensajeRepository from "../../repositories/whatsappMessages/mensaje.repository.js";
@@ -21,7 +22,20 @@ import { aplicarFiltroEmpresa } from "../leads.access.js";
 import { canReply, canView, ROLES_ACCESO_TOTAL, type UsuarioAccesoConversacion } from "./conversaciones.access.js";
 import { enviarMensajeTexto } from "./whatsapp-cloud-api.service.js";
 
-function toListItemDto(conversacion: ConversacionConRelaciones): ConversacionListItemDto {
+/**
+ * D-mensajería (leído/no leído): "no leído" se DERIVA acá, nunca se
+ * persiste por mensaje -- `leidoHastaEn` es el watermark de ESTE usuario
+ * para esta conversación (`undefined` = nunca la marcó como leída).
+ * `ultimoMensajeEn === null` (conversación recién creada, sin mensajes
+ * todavía) nunca cuenta como no leída -- no hay nada que leer.
+ */
+function toListItemDto(
+  conversacion: ConversacionConRelaciones,
+  leidoHastaEn: Date | undefined,
+): ConversacionListItemDto {
+  const noLeido =
+    conversacion.ultimoMensajeEn !== null &&
+    (leidoHastaEn === undefined || conversacion.ultimoMensajeEn > leidoHastaEn);
   return {
     id: conversacion.id,
     clienteId: conversacion.clienteId,
@@ -31,6 +45,7 @@ function toListItemDto(conversacion: ConversacionConRelaciones): ConversacionLis
     asesorNombre: conversacion.asesor?.nombre ?? null,
     ultimoMensajeEn: conversacion.ultimoMensajeEn?.toISOString() ?? null,
     creadaEn: conversacion.creadaEn.toISOString(),
+    noLeido,
   };
 }
 
@@ -88,7 +103,54 @@ export async function listConversaciones(
     take: query.limite,
   });
 
-  return { conversaciones: conversaciones.map(toListItemDto), total };
+  // D-mensajería (leído/no leído): una sola consulta en bloque para toda la
+  // página, nunca N+1 por fila -- ver `conversacion-lectura.repository.ts`.
+  const lecturas = await conversacionLecturaRepository.findLeidoHastaPorConversaciones(
+    usuario.id,
+    conversaciones.map((c) => c.id),
+  );
+  const leidoHastaPorConversacion = new Map(lecturas.map((l) => [l.conversacionId, l.leidoHastaEn]));
+
+  return {
+    conversaciones: conversaciones.map((c) => toListItemDto(c, leidoHastaPorConversacion.get(c.id))),
+    total,
+  };
+}
+
+/**
+ * `POST /conversaciones/:id/leido` — marca la conversación como leída HASTA
+ * AHORA para el usuario actual (D-mensajería, leído/no leído). Misma
+ * titularidad que ver/responder (`canView`) -- no hay una regla más laxa
+ * para esta acción. Publica `whatsapp.conversacion-leida` por el mismo canal
+ * SSE que ya usan `whatsapp.mensaje-nuevo`/`notificacion.nueva`
+ * (`committed-events.service.ts`), dirigido SOLO a este usuario -- sincroniza
+ * el badge entre sus propias pestañas/dispositivos, nunca afecta el estado
+ * de lectura de otro rol que también mira esta conversación.
+ */
+export async function marcarConversacionLeida(
+  usuario: UsuarioAccesoConversacion,
+  conversacionId: string,
+  ahora: Date = new Date(),
+): Promise<void> {
+  const conversacion = await conversacionRepository.findById(conversacionId);
+  if (!conversacion) throw conversacionNoEncontrada();
+  if (!canView(usuario, conversacion)) throw permisoDenegado();
+
+  await conversacionLecturaRepository.upsertLeidoHasta({
+    conversacionId,
+    usuarioId: usuario.id,
+    empresaId: conversacion.empresaId,
+    leidoHastaEn: ahora,
+  });
+
+  publishCommittedEvents([
+    {
+      userId: usuario.id,
+      empresaId: conversacion.empresaId,
+      type: "whatsapp.conversacion-leida",
+      data: { conversacionId, usuarioId: usuario.id },
+    },
+  ]);
 }
 
 /** `GET /conversaciones/:id/mensajes` — historial paginado, más reciente primero. */

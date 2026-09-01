@@ -9,6 +9,8 @@ export interface ConversacionListItemDto {
   asesorNombre: string | null;
   ultimoMensajeEn: string | null;
   creadaEn: string;
+  /** D-mensajería (leído/no leído): derivado por usuario, ver `conversaciones.service.ts::toListItemDto`. */
+  noLeido: boolean;
 }
 
 export interface ConversacionListResultDto {
