@@ -11,7 +11,6 @@ import * as leadRepository from "../repositories/lead.repository.js";
 import * as notificacionRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { resolverAtribucion, resolverEmpresaIdDesdeBridge, type AtribucionResuelta } from "./atribucion.service.js";
-import { compararLeadAbiertoScope } from "./shadow-lead-scope.service.js";
 import {
   decideAccionDeduplicacion,
   type DeduplicacionAction,
@@ -200,11 +199,42 @@ export async function deduplicateLead(
       }
 
       // C. LEER ESTADO.
-      const leadAbierto = await leadRepository.findLeadAbierto(clienteId, tx);
-      const ultimoLeadCerradoRow = await leadRepository.findUltimoLeadCerrado(
-        clienteId,
-        tx,
-      );
+      // Fix (D2, "Frontera de identidad y deduplicación" — resuelto
+      // 2026-08-25, docs/16-hallazgos-y-preguntas.md §8): "el chequeo de
+      // lead abierto para bloquear duplicados deja de evaluarse por cliente
+      // y pasa a evaluarse por (cliente, empresa)". Reemplaza al comparador
+      // en sombra (`shadow-lead-scope.service.ts`, retirado): ese archivo
+      // solo OBSERVABA esta divergencia sin corregirla — 10 casos reales ya
+      // detectados en producción, cliente con lead abierto de la empresa A
+      // absorbiendo silenciosamente ingestas nuevas de las empresas B/C/D
+      // como "interacción repetida" ajena. `empresaIdCandidato` se resuelve
+      // ACÁ (antes solo se resolvía más abajo, dentro de la rama
+      // `crear_lead`, vía `resolverAtribucion`) porque este paso ya lo
+      // necesita para acotar la búsqueda; la rama `crear_lead` re-resuelve su
+      // propia atribución completa más abajo (mismo empresaId, más
+      // cuenta/campaña) — recomputar esa única lectura de `Bridge` es más
+      // simple que enhebrar el valor ya resuelto a través de
+      // `resolverAtribucion`, y es barata (misma transacción, sin I/O
+      // externo).
+      const empresaIdCandidato = entrada.bridgeId
+        ? await resolverEmpresaIdDesdeBridge(entrada.bridgeId, tx)
+        : (entrada.empresaId ?? null);
+
+      // `empresaIdCandidato === null` (bridgeId inexistente/sin empresa, o
+      // ni bridgeId ni empresaId en la entrada): no hay a qué empresa acotar
+      // la búsqueda, así que se trata como "sin lead abierto" sin consultar
+      // la BD — nunca se cae de vuelta a la búsqueda global vieja (eso
+      // reabriría exactamente el bug que este fix cierra). Si la entrada
+      // termina siendo una creación, el guard `empresa_no_resuelta` de la
+      // rama `crear_lead` (abajo) rechaza la ingesta igual.
+      const leadAbierto =
+        empresaIdCandidato !== null
+          ? await leadRepository.findLeadAbierto(clienteId, empresaIdCandidato, tx)
+          : null;
+      const ultimoLeadCerradoRow =
+        empresaIdCandidato !== null
+          ? await leadRepository.findUltimoLeadCerrado(clienteId, empresaIdCandidato, tx)
+          : null;
       // Invariante de negocio: un lead cerrado siempre tiene `cerradoEn`; si
       // esa invariante se rompiera, se trata como "sin lead cerrado" en vez
       // de romper el flujo con una aserción no nula.
@@ -221,18 +251,6 @@ export async function deduplicateLead(
 
       // D. DECIDIR.
       const accion = decideAccionDeduplicacion(estado, ahora);
-
-      // Bloque B (Fase 3, spec "Company-scoped open-lead dedupe runs in
-      // shadow beside the global criterion"): SIEMPRE después de `accion` —
-      // puramente observacional, awaited dentro de esta MISMA `tx` (nunca
-      // fire-and-forget, a diferencia del comparador de Fase 2: esta `tx`
-      // interactiva se cierra en cuanto el callback retorna). NUNCA lee
-      // `accion` ni escribe ningún campo que la alimente — `leadAbierto` es
-      // la fila YA leída en el paso C (cero consulta extra).
-      const empresaIdCandidato = entrada.bridgeId
-        ? await resolverEmpresaIdDesdeBridge(entrada.bridgeId, tx)
-        : null;
-      await compararLeadAbiertoScope(leadAbierto, empresaIdCandidato, tx);
 
       // E. ESCRIBIR — siempre un lead_eventos, en la misma transacción.
       let leadId: string;

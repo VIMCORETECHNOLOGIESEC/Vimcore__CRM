@@ -59,7 +59,10 @@ async function resolverAsesorObjetivo(
   ahora: Date,
   tx: Prisma.TransactionClient,
 ): Promise<RuteoResultado> {
-  const leadAbierto = await leadRepository.findLeadAbierto(clienteId, tx);
+  // Fix (D2, mismo criterio que deduplicacion.service.ts): acotado por
+  // empresa -- un Lead abierto de otra empresa nunca debe rutear mensajes de
+  // esta.
+  const leadAbierto = await leadRepository.findLeadAbierto(clienteId, empresaId, tx);
   if (leadAbierto) {
     // rule 2: ya tiene un Lead con asesor asignado -> rutea a ese asesor.
     // Decisión conservadora documentada (brief, "si encontrás una ambigüedad
@@ -71,7 +74,7 @@ async function resolverAsesorObjetivo(
     return { asesorId: leadAbierto.asesorId, leadCreadoId: null };
   }
 
-  const ultimoLeadCerradoRow = await leadRepository.findUltimoLeadCerrado(clienteId, tx);
+  const ultimoLeadCerradoRow = await leadRepository.findUltimoLeadCerrado(clienteId, empresaId, tx);
   const ultimoLeadCerrado =
     ultimoLeadCerradoRow !== null && ultimoLeadCerradoRow.cerradoEn !== null
       ? { id: ultimoLeadCerradoRow.id, cerradoEn: ultimoLeadCerradoRow.cerradoEn }
@@ -197,7 +200,8 @@ async function sincronizarAsesorTrasAsignacion(
       const conversacion = await conversacionRepository.findByIdForUpdate(conversacionId, tx);
       if (!conversacion || conversacion.asesorId !== null) return [] as CommittedEvent[];
 
-      const leadAbierto = await leadRepository.findLeadAbierto(clienteId, tx);
+      // Fix (D2, mismo criterio que arriba): acotado por empresa.
+      const leadAbierto = await leadRepository.findLeadAbierto(clienteId, empresaId, tx);
       if (!leadAbierto || leadAbierto.asesorId === null) return [] as CommittedEvent[];
 
       await conversacionRepository.updateAsesor(conversacionId, leadAbierto.asesorId, tx);
