@@ -5,6 +5,7 @@ import {
   fetchNotificacionesApi,
   markAllNotificacionesLeidasApi,
   markNotificacionLeidaApi,
+  notificarWhatsAppNoConectadoApi,
   type ListarNotificacionesParams,
 } from "./notificaciones.api";
 
@@ -59,6 +60,25 @@ export function useMarkAllNotificacionesLeidas() {
         exact: true,
       });
       toast.success("Todas las notificaciones se marcaron como leídas.");
+    },
+  });
+}
+
+/**
+ * Aviso manual de WhatsApp no conectado (Supervisor/Asesor -> administrador
+ * de su propia empresa), disparado desde `WhatsAppSinConexion.tsx` cuando el
+ * panel de WhatsApp del detalle de un lead detecta que la empresa no tiene
+ * conexión activa. Sin invalidación de `NOTIFICACIONES_QUERY_KEY`: las
+ * notificaciones creadas son para OTROS usuarios (los administradores de la
+ * empresa), no para el usuario en sesión que dispara este aviso -- llegan a
+ * ellos vía el canal SSE en tiempo real (`useNotificacionesRealtime.ts`), no
+ * por invalidar la caché de quien las generó.
+ */
+export function useNotificarWhatsAppNoConectado() {
+  return useMutation({
+    mutationFn: (mensaje: string) => notificarWhatsAppNoConectadoApi(mensaje),
+    onSuccess: () => {
+      toast.success("Se notificó al administrador.");
     },
   });
 }

@@ -22,19 +22,21 @@ vi.mock("@/funcionalidades/notificaciones/notificaciones.api", () => ({
   fetchNotificacionesApi: vi.fn(),
   markNotificacionLeidaApi: vi.fn(),
   markAllNotificacionesLeidasApi: vi.fn(),
+  notificarWhatsAppNoConectadoApi: vi.fn(),
 }));
 
 const { queryClient } = await import("@/api/queryClient");
 const { toast } = await import("sonner");
-const { fetchNotificacionesApi, markNotificacionLeidaApi } = await import(
+const { fetchNotificacionesApi, markNotificacionLeidaApi, notificarWhatsAppNoConectadoApi } = await import(
   "@/funcionalidades/notificaciones/notificaciones.api"
 );
-const { useMarkNotificacionLeida, useNotificaciones } = await import(
+const { useMarkNotificacionLeida, useNotificaciones, useNotificarWhatsAppNoConectado } = await import(
   "@/funcionalidades/notificaciones/useNotificaciones"
 );
 
 const fetchMock = vi.mocked(fetchNotificacionesApi);
 const markMock = vi.mocked(markNotificacionLeidaApi);
+const notificarWhatsAppNoConectadoMock = vi.mocked(notificarWhatsAppNoConectadoApi);
 
 const unread: Notificacion = {
   id: "notif-1",
@@ -100,5 +102,30 @@ describe("useNotificaciones", () => {
       queryKey: ["notificaciones", "u1"],
       exact: true,
     });
+  });
+});
+
+describe("useNotificarWhatsAppNoConectado", () => {
+  it("envía el mensaje y muestra un toast de confirmación al éxito", async () => {
+    notificarWhatsAppNoConectadoMock.mockResolvedValue([unread]);
+    const { result } = renderHook(() => useNotificarWhatsAppNoConectado(), { wrapper });
+
+    act(() => result.current.mutate("Necesitamos conectar WhatsApp."));
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(notificarWhatsAppNoConectadoMock).toHaveBeenCalledWith("Necesitamos conectar WhatsApp.");
+    expect(toast.success).toHaveBeenCalledWith("Se notificó al administrador.");
+  });
+
+  it("al fallar, no muestra el toast de éxito (el error queda a cargo del manejo global)", async () => {
+    notificarWhatsAppNoConectadoMock.mockRejectedValue(
+      new ApiError("validacion_invalida", 400, "La petición es inválida"),
+    );
+    const { result } = renderHook(() => useNotificarWhatsAppNoConectado(), { wrapper });
+
+    act(() => result.current.mutate(""));
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

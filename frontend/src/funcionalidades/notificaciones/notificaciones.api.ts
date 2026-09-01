@@ -50,4 +50,25 @@ export async function markAllNotificacionesLeidasApi(): Promise<void> {
   await httpClient.patch<void>("/notificaciones/leer-todas");
 }
 
+interface NotificarWhatsAppNoConectadoResponse {
+  notificaciones: Notificacion[];
+}
+
+/**
+ * `POST /notificaciones/whatsapp-no-conectado` (rol SUPERVISOR/ASESOR --
+ * `backend/src/routes/notificaciones.routes.ts`, worktree `dev-back`,
+ * integrado en paralelo con esta tarea): aviso manual desde el panel de
+ * WhatsApp del detalle de un lead cuando la empresa no tiene conexión activa
+ * (`WhatsAppSinConexion.tsx`). Responde `201` con las notificaciones creadas
+ * para cada administrador activo de la empresa del usuario en sesión
+ * (resuelta del JWT, nunca del body).
+ */
+export async function notificarWhatsAppNoConectadoApi(mensaje: string): Promise<Notificacion[]> {
+  const { notificaciones } = await httpClient.post<NotificarWhatsAppNoConectadoResponse>(
+    "/notificaciones/whatsapp-no-conectado",
+    { mensaje },
+  );
+  return notificaciones;
+}
+
 export type { TipoNotificacion };

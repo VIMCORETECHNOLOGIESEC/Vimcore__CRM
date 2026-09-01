@@ -34,6 +34,7 @@ const {
   fetchNotificacionesApi,
   markAllNotificacionesLeidasApi,
   markNotificacionLeidaApi,
+  notificarWhatsAppNoConectadoApi,
 } = await import("@/funcionalidades/notificaciones/notificaciones.api");
 const { TIPO_NOTIFICACION_ETIQUETAS } = await import(
   "@/funcionalidades/notificaciones/catalogos"
@@ -41,6 +42,7 @@ const { TIPO_NOTIFICACION_ETIQUETAS } = await import(
 
 const getMock = vi.mocked(httpClient.get);
 const patchMock = vi.mocked(httpClient.patch);
+const postMock = vi.mocked(httpClient.post);
 
 const notificacion = {
   id: "notif-1",
@@ -57,6 +59,7 @@ const notificacion = {
 beforeEach(() => {
   getMock.mockReset();
   patchMock.mockReset();
+  postMock.mockReset();
 });
 
 afterEach(() => {
@@ -123,4 +126,26 @@ describe("mutaciones de lectura — contrato M8", () => {
 
 it("incluye la etiqueta de INTERACCION_REPETIDA soportada por M8", () => {
   expect(TIPO_NOTIFICACION_ETIQUETAS.INTERACCION_REPETIDA).toBe("Interacción repetida");
+});
+
+describe("notificarWhatsAppNoConectadoApi — POST /notificaciones/whatsapp-no-conectado", () => {
+  it("envía exactamente { mensaje } y desenvuelve el envelope de notificaciones creadas", async () => {
+    postMock.mockResolvedValue({ notificaciones: [notificacion] });
+
+    const resultado = await notificarWhatsAppNoConectadoApi("Necesitamos conectar WhatsApp.");
+
+    expect(postMock).toHaveBeenCalledWith("/notificaciones/whatsapp-no-conectado", {
+      mensaje: "Necesitamos conectar WhatsApp.",
+    });
+    expect(resultado).toEqual([notificacion]);
+  });
+
+  it("propaga el ApiError del backend sin envolverlo de nuevo", async () => {
+    postMock.mockRejectedValue(new ApiError("validacion_invalida", 400, "La petición es inválida"));
+
+    await expect(notificarWhatsAppNoConectadoApi("")).rejects.toMatchObject({
+      code: "validacion_invalida",
+      status: 400,
+    });
+  });
 });

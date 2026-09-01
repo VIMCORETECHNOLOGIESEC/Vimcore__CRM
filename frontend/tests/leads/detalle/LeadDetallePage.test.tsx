@@ -45,20 +45,32 @@ vi.mock("@/funcionalidades/whatsapp/useConversaciones", () => ({
   useConversaciones: vi.fn(),
 }));
 
+vi.mock("@/funcionalidades/whatsapp/useWhatsApp", () => ({
+  useWhatsAppEstadoActual: vi.fn(),
+}));
+
 vi.mock("@/funcionalidades/whatsapp/ConversacionAbierta", () => ({
   ConversacionAbierta: ({ conversacionId }: { conversacionId: string }) => (
     <div>ConversacionAbierta mock — {conversacionId}</div>
   ),
 }));
 
+vi.mock("@/funcionalidades/whatsapp/WhatsAppSinConexion", () => ({
+  WhatsAppSinConexion: ({ puedeIrABridges }: { puedeIrABridges: boolean }) => (
+    <div>WhatsAppSinConexion mock — puedeIrABridges:{String(puedeIrABridges)}</div>
+  ),
+}));
+
 const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { useLeadDetalle } = await import("@/funcionalidades/leads/detalle/useLeadDetalle");
 const { useConversaciones } = await import("@/funcionalidades/whatsapp/useConversaciones");
+const { useWhatsAppEstadoActual } = await import("@/funcionalidades/whatsapp/useWhatsApp");
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 
 const useAuthMock = vi.mocked(useAuth);
 const useLeadDetalleMock = vi.mocked(useLeadDetalle);
 const useConversacionesMock = vi.mocked(useConversaciones);
+const useWhatsAppEstadoActualMock = vi.mocked(useWhatsAppEstadoActual);
 
 function buildLead(overrides: Partial<Lead> = {}): Lead {
   return {
@@ -134,6 +146,19 @@ beforeEach(() => {
     data: { conversaciones: [], total: 0 },
     isLoading: false,
   } as unknown as ReturnType<typeof useConversaciones>);
+
+  useWhatsAppEstadoActualMock.mockReturnValue({
+    data: {
+      id: "conexion-1",
+      empresaId: "empresa-1",
+      numeroTelefonoId: "numero-1",
+      numeroDisplay: "+593 99 000 0000",
+      wabaId: "waba-1",
+      estado: "ACTIVA",
+      creadoEn: "2026-01-01T00:00:00.000Z",
+    },
+    isLoading: false,
+  } as unknown as ReturnType<typeof useWhatsAppEstadoActual>);
 });
 
 describe("LeadDetallePage — useVistaEmpresa().esVistaSoloLectura", () => {
@@ -273,7 +298,7 @@ describe("LeadDetallePage — chat de WhatsApp", () => {
     ).toBeInTheDocument();
   });
 
-  it("lead de otro origen (FACEBOOK): no muestra el botón flotante ni el panel de chat", async () => {
+  it("lead de otro origen (FACEBOOK): igual muestra el botón flotante y el panel de chat (no depende del origen del lead)", async () => {
     useLeadDetalleMock.mockReturnValue({
       data: buildLead({ redSocial: "FACEBOOK" }),
       isLoading: false,
@@ -281,20 +306,79 @@ describe("LeadDetallePage — chat de WhatsApp", () => {
       error: null,
       refetch: vi.fn(),
     });
-    useConversacionesMock.mockClear();
 
     renderPage();
     await screen.findByText("Roberto Salazar");
 
-    expect(screen.queryByLabelText("Abrir chat de WhatsApp")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Abrir chat de WhatsApp")).toBeInTheDocument();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    expect(await screen.findByLabelText("Chat de WhatsApp")).toBeInTheDocument();
+    expect(useConversacionesMock).toHaveBeenCalledWith({
+      clienteId: "cliente-01",
+      pagina: 1,
+      limite: 10,
+    });
+  });
+
+  it("empresa sin WhatsApp conectado (estado !== ACTIVA): muestra WhatsAppSinConexion en vez del chat/estado vacío", async () => {
+    useWhatsAppEstadoActualMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useWhatsAppEstadoActual>);
+
+    renderPage();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    expect(await screen.findByText("WhatsAppSinConexion mock — puedeIrABridges:true")).toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay conversación")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ConversacionAbierta mock/)).not.toBeInTheDocument();
+  });
+
+  it("empresa sin WhatsApp conectado y rol sin acceso a Bridges: pasa puedeIrABridges=false", async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "u1",
+        nombre: "Usuaria",
+        correo: "u1@crm.test",
+        rol: "ASESOR",
+        sessionScope: "company",
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      hasRole: () => false,
+    });
+    useWhatsAppEstadoActualMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useWhatsAppEstadoActual>);
+
+    renderPage();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    expect(await screen.findByText("WhatsAppSinConexion mock — puedeIrABridges:false")).toBeInTheDocument();
+  });
+
+  it("mientras carga el estado de WhatsApp, mantiene el estado de carga en vez de mostrar el chat", async () => {
+    useWhatsAppEstadoActualMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    } as unknown as ReturnType<typeof useWhatsAppEstadoActual>);
+
+    renderPage();
 
     window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
 
     await waitFor(() => {
-      expect(document.querySelector('[data-tour="lead-workspace-tabs"]')).not.toBeNull();
+      expect(document.querySelector('[data-tour="lead-whatsapp-chat"]')).not.toBeNull();
     });
-    expect(screen.queryByLabelText("Chat de WhatsApp")).not.toBeInTheDocument();
-    expect(useConversacionesMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/WhatsAppSinConexion mock/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay conversación")).not.toBeInTheDocument();
   });
 });
 
