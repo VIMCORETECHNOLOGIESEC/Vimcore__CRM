@@ -167,7 +167,7 @@ export function GestorEmpresasPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <p className="text-sm text-muted-foreground sm:max-w-2xl">
-          Todas las empresas de esta instancia. Editá el nombre y los colores de marca de
+          Todas las empresas de esta instancia. Edita el nombre y los colores de marca de
           cualquiera de ellas -- sus equipos ven el cambio reflejado en su propia pantalla de
           bienvenida.
         </p>

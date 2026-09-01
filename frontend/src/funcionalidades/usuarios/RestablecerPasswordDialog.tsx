@@ -69,7 +69,7 @@ export function RestablecerPasswordDialog({
         <DialogHeader>
           <DialogTitle>Restablecer contraseña</DialogTitle>
           <DialogDescription>
-            Definí una nueva contraseña para {usuario.nombre}. No se necesita la contraseña actual.
+            Define una nueva contraseña para {usuario.nombre}. No se necesita la contraseña actual.
           </DialogDescription>
         </DialogHeader>
 

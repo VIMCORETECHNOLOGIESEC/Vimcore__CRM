@@ -566,7 +566,7 @@ function SeccionShellReal() {
               <code>.chrome-sombra-abajo</code>, se mantiene igual con o sin gradiente) para
               reforzar la separación con profundidad. Reutiliza los datos reales de{" "}
               <code>layouts/navigation.ts</code> (mismas etiquetas/rutas/íconos), no la
-              implementación visual del sidebar real. Clickeá un ítem: alterna cuál se ve activo
+              implementación visual del sidebar real. Haz clic en un ítem: alterna cuál se ve activo
               con estado local de React, sin navegar de verdad.
             </>
           }

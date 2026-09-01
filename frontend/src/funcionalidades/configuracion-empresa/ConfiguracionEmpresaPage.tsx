@@ -105,7 +105,7 @@ export function ConfiguracionEmpresaPage() {
   return (
     <div className="flex max-w-xl flex-col gap-6">
       <p className="text-sm text-muted-foreground">
-        Personalizá el nombre y los colores de marca que ve tu equipo en la pantalla de
+        Personaliza el nombre y los colores de marca que ve tu equipo en la pantalla de
         bienvenida al iniciar sesión.
       </p>
       <ConfiguracionEmpresaForm

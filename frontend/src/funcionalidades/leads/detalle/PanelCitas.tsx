@@ -249,7 +249,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
           </span>
           <div className="flex flex-col gap-0.5">
             <h2 className="text-base font-semibold leading-tight text-foreground">Agendar cita</h2>
-            <p className="text-xs text-muted-foreground">Coordiná el próximo contacto con este lead</p>
+            <p className="text-xs text-muted-foreground">Coordina el próximo contacto con este lead</p>
           </div>
         </div>
         <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
