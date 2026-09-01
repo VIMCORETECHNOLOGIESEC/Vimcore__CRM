@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import type { Notificacion } from "@/tipos/notificacion";
+import type { UsuariosResponse } from "@/funcionalidades/usuarios/usuarios.api";
+import { USUARIOS_QUERY_KEY } from "@/funcionalidades/usuarios/useUsuarios";
 import {
   connectNotificacionesSse,
   type EstadoConexion,
@@ -56,6 +58,18 @@ export function useNotificacionesRealtime(onNuevaNotificacion?: (value: Notifica
           queryKey: ["conversaciones", event.data.conversacionId, "mensajes"],
         });
         void queryClient.invalidateQueries({ queryKey: ["conversaciones"] });
+        return;
+      }
+      if (event.type === "usuario.presencia-cambiada") {
+        queryClient.setQueriesData<UsuariosResponse>({ queryKey: [USUARIOS_QUERY_KEY] }, (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            users: current.users.map((usuario) => usuario.id === event.data.usuarioId
+              ? { ...usuario, presencia: event.data }
+              : usuario),
+          };
+        });
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["notificaciones", userId], exact: true });

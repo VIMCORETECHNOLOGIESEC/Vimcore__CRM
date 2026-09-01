@@ -229,6 +229,18 @@ solo valor válido en el MVP.
 Las notificaciones se entregan por SSE al cliente conectado y se persisten para
 que sigan visibles al iniciar sesión.
 
+### Presencia operativa de usuarios
+
+El estado `online`/`offline` de asesores y demás usuarios operativos se deriva
+de conexiones SSE activas, no de `Usuario.activo`. `Usuario.activo` sigue
+representando baja lógica administrativa.
+
+La presencia vigente se informa en `GET /usuarios` y se actualiza en vivo con el
+evento SSE `usuario.presencia-cambiada`. Para el MVP este estado vive en memoria
+del backend: ante restart/deploy todos vuelven a verse offline hasta abrir una
+nueva conexión. Si el mismo usuario abre varias pestañas, queda online mientras
+exista al menos una conexión activa.
+
 ---
 
 ## 9. Permisos por rol

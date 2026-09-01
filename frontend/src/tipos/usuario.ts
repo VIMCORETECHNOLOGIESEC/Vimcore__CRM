@@ -102,6 +102,14 @@ export interface AuthenticatedUser extends PublicUser {
   membresiaId?: string;
 }
 
+export interface PresenciaUsuario {
+  estado: "online" | "offline";
+  conectadoDesde: string | null;
+  ultimaSenalEn: string | null;
+  desconectadoEn: string | null;
+  conexionesActivas: number;
+}
+
 /**
  * Vista administrativa de un usuario (F7, `GET/POST/PATCH /usuarios`).
  * Forma de `AdminUsuarioListView` en `backend/src/repositories/usuario.repository.ts`
@@ -132,4 +140,5 @@ export interface AdminUsuario {
    * necesidad. `UsuariosTable.tsx` hace `usuario.empresas ?? []` al leerlo.
    */
   empresas?: { id: string; nombre: string }[];
+  presencia?: PresenciaUsuario;
 }

@@ -1,5 +1,5 @@
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { MoreHorizontal } from "lucide-react";
+import { Circle, MoreHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -74,9 +74,46 @@ const COLUMN_WIDTHS_PX: Record<string, number> = {
   correo: 256,
   rol: 128,
   estado: 112,
+  conexion: 152,
   cargaActiva: 144,
   acciones: 72,
 };
+
+function formatTiempoConexion(iso: string | null): string {
+  if (!iso) return "Sin registro";
+  const diffMs = Math.max(0, Date.now() - Date.parse(iso));
+  const minutos = Math.floor(diffMs / 60_000);
+  if (minutos < 1) return "hace instantes";
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.floor(horas / 24);
+  return `hace ${dias} d`;
+}
+
+function CeldaConexion({ usuario }: { usuario: AdminUsuario }) {
+  if (!usuario.activo) return <span className="text-muted-foreground">No aplica</span>;
+  const presencia = usuario.presencia;
+  const online = presencia?.estado === "online";
+  const fechaReferencia = online ? presencia?.conectadoDesde : presencia?.desconectadoEn;
+  return (
+    <span className="flex flex-col gap-0.5 text-xs">
+      <span className={cn(
+        "inline-flex w-fit items-center gap-1.5 rounded-md border px-2 py-0.5 font-medium",
+        online
+          ? "border-green-200 bg-green-50 text-green-800"
+          : "border-slate-200 bg-slate-50 text-slate-600",
+      )}
+      >
+        <Circle className={cn("size-2 fill-current", online ? "text-green-600" : "text-slate-400")} aria-hidden="true" />
+        {online ? "En línea" : "Desconectado"}
+      </span>
+      <span className="text-muted-foreground">
+        {online ? `Conectado ${formatTiempoConexion(fechaReferencia ?? null)}` : formatTiempoConexion(fechaReferencia ?? null)}
+      </span>
+    </span>
+  );
+}
 
 /** Celda de texto libre truncada con elipsis + tooltip con el valor completo. */
 function CeldaTruncada({ valor }: { valor: string }) {
@@ -179,6 +216,11 @@ export function UsuariosTable({
         id: "estado",
         header: "Estado",
         cell: ({ getValue }) => <EstadoUsuarioBadge activo={getValue()} />,
+      }),
+      columnHelper.display({
+        id: "conexion",
+        header: "Conexión",
+        cell: ({ row }) => <CeldaConexion usuario={row.original} />,
       }),
       columnHelper.display({
         id: "cargaActiva",

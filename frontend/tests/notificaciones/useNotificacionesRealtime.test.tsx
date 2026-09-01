@@ -122,6 +122,44 @@ it("invalida la bandeja de conversaciones ante whatsapp.mensaje-nuevo sin tocar 
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
 });
 
+it("parchea la presencia del usuario en todas las queries de usuarios", () => {
+  const context = setup();
+  context.client.setQueryData(["usuarios", { pagina: 1 }], {
+    users: [{
+      id: "asesor-1",
+      nombre: "Asesor Uno",
+      correo: "asesor@crm.test",
+      rol: "ASESOR",
+      activo: true,
+      creadoEn: "2026-09-01T09:00:00.000Z",
+      actualizadoEn: "2026-09-01T09:00:00.000Z",
+      empresas: [],
+    }],
+    total: 1,
+    pagina: 1,
+    limite: 20,
+  });
+
+  act(() => {
+    context.options.onEvent({
+      id: "e9",
+      type: "usuario.presencia-cambiada",
+      data: {
+        usuarioId: "asesor-1",
+        empresaId: "empresa-1",
+        estado: "online",
+        conectadoDesde: "2026-09-01T10:00:00.000Z",
+        ultimaSenalEn: "2026-09-01T10:00:00.000Z",
+        desconectadoEn: null,
+        conexionesActivas: 1,
+      },
+    });
+  });
+
+  const data = context.client.getQueryData<{ users: Array<{ presencia?: { estado: string } }> }>(["usuarios", { pagina: 1 }]);
+  expect(data?.users[0]?.presencia?.estado).toBe("online");
+});
+
 it("aborta la conexión vieja al cambiar usuario y al desmontar", () => {
   const context = setup();
   const firstAbort = context.aborts[0];

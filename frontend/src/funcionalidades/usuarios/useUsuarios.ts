@@ -19,7 +19,7 @@ import {
   type UsuariosQueryParams,
 } from "./usuarios.api";
 
-const USUARIOS_QUERY_KEY = "usuarios";
+export const USUARIOS_QUERY_KEY = "usuarios";
 const CARGA_ACTIVA_QUERY_KEY = "usuario-carga-activa";
 
 /**

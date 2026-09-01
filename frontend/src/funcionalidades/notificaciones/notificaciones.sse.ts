@@ -1,5 +1,6 @@
 import { authenticatedFetch, type AuthenticatedFetchOptions } from "@/api/httpClient";
 import type { Notificacion, TipoNotificacion } from "@/tipos/notificacion";
+import type { PresenciaUsuario } from "@/tipos/usuario";
 
 export type EstadoConexion = "idle" | "connecting" | "connected" | "reconnecting" | "terminal";
 export interface SseFrame { id: string; event: string; data: string }
@@ -11,7 +12,8 @@ export type EventoNotificaciones =
   | { id: string; type: "reporte.iniciado"; data: { jobId: string; tipo: "pdf" | "xlsx" } }
   | { id: string; type: "reporte.listo"; data: { jobId: string; archivoUrl: string } }
   | { id: string; type: "reporte.error"; data: { jobId: string; error: string } }
-  | { id: string; type: "whatsapp.mensaje-nuevo"; data: { conversacionId: string } };
+  | { id: string; type: "whatsapp.mensaje-nuevo"; data: { conversacionId: string } }
+  | { id: string; type: "usuario.presencia-cambiada"; data: PresenciaUsuario & { usuarioId: string; empresaId: string } };
 
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000] as const;
 const TIPOS_NOTIFICACION = new Set<TipoNotificacion>([
@@ -70,6 +72,7 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
     "reporte.listo",
     "reporte.error",
     "whatsapp.mensaje-nuevo",
+    "usuario.presencia-cambiada",
   ];
   if (!known.includes(frame.event)) return null;
   const data: unknown = JSON.parse(frame.data);
@@ -106,6 +109,31 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
   if (frame.event === "whatsapp.mensaje-nuevo") {
     if (!isRecord(data) || typeof data.conversacionId !== "string") throw new Error("evento_malformado");
     return { id: frame.id, type: frame.event, data: { conversacionId: data.conversacionId } };
+  }
+  if (frame.event === "usuario.presencia-cambiada") {
+    if (!isRecord(data) ||
+      typeof data.usuarioId !== "string" ||
+      typeof data.empresaId !== "string" ||
+      (data.estado !== "online" && data.estado !== "offline") ||
+      !(typeof data.conectadoDesde === "string" || data.conectadoDesde === null) ||
+      !(typeof data.ultimaSenalEn === "string" || data.ultimaSenalEn === null) ||
+      !(typeof data.desconectadoEn === "string" || data.desconectadoEn === null) ||
+      typeof data.conexionesActivas !== "number") {
+      throw new Error("evento_malformado");
+    }
+    return {
+      id: frame.id,
+      type: frame.event,
+      data: {
+        usuarioId: data.usuarioId,
+        empresaId: data.empresaId,
+        estado: data.estado,
+        conectadoDesde: data.conectadoDesde,
+        ultimaSenalEn: data.ultimaSenalEn,
+        desconectadoEn: data.desconectadoEn,
+        conexionesActivas: data.conexionesActivas,
+      },
+    };
   }
   if (!isRecord(data) || typeof data.leadId !== "string") throw new Error("evento_malformado");
   return {

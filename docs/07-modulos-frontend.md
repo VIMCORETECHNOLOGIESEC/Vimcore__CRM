@@ -42,7 +42,7 @@ frontend/src/
 | F4 — Detalle del lead | ⚠️ Implementado con brechas | Correo principal, campaña y cuenta se mapean a `null`; `LeadTimeline` muestra formulario y cierre a usuarios con lectura pero sin edición; falta redirección ante 403 y la cobertura SSE es parcial |
 | F5 — Dashboard | ✅ Completo | — (actualización en tiempo real vía SSE resuelta el 2026-08-19; exportación Excel/PDF filtrada con gráficos, resumen, conclusión y leads incorporada el 2026-08-28) |
 | F6 — Notificaciones | ✅ Completo | — |
-| F7 — Administración de usuarios | ✅ Completo | — |
+| F7 — Administración de usuarios | ✅ Completo | Muestra presencia online/offline desde `GET /usuarios` y la mantiene en vivo con SSE `usuario.presencia-cambiada`. |
 | F8 — Administración de bridges | ✅ Completo | — |
 
 **Lectura rápida:** todos los módulos tienen una interfaz implementada, pero F3 y
