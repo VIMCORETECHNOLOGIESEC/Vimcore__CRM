@@ -10,6 +10,7 @@ import {
 import {
   getMensajes,
   listConversaciones,
+  marcarConversacionLeida,
   postMensaje,
 } from "../../services/whatsappMessages/conversaciones.service.js";
 
@@ -49,4 +50,14 @@ export async function postConversacionMensaje(req: Request, res: Response): Prom
 
   const mensaje = await postMensaje(usuario, parsedId.data.id, parsedBody.data);
   res.status(201).json({ mensaje });
+}
+
+/** `POST /conversaciones/:id/leido` — marca la conversación como leída para el usuario actual. */
+export async function postConversacionLeido(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  const parsedId = conversacionIdParamSchema.safeParse(req.params);
+  if (!parsedId.success) throw zodValidationError();
+
+  await marcarConversacionLeida(usuario, parsedId.data.id);
+  res.status(204).send();
 }

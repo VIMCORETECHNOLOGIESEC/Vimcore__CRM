@@ -122,6 +122,10 @@ model Usuario {
   conversacionesAsignadas Conversacion[]
   conversacionEventos     ConversacionEvento[]
   mensajesEnviados        Mensaje[]
+  // D-mensajería (leído/no leído): watermark de lectura de este usuario por
+  // conversación -- ver el modelo `ConversacionLectura` para el criterio
+  // completo.
+  conversacionesLecturas  ConversacionLectura[]
   oauthStatesWhatsApp     WhatsAppOAuthState[]
   // metaAdsConexion (Bloque E, docs/blocks/e-dashboards.md "Sincronización de
   // campañas Meta"): mismo criterio de nombrado que `oauthStatesWhatsApp` --
@@ -190,6 +194,8 @@ model Empresa {
   whatsappConexion       WhatsAppConexion?
   conversacionesWhatsapp Conversacion[]
   conversacionesWhatsappEventos ConversacionEvento[]
+  // D-mensajería (leído/no leído): denormalizado, ver `ConversacionLectura`.
+  conversacionesLecturaWhatsapp ConversacionLectura[]
   // Fix de sintaxis Prisma (batch whatsappMessages): `WhatsAppOAuthState.empresa`
   // ya declaraba su lado de la relación pero le faltaba esta relación opuesta
   // — sin ella `prisma generate` falla con P1012 ("missing an opposite
@@ -1320,11 +1326,45 @@ model Conversacion {
   asesor   Usuario?         @relation(fields: [asesorId], references: [id], onDelete: SetNull)
   mensajes Mensaje[]
   eventos  ConversacionEvento[]
+  // D-mensajería (leído/no leído): ver `ConversacionLectura`.
+  lecturas ConversacionLectura[]
 
   @@unique([clienteId, conexionId])
   @@index([empresaId], map: "idx_conversaciones_whatsapp_empresa")
   @@index([asesorId], map: "idx_conversaciones_whatsapp_asesor")
   @@map("conversaciones_whatsapp")
+}
+
+/**
+ * D-mensajería (leído/no leído): watermark de lectura por (conversación,
+ * usuario) -- NO por mensaje. Varias personas ven la misma `Conversacion` a
+ * la vez (asesor asignado + Administrador/Supervisor, ver
+ * `whatsapp-ruteo.service.ts::destinatariosGestion`), así que "leído" es
+ * estado propio de cada una, nunca un flag compartido en `Mensaje`: si el
+ * asesor abre el chat, el badge del Supervisor no debe apagarse.
+ *
+ * "No leído" se DERIVA, nunca se persiste por mensaje:
+ * `Conversacion.ultimoMensajeEn > leidoHastaEn` (o ausencia de fila = nunca
+ * leído). Un mensaje nuevo no escribe nada acá -- solo "marcar como leído"
+ * hace upsert, con `leidoHastaEn = now()`.
+ */
+model ConversacionLectura {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversacionId String   @map("conversacion_id") @db.Uuid
+  usuarioId      String   @map("usuario_id") @db.Uuid
+  // Denormalizado desde Conversacion.empresaId -- mismo patrón RLS que
+  // Conversacion/Notificacion/Cita/LeadEvento (compara empresa_id directo,
+  // sin join, en la política de la migración).
+  empresaId      String   @map("empresa_id") @db.Uuid
+  leidoHastaEn   DateTime @map("leido_hasta_en") @db.Timestamptz(6)
+
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  usuario      Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa      Empresa      @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  @@unique([usuarioId, conversacionId])
+  @@index([empresaId], map: "idx_conversaciones_lectura_empresa")
+  @@map("conversaciones_lectura_whatsapp")
 }
 
 enum TipoEventoConversacion {

@@ -12,6 +12,12 @@ export type EventType =
   // whatsappMessages: `Conversacion.asesorId` cambió (primera asignación,
   // ruteo hacia un Lead ya asignado, o reasignación por SLA vencido).
   | "whatsapp.conversacion-reasignada"
+  // D-mensajería (leído/no leído): el usuario indicado en `data.usuarioId`
+  // marcó como leída `data.conversacionId` -- solo le importa a ESE usuario
+  // (sincroniza el badge entre sus propias pestañas/dispositivos), nunca
+  // apaga el badge de otro rol que también mira la misma conversación (ver
+  // `ConversacionLectura` en schema.prisma).
+  | "whatsapp.conversacion-leida"
   // reportes (Bloque E, "Exportación PDF/XLSX"): progreso de un `ReporteJob`
   // en background (`jobs/reportes/reporte-generacion.job.ts`). Flujo UI:
   // botón "Generar" -> "reporte.iniciado" -> "Generando…" -> "reporte.listo"
