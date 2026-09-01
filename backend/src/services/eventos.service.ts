@@ -14,6 +14,7 @@ export function openEventStream(
   scope: EventScope,
   broker: EventBroker = eventBroker,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
+  lifecycle: { onHeartbeat?: () => void; onClose?: () => void } = {},
 ): void {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -25,7 +26,10 @@ export function openEventStream(
   const unsubscribe = broker.subscribe(userId, scope, lastEventId, (event) => {
     res.write(serializeEvent(event));
   });
-  const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), heartbeatIntervalMs);
+  const heartbeat = setInterval(() => {
+    res.write(": heartbeat\n\n");
+    lifecycle.onHeartbeat?.();
+  }, heartbeatIntervalMs);
 
   let closed = false;
   const cleanup = (): void => {
@@ -33,6 +37,7 @@ export function openEventStream(
     closed = true;
     clearInterval(heartbeat);
     unsubscribe();
+    lifecycle.onClose?.();
   };
   req.once("close", cleanup);
   res.once("close", cleanup);

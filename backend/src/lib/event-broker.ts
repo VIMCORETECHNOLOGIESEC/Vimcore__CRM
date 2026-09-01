@@ -24,7 +24,8 @@ export type EventType =
   // (con `archivoUrl` de descarga) o "reporte.error" (con `error`).
   | "reporte.iniciado"
   | "reporte.listo"
-  | "reporte.error";
+  | "reporte.error"
+  | "usuario.presencia-cambiada";
 
 export interface BrokerEvent {
   id: string;

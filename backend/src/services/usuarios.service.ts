@@ -25,6 +25,7 @@ import {
 } from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
+import { getPresenceForUsuarios, type PresenciaUsuarioView } from "./presencia.service.js";
 
 function userNotFound(): AppError {
   return new AppError("usuario_no_encontrado", 404, "Usuario no encontrado");
@@ -566,10 +567,16 @@ export async function createEmpresaAsesor(
 }
 
 export interface FindUsuariosResult {
-  usuarios: AdminUsuarioListView[];
+  usuarios: Array<AdminUsuarioListView & { presencia: PresenciaUsuarioView }>;
   total: number;
   pagina: number;
   limite: number;
+}
+
+function resolvePresenceEmpresaId(actor: AuthenticatedUser, query: ListUsuariosQuery): string | undefined {
+  if (actor.empresaId !== null) return actor.empresaId;
+  if (query.soloHoldingWide) return undefined;
+  return query.empresaId;
 }
 
 /**
@@ -662,7 +669,26 @@ export async function findUsuarios(actor: AuthenticatedUser, query: ListUsuarios
     orderBy: { creadoEn: query.direccion },
   });
 
-  return { usuarios, total, pagina: query.pagina, limite: query.limite };
+  const presencias = getPresenceForUsuarios(
+    usuarios.map((usuario) => usuario.id),
+    resolvePresenceEmpresaId(actor, query),
+  );
+
+  return {
+    usuarios: usuarios.map((usuario) => ({
+      ...usuario,
+      presencia: presencias.get(usuario.id) ?? {
+        estado: "offline",
+        conectadoDesde: null,
+        ultimaSenalEn: null,
+        desconectadoEn: null,
+        conexionesActivas: 0,
+      },
+    })),
+    total,
+    pagina: query.pagina,
+    limite: query.limite,
+  };
 }
 
 export async function findUsuarioById(actor: AuthenticatedUser, id: string): Promise<AdminUsuarioView> {

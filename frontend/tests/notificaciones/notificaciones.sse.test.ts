@@ -152,6 +152,33 @@ describe("connectNotificacionesSse", () => {
     connection.abort();
   });
 
+  it("entrega un evento usuario.presencia-cambiada válido", async () => {
+    const onEvent = vi.fn();
+    const fetcher = vi.fn().mockResolvedValue(
+      streamResponse(
+        'id: evt-p\nevent: usuario.presencia-cambiada\ndata: {"usuarioId":"u1","empresaId":"e1","estado":"online","conectadoDesde":"2026-09-01T10:00:00.000Z","ultimaSenalEn":"2026-09-01T10:00:00.000Z","desconectadoEn":null,"conexionesActivas":1}\n\n',
+      ),
+    );
+
+    const connection = connectNotificacionesSse({ onEvent, fetcher });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith({
+      id: "evt-p",
+      type: "usuario.presencia-cambiada",
+      data: {
+        usuarioId: "u1",
+        empresaId: "e1",
+        estado: "online",
+        conectadoDesde: "2026-09-01T10:00:00.000Z",
+        ultimaSenalEn: "2026-09-01T10:00:00.000Z",
+        desconectadoEn: null,
+        conexionesActivas: 1,
+      },
+    });
+    connection.abort();
+  });
+
   it("un whatsapp.mensaje-nuevo sin conversacionId termina sin adelantar el cursor", async () => {
     const estados: string[] = [];
     const connection = connectNotificacionesSse({

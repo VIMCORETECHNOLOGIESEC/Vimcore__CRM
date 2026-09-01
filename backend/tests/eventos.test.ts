@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { EventBroker, eventBroker } from "../src/lib/event-broker.js";
 import { openEventStream } from "../src/services/eventos.service.js";
+import { __resetPresenceForTests, getPresenceForUsuarios, registerPresenceConnection } from "../src/services/presencia.service.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
 import { testAdminPrisma } from "./fixtures/admin-prisma.js";
@@ -34,6 +35,30 @@ async function createToken(): Promise<{ id: string; token: string }> {
     .post("/api/v1/auth/login")
     .send({ correo: user.correo, password });
   return { id: user.id, token: response.body.accessToken as string };
+}
+
+async function readSseFrameContaining(
+  reader: ReadableStreamDefaultReader<Uint8Array> | undefined,
+  expectedEvent: string,
+): Promise<string> {
+  if (!reader) throw new Error("Missing SSE response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (let intento = 0; intento < 10; intento += 1) {
+    const chunk = await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Timed out waiting for ${expectedEvent}`)), 500);
+      }),
+    ]);
+
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    if (buffer.includes(`event: ${expectedEvent}`)) return buffer;
+  }
+
+  throw new Error(`Expected SSE event ${expectedEvent} not found in: ${buffer}`);
 }
 
 afterAll(async () => {
@@ -163,6 +188,39 @@ describe("M8 SSE lifecycle", () => {
     expect(broker.connectionCount("owner", COMPANY_SCOPE)).toBe(0);
     vi.useRealTimers();
   });
+
+  it("mantiene presencia online mientras exista al menos una conexión activa", () => {
+    __resetPresenceForTests();
+    const primera = registerPresenceConnection(
+      { id: "owner", empresaId: BOOTSTRAP_EMPRESA_ID },
+      new Date("2026-09-01T10:00:00.000Z"),
+      { publish: false },
+    );
+    const segunda = registerPresenceConnection(
+      { id: "owner", empresaId: BOOTSTRAP_EMPRESA_ID },
+      new Date("2026-09-01T10:01:00.000Z"),
+      { publish: false },
+    );
+
+    expect(getPresenceForUsuarios(["owner"], BOOTSTRAP_EMPRESA_ID).get("owner")).toMatchObject({
+      estado: "online",
+      conectadoDesde: "2026-09-01T10:00:00.000Z",
+      conexionesActivas: 2,
+    });
+
+    primera.close(new Date("2026-09-01T10:02:00.000Z"));
+    expect(getPresenceForUsuarios(["owner"], BOOTSTRAP_EMPRESA_ID).get("owner")).toMatchObject({
+      estado: "online",
+      conexionesActivas: 1,
+    });
+
+    segunda.close(new Date("2026-09-01T10:03:00.000Z"));
+    expect(getPresenceForUsuarios(["owner"], BOOTSTRAP_EMPRESA_ID).get("owner")).toMatchObject({
+      estado: "offline",
+      desconectadoEn: "2026-09-01T10:03:00.000Z",
+      conexionesActivas: 0,
+    });
+  });
 });
 
 describe("GET /api/v1/eventos", () => {
@@ -182,8 +240,7 @@ describe("GET /api/v1/eventos", () => {
       expect(response.headers.get("content-type")).toContain("text/event-stream");
 
       const firstEvent = eventBroker.publish(id, "notificacion.nueva", { id: "n-live" }, BOOTSTRAP_EMPRESA_ID);
-      const firstChunk = await response.body?.getReader().read();
-      const firstFrame = new TextDecoder().decode(firstChunk?.value);
+      const firstFrame = await readSseFrameContaining(response.body?.getReader(), "notificacion.nueva");
       expect(firstFrame).toContain("event: notificacion.nueva");
       expect(firstFrame).toContain('data: {"id":"n-live"}');
       firstAbort.abort();
@@ -193,8 +250,7 @@ describe("GET /api/v1/eventos", () => {
         headers: { Authorization: `Bearer ${token}`, "Last-Event-ID": firstEvent.id },
         signal: replayAbort.signal,
       });
-      const replayChunk = await replay.body?.getReader().read();
-      const replayFrame = new TextDecoder().decode(replayChunk?.value);
+      const replayFrame = await readSseFrameContaining(replay.body?.getReader(), "lead.asignado");
       expect(replayFrame).toContain("event: lead.asignado");
       expect(replayFrame).toContain('data: {"leadId":"lead-replay"}');
     } finally {

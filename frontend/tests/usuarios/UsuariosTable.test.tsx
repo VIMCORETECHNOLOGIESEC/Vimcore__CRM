@@ -101,6 +101,32 @@ describe("UsuariosTable -- subtítulo de empresa por fila", () => {
   });
 });
 
+describe("UsuariosTable -- presencia online/offline", () => {
+  it("muestra el estado de conexión de un usuario", () => {
+    renderTabla([
+      usuarioFake({
+        presencia: {
+          estado: "online",
+          conectadoDesde: new Date(Date.now() - 60_000).toISOString(),
+          ultimaSenalEn: new Date().toISOString(),
+          desconectadoEn: null,
+          conexionesActivas: 1,
+        },
+      }),
+    ]);
+
+    expect(screen.getByText("Conexión")).toBeInTheDocument();
+    expect(screen.getByText("En línea")).toBeInTheDocument();
+  });
+
+  it("muestra desconectado sin registro cuando no hay presencia en memoria", () => {
+    renderTabla([usuarioFake()]);
+
+    expect(screen.getByText("Desconectado")).toBeInTheDocument();
+    expect(screen.getByText("Sin registro")).toBeInTheDocument();
+  });
+});
+
 describe("UsuariosTable -- soloLectura (holding-wide en 'Ver en vivo' de una empresa, bug corregido)", () => {
   it("con soloLectura, oculta la columna Acciones por completo (sin header ni botón de menú por fila)", () => {
     renderTabla([usuarioFake()], false, true);
