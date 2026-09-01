@@ -53,12 +53,24 @@ const LEAD_RELACIONES_INCLUDE = {
 
 export type LeadConRelaciones = Prisma.LeadGetPayload<{ include: typeof LEAD_RELACIONES_INCLUDE }>;
 
+/**
+ * Fix (D2, "Frontera de identidad y deduplicación" — resuelto 2026-08-25,
+ * docs/16-hallazgos-y-preguntas.md §8): `Cliente` sigue siendo identidad
+ * compartida a nivel holding (mismo `telefonoNormalizado` único), pero el
+ * chequeo de lead abierto se evalúa por `(cliente, empresa)`, no por cliente
+ * solo — un mismo Cliente puede tener leads simultáneos e independientes en
+ * distintas empresas. `empresaId` obligatorio (no opcional): el único
+ * llamador que antes podía omitirlo (`deduplicacion.service.ts`, sin
+ * bridgeId ni empresaId resuelta) ahora trata esa ausencia como "sin lead
+ * abierto" sin consultar la BD, ver ese archivo.
+ */
 export async function findLeadAbierto(
   clienteId: string,
+  empresaId: string,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Lead | null> {
   return client.lead.findFirst({
-    where: { clienteId, etapa: { notIn: [...ETAPAS_CERRADAS] } },
+    where: { clienteId, empresaId, etapa: { notIn: [...ETAPAS_CERRADAS] } },
   });
 }
 
@@ -66,13 +78,18 @@ export async function findLeadAbierto(
  * Ordenado por `cerradoEn desc` (índice `(cliente_id, cerrado_en DESC)`,
  * diseño M3): el decisor solo necesita el cierre más reciente para calcular
  * la ventana de reingreso de 90 días.
+ *
+ * Fix (D2, mismo criterio que `findLeadAbierto` arriba): la ventana de
+ * reingreso también se evalúa por `(cliente, empresa)` — un cierre en la
+ * empresa A nunca debe abrir/cerrar la ventana de reingreso de la empresa B.
  */
 export async function findUltimoLeadCerrado(
   clienteId: string,
+  empresaId: string,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Lead | null> {
   return client.lead.findFirst({
-    where: { clienteId, etapa: { in: [...ETAPAS_CERRADAS] } },
+    where: { clienteId, empresaId, etapa: { in: [...ETAPAS_CERRADAS] } },
     orderBy: { cerradoEn: "desc" },
   });
 }

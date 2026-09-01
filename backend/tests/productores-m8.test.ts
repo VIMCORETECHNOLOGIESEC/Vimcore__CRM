@@ -166,7 +166,16 @@ describe("M8 transactional lead producers", () => {
     );
     await testAdminPrisma.lead.update({ where: { id: first.leadId }, data: { asesorId: asesor.id } });
     const publish = vi.spyOn(eventBroker, "publish");
-    await conContexto(() => deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date() }));
+    // Fix (D2, lead abierto por (cliente, empresa)): la repetición también
+    // necesita `bridgeId` -- sin él, `empresaIdCandidato` resuelve `null` y
+    // el paso C ya no busca lead abierto sin acotar por empresa (evita
+    // reabrir el bug de fusión cross-empresa), así que la repetición
+    // terminaría en el guard `empresa_no_resuelta` en vez de encontrar el
+    // lead. Toda ingesta real siempre trae `bridgeId` (comentario de
+    // `deduplicacion.service.ts`); este test ya lo tiene disponible arriba.
+    await conContexto(() =>
+      deduplicateLead({ nombre: "Repeated", telefono, correo: null, ingresadoEn: new Date(), bridgeId: bridge.id }),
+    );
     expect(await testAdminPrisma.notificacion.count({ where: { usuarioId: asesor.id, leadId: first.leadId, tipo: "INTERACCION_REPETIDA" } })).toBe(1);
     expect(publish).toHaveBeenCalledWith(asesor.id, "notificacion.nueva", expect.objectContaining({ tipo: "INTERACCION_REPETIDA" }), BOOTSTRAP_EMPRESA_ID);
   });
