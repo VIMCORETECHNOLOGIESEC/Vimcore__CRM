@@ -416,7 +416,7 @@ describe("deduplicacion.service — deduplicateLead", () => {
     }));
 });
 
-describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + dedupe shadow scope", () => {
+describe("deduplicacion.service — D2 (resuelto 2026-08-25): lead abierto por (cliente, empresa)", () => {
   const EMPRESA_BOOTSTRAP = "00000000-0000-0000-0000-000000000001";
 
   // Bloque C (D4): `empresaId` ya no acepta `null` — `Bridge.empresaId` es
@@ -445,7 +445,14 @@ describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + de
       expect(lead.empresaId).toBe(EMPRESA_BOOTSTRAP);
     }));
 
-  it("cross-empresa: una repetición vía bridge de OTRA empresa sobre un lead abierto produce exactamente una fila de revisión pendiente, sin alterar el outcome legado (Scenario 'Client open in more than one company')", () =>
+  // Fix (D2, "Frontera de identidad y deduplicación" — resuelto 2026-08-25):
+  // reemplaza al viejo test "cross-empresa... shadow scope", que afirmaba el
+  // bug (una repetición de otra empresa absorbía el lead ajeno como
+  // "interacción repetida"). Detectado en producción: mismo teléfono
+  // enviado por 3 empresas distintas se fusionó 3 veces en el lead de una
+  // cuarta (10 filas en `leads_abiertos_revision_pendiente` antes de este
+  // fix).
+  it("empresa distinta: NO reutiliza el lead abierto de otra empresa — crea uno propio, independiente", () =>
     conContexto(async () => {
       const empresaB = (
         await prisma.empresa.create({ data: { nombre: `Empresa B ${randomUUID()}` } })
@@ -456,33 +463,26 @@ describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + de
 
       const primera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeA.id });
       expect(primera.accion.kind).toBe("crear_lead");
+      expect(primera.empresaId).toBe(EMPRESA_BOOTSTRAP);
 
       const segunda = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeB.id });
-      // Scenario negativo (spec): el criterio global sigue siendo la ÚNICA
-      // autoridad — el outcome legado y el leadId NUNCA cambian por el shadow.
-      expect(segunda.accion.kind).toBe("interaccion_repetida");
-      expect(segunda.leadId).toBe(primera.leadId);
+      expect(segunda.accion.kind).toBe("crear_lead");
+      expect(segunda.empresaId).toBe(empresaB);
+      expect(segunda.leadId).not.toBe(primera.leadId);
 
-      const filas = await prisma.leadAbiertoRevisionPendiente.findMany({
-        where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
-      });
-      expect(filas).toHaveLength(1);
-      expect(filas[0]?.empresaLeadId).toBe(EMPRESA_BOOTSTRAP);
-      expect(filas[0]?.empresaIngestaId).toBe(empresaB);
+      // El Cliente sigue siendo compartido a nivel holding (D2): mismo
+      // telefonoNormalizado, un solo Cliente, dos Lead independientes.
+      expect(segunda.clienteId).toBe(primera.clienteId);
+      expect(segunda.clienteCreado).toBe(false);
 
-      // Un segundo repeat desde la MISMA empresa foránea no duplica la fila
-      // (upsert idempotente sobre la tripleta única).
+      // Repetir DESDE la empresa B ahora sí es "interacción repetida" —
+      // pero sobre el lead de B, nunca sobre el de A.
       const tercera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeB.id });
       expect(tercera.accion.kind).toBe("interaccion_repetida");
-      expect(tercera.leadId).toBe(primera.leadId);
-
-      const filasTrasSegundoRepeat = await prisma.leadAbiertoRevisionPendiente.findMany({
-        where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
-      });
-      expect(filasTrasSegundoRepeat).toHaveLength(1);
+      expect(tercera.leadId).toBe(segunda.leadId);
     }));
 
-  it("scope coincide (misma empresa en ambos lados): agreement, sin fila de revisión (Scenario 'agrees with legacy')", () =>
+  it("misma empresa: repetición sí reutiliza el lead abierto (comportamiento intacto)", () =>
     conContexto(async () => {
       const bridge = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP);
       const telefono = telefonoUnico();
@@ -491,29 +491,22 @@ describe("deduplicacion.service — Bloque B (Fase 3): empresaId derivation + de
       const segunda = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
 
       expect(segunda.accion.kind).toBe("interaccion_repetida");
-      const filas = await prisma.leadAbiertoRevisionPendiente.findMany({
-        where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
-      });
-      expect(filas).toHaveLength(0);
+      expect(segunda.leadId).toBe(primera.leadId);
     }));
 
-  it("sin bridgeId en la repetición (compatibilidad M3): empresaIdCandidato null, ninguna fila de revisión, ingesta normal", () =>
+  it("sin bridgeId ni empresaId en la repetición: empresa no resoluble, la ingesta se rechaza (nunca cae a búsqueda global sin acotar)", () =>
     conContexto(async () => {
       const bridge = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP);
       const telefono = telefonoUnico();
 
-      const primera = await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
-      // `bridgeId: undefined` explícito — el lead YA existe (repetición), así
-      // que esta llamada nunca toca el guard "empresa_no_resuelta" de
-      // `crear_lead` (Bloque C, D4): ese guard solo corre en la rama de
-      // creación. El punto de esta prueba sigue siendo "sin bridgeId en la
-      // repetición" (compatibilidad M3, D5/D6 shadow scope).
-      const segunda = await deduplicateLead(entradaBase({ telefono, bridgeId: undefined }));
-
-      expect(segunda.accion.kind).toBe("interaccion_repetida");
-      const filas = await prisma.leadAbiertoRevisionPendiente.findMany({
-        where: { clienteId: primera.clienteId, leadAbiertoId: primera.leadId },
+      await deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id });
+      // `bridgeId: undefined` explícito, sin `empresaId` tampoco —
+      // `empresaIdCandidato` resuelve `null`, así que el paso C ni siquiera
+      // busca lead abierto (evita reabrir el bug global) y la creación
+      // rechaza por el guard `empresa_no_resuelta` ya existente (Bloque C,
+      // D4) — nunca reutiliza en silencio el lead de la primera llamada.
+      await expect(deduplicateLead(entradaBase({ telefono, bridgeId: undefined }))).rejects.toMatchObject({
+        code: "empresa_no_resuelta",
       });
-      expect(filas).toHaveLength(0);
     }));
 });
