@@ -259,6 +259,110 @@ describe("POST /api/v1/empresas/:empresaId/supervisores (hotfix: alta de Supervi
   });
 });
 
+describe("POST /api/v1/empresas/:empresaId/asesores (fix: Asesor scoped a empresa logueaba holding-wide)", () => {
+  it("201 crea un asesor de empresa y jamás devuelve passwordHash", async () => {
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/asesores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Asesora Integración",
+        correo: "asesora-crud@integracion.test",
+        password: "clave-asesora-123456",
+      });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.asesor.usuario.rol).toBe("ASESOR");
+    expect(respuesta.body.asesor.membresia).toMatchObject({
+      empresaId,
+      rol: "ASESOR",
+      activa: true,
+      correo: "asesora-crud@integracion.test",
+    });
+    expect(JSON.stringify(respuesta.body)).not.toContain("passwordHash");
+  });
+
+  it("201 y el asesor creado puede loguearse de inmediato con sessionScope 'company' y el empresaId correcto (prueba real de punta a punta del fix)", async () => {
+    const correo = "asesora-login-real@integracion.test";
+    const password = "clave-asesora-login-1234";
+
+    const creacion = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/asesores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Asesora Login Real", correo, password });
+    expect(creacion.status).toBe(201);
+
+    const login = await request(app).post("/api/v1/auth/login").send({ correo, password });
+    expect(login.status).toBe(200);
+
+    const accessPayload = await verifyAccessToken(login.body.accessToken);
+    expect(accessPayload).toMatchObject({
+      rol: "ASESOR",
+      sessionScope: "company",
+      empresaId,
+    });
+  });
+
+  it("403 cuando el actor no es una sesión holding-wide (ej. una sesión company-scoped)", async () => {
+    const correoAsesor = "asesor-companyscope-asesores@integracion.test";
+    const passwordAsesor = "clave-asesor-companyscope-1234";
+    await request(app)
+      .post("/api/v1/usuarios")
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Asesor Company Scope", correo: correoAsesor, password: passwordAsesor, rol: "ASESOR", empresaId });
+    const loginAsesor = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: correoAsesor, password: passwordAsesor });
+    expect(loginAsesor.status).toBe(200);
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/asesores`)
+      .set("Authorization", `Bearer ${loginAsesor.body.accessToken}`)
+      .send({ nombre: "No Debería Crearse", correo: "no-deberia-asesor@integracion.test", password: "clave-cualquiera-1234" });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it("400 con campos faltantes", async () => {
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/asesores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Incompleto" });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("409 cuando el correo ya está en uso", async () => {
+    const correo = "asesora-duplicada-crud@integracion.test";
+    const password = "clave-asesora-duplicada-123456";
+
+    const primeraCreacion = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/asesores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Primera Asesora", correo, password });
+    expect(primeraCreacion.status).toBe(201);
+
+    const segundaCreacion = await request(app)
+      .post(`/api/v1/empresas/${empresaId}/asesores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({ nombre: "Segunda Asesora", correo, password });
+
+    expect(segundaCreacion.status).toBe(409);
+  });
+
+  it("404 cuando la empresa no existe", async () => {
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/00000000-0000-0000-0000-000000000000/asesores`)
+      .set("Authorization", `Bearer ${adminAccessToken}`)
+      .send({
+        nombre: "Asesora Empresa Inexistente",
+        correo: "asesora-empresa-inexistente@integracion.test",
+        password: "clave-asesora-inexistente-123456",
+      });
+
+    expect(respuesta.status).toBe(404);
+  });
+});
+
 describe("GET /api/v1/usuarios y GET /api/v1/usuarios/:id", () => {
   it("200 lista usuarios sin exponer passwordHash", async () => {
     const respuesta = await request(app)

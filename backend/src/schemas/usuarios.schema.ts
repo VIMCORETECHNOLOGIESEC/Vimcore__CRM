@@ -40,6 +40,11 @@ export const createEmpresaAdministradorBodySchema = z.object({
 // (`usuarios.service.ts::createEmpresaSupervisor`), solo cambia el rol.
 export const createEmpresaSupervisorBodySchema = createEmpresaAdministradorBodySchema;
 
+// Fix (Asesor scoped a empresa logueaba holding-wide): mismo shape exacto
+// que `createEmpresaAdministradorBodySchema` -- mismo mecanismo de alta
+// (`usuarios.service.ts::createEmpresaAsesor`), solo cambia el rol.
+export const createEmpresaAsesorBodySchema = createEmpresaAdministradorBodySchema;
+
 /**
  * `activo` reactiva/desactiva por este mismo endpoint — mismo patrón que
  * `bridges.schema.ts::updateBridgeBodySchema` con `estado: "ACTIVO"`. Solo
@@ -120,6 +125,7 @@ export const listResponsablesQuerySchema = z.object({
 export type CreateUsuarioBody = z.infer<typeof createUsuarioBodySchema>;
 export type CreateEmpresaAdministradorBody = z.infer<typeof createEmpresaAdministradorBodySchema>;
 export type CreateEmpresaSupervisorBody = z.infer<typeof createEmpresaSupervisorBodySchema>;
+export type CreateEmpresaAsesorBody = z.infer<typeof createEmpresaAsesorBodySchema>;
 export type UpdateUsuarioBody = z.infer<typeof updateUsuarioBodySchema>;
 export type IdParam = z.infer<typeof idParamSchema>;
 export type EmpresaIdParam = z.infer<typeof empresaIdParamSchema>;

@@ -155,6 +155,8 @@ export interface CreateEmpresaAdministradorInput {
 
 export type CreateEmpresaSupervisorInput = CreateEmpresaAdministradorInput;
 
+export type CreateEmpresaAsesorInput = CreateEmpresaAdministradorInput;
+
 export interface EmpresaAdministradorView {
   usuario: {
     id: string;
@@ -189,6 +191,23 @@ export interface EmpresaSupervisorView {
   };
 }
 
+export interface EmpresaAsesorView {
+  usuario: {
+    id: string;
+    nombre: string;
+    rol: "ASESOR";
+    activo: boolean;
+  };
+  membresia: {
+    id: string;
+    usuarioId: string;
+    empresaId: string;
+    rol: "ASESOR";
+    activa: boolean;
+    correo: string;
+  };
+}
+
 /**
  * Hotfix (supervisor scoped a empresa): mapa de segmento de correo del
  * portador por rol -- separado del propio `RolUsuario`/`RolMembresia` porque
@@ -196,14 +215,19 @@ export interface EmpresaSupervisorView {
  * ver el prefijo `portador-admin-` ya persistido en BD antes de este
  * cambio) -- generalizar `correoPortadorAdministrador` sin este mapa
  * explícito habría cambiado ese prefijo ya existente.
+ *
+ * Fix (Asesor scoped a empresa logueaba holding-wide): agrega el segmento
+ * `asesor` con el mismo criterio -- mismo mecanismo que ADMINISTRADOR/
+ * SUPERVISOR arriba, sin prefijo histórico previo que preservar.
  */
-const ROL_PORTADOR_SEGMENTO: Record<"ADMINISTRADOR" | "SUPERVISOR", string> = {
+const ROL_PORTADOR_SEGMENTO: Record<"ADMINISTRADOR" | "SUPERVISOR" | "ASESOR", string> = {
   ADMINISTRADOR: "admin",
   SUPERVISOR: "supervisor",
+  ASESOR: "asesor",
 };
 
 function correoPortadorPara(
-  rol: "ADMINISTRADOR" | "SUPERVISOR",
+  rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR",
   empresaId: string,
   correoMembresia: string,
 ): string {
@@ -444,6 +468,88 @@ export async function createEmpresaSupervisor(
             usuarioId: membresia.usuarioId,
             empresaId: membresia.empresaId,
             rol: "SUPERVISOR",
+            activa: membresia.activa,
+            correo: membresia.correo as string,
+          },
+        };
+      },
+      USUARIOS_TRANSACTION_BOUNDS,
+    );
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw emailAlreadyInUse();
+    }
+    throw error;
+  }
+}
+
+/**
+ * Fix (bug de seguridad: Asesor creado dentro de una empresa terminaba
+ * logueando con sesión holding-wide en vez de "company"): espejo exacto de
+ * `createEmpresaSupervisor` arriba, con `rol: "ASESOR"` en el Usuario
+ * portador y en la Membresia -- mismo mecanismo (login real por
+ * `Membresia.correo`, `Usuario` portador solo requerido por
+ * `auth.service.ts::login` para resolver `rolEquivalente(membresia) ===
+ * usuarioDeMembresia.rol`). `habilitadoParaVenta: false` por defecto, mismo
+ * criterio que la creación de Asesor legado vía `POST /usuarios`
+ * (`membresiaParaRolLegado`) -- este alta no expone ese campo, se ajusta
+ * después vía edición.
+ */
+export async function createEmpresaAsesor(
+  empresaId: string,
+  input: CreateEmpresaAsesorInput,
+): Promise<EmpresaAsesorView> {
+  const membresiaPasswordHash = await hashPassword(input.password);
+  const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
+  const usuarioCorreo = correoPortadorPara("ASESOR", empresaId, input.correo);
+
+  try {
+    return await runInTransaction(
+      undefined,
+      async (tx) => {
+        const empresa = await empresaRepository.findById(empresaId, tx);
+        if (!empresa) {
+          throw empresaNotFound();
+        }
+
+        await membresiaRepository.assertCorreoDisponible(input.correo, tx);
+        await membresiaRepository.assertCorreoDisponible(usuarioCorreo, tx);
+
+        const usuario = await usuarioRepository.createUsuario(
+          {
+            nombre: input.nombre,
+            correo: usuarioCorreo,
+            // Invariantes: rol ASESOR para que el login por Membresia pase;
+            // password no expuesta para que Usuario.correo no autentique holding-wide.
+            passwordHash: usuarioPasswordHash,
+            rol: "ASESOR",
+          },
+          tx,
+        );
+        const membresia = await membresiaRepository.createMembresiaConCredencial(
+          {
+            usuarioId: usuario.id,
+            empresaId,
+            rol: "ASESOR",
+            habilitadoParaVenta: false,
+            correo: input.correo,
+            passwordHash: membresiaPasswordHash,
+          },
+          tx,
+        );
+
+        return {
+          usuario: {
+            id: usuario.id,
+            nombre: usuario.nombre,
+            rol: "ASESOR",
+            activo: usuario.activo,
+          },
+          membresia: {
+            id: membresia.id,
+            usuarioId: membresia.usuarioId,
+            empresaId: membresia.empresaId,
+            rol: "ASESOR",
             activa: membresia.activa,
             correo: membresia.correo as string,
           },

@@ -3,6 +3,7 @@ import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   createEmpresaAdministradorBodySchema,
+  createEmpresaAsesorBodySchema,
   createEmpresaSupervisorBodySchema,
   createUsuarioBodySchema,
   empresaIdParamSchema,
@@ -13,6 +14,7 @@ import {
 } from "../schemas/usuarios.schema.js";
 import {
   createEmpresaAdministrador,
+  createEmpresaAsesor,
   createEmpresaSupervisor,
   createUsuario,
   deactivateUsuario,
@@ -97,6 +99,32 @@ export async function postEmpresaSupervisor(req: Request, res: Response): Promis
 
   const supervisor = await createEmpresaSupervisor(parsedParams.data.empresaId, parsedBody.data);
   res.status(201).json({ supervisor });
+}
+
+/**
+ * Fix (bug de seguridad: Asesor creado dentro de una empresa terminaba
+ * logueando con sesión holding-wide en vez de "company"): espejo exacto de
+ * `postEmpresaSupervisor` arriba, mismo guard (`sessionScope !== "holding"
+ * || empresaId !== null` -> 403 `forbiddenHoldingScope`).
+ */
+export async function postEmpresaAsesor(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  if (usuario.sessionScope !== "holding" || usuario.empresaId !== null) {
+    throw forbiddenHoldingScope();
+  }
+
+  const parsedParams = empresaIdParamSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    throw invalidEmpresaIdParam();
+  }
+
+  const parsedBody = createEmpresaAsesorBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw zodValidationError();
+  }
+
+  const asesor = await createEmpresaAsesor(parsedParams.data.empresaId, parsedBody.data);
+  res.status(201).json({ asesor });
 }
 
 export async function getUsuarios(req: Request, res: Response): Promise<void> {
