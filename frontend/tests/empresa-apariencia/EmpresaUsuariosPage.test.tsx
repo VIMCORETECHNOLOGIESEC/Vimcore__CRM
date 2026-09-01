@@ -15,7 +15,9 @@ vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", (
 }));
 vi.mock("@/funcionalidades/usuarios/usuarios.api", () => ({
   fetchUsuariosApi: vi.fn(),
-  createUsuarioApi: vi.fn(),
+  createEmpresaAdministradorApi: vi.fn(),
+  createEmpresaSupervisorApi: vi.fn(),
+  createEmpresaAsesorApi: vi.fn(),
   updateUsuarioApi: vi.fn(),
   resetPasswordApi: vi.fn(),
   deactivateUsuarioApi: vi.fn(),
@@ -44,7 +46,9 @@ const { EmpresaUsuariosPage } = await import(
 
 const fetchEmpresaHoldingApiMock = vi.mocked(empresaAparienciaHoldingApi.fetchEmpresaHoldingApi);
 const fetchUsuariosApiMock = vi.mocked(usuariosApi.fetchUsuariosApi);
-const createUsuarioApiMock = vi.mocked(usuariosApi.createUsuarioApi);
+const createEmpresaAdministradorApiMock = vi.mocked(usuariosApi.createEmpresaAdministradorApi);
+const createEmpresaSupervisorApiMock = vi.mocked(usuariosApi.createEmpresaSupervisorApi);
+const createEmpresaAsesorApiMock = vi.mocked(usuariosApi.createEmpresaAsesorApi);
 const getCargaActivaDeUsuarioMock = vi.mocked(usuariosApi.getCargaActivaDeUsuario);
 const toastSuccessMock = vi.mocked(toast.success);
 const toastErrorMock = vi.mocked(toast.error);
@@ -140,7 +144,9 @@ beforeEach(() => {
   fetchEmpresaHoldingApiMock.mockReset();
   fetchEmpresaHoldingApiMock.mockResolvedValue(empresaFake());
   fetchUsuariosApiMock.mockReset();
-  createUsuarioApiMock.mockReset();
+  createEmpresaAdministradorApiMock.mockReset();
+  createEmpresaSupervisorApiMock.mockReset();
+  createEmpresaAsesorApiMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReset();
   getCargaActivaDeUsuarioMock.mockReturnValue(0);
   toastSuccessMock.mockReset();
@@ -153,12 +159,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function completarFormularioAlta(user: ReturnType<typeof userEvent.setup>) {
+/** `etiquetaRol` es la etiqueta en español mostrada en el `<Select>` de rol (ver `catalogos.ts::ROL_ETIQUETAS`). */
+async function completarFormularioAlta(
+  user: ReturnType<typeof userEvent.setup>,
+  etiquetaRol: "Administrador" | "Supervisor" | "Asesor" = "Asesor",
+) {
   await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
   await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
   await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
   await user.click(screen.getByRole("combobox", { name: "Rol" }));
-  await user.click(await screen.findByRole("option", { name: "Asesor" }));
+  await user.click(await screen.findByRole("option", { name: etiquetaRol }));
 }
 
 describe("EmpresaUsuariosPage — empresa puntual (empresaId fijo por la ruta, NO useVistaEmpresa)", () => {
@@ -244,40 +254,86 @@ describe("EmpresaUsuariosPage — toggle «solo holding-wide» nunca se muestra 
   });
 });
 
-describe("EmpresaUsuariosPage — alta de usuario siempre manda el empresaId fijo de la ruta", () => {
-  it("con datos válidos, llama a createUsuarioApi con `empresaId: e1` sin condicionarlo a ningún query param", async () => {
+describe("EmpresaUsuariosPage — cada rol va por su ruta dedicada de empresa, NUNCA por POST /usuarios genérico", () => {
+  it("rol Administrador llama a createEmpresaAdministradorApi('e1', {...}), sin rol en el body", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake());
+    createEmpresaAdministradorApiMock.mockResolvedValue(undefined);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText("Todavía no hay usuarios registrados en esta empresa");
 
-    await completarFormularioAlta(user);
+    await completarFormularioAlta(user, "Administrador");
     await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     await waitFor(() =>
-      expect(createUsuarioApiMock).toHaveBeenCalledWith({
+      expect(createEmpresaAdministradorApiMock).toHaveBeenCalledWith("e1", {
         nombre: "Marta Herrera",
         correo: "marta@crm.test",
-        rol: "ASESOR",
         password: "una-contraseña-larga-1",
-        empresaId: "e1",
       }),
     );
-    expect(toastSuccessMock).toHaveBeenCalledWith("Usuario creado correctamente.");
+    expect(createEmpresaSupervisorApiMock).not.toHaveBeenCalled();
+    expect(createEmpresaAsesorApiMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).toHaveBeenCalledWith("Administrador creado correctamente.");
+  });
+
+  it("rol Supervisor llama a createEmpresaSupervisorApi('e1', {...}), sin rol en el body", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createEmpresaSupervisorApiMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Todavía no hay usuarios registrados en esta empresa");
+
+    await completarFormularioAlta(user, "Supervisor");
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() =>
+      expect(createEmpresaSupervisorApiMock).toHaveBeenCalledWith("e1", {
+        nombre: "Marta Herrera",
+        correo: "marta@crm.test",
+        password: "una-contraseña-larga-1",
+      }),
+    );
+    expect(createEmpresaAdministradorApiMock).not.toHaveBeenCalled();
+    expect(createEmpresaAsesorApiMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).toHaveBeenCalledWith("Supervisor creado correctamente.");
+  });
+
+  it("rol Asesor llama a createEmpresaAsesorApi('e1', {...}), sin rol en el body", async () => {
+    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
+    createEmpresaAsesorApiMock.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Todavía no hay usuarios registrados en esta empresa");
+
+    await completarFormularioAlta(user, "Asesor");
+    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() =>
+      expect(createEmpresaAsesorApiMock).toHaveBeenCalledWith("e1", {
+        nombre: "Marta Herrera",
+        correo: "marta@crm.test",
+        password: "una-contraseña-larga-1",
+      }),
+    );
+    expect(createEmpresaAdministradorApiMock).not.toHaveBeenCalled();
+    expect(createEmpresaSupervisorApiMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).toHaveBeenCalledWith("Asesor creado correctamente.");
   });
 
   it("si el correo ya está en uso, muestra el mensaje accionable del backend (409 correo_en_uso)", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockRejectedValue(
+    createEmpresaAsesorApiMock.mockRejectedValue(
       new ApiError("correo_en_uso", 409, "El correo ya está en uso"),
     );
     const user = userEvent.setup();
     renderPage();
     await screen.findByText("Todavía no hay usuarios registrados en esta empresa");
 
-    await completarFormularioAlta(user);
+    await completarFormularioAlta(user, "Asesor");
     await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 

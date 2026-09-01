@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { toast } from "sonner";
 import {
   createEmpresaAdministradorApi,
+  createEmpresaAsesorApi,
+  createEmpresaSupervisorApi,
   createUsuarioApi,
   deactivateUsuarioApi,
   fetchUsuariosApi,
@@ -10,6 +12,8 @@ import {
   resetPasswordApi,
   updateUsuarioApi,
   type CreateEmpresaAdministradorInput,
+  type CreateEmpresaAsesorInput,
+  type CreateEmpresaSupervisorInput,
   type UpdateUsuarioInput,
   type CreateUsuarioInput,
   type UsuariosQueryParams,
@@ -75,6 +79,41 @@ export function useCreateEmpresaAdministrador(empresaId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
       toast.success("Administrador creado correctamente.");
+    },
+  });
+}
+
+/**
+ * Alta de supervisor de empresa -- `POST /empresas/:empresaId/supervisores`
+ * (ver `usuarios.api.ts::createEmpresaSupervisorApi`). Mismo criterio de
+ * éxito que `useCreateEmpresaAdministrador`: invalida el listado de usuarios
+ * y avisa con un toast.
+ */
+export function useCreateEmpresaSupervisor(empresaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateEmpresaSupervisorInput) =>
+      createEmpresaSupervisorApi(empresaId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
+      toast.success("Supervisor creado correctamente.");
+    },
+  });
+}
+
+/**
+ * Alta de asesor de empresa -- `POST /empresas/:empresaId/asesores` (ver
+ * `usuarios.api.ts::createEmpresaAsesorApi`). Mismo criterio de éxito que
+ * `useCreateEmpresaAdministrador`: invalida el listado de usuarios y avisa
+ * con un toast.
+ */
+export function useCreateEmpresaAsesor(empresaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateEmpresaAsesorInput) => createEmpresaAsesorApi(empresaId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [USUARIOS_QUERY_KEY] });
+      toast.success("Asesor creado correctamente.");
     },
   });
 }

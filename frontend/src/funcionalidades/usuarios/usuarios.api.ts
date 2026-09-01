@@ -47,6 +47,12 @@ export interface CreateEmpresaAdministradorInput {
   password: string;
 }
 
+/** Alias de `CreateEmpresaAdministradorInput`: mismos 3 campos, mismo shape. */
+export type CreateEmpresaSupervisorInput = CreateEmpresaAdministradorInput;
+
+/** Alias de `CreateEmpresaAdministradorInput`: mismos 3 campos, mismo shape. */
+export type CreateEmpresaAsesorInput = CreateEmpresaAdministradorInput;
+
 export interface UpdateUsuarioInput {
   nombre: string;
   correo: string;
@@ -69,6 +75,24 @@ interface UsuarioResponse {
  */
 interface EmpresaAdministradorResponse {
   administrador?: unknown;
+}
+
+/**
+ * Forma real de `POST /empresas/:empresaId/supervisores` -- responde
+ * `{ supervisor }`, mismo criterio que `EmpresaAdministradorResponse` de
+ * arriba (`useCreateEmpresaSupervisor` tampoco usa el valor devuelto).
+ */
+interface EmpresaSupervisorResponse {
+  supervisor?: unknown;
+}
+
+/**
+ * Forma real de `POST /empresas/:empresaId/asesores` -- responde
+ * `{ asesor }`, mismo criterio que `EmpresaAdministradorResponse` de arriba
+ * (`useCreateEmpresaAsesor` tampoco usa el valor devuelto).
+ */
+interface EmpresaAsesorResponse {
+  asesor?: unknown;
 }
 
 /**
@@ -172,6 +196,40 @@ export async function createEmpresaAdministradorApi(
     `/empresas/${empresaId}/administradores`,
     input,
   );
+}
+
+/**
+ * Alta de supervisor de empresa -- `POST /empresas/:empresaId/supervisores`,
+ * mismo mecanismo que `createEmpresaAdministradorApi` (ruta dedicada por
+ * rol, SIN prefijo `/usuarios/`, `usuariosRouter` montado sin prefijo). A
+ * diferencia del `POST /usuarios` genérico (`createUsuarioApi`), esta ruta
+ * sí crea la `Membresia` con credencial scoped a la empresa -- corrige el
+ * bug de sesión holding-wide que un Supervisor creado vía el endpoint
+ * genérico arrastraba. El rol del usuario creado es implícito SUPERVISOR,
+ * fijado por el backend.
+ */
+export async function createEmpresaSupervisorApi(
+  empresaId: string,
+  input: CreateEmpresaSupervisorInput,
+): Promise<void> {
+  await httpClient.post<EmpresaSupervisorResponse>(
+    `/empresas/${empresaId}/supervisores`,
+    input,
+  );
+}
+
+/**
+ * Alta de asesor de empresa -- `POST /empresas/:empresaId/asesores`, mismo
+ * mecanismo que `createEmpresaSupervisorApi`/`createEmpresaAdministradorApi`
+ * (ruta dedicada por rol). Corrige el mismo bug de sesión holding-wide que
+ * un Asesor creado vía `POST /usuarios` genérico arrastraba. El rol del
+ * usuario creado es implícito ASESOR, fijado por el backend.
+ */
+export async function createEmpresaAsesorApi(
+  empresaId: string,
+  input: CreateEmpresaAsesorInput,
+): Promise<void> {
+  await httpClient.post<EmpresaAsesorResponse>(`/empresas/${empresaId}/asesores`, input);
 }
 
 /** `PATCH /usuarios/:id` -- backend real, edita nombre/correo/rol (sin contraseña). */

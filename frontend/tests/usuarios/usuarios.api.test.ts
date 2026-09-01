@@ -15,6 +15,8 @@ const {
   fetchUsuariosApi,
   createUsuarioApi,
   createEmpresaAdministradorApi,
+  createEmpresaSupervisorApi,
+  createEmpresaAsesorApi,
   updateUsuarioApi,
   resetPasswordApi,
   deactivateUsuarioApi,
@@ -127,6 +129,40 @@ describe("usuarios.api — backend real (F7, distinto de F3-F6)", () => {
     });
 
     expect(postMock).toHaveBeenCalledWith("/empresas/empresa-1/administradores", {
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      password: "una-contraseña-larga-1",
+    });
+    expect(resultado).toBeUndefined();
+  });
+
+  it("createEmpresaSupervisorApi llama a POST /empresas/:empresaId/supervisores (SIN prefijo /usuarios) con el cuerpo dado, sin devolver nada", async () => {
+    postMock.mockResolvedValue({ supervisor: usuarioFake({ id: "sup-1", rol: "SUPERVISOR" }) });
+
+    const resultado = await createEmpresaSupervisorApi("empresa-1", {
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      password: "una-contraseña-larga-1",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/empresas/empresa-1/supervisores", {
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      password: "una-contraseña-larga-1",
+    });
+    expect(resultado).toBeUndefined();
+  });
+
+  it("createEmpresaAsesorApi llama a POST /empresas/:empresaId/asesores (SIN prefijo /usuarios) con el cuerpo dado, sin devolver nada", async () => {
+    postMock.mockResolvedValue({ asesor: usuarioFake({ id: "ase-1", rol: "ASESOR" }) });
+
+    const resultado = await createEmpresaAsesorApi("empresa-1", {
+      nombre: "Ana Gómez",
+      correo: "ana@crm.test",
+      password: "una-contraseña-larga-1",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/empresas/empresa-1/asesores", {
       nombre: "Ana Gómez",
       correo: "ana@crm.test",
       password: "una-contraseña-larga-1",

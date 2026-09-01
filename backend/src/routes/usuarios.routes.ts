@@ -5,6 +5,7 @@ import {
   getUsuarios,
   getUsuariosResponsables,
   postEmpresaAdministrador,
+  postEmpresaAsesor,
   postEmpresaSupervisor,
   patchUsuario,
   postUsuario,
@@ -35,6 +36,16 @@ usuariosRouter.post(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   postEmpresaSupervisor,
+);
+// Fix (bug de seguridad: Asesor scoped a empresa logueaba holding-wide):
+// mismo middleware/guard exacto que las rutas de administradores/supervisores
+// de arriba -- el 403 fino de "solo holding-wide" lo aplica el controller
+// (`forbiddenHoldingScope`), no este `requireRole`.
+usuariosRouter.post(
+  "/empresas/:empresaId/asesores",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postEmpresaAsesor,
 );
 usuariosRouter.get(
   "/usuarios",

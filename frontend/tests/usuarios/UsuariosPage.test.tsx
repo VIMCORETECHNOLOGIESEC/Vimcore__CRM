@@ -142,13 +142,16 @@ async function abrirFiltros(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Filtros" }));
 }
 
-/** Completa nombre/correo/rol del formulario de alta (queda pendiente la contraseña, distinta por test). */
+/**
+ * Completa nombre/correo del formulario de alta (queda pendiente la
+ * contraseña, distinta por test). Sin selector de rol: `CrearAdministradorHoldingDialog`
+ * (el diálogo real de esta pantalla) no ofrece ninguno -- el rol viaja fijo
+ * como `"ADMINISTRADOR"`, ver su docblock.
+ */
 async function completarFormularioAlta(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
   await user.type(screen.getByLabelText("Nombre"), "Marta Herrera");
   await user.type(screen.getByLabelText("Correo"), "marta@crm.test");
-  await user.click(screen.getByRole("combobox", { name: "Rol" }));
-  await user.click(await screen.findByRole("option", { name: "Asesor" }));
 }
 
 describe("UsuariosPage — estados de carga, vacío y error", () => {
@@ -362,7 +365,7 @@ describe("UsuariosPage — paginación (F7)", () => {
   });
 });
 
-describe("UsuariosPage — alta de usuario", () => {
+describe("UsuariosPage — alta de administrador de holding (CrearAdministradorHoldingDialog, sin selector de rol)", () => {
   it("rechaza una contraseña inicial de menos de 12 caracteres antes de llamar al backend", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
     const user = userEvent.setup();
@@ -371,7 +374,7 @@ describe("UsuariosPage — alta de usuario", () => {
 
     await completarFormularioAlta(user);
     await user.type(screen.getByLabelText("Contraseña inicial"), "corta123");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+    await user.click(screen.getByRole("button", { name: "Crear administrador" }));
 
     expect(
       await screen.findByText("La contraseña debe tener al menos 12 caracteres."),
@@ -379,22 +382,22 @@ describe("UsuariosPage — alta de usuario", () => {
     expect(createUsuarioApiMock).not.toHaveBeenCalled();
   });
 
-  it("con datos válidos, llama a createUsuarioApi, avisa éxito y cierra el diálogo", async () => {
+  it("con datos válidos, llama a createUsuarioApi con `rol: \"ADMINISTRADOR\"` fijo, avisa éxito y cierra el diálogo", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake());
+    createUsuarioApiMock.mockResolvedValue(usuarioFake({ rol: "ADMINISTRADOR" }));
     const user = userEvent.setup();
     renderUsuariosPage();
     await screen.findByText("Todavía no hay usuarios registrados");
 
     await completarFormularioAlta(user);
     await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+    await user.click(screen.getByRole("button", { name: "Crear administrador" }));
 
     await waitFor(() =>
       expect(createUsuarioApiMock).toHaveBeenCalledWith({
         nombre: "Marta Herrera",
         correo: "marta@crm.test",
-        rol: "ASESOR",
+        rol: "ADMINISTRADOR",
         password: "una-contraseña-larga-1",
       }),
     );
@@ -413,49 +416,26 @@ describe("UsuariosPage — alta de usuario", () => {
 
     await completarFormularioAlta(user);
     await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+    await user.click(screen.getByRole("button", { name: "Crear administrador" }));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("El correo ya está en uso"));
   });
-});
 
-describe("UsuariosPage — alta de usuario dentro de una empresa puntual (vista de holding, useVistaEmpresa)", () => {
-  it("con `?empresaId=` en la URL (vista de empresa), manda `empresaId` en el body de POST /usuarios", async () => {
+  it("con `?empresaId=` en la URL, NUNCA manda `empresaId` en el body de POST /usuarios (el holding solo crea administradores DE HOLDING)", async () => {
     fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake());
+    createUsuarioApiMock.mockResolvedValue(usuarioFake({ rol: "ADMINISTRADOR" }));
     const user = userEvent.setup();
     renderUsuariosPage(["/usuarios?empresaId=empresa-77"]);
     await screen.findByText("Todavía no hay usuarios registrados");
 
     await completarFormularioAlta(user);
     await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
-
-    await waitFor(() =>
-      expect(createUsuarioApiMock).toHaveBeenCalledWith({
-        nombre: "Marta Herrera",
-        correo: "marta@crm.test",
-        rol: "ASESOR",
-        password: "una-contraseña-larga-1",
-        empresaId: "empresa-77",
-      }),
-    );
-  });
-
-  it("sin `?empresaId=` en la URL, NO manda empresaId en el body de POST /usuarios", async () => {
-    fetchUsuariosApiMock.mockResolvedValue(usuariosResponse([]));
-    createUsuarioApiMock.mockResolvedValue(usuarioFake());
-    const user = userEvent.setup();
-    renderUsuariosPage(["/usuarios"]);
-    await screen.findByText("Todavía no hay usuarios registrados");
-
-    await completarFormularioAlta(user);
-    await user.type(screen.getByLabelText("Contraseña inicial"), "una-contraseña-larga-1");
-    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+    await user.click(screen.getByRole("button", { name: "Crear administrador" }));
 
     await waitFor(() => expect(createUsuarioApiMock).toHaveBeenCalled());
     const body = createUsuarioApiMock.mock.calls.at(-1)?.[0];
     expect(body).not.toHaveProperty("empresaId");
+    expect(body).toMatchObject({ rol: "ADMINISTRADOR" });
   });
 });
 

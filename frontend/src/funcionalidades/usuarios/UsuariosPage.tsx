@@ -9,7 +9,7 @@ import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEm
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import type { AdminUsuario } from "@/tipos/usuario";
 import { BajaUsuarioDialog } from "./BajaUsuarioDialog";
-import { CrearUsuarioDialog } from "./CrearUsuarioDialog";
+import { CrearAdministradorHoldingDialog } from "./CrearAdministradorHoldingDialog";
 import { EditarUsuarioDialog } from "./EditarUsuarioDialog";
 import { RestablecerPasswordDialog } from "./RestablecerPasswordDialog";
 import { UsuariosFiltros } from "./UsuariosFiltros";
@@ -46,7 +46,11 @@ const USUARIOS_POR_PAGINA = 10;
  * confirmación (mismo criterio que `bridges/BridgesPage.tsx`): arranca con
  * cartera vacía, sin restaurar nada, acción reversible de un clic. La
  * columna "carga activa de leads" es de solo lectura -- ver el comentario de
- * brecha en `usuarios.api.ts`.
+ * brecha en `usuarios.api.ts`. El alta desde esta pantalla crea
+ * exclusivamente administradores DE HOLDING (`CrearAdministradorHoldingDialog`,
+ * `POST /usuarios` con `rol: "ADMINISTRADOR"` fijo, sin selector de rol ni
+ * `empresaId`) -- para administrador/supervisor/asesor DE UNA EMPRESA
+ * puntual, ver `empresa-apariencia/EmpresaUsuariosPage.tsx`.
  */
 export function UsuariosPage() {
   usePageHeader({ title: "Usuarios" });
@@ -164,23 +168,14 @@ export function UsuariosPage() {
       )}
 
       {dialogAltaAbierto ? (
-        <CrearUsuarioDialog
+        <CrearAdministradorHoldingDialog
           open
           onOpenChange={(abierto) => {
             if (!abierto) setDialogAltaAbierto(false);
           }}
           enviando={crear.isPending}
           onSubmit={(valores) =>
-            // Alta dentro de una empresa puntual (holding-wide mirando una
-            // empresa vía `?empresaId=`, ver `useVistaEmpresa`): manda
-            // `empresaId` en el body de `POST /usuarios` (`usuarios.api.ts`,
-            // el backend ya lo acepta). Sin empresa en vista (sesión
-            // company-scoped normal, o holding-wide sin drill-down) no se
-            // agrega el campo -- comportamiento sin cambios.
-            crear.mutate(
-              empresaVistaId ? { ...valores, empresaId: empresaVistaId } : valores,
-              { onSuccess: () => setDialogAltaAbierto(false) },
-            )
+            crear.mutate(valores, { onSuccess: () => setDialogAltaAbierto(false) })
           }
         />
       ) : null}

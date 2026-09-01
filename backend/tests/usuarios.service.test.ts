@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { AppError } from "../src/lib/app-error.js";
 import { eventBroker } from "../src/lib/event-broker.js";
 import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
 import { testAdminPrisma } from "./fixtures/admin-prisma.js";
@@ -9,6 +10,7 @@ import * as notificacionRepository from "../src/repositories/notificacion.reposi
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
 import {
   createEmpresaAdministrador,
+  createEmpresaAsesor,
   createEmpresaSupervisor,
   createUsuario,
   deactivateUsuario,
@@ -421,6 +423,113 @@ describe("usuarios.service — createEmpresaSupervisor", () => {
         where: { id: supervisor.usuario.id },
       });
       expect(usuarioAdministrador.correo).not.toBe(usuarioSupervisor.correo);
+    }));
+});
+
+/**
+ * Fix (bug de seguridad: Asesor creado dentro de una empresa terminaba
+ * logueando con sesión holding-wide en vez de "company"): espejo exacto de
+ * `createEmpresaSupervisor` arriba, mismo mecanismo (Usuario portador +
+ * Membresia con credencial propia) con `rol: "ASESOR"` en vez de
+ * `"SUPERVISOR"`.
+ */
+describe("usuarios.service — createEmpresaAsesor", () => {
+  it("crea un asesor de empresa con Usuario portador ASESOR y Membresia ASESOR activa sin filtrar passwordHash", () =>
+    sinRestriccion(async () => {
+      const empresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa asesor service ${randomUUID()}` },
+      });
+      const correo = `asesor-empresa-service-${randomUUID()}@integracion.test`;
+
+      const resultado = await createEmpresaAsesor(empresa.id, {
+        nombre: "Asesora de Empresa Service",
+        correo,
+        password: "clave-asesor-empresa-123456",
+      });
+
+      expect(resultado.membresia).toMatchObject({
+        empresaId: empresa.id,
+        rol: "ASESOR",
+        activa: true,
+        correo,
+      });
+      expect(resultado.usuario).toMatchObject({
+        nombre: "Asesora de Empresa Service",
+        rol: "ASESOR",
+        activo: true,
+      });
+      expect(JSON.stringify(resultado)).not.toContain("passwordHash");
+
+      const usuarioPersistido = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: resultado.usuario.id },
+      });
+      expect(usuarioPersistido.rol).toBe("ASESOR");
+      expect(usuarioPersistido.correo).not.toBe(correo);
+
+      const membresiaPersistida = await testAdminPrisma.membresia.findUniqueOrThrow({
+        where: { id: resultado.membresia.id },
+      });
+      expect(membresiaPersistida.habilitadoParaVenta).toBe(false);
+    }));
+
+  it("triangulación: el correo del portador de un Asesor no colisiona con el de un Supervisor de la misma empresa/correo", () =>
+    sinRestriccion(async () => {
+      const empresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa supervisor+asesor service ${randomUUID()}` },
+      });
+      const correo = `mismo-correo-${randomUUID()}@integracion.test`;
+
+      const supervisor = await createEmpresaSupervisor(empresa.id, {
+        nombre: "Supervisora",
+        correo,
+        password: "clave-supervisor-empresa-123456",
+      });
+      const asesor = await createEmpresaAsesor(empresa.id, {
+        nombre: "Asesora",
+        correo: `otro-${correo}`,
+        password: "clave-asesor-empresa-123456",
+      });
+
+      const usuarioSupervisor = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: supervisor.usuario.id },
+      });
+      const usuarioAsesor = await testAdminPrisma.usuario.findUniqueOrThrow({
+        where: { id: asesor.usuario.id },
+      });
+      expect(usuarioSupervisor.correo).not.toBe(usuarioAsesor.correo);
+    }));
+
+  it("lanza AppError 404 cuando la empresa no existe", () =>
+    sinRestriccion(async () => {
+      await expect(
+        createEmpresaAsesor(randomUUID(), {
+          nombre: "Asesora Empresa Inexistente",
+          correo: `asesor-empresa-inexistente-${randomUUID()}@integracion.test`,
+          password: "clave-asesor-empresa-123456",
+        }),
+      ).rejects.toMatchObject<Partial<AppError>>({ statusHttp: 404, code: "empresa_no_encontrada" });
+    }));
+
+  it("lanza AppError 409 cuando el correo ya está en uso por otra Membresia/Usuario", () =>
+    sinRestriccion(async () => {
+      const empresa = await testAdminPrisma.empresa.create({
+        data: { nombre: `Empresa asesor correo duplicado ${randomUUID()}` },
+      });
+      const correo = `asesor-correo-duplicado-${randomUUID()}@integracion.test`;
+
+      await createEmpresaAsesor(empresa.id, {
+        nombre: "Primera Asesora",
+        correo,
+        password: "clave-asesor-empresa-123456",
+      });
+
+      await expect(
+        createEmpresaAsesor(empresa.id, {
+          nombre: "Segunda Asesora",
+          correo,
+          password: "clave-asesor-empresa-123456",
+        }),
+      ).rejects.toMatchObject<Partial<AppError>>({ statusHttp: 409, code: "correo_no_disponible" });
     }));
 });
 
