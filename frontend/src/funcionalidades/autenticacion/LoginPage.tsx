@@ -1,6 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { Image as ImageIcon } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router";
@@ -61,6 +60,17 @@ const SPLASH_SOSTENIDO_MS = 600;
  * alargar perceptiblemente la transición si el backend está lento.
  */
 const CONFIGURACION_EMPRESA_TIMEOUT_MS = 1200;
+
+/**
+ * Isotipo estático por defecto (mismo isotipo ARCANO CRM que
+ * `public/favicon-arcano.png`, acá en HD para el panel izquierdo del login)
+ * -- se muestra mientras `logoHolding` es `null`: durante la latencia de
+ * `GET /marca-publica` (PASO 5) o cuando el holding directamente no
+ * configuró un isotipo propio. Reemplaza el placeholder de diseño genérico
+ * (ícono + texto punteado) para que la pantalla nunca se vea "vacía" en
+ * conexiones lentas.
+ */
+const ISOTIPO_DEFAULT_SRC = "/isotipo-arcano-default.png";
 
 /**
  * Trae la configuración de marca vigente con `fallback` a los defaults del
@@ -209,18 +219,11 @@ export function LoginPage() {
       */}
 
       <div className="chrome-gradiente chrome-sombra-derecha hidden shrink-0 flex-col items-center justify-center gap-6 px-10 py-16 lg:flex lg:w-2/5">
-        {logoHolding ? (
-          <img src={logoHolding} alt="Isotipo del holding" className="h-20 w-20 object-contain" />
-        ) : (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-background/35 px-10 py-12">
-            <ImageIcon className="size-9 text-background/60" aria-hidden="true" />
-            <p className="max-w-[16rem] text-center text-sm leading-relaxed text-background/70">
-              Isotipo del holding
-              <br />
-              <span className="text-xs opacity-80">(personalizable por empresa)</span>
-            </p>
-          </div>
-        )}
+        <img
+          src={logoHolding ?? ISOTIPO_DEFAULT_SRC}
+          alt="Isotipo del holding"
+          className="h-20 w-20 object-contain"
+        />
         <p className="headline text-lg font-semibold tracking-wide !text-[var(--papel)]">
           ARCANO CRM
         </p>
