@@ -136,7 +136,7 @@ describe("CargaMasivaLeadsDialog — subida y vista previa", () => {
     await user.upload(screen.getByLabelText("Archivo Excel"), excelFake());
 
     expect(
-      await screen.findByText(/No se pudo leer el archivo\. Verificá que sea un Excel válido/),
+      await screen.findByText(/No se pudo leer el archivo\. Verifica que sea un Excel válido/),
     ).toBeInTheDocument();
   });
 

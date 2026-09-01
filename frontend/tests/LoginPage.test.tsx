@@ -101,8 +101,8 @@ describe("LoginPage — validación", () => {
 
     await user.click(screen.getByRole("button", { name: "Iniciar sesión" }));
 
-    expect(await screen.findByText("Ingresá un correo electrónico válido.")).toBeInTheDocument();
-    expect(screen.getByText("Ingresá tu contraseña.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa un correo electrónico válido.")).toBeInTheDocument();
+    expect(screen.getByText("Ingresa tu contraseña.")).toBeInTheDocument();
     expect(loginMock).not.toHaveBeenCalled();
   });
 });
@@ -195,12 +195,12 @@ describe("LoginPage — cortina de bienvenida", () => {
 });
 
 describe("LoginPage — isotipo del holding (PASO 5/6, panel izquierdo pre-login)", () => {
-  it("muestra el placeholder de diseño mientras no hay ningún logoUrl configurado", async () => {
+  it("muestra el isotipo por defecto mientras no hay ningún logoUrl configurado", async () => {
     obtenerMarcaPublicaConFallbackMock.mockResolvedValue(CONFIGURACION_EMPRESA_DEFAULT);
     renderLoginPage();
 
-    expect(await screen.findByText("Isotipo del holding")).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    const imagen = await screen.findByRole("img", { name: "Isotipo del holding" });
+    expect(imagen).toHaveAttribute("src", "/isotipo-arcano-default.png");
   });
 
   it("muestra el isotipo real en vez del placeholder cuando GET /marca-publica trae un logoUrl", async () => {

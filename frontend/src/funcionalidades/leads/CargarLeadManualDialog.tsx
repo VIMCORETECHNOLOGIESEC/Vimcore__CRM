@@ -91,7 +91,7 @@ export function CargarLeadManualDialog({
     resolver: zodResolver(cargarLeadManualSchema),
     // Sin esto, enviar el formulario con el Select vacío deja `canalManualId`
     // como `undefined` -- Zod rechaza el tipo ANTES de llegar al `.min(1, ...)`
-    // y muestra su mensaje en inglés por defecto en vez de "Elegí un canal."
+    // y muestra su mensaje en inglés por defecto en vez de "Elige un canal."
     // (AGENTS.md §2/§4, interfaz solo en español).
     defaultValues: { canalManualId: "" },
   });

@@ -64,7 +64,7 @@ describe("EmpresaAparienciaForm — self-service (sin nombre)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     expect(
-      await screen.findByText("Ingresá un color hexadecimal válido (ej. #1e2a5e)."),
+      await screen.findByText("Ingresa un color hexadecimal válido (ej. #1e2a5e)."),
     ).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -123,7 +123,7 @@ describe("EmpresaAparienciaForm — admin holding (con nombre)", () => {
     await user.clear(screen.getByLabelText("Nombre de la empresa"));
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
-    expect(await screen.findByText("Ingresá el nombre de la empresa.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa el nombre de la empresa.")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });

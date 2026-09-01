@@ -75,7 +75,7 @@ describe("ApiExternaSetupDialog — paso 1, conexión (PATCH /bridges/:id/api-ex
 
     await user.click(screen.getByRole("button", { name: "Continuar" }));
 
-    expect(await screen.findByText("Ingresá una dirección web válida.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa una dirección web válida.")).toBeInTheDocument();
     expect(saveConexionMock).not.toHaveBeenCalled();
   });
 
@@ -91,7 +91,7 @@ describe("ApiExternaSetupDialog — paso 1, conexión (PATCH /bridges/:id/api-ex
       credencialExterna: "clave-secreta",
       nombreHeaderApiKey: "X-Api-Key",
     });
-    expect(await screen.findByText("Decinos qué significa cada dato")).toBeInTheDocument();
+    expect(await screen.findByText("Cuéntanos qué significa cada dato")).toBeInTheDocument();
   });
 
   it("si el backend rechaza la conexión, muestra el mensaje de error y NO avanza de paso", async () => {
@@ -104,10 +104,10 @@ describe("ApiExternaSetupDialog — paso 1, conexión (PATCH /bridges/:id/api-ex
     await user.click(screen.getByRole("button", { name: "Continuar" }));
 
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Dirección de tus leads")).toBeInTheDocument();
-    expect(screen.queryByText("Decinos qué significa cada dato")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cuéntanos qué significa cada dato")).not.toBeInTheDocument();
   });
 });
 
@@ -118,7 +118,7 @@ describe("ApiExternaSetupDialog — paso 2, mapeo de campos (PATCH /bridges/:id/
     const user = userEvent.setup();
     renderDialog();
     await completarPasoConexion(user);
-    await screen.findByText("Decinos qué significa cada dato");
+    await screen.findByText("Cuéntanos qué significa cada dato");
 
     await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
@@ -136,14 +136,14 @@ describe("ApiExternaSetupDialog — paso 2, mapeo de campos (PATCH /bridges/:id/
     const user = userEvent.setup();
     renderDialog();
     await completarPasoConexion(user);
-    await screen.findByText("Decinos qué significa cada dato");
+    await screen.findByText("Cuéntanos qué significa cada dato");
 
     await user.click(screen.getByRole("combobox", { name: "Campo interno 1" }));
     await user.click(await screen.findByRole("option", { name: "nombre" }));
     await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     expect(
-      await screen.findByText(/Marcá al menos un campo como idExternoLead/),
+      await screen.findByText(/Marca al menos un campo como idExternoLead/),
     ).toBeInTheDocument();
     expect(saveMapeoMock).not.toHaveBeenCalled();
   });
@@ -154,7 +154,7 @@ describe("ApiExternaSetupDialog — paso 2, mapeo de campos (PATCH /bridges/:id/
     const user = userEvent.setup();
     renderDialog();
     await completarPasoConexion(user);
-    await screen.findByText("Decinos qué significa cada dato");
+    await screen.findByText("Cuéntanos qué significa cada dato");
 
     await user.type(screen.getByLabelText(/Parámetro de fecha/), "updated_since");
     await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
@@ -173,12 +173,12 @@ describe("ApiExternaSetupDialog — paso 2, mapeo de campos (PATCH /bridges/:id/
     const user = userEvent.setup();
     renderDialog();
     await completarPasoConexion(user);
-    await screen.findByText("Decinos qué significa cada dato");
+    await screen.findByText("Cuéntanos qué significa cada dato");
 
     await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Probemos que todo funcione")).not.toBeInTheDocument();
   });
@@ -190,7 +190,7 @@ describe("ApiExternaSetupDialog — paso 3, probar conexión (POST /bridges/:id/
     saveMapeoMock.mockResolvedValue(bridgeApiConfigFake());
     renderDialog();
     await completarPasoConexion(user);
-    await screen.findByText("Decinos qué significa cada dato");
+    await screen.findByText("Cuéntanos qué significa cada dato");
     await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
     await screen.findByText("Probemos que todo funcione");
   }

@@ -94,7 +94,7 @@ export function ConectarMetaAdsCard() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          Conectá la cuenta de anuncios de Meta de la empresa para traer métricas reales de
+          Conecta la cuenta de anuncios de Meta de la empresa para traer métricas reales de
           campañas (CPC, CPL, CAC) al Dashboard. Se abre el flujo de autorización de Meta en una
           ventana emergente.
         </p>

@@ -143,10 +143,10 @@ describe("PanelCitas -- form Reprogramar", () => {
     await userEvent.type(campoHora, "15:30");
 
     // El campo puede arrancar con un valor por defecto ("30 de agosto de
-    // 2026") en vez del placeholder "Elegí una fecha" -- matcheamos
+    // 2026") en vez del placeholder "Elige una fecha" -- matcheamos
     // cualquiera de los dos, el único botón disparador del calendario dentro
     // de este form ya está acotado por `within`.
-    const botonFecha = dentroDelForm.getByRole("button", { name: /elegí una fecha|de \d{4}$/i });
+    const botonFecha = dentroDelForm.getByRole("button", { name: /elige una fecha|de \d{4}$/i });
     await userEvent.click(botonFecha);
     const diaBoton = await waitFor(() => {
       const elemento = document.querySelector(`[data-day="${fechaFutura.toLocaleDateString()}"]`);

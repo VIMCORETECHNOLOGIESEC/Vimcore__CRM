@@ -147,7 +147,7 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   },
   {
     target: '[data-tour="lead-whatsapp"]',
-    title: "Abrí el espacio de trabajo",
+    title: "Abre el espacio de trabajo",
     content: "Este botón concentra el chat y las acciones operativas del lead para mantener el detalle despejado.",
     placement: "left",
     before: async () => alignStepTarget('[data-tour="lead-whatsapp"]', "center"),

@@ -177,11 +177,11 @@ describe("descargarReporteApi — GET /reportes/jobs/:id/descargar", () => {
 
   it("ante una falla de red, propaga el ApiError accionable de conexión de httpClient sin navegar", async () => {
     getMock.mockRejectedValue(
-      new ApiError("error_red", 0, "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente."),
+      new ApiError("error_red", 0, "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente."),
     );
 
     await expect(descargarReporteApi("job-1", "pdf")).rejects.toThrow(
-      "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.",
+      "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente.",
     );
     expect(assignMock).not.toHaveBeenCalled();
   });

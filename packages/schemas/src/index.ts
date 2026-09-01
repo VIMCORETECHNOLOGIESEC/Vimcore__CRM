@@ -12,9 +12,9 @@ import { z } from "zod";
 export const loginBodySchema = z.object({
   // Sin `.toLowerCase()`: `correo` es `@db.Citext` en PostgreSQL, la
   // comparación ya es insensible a mayúsculas en la base de datos.
-  correo: z.string().trim().pipe(z.email("Ingresá un correo electrónico válido.")),
+  correo: z.string().trim().pipe(z.email("Ingresa un correo electrónico válido.")),
   // Sin `.min(12)` aquí: al iniciar sesión no se dicta política de contraseña.
-  password: z.string().min(1, "Ingresá tu contraseña."),
+  password: z.string().min(1, "Ingresa tu contraseña."),
 });
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
@@ -44,13 +44,13 @@ export const NOMBRE_MARCA_MAX_LENGTH = 80;
 export const nombreMarcaSchema = z
   .string()
   .trim()
-  .min(1, "Ingresá el nombre de la empresa.")
+  .min(1, "Ingresa el nombre de la empresa.")
   .max(NOMBRE_MARCA_MAX_LENGTH, `El nombre no puede superar los ${NOMBRE_MARCA_MAX_LENGTH} caracteres.`);
 
 export const hexColorSchema = z
   .string()
   .trim()
-  .regex(/^#[0-9a-fA-F]{6}$/, "Ingresá un color hexadecimal válido (ej. #1e2a5e).");
+  .regex(/^#[0-9a-fA-F]{6}$/, "Ingresa un color hexadecimal válido (ej. #1e2a5e).");
 
 /**
  * URL del isotipo (SVG preferido, PNG ≥512×512 de respaldo) -- sin
@@ -61,5 +61,5 @@ export const LOGO_URL_MAX_LENGTH = 2048;
 export const logoUrlSchema = z
   .string()
   .trim()
-  .url("Ingresá una URL válida (ej. https://cdn.miempresa.com/logo.svg).")
+  .url("Ingresa una URL válida (ej. https://cdn.miempresa.com/logo.svg).")
   .max(LOGO_URL_MAX_LENGTH);

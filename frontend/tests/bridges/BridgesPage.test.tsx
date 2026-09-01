@@ -146,7 +146,7 @@ describe("BridgesPage — estados de carga, vacío y error", () => {
     fetchBridgesApiMock.mockRejectedValue(new Error("boom"));
     renderBridgesPage();
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
   });
@@ -461,7 +461,7 @@ describe("BridgesPage — alta de bridge (Requirement: Create Bridge)", () => {
     await user.click(screen.getByRole("button", { name: "Nuevo bridge" }));
     await user.click(screen.getByRole("button", { name: "Crear bridge" }));
 
-    expect(await screen.findByText("Ingresá el nombre.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa el nombre.")).toBeInTheDocument();
     expect(createBridgeApiMock).not.toHaveBeenCalled();
   });
 });
@@ -637,13 +637,13 @@ describe("BridgesPage — baja y reactivación (Requirement: Soft Deactivate and
 
     await abrirMenuAcciones(user, "Con Leads");
     await user.click(await screen.findByRole("menuitem", { name: "Dar de baja" }));
-    expect(await screen.findByText(/podés reactivarlo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/puedes reactivarlo/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Confirmar" }));
 
     await waitFor(() => expect(deleteBridgeApiMock).toHaveBeenCalledWith("bridge-con-leads"));
     expect(toastSuccessMock).toHaveBeenCalledWith(
-      "Bridge dado de baja correctamente. Podés reactivarlo cuando quieras.",
+      "Bridge dado de baja correctamente. Puedes reactivarlo cuando quieras.",
     );
   });
 

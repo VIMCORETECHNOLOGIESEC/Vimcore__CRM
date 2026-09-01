@@ -94,7 +94,7 @@ export function DashboardExportar({ data, contexto, filtros, rangoReal }: Dashbo
         <DropdownMenuLabel>Descarga rápida de datos filtrados</DropdownMenuLabel>
         <p className="px-2 pb-2 text-xs text-muted-foreground">
           Descarga instantánea de lo que ves en pantalla ahora. Para un reporte formal
-          con más alcance, usá{" "}
+          con más alcance, usa{" "}
           <Link to="/reportes" className="font-medium text-primary underline-offset-2 hover:underline">
             Reportes
           </Link>

@@ -133,7 +133,7 @@ describe("ConversacionesPage — hilo (panel derecho)", () => {
   it("sin conversación seleccionada muestra un marcador de posición", async () => {
     renderPage("/conversaciones");
     expect(
-      await screen.findByText("Seleccioná una conversación para ver los mensajes"),
+      await screen.findByText("Selecciona una conversación para ver los mensajes"),
     ).toBeInTheDocument();
   });
 

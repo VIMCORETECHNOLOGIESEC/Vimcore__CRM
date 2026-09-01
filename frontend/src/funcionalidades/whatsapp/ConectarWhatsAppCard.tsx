@@ -119,7 +119,7 @@ export function ConectarWhatsAppCard() {
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Conectá el número de WhatsApp Business de la empresa para habilitar mensajería con
+              Conecta el número de WhatsApp Business de la empresa para habilitar mensajería con
               clientes. Se abre el flujo de autorización de Meta en una ventana emergente.
             </p>
 

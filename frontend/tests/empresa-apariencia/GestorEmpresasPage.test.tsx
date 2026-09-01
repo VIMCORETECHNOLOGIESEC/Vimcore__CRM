@@ -82,7 +82,7 @@ describe("GestorEmpresasPage", () => {
     fetchEmpresasHoldingApiMock.mockResolvedValue(empresasResponse([]));
     renderPage();
     expect(await screen.findByText(/todavía no hay empresas/i)).toBeInTheDocument();
-    expect(screen.getByText(/Creá la primera empresa con el botón «Nueva empresa»/)).toBeInTheDocument();
+    expect(screen.getByText(/Crea la primera empresa con el botón «Nueva empresa»/)).toBeInTheDocument();
   });
 
   it("muestra un mensaje accionable cuando falla la carga", async () => {

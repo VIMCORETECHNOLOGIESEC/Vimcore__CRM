@@ -123,7 +123,7 @@ describe("httpClient — postFormData (subida de archivos)", () => {
     ).rejects.toMatchObject({
       code: "error_red",
       status: 0,
-      message: "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.",
+      message: "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente.",
     });
   });
 });
@@ -381,7 +381,7 @@ describe("httpClient — sesión expirada cuando el refresco también falla", ()
     await expect(httpClient.get("/protegido")).rejects.toMatchObject({
       code: "sesion_expirada",
       status: 401,
-      message: "Tu sesión expiró. Iniciá sesión nuevamente.",
+      message: "Tu sesión expiró. Inicia sesión nuevamente.",
     });
 
     expect(onSessionExpired).toHaveBeenCalledTimes(1);
@@ -422,7 +422,7 @@ describe("httpClient — mapeo de errores", () => {
     await expect(httpClient.get("/algo")).rejects.toMatchObject({
       code: "error_desconocido",
       status: 500,
-      message: "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      message: "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
     });
   });
 
@@ -433,7 +433,7 @@ describe("httpClient — mapeo de errores", () => {
     await expect(httpClient.get("/algo")).rejects.toMatchObject({
       code: "error_red",
       status: 0,
-      message: "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.",
+      message: "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente.",
     });
   });
 
@@ -518,13 +518,13 @@ describe("getErrorMessage", () => {
 
   it("devuelve un mensaje genérico en español para cualquier otro tipo de error", () => {
     expect(getErrorMessage(new Error("boom"))).toBe(
-      "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
     );
     expect(getErrorMessage("un string cualquiera")).toBe(
-      "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
     );
     expect(getErrorMessage(undefined)).toBe(
-      "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
     );
   });
 });

@@ -103,7 +103,7 @@ describe("PerfilPage — envío del cambio de contraseña", () => {
 
   it("si el backend rechaza el cambio, avisa el mensaje accionable en vez de un código HTTP", async () => {
     changePasswordApiMock.mockRejectedValue(
-      new ApiError("prohibido", 403, "No tenés permiso para realizar esta acción"),
+      new ApiError("prohibido", 403, "No tienes permiso para realizar esta acción"),
     );
     const user = userEvent.setup();
     render(<PerfilPage />);
@@ -113,6 +113,6 @@ describe("PerfilPage — envío del cambio de contraseña", () => {
     await user.click(screen.getByRole("button", { name: "Actualizar contraseña" }));
 
     await screen.findByRole("button", { name: "Actualizar contraseña" });
-    expect(toastErrorMock).toHaveBeenCalledWith("No tenés permiso para realizar esta acción");
+    expect(toastErrorMock).toHaveBeenCalledWith("No tienes permiso para realizar esta acción");
   });
 });

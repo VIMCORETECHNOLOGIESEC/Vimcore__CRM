@@ -145,7 +145,7 @@ describe("BridgeDetallePage — encabezado", () => {
     renderBridgeDetallePage();
 
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
   });
 });
@@ -195,7 +195,7 @@ describe("BridgeDetallePage — credenciales (a nivel de bridge)", () => {
     // solo verifica que la sección "Credenciales" A NIVEL DE BRIDGE no
     // renderiza uno propio, mismo criterio que antes del cambio de fixture.
     expect(within(seccionCredenciales).queryByLabelText("Token")).not.toBeInTheDocument();
-    expect(within(seccionCredenciales).getByText(/buscá la sección/i)).toBeInTheDocument();
+    expect(within(seccionCredenciales).getByText(/busca la sección/i)).toBeInTheDocument();
   });
 });
 

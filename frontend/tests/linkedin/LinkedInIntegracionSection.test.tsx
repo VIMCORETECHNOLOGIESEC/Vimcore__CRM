@@ -231,7 +231,7 @@ describe("LinkedInIntegracionSection — fuentes (conexión activa)", () => {
     fetchLinkedInConexionApiMock.mockResolvedValue(conexionFake());
     fetchLinkedInFuentesApiMock.mockResolvedValue([fuenteFake()]);
     toggleFuenteLinkedInApiMock.mockRejectedValue(
-      new Error("No se pudo activar la fuente en LinkedIn. Intentá nuevamente."),
+      new Error("No se pudo activar la fuente en LinkedIn. Intenta nuevamente."),
     );
     const user = userEvent.setup();
     renderSeccion();
@@ -239,7 +239,7 @@ describe("LinkedInIntegracionSection — fuentes (conexión activa)", () => {
     await user.click(await screen.findByRole("button", { name: "Activar" }));
 
     expect(toast.error).toHaveBeenCalledWith(
-      "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
     );
   });
 });

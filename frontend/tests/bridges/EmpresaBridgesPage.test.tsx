@@ -161,7 +161,7 @@ describe("EmpresaBridgesPage — empresa puntual (empresaId fijo por la ruta, NO
     renderPage();
 
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
   });
 

@@ -180,7 +180,7 @@ export function ApiExternaSetupDialog({ open, bridgeId, nombre, onClose }: ApiEx
           </div>
           <DialogTitle>Configurar {nombre}</DialogTitle>
           <DialogDescription>
-            Conectá el sistema donde hoy recibís tus consultas. Nosotros vamos a consultar sus leads y acomodarlos en el CRM.
+            Conecta el sistema donde hoy recibes tus consultas. Nosotros vamos a consultar sus leads y acomodarlos en el CRM.
           </DialogDescription>
         </DialogHeader>
 

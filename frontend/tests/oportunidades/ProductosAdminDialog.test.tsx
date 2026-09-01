@@ -107,7 +107,7 @@ describe("ProductosAdminDialog", () => {
 
     await user.click(await screen.findByRole("button", { name: "Crear producto" }));
 
-    expect(await screen.findByText("Ingresá el nombre.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa el nombre.")).toBeInTheDocument();
     expect(crearProductoApiMock).not.toHaveBeenCalled();
   });
 

@@ -123,7 +123,7 @@ describe("DashboardExportar — dispara la exportación correcta (comportamiento
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "No se pudo preparar la exportación. Intentá nuevamente.",
+        "No se pudo preparar la exportación. Intenta nuevamente.",
         expect.anything(),
       ),
     );

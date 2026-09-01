@@ -200,7 +200,7 @@ describe("WhatsAppCallbackPage — selección de número (Paso 2 exitoso)", () =
   it("un error genérico del Paso 3 (ej. numero inválido) muestra un mensaje accionable y deja reintentar sin perder la lista", async () => {
     fetchWhatsAppCallbackApiMock.mockResolvedValue(callbackFake());
     completarConexionWhatsAppApiMock.mockRejectedValue(
-      new ApiError("whatsapp_numero_invalido", 422, "Ese número ya no está disponible. Elegí otro."),
+      new ApiError("whatsapp_numero_invalido", 422, "Ese número ya no está disponible. Elige otro."),
     );
     const user = userEvent.setup();
     renderConRuta("?code=abc&state=xyz");
@@ -209,7 +209,7 @@ describe("WhatsAppCallbackPage — selección de número (Paso 2 exitoso)", () =
     await user.click(screen.getByRole("radio", { name: /\+54 9 11 1234-5678/ }));
     await user.click(screen.getByRole("button", { name: "Conectar este número" }));
 
-    expect(await screen.findByText("Ese número ya no está disponible. Elegí otro.")).toBeInTheDocument();
+    expect(await screen.findByText("Ese número ya no está disponible. Elige otro.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Conectar este número" })).toBeInTheDocument();
   });
 

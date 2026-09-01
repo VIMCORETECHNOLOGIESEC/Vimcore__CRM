@@ -126,7 +126,7 @@ describe("OportunidadCierrePanel", () => {
 
   it("ante un 403 permiso_denegado muestra el mensaje inline y conserva el formulario", async () => {
     cerrarMock.mockRejectedValue(
-      new ApiError("permiso_denegado", 403, "No tenés permiso para cerrar esta oportunidad."),
+      new ApiError("permiso_denegado", 403, "No tienes permiso para cerrar esta oportunidad."),
     );
     renderPanel(oportunidadFake());
     const user = await llenarYAbrirConfirmacion();
@@ -134,7 +134,7 @@ describe("OportunidadCierrePanel", () => {
     await user.click(within(dialog).getByRole("button", { name: "Cerrar como Venta" }));
 
     expect(
-      await screen.findByText("No tenés permiso para cerrar esta oportunidad."),
+      await screen.findByText("No tienes permiso para cerrar esta oportunidad."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Monto (USD)")).toHaveValue(1500);
   });

@@ -94,7 +94,7 @@ describe("ConectarWhatsAppCard — sesión company", () => {
 
   it("errores del Paso 1 muestran un mensaje accionable (nunca un código HTTP) y no abren nada", async () => {
     iniciarConexionWhatsAppApiMock.mockRejectedValue(
-      new Error("No se pudo iniciar la conexión con WhatsApp. Intentá nuevamente más tarde."),
+      new Error("No se pudo iniciar la conexión con WhatsApp. Intenta nuevamente más tarde."),
     );
     const user = userEvent.setup();
     renderConRuta("", "company");
@@ -102,7 +102,7 @@ describe("ConectarWhatsAppCard — sesión company", () => {
     await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
 
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
     expect(redirectToMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("ConectarWhatsAppCard — sesión holding-wide", () => {
   it("sin ?empresaId en la URL, el botón está deshabilitado con una ayuda explicando por qué", () => {
     renderConRuta("", "holding");
     expect(screen.getByRole("button", { name: "Conectar WhatsApp" })).toBeDisabled();
-    expect(screen.getByText(/elegí primero una empresa/i)).toBeInTheDocument();
+    expect(screen.getByText(/elige primero una empresa/i)).toBeInTheDocument();
   });
 });
 
@@ -205,7 +205,7 @@ describe("ConectarWhatsAppCard — flujo de popup, camino feliz del navegador (n
       await vi.advanceTimersByTimeAsync(500);
 
       await screen.findByText(
-        "No se detectó una conexión activa todavía. Podés intentarlo de nuevo.",
+        "No se detectó una conexión activa todavía. Puedes intentarlo de nuevo.",
       );
 
       await user.click(screen.getByRole("button", { name: "Reintentar" }));
@@ -235,7 +235,7 @@ describe("ConectarWhatsAppCard — flujo de popup, camino feliz del navegador (n
 
       expect(popupFalso.close).toHaveBeenCalledTimes(1);
       await screen.findByText(
-        "No se detectó una conexión activa todavía. Podés intentarlo de nuevo.",
+        "No se detectó una conexión activa todavía. Puedes intentarlo de nuevo.",
       );
     } finally {
       vi.useRealTimers();

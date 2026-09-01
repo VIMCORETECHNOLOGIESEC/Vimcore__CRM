@@ -183,7 +183,7 @@ describe("CuentasPublicitariasList — token por cuenta (Facebook/Instagram: ada
 
     await user.click(screen.getByRole("button", { name: "Guardar y verificar" }));
 
-    expect(await screen.findByText("Ingresá el token.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa el token.")).toBeInTheDocument();
     expect(saveTokenApiMock).not.toHaveBeenCalled();
   });
 

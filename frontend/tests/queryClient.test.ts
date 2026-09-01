@@ -33,7 +33,7 @@ describe("queryClient — manejo global de errores", () => {
     onError?.(new Error("fallo interno sin forma conocida"));
 
     expect(toastErrorMock).toHaveBeenCalledWith(
-      "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.",
+      "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
     );
   });
 

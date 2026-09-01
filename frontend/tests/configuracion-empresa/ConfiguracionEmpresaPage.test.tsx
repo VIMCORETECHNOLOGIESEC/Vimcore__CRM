@@ -90,14 +90,14 @@ describe("ConfiguracionEmpresaPage — estados de carga y error", () => {
 
   it("muestra un mensaje accionable en español y un botón de reintento si falla la carga", async () => {
     fetchConfiguracionEmpresaApiMock.mockRejectedValue(
-      new ApiError("error_red", 0, "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente."),
+      new ApiError("error_red", 0, "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente."),
     );
 
     renderPage();
 
     expect(
       await screen.findByText(
-        "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.",
+        "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     expect(
-      await screen.findByText("Ingresá un color hexadecimal válido (ej. #1e2a5e)."),
+      await screen.findByText("Ingresa un color hexadecimal válido (ej. #1e2a5e)."),
     ).toBeInTheDocument();
     expect(updateConfiguracionEmpresaApiMock).not.toHaveBeenCalled();
   });
@@ -205,7 +205,7 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
   it("muestra el mensaje accionable del backend si falla el guardado", async () => {
     fetchConfiguracionEmpresaApiMock.mockResolvedValue(configuracionFake());
     updateConfiguracionEmpresaApiMock.mockRejectedValue(
-      new ApiError("prohibido", 403, "No tenés permiso para hacer esto."),
+      new ApiError("prohibido", 403, "No tienes permiso para hacer esto."),
     );
     const user = userEvent.setup();
     renderPage();
@@ -213,7 +213,7 @@ describe("ConfiguracionEmpresaPage — formulario", () => {
     await screen.findByLabelText("Nombre de la empresa");
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
-    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("No tenés permiso para hacer esto."));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("No tienes permiso para hacer esto."));
   });
 
   it("actualiza la vista previa del gradiente en vivo al cambiar un color", async () => {

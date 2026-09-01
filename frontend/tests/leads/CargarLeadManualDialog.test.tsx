@@ -70,13 +70,13 @@ describe("CargarLeadManualDialog", () => {
     // Backend real (`leads.schema.ts::crearLeadManualBodySchema`): `nombre`
     // es obligatorio, no confundir con `Cliente.nombre` (opcional en el
     // modelo).
-    expect(await screen.findByText("Ingresá el nombre.")).toBeInTheDocument();
-    expect(screen.getByText("Ingresá el teléfono.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa el nombre.")).toBeInTheDocument();
+    expect(screen.getByText("Ingresa el teléfono.")).toBeInTheDocument();
     // `defaultValues: { canalManualId: "" }` en el `useForm` asegura que el
     // `<Select>` sin elegir falle por `.min(1, ...)` (mensaje en español),
     // nunca por el chequeo de tipo de Zod con `undefined` (mensaje en inglés
     // por defecto -- violaría AGENTS.md §2/§4).
-    expect(screen.getByText("Elegí un canal.")).toBeInTheDocument();
+    expect(screen.getByText("Elige un canal.")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -91,7 +91,7 @@ describe("CargarLeadManualDialog", () => {
     await user.click(await screen.findByRole("option", { name: "Referido" }));
     await user.click(screen.getByRole("button", { name: "Cargar lead" }));
 
-    expect(await screen.findByText("Ingresá un correo electrónico válido.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa un correo electrónico válido.")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

@@ -91,7 +91,7 @@ describe("GestionarCanalesManualesDialog — estados de carga, vacío y error", 
     renderDialog();
 
     expect(
-      await screen.findByText("Ocurrió un error inesperado. Intentá nuevamente en unos segundos."),
+      await screen.findByText("Ocurrió un error inesperado. Intenta nuevamente en unos segundos."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
   });
@@ -167,7 +167,7 @@ describe("GestionarCanalesManualesDialog — alta de canal", () => {
 
     await user.click(screen.getByRole("button", { name: "Agregar" }));
 
-    expect(await screen.findByText("Ingresá el nombre del canal.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingresa el nombre del canal.")).toBeInTheDocument();
     expect(createCanalManualApiMock).not.toHaveBeenCalled();
   });
 

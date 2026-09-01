@@ -58,7 +58,7 @@ interface ApiExternaBridgeState {
  * monta `ConectarWhatsAppCard` -- esa tarjeta resuelve su empresa activa
  * exclusivamente vía `useVistaEmpresa()` (`?empresaId=` en la URL), que esta
  * ruta dedicada nunca setea (usa el param de ruta `:empresaId` en su lugar).
- * Incluirla tal cual mostraría "Elegí primero una empresa desde «Empresas»"
+ * Incluirla tal cual mostraría "Elige primero una empresa desde «Empresas»"
  * de forma incorrecta, incluso parado sobre la empresa correcta. Conectar
  * WhatsApp para una empresa puntual desde acá queda fuera de alcance de este
  * cambio -- requeriría una variante de `ConectarWhatsAppCard` que acepte un

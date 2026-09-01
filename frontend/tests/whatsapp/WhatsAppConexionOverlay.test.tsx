@@ -139,7 +139,7 @@ describe("WhatsAppConexionOverlay — notConnected", () => {
     const { onClose } = renderOverlay("notConnected");
 
     expect(
-      screen.getByText("No se detectó una conexión activa todavía. Podés intentarlo de nuevo."),
+      screen.getByText("No se detectó una conexión activa todavía. Puedes intentarlo de nuevo."),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
 
