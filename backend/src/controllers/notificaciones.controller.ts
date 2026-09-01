@@ -3,11 +3,13 @@ import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
 import {
   createNotificationSchema,
+  createWhatsAppNoConectadoBodySchema,
   listNotificationsQuerySchema,
   notificationIdParamSchema,
 } from "../schemas/notificaciones.schema.js";
 import {
   createCanalOProductoFaltanteNotification,
+  createWhatsAppNoConectadoNotification,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -40,6 +42,19 @@ export async function postNotification(req: Request, res: Response): Promise<voi
   if (!parsed.success) throw invalidRequest();
   const notificaciones = await createCanalOProductoFaltanteNotification(
     parsed.data,
+    usuario.empresaId,
+  );
+  res.status(201).json({ notificaciones });
+}
+export async function postWhatsAppNoConectadoNotification(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const usuario = assertAuthenticated(req);
+  const parsed = createWhatsAppNoConectadoBodySchema.safeParse(req.body);
+  if (!parsed.success) throw invalidRequest();
+  const notificaciones = await createWhatsAppNoConectadoNotification(
+    parsed.data.mensaje,
     usuario.empresaId,
   );
   res.status(201).json({ notificaciones });

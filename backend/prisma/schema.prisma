@@ -69,6 +69,11 @@ enum TipoNotificacion {
   // agregado AL FINAL, mismo criterio append-only de arriba. Dispara cuando
   // no hay canal o producto activo para cargar un lead.
   CANAL_O_PRODUCTO_FALTANTE
+  // Pre-deploy (endpoint manual de aviso Supervisor/Asesor → Administrador):
+  // el Supervisor/Asesor sin acceso a la pantalla de Bridges avisa al
+  // Administrador de su empresa cuando el detalle de un lead detecta que no
+  // hay conexión de WhatsApp activa.
+  WHATSAPP_NO_CONECTADO
 
   @@map("tipo_notificacion")
 }
