@@ -266,6 +266,98 @@ desaparecieron corriendo en aislamiento y confirmaron limpias en el run de
 CI, con su propio Postgres efímero). No es una señal de que el código esté
 roto — es contención de recursos, no una regresión.
 
+## Sesión 2026-09-01: batería de fixes de producción + D-mensajería (leído/no leído) + RLS en WhatsApp
+
+Seis cambios reales, todos verificados en producción real (logs del
+Container App y/o consultas directas a la base de Azure), en orden
+cronológico:
+
+1. **Meta Ads `discoverAdAccounts()` fallaba con 502, causa real oculta por
+   un log suprimido** (commit `9b6beb8`). `GRAPH_API_BASE_URL` (`meta-webhook.service.ts`)
+   apuntaba a `https://graph.facebook.com` sin versión — Meta resuelve eso
+   contra la "default API version" de la app en su dashboard, un valor
+   mutable que quedó deprecado (`(#2635) You are calling a deprecated
+   version of the Ads API`). Se fijó una versión explícita (`v26.0`).
+   Afecta a TODAS las llamadas de Graph API del backend (WhatsApp Cloud
+   API, Meta Ads, webhook de leadgen), todas comparten `GRAPH_API_BASE_URL`.
+2. **El listado `GET /usuarios` mostraba el correo sintético del "portador"
+   en vez del correo real del admin/supervisor de empresa** (commit
+   `b40f900`). Un admin de empresa se crea vía un `Usuario` "portador" con
+   correo placeholder `portador-*@no-login.crm.local` (fix de escalamiento
+   de credenciales de una sesión previa) — el listado nunca sustituía ese
+   valor por el correo real de la `Membresia` activa (el que el admin usa
+   de verdad para loguearse).
+3. **Bug real de multiempresa: un cliente con lead abierto en la empresa A
+   absorbía en silencio ingestas nuevas de las empresas B/C/D como
+   "interacción repetida" ajena** (commit `acf2370`, deployado como
+   `5e7a30f` con un fix de tests huérfanos de Josué encima).
+   `deduplicacion.service.ts` buscaba "lead abierto" por cliente
+   GLOBALMENTE (holding-wide), nunca por `(cliente, empresa)` — pese a que
+   esto ya estaba decidido el 2026-08-25 (D2, `docs/16-hallazgos-y-preguntas.md`
+   §8) y nunca se había implementado. Confirmado en producción: 10
+   divergencias ya detectadas por un comparador "en sombra" que solo
+   observaba el bug sin corregirlo (`shadow-lead-scope.service.ts`, retirado
+   en este cambio junto con `lead-abierto-revision.repository.ts`, ambos
+   huérfanos tras el fix real). `findLeadAbierto`/`findUltimoLeadCerrado`
+   ahora exigen `empresaId`; mismo fix aplicado a `whatsapp-ruteo.service.ts`
+   (dos call sites que ya tenían `empresaId` disponible pero no lo usaban).
+4. **`trust proxy` sin configurar — el rate-limit de `GET /marca-publica`
+   terminaba compartido por TODOS los clientes, no por IP** (commit
+   `9d58f3d`). Azure Container Apps pone un único reverse proxy propio
+   delante del contenedor; sin `app.set("trust proxy", 1)`, Express usaba
+   la IP del proxy (siempre la misma) para el rate-limit en vez de la IP
+   real del `X-Forwarded-For`.
+5. **D-mensajería: estado leído/no leído de conversaciones** (commit
+   `3d129de`) — feature nueva, no un fix. Tabla nueva
+   `conversaciones_lectura_whatsapp` (watermark `leidoHastaEn` por
+   `(conversación, usuario)`, RLS igual patrón que el resto del backend) —
+   deliberadamente NO por mensaje ni un flag compartido en `Mensaje`:
+   varias personas (asesor asignado + Administrador/Supervisor) ven la
+   misma `Conversacion` a la vez, cada una con su propio estado de lectura.
+   `GET /conversaciones` ahora devuelve `noLeido: boolean` por fila
+   (derivado: `ultimoMensajeEn > leidoHastaEn`, nunca persistido por
+   mensaje). `POST /conversaciones/:id/leido` marca como leída hasta ahora
+   para el usuario actual y publica `whatsapp.conversacion-leida` por el
+   mismo canal SSE que ya usa `whatsapp.mensaje-nuevo`
+   (`committed-events.service.ts`/`event-broker.ts`). 13 tests nuevos,
+   incluido aislamiento RLS real. **Pendiente del lado del frontend** (no
+   incluido en este cambio, backend-only): pintar el badge con
+   `conversacion.noLeido`, disparar `POST .../leido` al abrir una
+   conversación, y escuchar `whatsapp.conversacion-leida` para sincronizar
+   el badge entre pestañas.
+6. **Hallazgo de seguridad: `conversaciones_whatsapp`/`mensajes_whatsapp`/
+   `conversaciones_whatsapp_eventos` nunca tuvieron RLS habilitado**
+   (commit `8bfeed6`) — a diferencia de casi todo el resto del backend
+   (leads, bridges, LinkedIn, Meta Ads, negociación). Se crearon así desde
+   `20260829043249_add_whatsapp_messages` y nadie lo notó hasta este
+   punto. Verificado ANTES de forzar RLS que los 4 caminos que escriben ahí
+   (webhook de WhatsApp, job de SLA, `conversaciones.service.ts`
+   autenticado, `whatsapp-ruteo.service.ts`) ya resolvían `TenantContext`
+   correctamente — cero riesgo de romper algo al prender el interruptor.
+   `conversaciones_whatsapp`/`conversaciones_whatsapp_eventos` tienen
+   `empresa_id` directo; `mensajes_whatsapp` no, su política usa `EXISTS`
+   contra `conversaciones_whatsapp` por `conversacion_id` (mismo patrón que
+   `linkedin_fuentes`). Test nuevo de aislamiento RLS directo sobre las 3
+   tablas (consulta con el cliente de la app, sin pasar por ningún
+   servicio). Suite completa corrida dos veces en esta sesión (antes y
+   después de este último cambio): **1465/1465 tests, 134/134 archivos, sin
+   fallas**.
+
+Todos sincronizados a `main` y `test/gpt` (rebase limpio cada vez, sin
+conflictos reales — el único archivo que se solapó con trabajo paralelo de
+otra sesión fue `backend/prisma/schema.prisma`, resuelto sin intervención
+manual). Cada uno confirmado desplegado en producción real vía
+`az containerapp show` antes de darlo por cerrado.
+
+**Gotcha de proceso descubierto en esta sesión** (afecta a cualquier sync
+`main` → `test/gpt` futuro): después de un `git push origin main` exitoso,
+el ref local `origin/main` de este clon **no se actualiza solo** — hace
+falta `git fetch origin main:refs/remotes/origin/main --force` de nuevo
+ANTES de usar `origin/main` como fuente para el `git checkout` del sync a
+`test/gpt`, o el sync termina copiando contenido viejo sin ningún error que
+lo avise (`git status` no muestra diff porque compara contra el mismo
+contenido viejo). Pasó dos veces en esta sesión antes de detectarlo.
+
 ## Pendiente / gaps conocidos
 
 - **Incidente cerrado (2026-08-31): `tests/setup.ts` truncó producción.**

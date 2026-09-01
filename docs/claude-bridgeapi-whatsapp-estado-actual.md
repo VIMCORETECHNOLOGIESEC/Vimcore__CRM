@@ -6,6 +6,16 @@
 > donde también vive `docs/claude-linkedin-estado-actual.md` (trabajo paralelo
 > de LinkedIn, no tocado por este handoff).
 
+> **Actualización 2026-09-01** (detalle completo en
+> `docs/claude-despliegue-produccion-estado-actual.md`, sección "Sesión
+> 2026-09-01"): (a) mensajería sumó estado leído/no leído por
+> `(conversación, usuario)` — `POST /conversaciones/:id/leido`,
+> `GET /conversaciones` ahora trae `noLeido`, evento SSE
+> `whatsapp.conversacion-leida`; front pendiente de consumirlo. (b)
+> `conversaciones_whatsapp`/`mensajes_whatsapp`/`conversaciones_whatsapp_eventos`
+> tenían RLS deshabilitado desde que se crearon — ya corregido, mismo nivel
+> de aislamiento que el resto del backend.
+
 ## bridgeApi (`RedSocial.API_EXTERNA`) — completo de punta a punta
 
 Schema → adapter → repositories → services (config + prueba de conexión) →
