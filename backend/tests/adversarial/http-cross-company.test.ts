@@ -698,22 +698,40 @@ describe("adversarial/http-cross-company — POST /empresas/:empresaId/administr
     });
   });
 
-  it("403: un administrador company-scoped no puede provisionar administradores de empresa", async () => {
+  it("fix: un administrador company-scoped SÍ puede provisionar administradores de SU PROPIA empresa (ya no rechaza con 403)", async () => {
+    const adminEmpresa = await crearAdminDeEmpresa("admin-provision-propia");
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${adminEmpresa.empresaId}/administradores`)
+      .set("Authorization", `Bearer ${adminEmpresa.token}`)
+      .send({
+        nombre: "Admin Propio",
+        correo: `admin-propio-${crypto.randomUUID()}@test.local`,
+        password: PASSWORD,
+      });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.administrador.membresia.empresaId).toBe(adminEmpresa.empresaId);
+  });
+
+  it("anti-escalamiento: un administrador company-scoped que apunta a OTRA empresa en la URL igual provisiona en la SUYA (ignora el :empresaId ajeno, nunca 403 ni crea en la otra)", async () => {
     const [target, adminEmpresa] = await Promise.all([
       testAdminPrisma.empresa.create({ data: { nombre: `Empresa admin denied ${crypto.randomUUID()}` } }),
-      crearAdminDeEmpresa("admin-provision-denied"),
+      crearAdminDeEmpresa("admin-provision-cross"),
     ]);
 
     const respuesta = await request(app)
       .post(`/api/v1/empresas/${target.id}/administradores`)
       .set("Authorization", `Bearer ${adminEmpresa.token}`)
       .send({
-        nombre: "Admin Rechazado",
-        correo: `admin-rechazado-${crypto.randomUUID()}@test.local`,
+        nombre: "Admin No Escala",
+        correo: `admin-no-escala-${crypto.randomUUID()}@test.local`,
         password: PASSWORD,
       });
 
-    expect(respuesta.status).toBe(403);
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.administrador.membresia.empresaId).toBe(adminEmpresa.empresaId);
+    expect(respuesta.body.administrador.membresia.empresaId).not.toBe(target.id);
   });
 
   it("403: un SUPERVISOR holding-wide no puede provisionar administradores de empresa", async () => {

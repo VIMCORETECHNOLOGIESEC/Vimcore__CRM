@@ -229,7 +229,7 @@ describe("POST /api/v1/empresas/:empresaId/supervisores (hotfix: alta de Supervi
     });
   });
 
-  it("403 cuando el actor no es una sesión holding-wide (ej. una sesión company-scoped)", async () => {
+  it("403 cuando el actor no es ADMINISTRADOR (ej. un ASESOR de la misma empresa)", async () => {
     const correoAsesor = "asesor-companyscope@integracion.test";
     const passwordAsesor = "clave-asesor-companyscope-1234";
     await request(app)
@@ -247,6 +247,42 @@ describe("POST /api/v1/empresas/:empresaId/supervisores (hotfix: alta de Supervi
       .send({ nombre: "No Debería Crearse", correo: "no-deberia@integracion.test", password: "clave-cualquiera-1234" });
 
     expect(respuesta.status).toBe(403);
+  });
+
+  it("fix: un ADMINISTRADOR company-scoped SÍ puede crear un supervisor de SU PROPIA empresa (ya no rechaza con 403)", async () => {
+    const empresaPropia = await prisma.empresa.create({ data: { nombre: "Empresa admin company supervisores" } });
+    const membresia = await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: (
+          await prisma.usuario.create({
+            data: {
+              nombre: "Admin Company Supervisores",
+              correo: "portador-admin-supervisores@integracion.test",
+              passwordHash: await hashPassword("clave-portador-inutil-1234"),
+              rol: "ADMINISTRADOR",
+              activo: true,
+            },
+          })
+        ).id,
+        empresaId: empresaPropia.id,
+        rol: "ADMINISTRADOR",
+        correo: "admin-company-supervisores@integracion.test",
+        passwordHash: await hashPassword("clave-admin-company-1234"),
+        activa: true,
+      },
+    });
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: membresia.correo, password: "clave-admin-company-1234" });
+    expect(login.status).toBe(200);
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaPropia.id}/supervisores`)
+      .set("Authorization", `Bearer ${login.body.accessToken}`)
+      .send({ nombre: "Supervisor Propio", correo: "supervisor-propio@integracion.test", password: "clave-supervisor-propio-1234" });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.supervisor.membresia.empresaId).toBe(empresaPropia.id);
   });
 
   it("400 con campos faltantes", async () => {
@@ -302,7 +338,7 @@ describe("POST /api/v1/empresas/:empresaId/asesores (fix: Asesor scoped a empres
     });
   });
 
-  it("403 cuando el actor no es una sesión holding-wide (ej. una sesión company-scoped)", async () => {
+  it("403 cuando el actor no es ADMINISTRADOR (ej. un ASESOR de la misma empresa)", async () => {
     const correoAsesor = "asesor-companyscope-asesores@integracion.test";
     const passwordAsesor = "clave-asesor-companyscope-1234";
     await request(app)
@@ -320,6 +356,45 @@ describe("POST /api/v1/empresas/:empresaId/asesores (fix: Asesor scoped a empres
       .send({ nombre: "No Debería Crearse", correo: "no-deberia-asesor@integracion.test", password: "clave-cualquiera-1234" });
 
     expect(respuesta.status).toBe(403);
+  });
+
+  it("fix: un ADMINISTRADOR company-scoped SÍ puede crear un asesor de SU PROPIA empresa, e ignora un :empresaId ajeno en la URL (nunca 403, nunca crea en la otra)", async () => {
+    const [empresaPropia, empresaAjena] = await Promise.all([
+      prisma.empresa.create({ data: { nombre: "Empresa admin company asesores" } }),
+      prisma.empresa.create({ data: { nombre: "Empresa ajena asesores" } }),
+    ]);
+    const usuarioPortador = await prisma.usuario.create({
+      data: {
+        nombre: "Admin Company Asesores",
+        correo: "portador-admin-asesores@integracion.test",
+        passwordHash: await hashPassword("clave-portador-inutil-1234"),
+        rol: "ADMINISTRADOR",
+        activo: true,
+      },
+    });
+    const membresia = await testAdminPrisma.membresia.create({
+      data: {
+        usuarioId: usuarioPortador.id,
+        empresaId: empresaPropia.id,
+        rol: "ADMINISTRADOR",
+        correo: "admin-company-asesores@integracion.test",
+        passwordHash: await hashPassword("clave-admin-company-1234"),
+        activa: true,
+      },
+    });
+    const login = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ correo: membresia.correo, password: "clave-admin-company-1234" });
+    expect(login.status).toBe(200);
+
+    const respuesta = await request(app)
+      .post(`/api/v1/empresas/${empresaAjena.id}/asesores`)
+      .set("Authorization", `Bearer ${login.body.accessToken}`)
+      .send({ nombre: "Asesor Propio", correo: "asesor-propio@integracion.test", password: "clave-asesor-propio-1234" });
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.asesor.membresia.empresaId).toBe(empresaPropia.id);
+    expect(respuesta.body.asesor.membresia.empresaId).not.toBe(empresaAjena.id);
   });
 
   it("400 con campos faltantes", async () => {

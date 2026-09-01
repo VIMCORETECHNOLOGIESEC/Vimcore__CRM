@@ -248,8 +248,15 @@ function correoPortadorPara(
  * explícita. Replicado acá en vez de importado (mismo criterio de
  * duplicación deliberada que `ROLES_ACCESO_TOTAL` de arriba, ya documentado
  * como divergencia intencional entre archivos de este codebase).
+ *
+ * Exportada (fix, bug real: un admin de empresa no podía crear
+ * administradores/supervisores/asesores DE SU PROPIA empresa vía
+ * `POST /empresas/:empresaId/{administradores,supervisores,asesores}` --
+ * esas 3 rutas rechazaban con 403 a cualquier actor que no fuera
+ * holding-wide, ver `usuarios.controller.ts`). El controller la reusa como
+ * guard: mismo criterio anti-escalamiento de acá, sin duplicar la regla.
  */
-function resolveEmpresaId(actor: AuthenticatedUser, empresaIdBody: string | undefined): string {
+export function resolveEmpresaId(actor: AuthenticatedUser, empresaIdBody: string | undefined): string {
   if (actor.empresaId !== null) return actor.empresaId;
   if (!empresaIdBody) {
     throw new AppError(

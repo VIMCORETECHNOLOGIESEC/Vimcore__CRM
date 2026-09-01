@@ -21,6 +21,7 @@ import {
   findResponsables,
   findUsuarioById,
   findUsuarios,
+  resolveEmpresaId,
   updateUsuario,
 } from "../services/usuarios.service.js";
 
@@ -36,14 +37,6 @@ function invalidEmpresaIdParam(): AppError {
   return new AppError("validacion_invalida", 400, "El identificador de la empresa es inválido");
 }
 
-function forbiddenHoldingScope(): AppError {
-  return new AppError(
-    "solo_sesion_holding",
-    403,
-    "Esta acción es exclusiva de una sesión de holding",
-  );
-}
-
 export async function postUsuario(req: Request, res: Response): Promise<void> {
   const usuario = assertAuthenticated(req);
 
@@ -56,11 +49,17 @@ export async function postUsuario(req: Request, res: Response): Promise<void> {
   res.status(201).json({ user });
 }
 
+/**
+ * Fix (bug real: un admin de empresa no podía crear administradores de su
+ * propia empresa acá -- rechazado con 403 sin importar qué `:empresaId`
+ * mandara). Mismo criterio anti-escalamiento que el resto del proyecto
+ * (`resolveEmpresaId`, `usuarios.service.ts`): un actor de empresa fuerza
+ * SIEMPRE su propia `empresaId`, ignorando la de la URL -- no hay forma de
+ * apuntar a otra empresa. Un actor holding-wide usa la `:empresaId` de la
+ * URL tal cual, igual que antes.
+ */
 export async function postEmpresaAdministrador(req: Request, res: Response): Promise<void> {
   const usuario = assertAuthenticated(req);
-  if (usuario.sessionScope !== "holding" || usuario.empresaId !== null) {
-    throw forbiddenHoldingScope();
-  }
 
   const parsedParams = empresaIdParamSchema.safeParse(req.params);
   if (!parsedParams.success) {
@@ -72,20 +71,14 @@ export async function postEmpresaAdministrador(req: Request, res: Response): Pro
     throw zodValidationError();
   }
 
-  const administrador = await createEmpresaAdministrador(parsedParams.data.empresaId, parsedBody.data);
+  const empresaId = resolveEmpresaId(usuario, parsedParams.data.empresaId);
+  const administrador = await createEmpresaAdministrador(empresaId, parsedBody.data);
   res.status(201).json({ administrador });
 }
 
-/**
- * Hotfix (supervisor scoped a empresa): espejo exacto de
- * `postEmpresaAdministrador` arriba, mismo guard (`sessionScope !==
- * "holding" || empresaId !== null` -> 403 `forbiddenHoldingScope`).
- */
+/** Espejo exacto de `postEmpresaAdministrador` arriba. */
 export async function postEmpresaSupervisor(req: Request, res: Response): Promise<void> {
   const usuario = assertAuthenticated(req);
-  if (usuario.sessionScope !== "holding" || usuario.empresaId !== null) {
-    throw forbiddenHoldingScope();
-  }
 
   const parsedParams = empresaIdParamSchema.safeParse(req.params);
   if (!parsedParams.success) {
@@ -97,21 +90,14 @@ export async function postEmpresaSupervisor(req: Request, res: Response): Promis
     throw zodValidationError();
   }
 
-  const supervisor = await createEmpresaSupervisor(parsedParams.data.empresaId, parsedBody.data);
+  const empresaId = resolveEmpresaId(usuario, parsedParams.data.empresaId);
+  const supervisor = await createEmpresaSupervisor(empresaId, parsedBody.data);
   res.status(201).json({ supervisor });
 }
 
-/**
- * Fix (bug de seguridad: Asesor creado dentro de una empresa terminaba
- * logueando con sesión holding-wide en vez de "company"): espejo exacto de
- * `postEmpresaSupervisor` arriba, mismo guard (`sessionScope !== "holding"
- * || empresaId !== null` -> 403 `forbiddenHoldingScope`).
- */
+/** Espejo exacto de `postEmpresaAdministrador` arriba. */
 export async function postEmpresaAsesor(req: Request, res: Response): Promise<void> {
   const usuario = assertAuthenticated(req);
-  if (usuario.sessionScope !== "holding" || usuario.empresaId !== null) {
-    throw forbiddenHoldingScope();
-  }
 
   const parsedParams = empresaIdParamSchema.safeParse(req.params);
   if (!parsedParams.success) {
@@ -123,7 +109,8 @@ export async function postEmpresaAsesor(req: Request, res: Response): Promise<vo
     throw zodValidationError();
   }
 
-  const asesor = await createEmpresaAsesor(parsedParams.data.empresaId, parsedBody.data);
+  const empresaId = resolveEmpresaId(usuario, parsedParams.data.empresaId);
+  const asesor = await createEmpresaAsesor(empresaId, parsedBody.data);
   res.status(201).json({ asesor });
 }
 
