@@ -8,6 +8,7 @@ import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
+import { DOMINIO_CORREO_PORTADOR } from "../repositories/usuario.repository.js";
 import type {
   AdminUsuarioListView,
   AdminUsuarioView,
@@ -210,7 +211,7 @@ function correoPortadorPara(
     .update(`${empresaId}:${correoMembresia.trim().toLowerCase()}`)
     .digest("hex")
     .slice(0, 24);
-  return `portador-${ROL_PORTADOR_SEGMENTO[rol]}-${empresaId}-${digest}@no-login.crm.local`;
+  return `portador-${ROL_PORTADOR_SEGMENTO[rol]}-${empresaId}-${digest}@${DOMINIO_CORREO_PORTADOR}`;
 }
 
 /**

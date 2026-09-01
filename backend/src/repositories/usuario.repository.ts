@@ -95,11 +95,22 @@ export interface FindUsuariosOptions {
  * `buildWhere` en `usuarios.service.ts` — una membresía desactivada no cuenta
  * como pertenencia vigente a esa empresa).
  */
+/**
+ * Dominio del correo sintético de un "portador" (`usuarios.service.ts::
+ * correoPortadorPara`) -- un `Usuario` legado creado SOLO para alojar una
+ * `Membresia` credenciada de un admin/supervisor de empresa (fix de
+ * escalamiento de credenciales, ver ese archivo). `Usuario.correo` para esas
+ * filas nunca es una identidad real ni de login -- exportado para que
+ * `toListView` (abajo) pueda detectarlo y mostrar en su lugar el correo real
+ * (`Membresia.correo`, el que el admin efectivamente usa para loguearse).
+ */
+export const DOMINIO_CORREO_PORTADOR = "no-login.crm.local";
+
 const usuarioListSelect = {
   ...adminUsuarioSelect,
   membresias: {
     where: { activa: true },
-    select: { empresa: { select: { id: true, nombre: true } } },
+    select: { correo: true, empresa: { select: { id: true, nombre: true } } },
   },
 } satisfies Prisma.UsuarioSelect;
 
@@ -118,6 +129,14 @@ export type AdminUsuarioListView = AdminUsuarioView & {
   empresas: { id: string; nombre: string }[];
 };
 
+/**
+ * Fix (correo de portador visible en el listado): `Usuario.correo` de un
+ * portador es el placeholder sintético `@no-login.crm.local`, nunca la
+ * identidad real -- acá se sustituye por `Membresia.correo` de la primera
+ * membresía activa (la real, la que el admin usa para loguearse vía
+ * `auth.service.ts::login`). Un `Usuario` normal (no portador) no matchea el
+ * dominio y conserva su `correo` tal cual.
+ */
 function toListView(usuario: UsuarioListRaw): AdminUsuarioListView {
   const { membresias, ...rest } = usuario;
   const vistos = new Set<string>();
@@ -128,7 +147,11 @@ function toListView(usuario: UsuarioListRaw): AdminUsuarioListView {
       vistos.add(empresa.id);
       return true;
     });
-  return { ...rest, empresas };
+
+  const esPortador = rest.correo.endsWith(`@${DOMINIO_CORREO_PORTADOR}`);
+  const correo = esPortador && membresias[0]?.correo ? membresias[0].correo : rest.correo;
+
+  return { ...rest, correo, empresas };
 }
 
 export interface FindUsuariosResult {
