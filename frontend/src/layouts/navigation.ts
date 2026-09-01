@@ -146,10 +146,18 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     requiereVistaEmpresaSiHolding: true,
   },
   {
+    // Fix (2026-09-01, mismo bug que Usuarios): `ReportesPage.tsx` YA leía
+    // `useVistaEmpresa()` y armaba un reporte acotado a esa empresa cuando
+    // el parámetro llegaba -- pero nunca llegaba al navegar por acá desde
+    // el sidebar. Sin vista, un holding-wide sigue generando un reporte
+    // agregado de todo el holding (modo válido, nunca "roto") -- por eso
+    // `preservaVistaEmpresaSiHolding`, no `requiereVistaEmpresaSiHolding`
+    // (ese ocultaría el ítem sin vista, que acá no corresponde).
     label: "Reportes",
     route: "/reportes",
     icon: FileText,
     allowedRoles: ["ADMINISTRADOR", "SUPERVISOR"],
+    preservaVistaEmpresaSiHolding: true,
   },
   {
     label: "Apariencia",
