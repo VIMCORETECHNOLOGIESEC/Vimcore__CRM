@@ -9,6 +9,18 @@ import { logger } from "./lib/logger.js";
 export function createApp(): Express {
   const app = express();
 
+  // Fix (rate-limit por IP real, no por el proxy): Azure Container Apps
+  // pone un único reverse proxy propio delante de este contenedor (nunca
+  // acceso directo a internet) y agrega `X-Forwarded-For` con la IP real del
+  // cliente. Sin `trust proxy`, Express usa la IP del socket (siempre la del
+  // proxy de Azure) -- `marca-publica-rate-limit.middleware.ts` terminaba
+  // agrupando a TODOS los clientes bajo esa única IP compartida, así que el
+  // límite de 60 req/min era del backend entero, no por cliente. `1` (un
+  // solo hop confiable) es el valor correcto para esta topología -- nunca
+  // `true`, que confiaría en cualquier `X-Forwarded-For` que un cliente
+  // mande directo, habilitando spoofing de IP para el rate-limit.
+  app.set("trust proxy", 1);
+
   // `customProps`: marca cada línea de request/response de pino-http con
   // `accessLog: true` para que `logger.ts::loggerOptions` no la suprima --
   // método/URL/status/duración no son datos de negocio, no dependen de
