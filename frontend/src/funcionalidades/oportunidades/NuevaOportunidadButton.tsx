@@ -81,7 +81,7 @@ export function NuevaOportunidadButton({ leadId }: NuevaOportunidadButtonProps) 
           <DialogHeader>
             <DialogTitle>Nueva oportunidad</DialogTitle>
             <DialogDescription>
-              Iniciá una negociación a partir de este lead. Podés elegir el producto ahora o más
+              Inicia una negociación a partir de este lead. Puedes elegir el producto ahora o más
               adelante.
             </DialogDescription>
           </DialogHeader>
@@ -89,7 +89,7 @@ export function NuevaOportunidadButton({ leadId }: NuevaOportunidadButtonProps) 
           {sinProductos && esAdmin ? (
             <EmptyState
               title="Todavía no hay productos en el catálogo"
-              description="Creá al menos un producto antes de vincularlo a una oportunidad."
+              description="Crea al menos un producto antes de vincularlo a una oportunidad."
               action={
                 <Button
                   type="button"

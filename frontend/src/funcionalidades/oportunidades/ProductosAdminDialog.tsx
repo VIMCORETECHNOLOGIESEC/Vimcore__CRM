@@ -21,7 +21,7 @@ const crearProductoSchema = z.object({
   nombre: z
     .string()
     .trim()
-    .min(1, "Ingresá el nombre.")
+    .min(1, "Ingresa el nombre.")
     .max(200, "El nombre no puede superar los 200 caracteres."),
 });
 
@@ -92,7 +92,7 @@ export function ProductosAdminDialog({
         <DialogHeader>
           <DialogTitle>Catálogo de productos</DialogTitle>
           <DialogDescription>
-            Consultá los productos disponibles y agregá uno nuevo para vincularlo a las
+            Consulta los productos disponibles y agrega uno nuevo para vincularlo a las
             oportunidades.
           </DialogDescription>
         </DialogHeader>

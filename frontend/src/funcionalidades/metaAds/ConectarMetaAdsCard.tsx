@@ -101,7 +101,7 @@ export function ConectarMetaAdsCard() {
 
         {faltaElegirEmpresa ? (
           <p className="text-sm text-muted-foreground">
-            Elegí primero una empresa desde «Empresas» para conectar su cuenta de Meta Ads.
+            Elige primero una empresa desde «Empresas» para conectar su cuenta de Meta Ads.
           </p>
         ) : null}
 

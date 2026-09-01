@@ -59,7 +59,7 @@ export function CajaRespuesta({ onEnviar, enviando }: CajaRespuestaProps) {
           value={texto}
           onChange={(evento) => setTexto(evento.target.value)}
           rows={2}
-          placeholder="Escribí una respuesta…"
+          placeholder="Escribe una respuesta…"
           aria-invalid={excedido}
           className="min-h-[2.5rem] w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
         />

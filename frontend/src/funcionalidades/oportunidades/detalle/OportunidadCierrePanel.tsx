@@ -111,7 +111,7 @@ export function OportunidadCierrePanel({ oportunidad }: OportunidadCierrePanelPr
         open={confirmando}
         onOpenChange={setConfirmando}
         title={modo === "VENTA" ? "Confirmar cierre como Venta" : "Confirmar cierre como No Venta"}
-        description="Esta acción es irreversible: una oportunidad cerrada no vuelve a reabrirse. Verificá los datos antes de confirmar."
+        description="Esta acción es irreversible: una oportunidad cerrada no vuelve a reabrirse. Verifica los datos antes de confirmar."
         confirmLabel={modo === "VENTA" ? "Cerrar como Venta" : "Cerrar como No Venta"}
         confirming={cerrar.isPending}
         onConfirm={confirmar}

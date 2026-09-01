@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useSaveToken } from "../useBridges";
 
 const tokenFormSchema = z.object({
-  token: z.string().trim().min(1, "Ingresá el token."),
+  token: z.string().trim().min(1, "Ingresa el token."),
 });
 
 type TokenFormValues = z.infer<typeof tokenFormSchema>;
@@ -65,7 +65,7 @@ export function TokenForm({ bridgeId, cuentaId }: TokenFormProps) {
           id={inputId}
           type="password"
           autoComplete="off"
-          placeholder="Pegá el token nuevo…"
+          placeholder="Pega el token nuevo…"
           disabled={saveToken.isPending}
           aria-invalid={errors.token ? "true" : undefined}
           {...register("token")}

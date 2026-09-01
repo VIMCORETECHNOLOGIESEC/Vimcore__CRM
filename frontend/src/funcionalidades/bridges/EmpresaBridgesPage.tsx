@@ -158,8 +158,8 @@ export function EmpresaBridgesPage() {
           }
           description={
             hayFiltrosActivos
-              ? "Probá ajustar o limpiar los filtros aplicados."
-              : "Creá el primero con el botón «Nuevo bridge»."
+              ? "Prueba ajustar o limpiar los filtros aplicados."
+              : "Crea el primero con el botón «Nuevo bridge»."
           }
         />
       ) : (
@@ -265,7 +265,7 @@ export function EmpresaBridgesPage() {
           description={
             canEliminarseFisicamente(bridgeParaBaja)
               ? "Este bridge nunca recibió leads: se eliminará de forma permanente e irreversible."
-              : "El bridge pasará a estado Inactivo. Podés reactivarlo cuando quieras, sin perder su clave ni su historial."
+              : "El bridge pasará a estado Inactivo. Puedes reactivarlo cuando quieras, sin perder su clave ni su historial."
           }
           confirmLabel="Confirmar"
           confirming={eliminar.isPending}

@@ -146,7 +146,7 @@ export function ReportesPage() {
         <div>
           <h2 className="text-xl font-semibold text-foreground">Generar reporte</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Elegí el formato y los filtros del reporte que querés generar.
+            Elige el formato y los filtros del reporte que quieres generar.
           </p>
         </div>
 
@@ -181,7 +181,7 @@ export function ReportesPage() {
           <p className="text-sm text-muted-foreground">
             {empresaVistaId
               ? "Se generará para la empresa seleccionada en «Empresas»."
-              : "Se generará para todo el holding (sin acotar a una empresa). Elegí una empresa desde «Empresas» para acotarlo."}
+              : "Se generará para todo el holding (sin acotar a una empresa). Elige una empresa desde «Empresas» para acotarlo."}
           </p>
         ) : null}
 
@@ -204,7 +204,7 @@ export function ReportesPage() {
           ) : jobIdActivo === null ? (
             <EmptyState
               title="Todavía no generaste ningún reporte"
-              description="Completá el formulario y generá tu primer reporte."
+              description="Completa el formulario y genera tu primer reporte."
             />
           ) : trackedJob.isLoading ? (
             <LoadingState rows={2} />

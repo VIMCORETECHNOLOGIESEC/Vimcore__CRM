@@ -60,10 +60,10 @@ function PlaceholderSinSeleccion() {
     <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-muted p-8 text-center">
       <MessageSquare className="size-10 text-muted-foreground" aria-hidden="true" />
       <p className="text-sm font-medium text-foreground">
-        Seleccioná una conversación para ver los mensajes
+        Selecciona una conversación para ver los mensajes
       </p>
       <p className="text-sm text-muted-foreground">
-        Elegí una conversación del panel de la izquierda.
+        Elige una conversación del panel de la izquierda.
       </p>
     </div>
   );

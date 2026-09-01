@@ -81,7 +81,7 @@ function CitaDateTimeField({
             >
               <CalendarIcon className="size-4 shrink-0 text-marca-texto" aria-hidden="true" />
               <span className="truncate text-sm">
-                {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Elegí una fecha"}
+                {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Elige una fecha"}
               </span>
             </Button>
           </PopoverTrigger>
@@ -269,7 +269,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
           </span>
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Todavía no hay citas</p>
-            <p className="text-sm text-muted-foreground">Elegí una fecha para registrar el primer encuentro.</p>
+            <p className="text-sm text-muted-foreground">Elige una fecha para registrar el primer encuentro.</p>
           </div>
         </div>
       ) : (

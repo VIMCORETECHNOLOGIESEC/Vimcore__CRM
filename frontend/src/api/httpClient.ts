@@ -35,10 +35,10 @@ export class ApiError extends Error {
 
 /** Mensaje genérico y accionable cuando no hay uno más específico del backend. */
 const GENERIC_ERROR_MESSAGE =
-  "Ocurrió un error inesperado. Intentá nuevamente en unos segundos.";
+  "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.";
 const NETWORK_ERROR_MESSAGE =
-  "No se pudo conectar con el servidor. Verificá tu conexión e intentá nuevamente.";
-const SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Iniciá sesión nuevamente.";
+  "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente.";
+const SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Inicia sesión nuevamente.";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";

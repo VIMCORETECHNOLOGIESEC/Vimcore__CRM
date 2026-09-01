@@ -153,7 +153,7 @@ export async function probarConexion(usuario: AuthenticatedUser, bridgeId: strin
     // Mismo criterio que `cuenta-publicitaria.service.ts::probarConexion`:
     // ciphertext corrupto o `TOKEN_ENCRYPTION_KEY` rotada no son un error
     // HTTP inesperado, son un resultado diagnóstico más.
-    return { ok: false, mensaje: "No se pudo descifrar la credencial guardada. Volvé a cargarla." };
+    return { ok: false, mensaje: "No se pudo descifrar la credencial guardada. Vuelve a cargarla." };
   }
 
   // Mismo angostamiento inline que poll.job.ts::pollUnBridge -- el guard de

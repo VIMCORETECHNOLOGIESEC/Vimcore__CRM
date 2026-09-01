@@ -30,7 +30,7 @@ const ETIQUETAS_ROL: Record<RolUsuario, string> = {
 const cambiarPasswordSchema = z
   .object({
     password: passwordPolicySchema,
-    confirmarPassword: z.string().min(1, "Confirmá la nueva contraseña."),
+    confirmarPassword: z.string().min(1, "Confirma la nueva contraseña."),
   })
   .refine((valores) => valores.password === valores.confirmarPassword, {
     message: "Las contraseñas no coinciden.",

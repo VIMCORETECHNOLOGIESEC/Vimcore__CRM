@@ -116,7 +116,7 @@ export function WhatsAppConexionOverlay({
       break;
     case "notConnected":
       title = "Conexión no completada";
-      description = "No se detectó una conexión activa todavía. Podés intentarlo de nuevo.";
+      description = "No se detectó una conexión activa todavía. Puedes intentarlo de nuevo.";
       actions = (
         <Button type="button" onClick={onClose}>
           Reintentar

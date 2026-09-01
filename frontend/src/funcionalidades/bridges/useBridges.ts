@@ -137,7 +137,7 @@ export function useDeleteBridge() {
       toast.success(
         resultado.resultado === "BAJA_FISICA"
           ? "Bridge eliminado permanentemente: nunca había recibido leads."
-          : "Bridge dado de baja correctamente. Podés reactivarlo cuando quieras.",
+          : "Bridge dado de baja correctamente. Puedes reactivarlo cuando quieras.",
       );
     },
   });

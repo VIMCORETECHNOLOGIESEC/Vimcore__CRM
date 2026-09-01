@@ -27,9 +27,9 @@ import type { CreateUsuarioInput } from "./usuarios.api";
  * el mínimo de 12 caracteres.
  */
 const crearUsuarioSchema = z.object({
-  nombre: z.string().trim().min(1, "Ingresá el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
-  correo: z.string().trim().pipe(z.email("Ingresá un correo electrónico válido.")),
-  rol: z.enum(ROLES_USUARIO_SELECCIONABLES, { error: "Elegí un rol." }),
+  nombre: z.string().trim().min(1, "Ingresa el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
+  correo: z.string().trim().pipe(z.email("Ingresa un correo electrónico válido.")),
+  rol: z.enum(ROLES_USUARIO_SELECCIONABLES, { error: "Elige un rol." }),
   password: passwordPolicySchema,
 });
 
@@ -60,7 +60,7 @@ export function CrearUsuarioDialog({ open, onOpenChange, onSubmit, enviando }: C
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Nuevo usuario</DialogTitle>
-          <DialogDescription>Completá los datos para dar de alta un usuario del sistema.</DialogDescription>
+          <DialogDescription>Completa los datos para dar de alta un usuario del sistema.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={enviar} noValidate className="flex flex-col gap-4">

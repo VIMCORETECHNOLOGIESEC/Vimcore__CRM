@@ -52,7 +52,7 @@ export function ListaConversaciones({
           <LoadingState rows={6} rowHeight="h-16" />
         ) : isError ? (
           <ErrorState
-            message="No se pudieron cargar las conversaciones. Intentá nuevamente."
+            message="No se pudieron cargar las conversaciones. Intenta nuevamente."
             onRetry={onReintentar}
           />
         ) : conversaciones.length === 0 ? (

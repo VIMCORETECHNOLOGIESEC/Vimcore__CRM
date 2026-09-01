@@ -104,7 +104,7 @@ export function MetaAdsCallbackPage() {
             ) : callback.data.cuentas.length === 0 ? (
               <EmptyState
                 title="No se encontraron cuentas de anuncios disponibles"
-                description="Verificá que la cuenta autorizada en Meta tenga al menos una cuenta de anuncios activa."
+                description="Verifica que la cuenta autorizada en Meta tenga al menos una cuenta de anuncios activa."
                 action={
                   <Button type="button" variant="outline" onClick={volverAlPaso1}>
                     Volver
@@ -114,7 +114,7 @@ export function MetaAdsCallbackPage() {
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Elegí la cuenta de anuncios que querés conectar:
+                  Elige la cuenta de anuncios que quieres conectar:
                 </p>
                 <div role="radiogroup" aria-label="Cuenta de anuncios de Meta" className="flex flex-col gap-2">
                   {callback.data.cuentas.map((cuenta) => (

@@ -72,21 +72,21 @@ function buildStepContent(lines: string[]): ReactNode {
 export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   {
     target: '[data-tour="leads-search"]',
-    title: "Buscá oportunidades",
-    content: "Encontrá leads por nombre, teléfono o correo sin perder el contexto de tu cartera.",
+    title: "Busca oportunidades",
+    content: "Encuentra leads por nombre, teléfono o correo sin perder el contexto de tu cartera.",
     placement: "bottom",
     before: async () => alignStepTarget('[data-tour="leads-search"]', "start"),
   },
   {
     target: '[data-tour="leads-filters"]',
-    title: "Combiná filtros",
-    content: "Acotá la lista por etapa, prioridad, red social, responsable o estado de SLA.",
+    title: "Combina filtros",
+    content: "Acota la lista por etapa, prioridad, red social, responsable o estado de SLA.",
     placement: "bottom-end",
     before: async () => alignStepTarget('[data-tour="leads-filters"]', "start"),
   },
   {
     target: '[data-tour="leads-table-columns"]',
-    title: "Leé las columnas de la lista",
+    title: "Lee las columnas de la lista",
     content: buildStepContent([
       "Cliente abre el detalle; Teléfono te da el contacto directo.",
       "Etapa muestra el avance; Semáforo, la prioridad; Estado de SLA, el tiempo de respuesta; y Fecha de ingreso, cuándo llegó al CRM.",
@@ -100,8 +100,8 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   },
   {
     target: '[data-tour="leads-table-row"]',
-    title: "Abrí un lead para trabajarlo",
-    content: "Cada fila es una oportunidad. Hacé clic en el nombre del cliente para ver su información y registrar las acciones comerciales.",
+    title: "Abre un lead para trabajarlo",
+    content: "Cada fila es una oportunidad. Haz clic en el nombre del cliente para ver su información y registrar las acciones comerciales.",
     placement: "bottom",
     skipScroll: false,
     scrollOffset: 112,
@@ -111,7 +111,7 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
     target: '[data-tour="lead-header"]',
     title: "Ubicate antes de actuar",
     content: buildStepContent([
-      "El nombre te confirma a quién atendés.",
+      "El nombre te confirma a quién atiendes.",
       "El semáforo marca la prioridad comercial y el reloj de SLA cuánto tiempo queda para actuar.",
       "También ves la etapa actual y el responsable del lead antes de tomar cualquier acción.",
     ]),
@@ -123,11 +123,11 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   },
   {
     target: '[data-tour="lead-contact-origin-cards"]',
-    title: "Confirmá datos y origen",
+    title: "Confirma datos y origen",
     content: buildStepContent([
-      "En Datos de contacto revisás el teléfono; si aparece la marca de inválido, frená el contacto y corregilo.",
+      "En Datos de contacto revisas el teléfono; si aparece la marca de inválido, frena el contacto y corrígelo.",
       "Acá también ves si el lead tiene correo o si quedó sin email registrado.",
-      "En Origen confirmás red social, campaña, cuenta publicitaria y fecha de ingreso con los datos reales que trajo el lead.",
+      "En Origen confirmas red social, campaña, cuenta publicitaria y fecha de ingreso con los datos reales que trajo el lead.",
     ]),
     placement: "bottom",
     skipScroll: false,
@@ -137,7 +137,7 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   },
   {
     target: '[data-tour="lead-summary"]',
-    title: "Priorizá el siguiente paso",
+    title: "Prioriza el siguiente paso",
     content: "El resumen ejecutivo transforma los datos en una guía: qué hacer ahora, cuánto tiempo lleva el lead en CRM, su avance y su calificación.",
     placement: "bottom",
     skipScroll: false,
@@ -167,32 +167,32 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   },
   {
     target: '[data-tour="lead-workspace-tabs"]',
-    title: "Gestioná el lead desde un solo lugar",
-    content: "Desde estas pestañas cambiás entre progreso, citas y cierre sin salir del contexto del lead.",
+    title: "Gestiona el lead desde un solo lugar",
+    content: "Desde estas pestañas cambias entre progreso, citas y cierre sin salir del contexto del lead.",
     placement: "bottom",
   },
   {
     target: '[data-tour="lead-workspace-progreso"]',
-    title: "Actualizá el progreso",
-    content: "Respondé el formulario de la etapa para calificar el lead y avanzar por el embudo.",
+    title: "Actualiza el progreso",
+    content: "Responde el formulario de la etapa para calificar el lead y avanzar por el embudo.",
     placement: "bottom",
   },
   {
     target: '[data-tour="lead-workspace-cita"]',
-    title: "Agendá el siguiente contacto",
-    content: "Registrá una cita y su modalidad para que el equipo tenga continuidad comercial.",
+    title: "Agenda el siguiente contacto",
+    content: "Registra una cita y su modalidad para que el equipo tenga continuidad comercial.",
     placement: "bottom",
   },
   {
     target: '[data-tour="lead-workspace-cierre"]',
-    title: "Cerrá cuando corresponda",
-    content: "Registrá una venta o un cierre sin venta solo después de confirmar el resultado con el cliente.",
+    title: "Cierra cuando corresponda",
+    content: "Registra una venta o un cierre sin venta solo después de confirmar el resultado con el cliente.",
     placement: "bottom",
   },
   {
     target: '[data-tour="lead-workspace-oportunidad"]',
-    title: "Consultá o iniciá una oportunidad",
-    content: "Desde acá ves las oportunidades ya registradas para este lead y podés iniciar una nueva sin salir del espacio de trabajo.",
+    title: "Consulta o inicia una oportunidad",
+    content: "Desde aquí ves las oportunidades ya registradas para este lead y puedes iniciar una nueva sin salir del espacio de trabajo.",
     placement: "bottom",
   },
 ];

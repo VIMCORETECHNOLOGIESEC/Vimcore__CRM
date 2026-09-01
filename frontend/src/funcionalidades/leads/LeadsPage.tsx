@@ -195,7 +195,7 @@ export function LeadsPage() {
       ) : !data || data.datos.length === 0 ? (
         <EmptyState
           title="No hay leads que coincidan con estos filtros"
-          description="Probá ajustar o limpiar los filtros combinados."
+          description="Prueba ajustar o limpiar los filtros combinados."
         />
       ) : (
         <div className="flex flex-col">

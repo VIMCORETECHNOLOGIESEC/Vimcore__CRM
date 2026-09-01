@@ -115,8 +115,8 @@ export function UsuariosPage() {
           }
           description={
             hayFiltrosActivos
-              ? "Probá ajustar o limpiar los filtros aplicados."
-              : "Creá el primero con el botón «Nuevo usuario»."
+              ? "Prueba ajustar o limpiar los filtros aplicados."
+              : "Crea el primero con el botón «Nuevo usuario»."
           }
         />
       ) : (

@@ -205,8 +205,8 @@ export function GestorEmpresasPage() {
           }
           description={
             hayBusquedaActiva
-              ? "Probá ajustar o limpiar el término buscado."
-              : "Creá la primera empresa con el botón «Nueva empresa»."
+              ? "Prueba ajustar o limpiar el término buscado."
+              : "Crea la primera empresa con el botón «Nueva empresa»."
           }
         />
       ) : (

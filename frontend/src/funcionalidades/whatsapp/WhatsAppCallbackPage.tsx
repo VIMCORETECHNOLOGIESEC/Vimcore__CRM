@@ -101,7 +101,7 @@ export function WhatsAppCallbackPage() {
             ) : callback.data.numeros.length === 0 ? (
               <EmptyState
                 title="No se encontraron números de WhatsApp Business disponibles"
-                description="Verificá que la cuenta autorizada en Meta tenga al menos un número de WhatsApp Business configurado."
+                description="Verifica que la cuenta autorizada en Meta tenga al menos un número de WhatsApp Business configurado."
                 action={
                   <Button type="button" variant="outline" onClick={volverAlPaso1}>
                     Volver
@@ -111,7 +111,7 @@ export function WhatsAppCallbackPage() {
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Elegí el número de WhatsApp Business que querés conectar:
+                  Elige el número de WhatsApp Business que quieres conectar:
                 </p>
                 <div role="radiogroup" aria-label="Número de WhatsApp Business" className="flex flex-col gap-2">
                   {callback.data.numeros.map((numero) => (

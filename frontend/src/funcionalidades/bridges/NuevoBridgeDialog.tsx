@@ -25,11 +25,11 @@ import { useRedesSocialesSoportadas } from "./useBridges";
  * reintroduciría exactamente el hardcodeo que ese requerimiento prohíbe.
  */
 const crearBridgeSchema = z.object({
-  redSocial: z.string().trim().min(1, "Elegí una red social."),
+  redSocial: z.string().trim().min(1, "Elige una red social."),
   nombre: z
     .string()
     .trim()
-    .min(1, "Ingresá el nombre.")
+    .min(1, "Ingresa el nombre.")
     .max(120, "El nombre no puede superar los 120 caracteres."),
 });
 
@@ -80,7 +80,7 @@ export function NuevoBridgeDialog({ open, onOpenChange, onSubmit, onApiExterna, 
         <DialogHeader>
           <DialogTitle>Nuevo bridge</DialogTitle>
           <DialogDescription>
-            Elegí de dónde vienen tus leads y poné un nombre para reconocer esta conexión.
+            Elige de dónde vienen tus leads y pon un nombre para reconocer esta conexión.
           </DialogDescription>
         </DialogHeader>
 

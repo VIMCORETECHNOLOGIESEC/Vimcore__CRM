@@ -47,11 +47,11 @@ function formatFechaCorta(iso: string): string {
 function getSiguientePaso(etapa: EtapaLead): { titulo: string; detalle: string } {
   switch (etapa) {
     case "NUEVO":
-      return { titulo: "Completar el formulario de contacto", detalle: "Calificá este lead para avanzar a Contactado." };
+      return { titulo: "Completar el formulario de contacto", detalle: "Califica este lead para avanzar a Contactado." };
     case "CONTACTADO":
-      return { titulo: "Coordinar una cita", detalle: "Registrá el próximo contacto para avanzar a Cita." };
+      return { titulo: "Coordinar una cita", detalle: "Registra el próximo contacto para avanzar a Cita." };
     case "CITA":
-      return { titulo: "Completar el resultado de la cita", detalle: "Usá el formulario de progreso para registrar lo conversado." };
+      return { titulo: "Completar el resultado de la cita", detalle: "Usa el formulario de progreso para registrar lo conversado." };
     case "VENTA":
       return { titulo: "Lead convertido", detalle: "La venta quedó registrada en el embudo." };
     case "NO_VENTA":
@@ -184,7 +184,7 @@ function CierreLeadPanel({ leadId, cerrado }: { leadId: string; cerrado: boolean
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Resultado del lead</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Elegí cómo finalizó la oportunidad.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Elige cómo finalizó la oportunidad.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -331,7 +331,7 @@ export function LeadDetallePage() {
   }
 
   if (!user) {
-    return <EmptyState title="Sesión no disponible" description="Iniciá sesión nuevamente." />;
+    return <EmptyState title="Sesión no disponible" description="Inicia sesión nuevamente." />;
   }
 
   return (

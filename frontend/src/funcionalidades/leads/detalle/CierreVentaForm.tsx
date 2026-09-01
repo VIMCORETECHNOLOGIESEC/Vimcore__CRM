@@ -136,7 +136,7 @@ export function CierreVentaForm({ leadId }: CierreVentaFormProps) {
         open={confirmando}
         onOpenChange={setConfirmando}
         title="Confirmar cierre como Venta"
-        description="Esta acción es irreversible: un lead cerrado en Venta o No Venta no vuelve a reabrirse. Verificá los datos antes de confirmar."
+        description="Esta acción es irreversible: un lead cerrado en Venta o No Venta no vuelve a reabrirse. Verifica los datos antes de confirmar."
         confirmLabel="Cerrar como Venta"
         confirming={submitCierre.isPending}
         onConfirm={confirm}

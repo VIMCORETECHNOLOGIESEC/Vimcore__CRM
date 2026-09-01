@@ -40,7 +40,7 @@ export function HiloMensajes({
     return (
       <div className="flex-1 overflow-y-auto bg-muted p-4">
         <ErrorState
-          message="No se pudo cargar el historial de esta conversación. Intentá nuevamente."
+          message="No se pudo cargar el historial de esta conversación. Intenta nuevamente."
           onRetry={onReintentar}
         />
       </div>

@@ -66,7 +66,7 @@ export function CredencialBridgeForm({ bridge }: CredencialBridgeFormProps) {
       <p className="text-xs text-muted-foreground">
         El token se carga, renueva y verifica por cada cuenta publicitaria, no a nivel de bridge:
         el campo siempre se muestra vacío (nunca se devuelve por la API, ni siquiera enmascarado).
-        Buscá la sección «Cuentas publicitarias asociadas» más abajo.
+        Busca la sección «Cuentas publicitarias asociadas» más abajo.
       </p>
     </div>
   );

@@ -29,7 +29,7 @@ import { useCargaMasivaLeads } from "./useCargaMasiva";
 const SIN_CANAL_LOTE = "sin-canal-lote";
 
 const MENSAJE_ARCHIVO_INVALIDO =
-  "No se pudo leer el archivo. Verificá que sea un Excel válido (.xlsx o .xls) y que respete las columnas del template.";
+  "No se pudo leer el archivo. Verifica que sea un Excel válido (.xlsx o .xls) y que respete las columnas del template.";
 
 interface CargaMasivaLeadsDialogProps {
   open: boolean;
@@ -125,7 +125,7 @@ export function CargaMasivaLeadsDialog({ open, onOpenChange, canales }: CargaMas
         <DialogHeader>
           <DialogTitle>Carga masiva de leads</DialogTitle>
           <DialogDescription>
-            Subí un Excel con varios leads a la vez, sin cargarlos uno por uno.
+            Sube un Excel con varios leads a la vez, sin cargarlos uno por uno.
           </DialogDescription>
         </DialogHeader>
 
@@ -252,7 +252,7 @@ function ResumenCargaMasiva({ resultado, onCargarOtroArchivo }: ResumenCargaMasi
 
       {filasConError.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium text-foreground">Filas con error (corregí y reintentá)</p>
+          <p className="text-sm font-medium text-foreground">Filas con error (corrige y reintenta)</p>
           <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto text-sm text-destructive">
             {filasConError.map((fila) => (
               <li key={fila.filaExcel}>

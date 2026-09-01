@@ -23,8 +23,8 @@ import type { CreateEmpresaAdministradorInput } from "./usuarios.api";
  * `CrearUsuarioDialog`.
  */
 const crearAdministradorEmpresaSchema = z.object({
-  nombre: z.string().trim().min(1, "Ingresá el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
-  correo: z.string().trim().pipe(z.email("Ingresá un correo electrónico válido.")),
+  nombre: z.string().trim().min(1, "Ingresa el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
+  correo: z.string().trim().pipe(z.email("Ingresa un correo electrónico válido.")),
   password: passwordPolicySchema,
 });
 
@@ -64,7 +64,7 @@ export function CrearAdministradorEmpresaDialog({
         <DialogHeader>
           <DialogTitle>Nuevo administrador</DialogTitle>
           <DialogDescription>
-            Completá los datos para dar de alta un administrador de esta empresa.
+            Completa los datos para dar de alta un administrador de esta empresa.
           </DialogDescription>
         </DialogHeader>
 

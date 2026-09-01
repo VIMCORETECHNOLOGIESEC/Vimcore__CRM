@@ -39,11 +39,11 @@ const cargarLeadManualSchema = z.object({
   nombre: z
     .string()
     .trim()
-    .min(1, "Ingresá el nombre.")
+    .min(1, "Ingresa el nombre.")
     .max(255, "El nombre no puede superar los 255 caracteres."),
-  telefono: z.string().trim().min(1, "Ingresá el teléfono."),
-  correo: z.union([z.string().trim().pipe(z.email("Ingresá un correo electrónico válido.")), z.literal("")]).optional(),
-  canalManualId: z.string().min(1, "Elegí un canal."),
+  telefono: z.string().trim().min(1, "Ingresa el teléfono."),
+  correo: z.union([z.string().trim().pipe(z.email("Ingresa un correo electrónico válido.")), z.literal("")]).optional(),
+  canalManualId: z.string().min(1, "Elige un canal."),
 });
 
 type CargarLeadManualValues = z.infer<typeof cargarLeadManualSchema>;
@@ -111,14 +111,14 @@ export function CargarLeadManualDialog({
         <DialogHeader>
           <DialogTitle>Cargar lead manual</DialogTitle>
           <DialogDescription>
-            Ingresá un lead directamente, sin pasar por un Bridge ni una red social.
+            Ingresa un lead directamente, sin pasar por un Bridge ni una red social.
           </DialogDescription>
         </DialogHeader>
 
         {sinCanalesActivos && esAdministrador ? (
           <EmptyState
             title="Todavía no hay canales de ingreso manual"
-            description="Creá al menos un canal activo en el catálogo antes de cargar un lead manual."
+            description="Crea al menos un canal activo en el catálogo antes de cargar un lead manual."
             action={
               <Button type="button" onClick={onRedirigirAGestionCanales}>
                 Ir a gestionar canales

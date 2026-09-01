@@ -125,7 +125,7 @@ export function ConectarWhatsAppCard() {
 
             {faltaElegirEmpresa ? (
               <p className="text-sm text-muted-foreground">
-                Elegí primero una empresa desde «Empresas» para conectar su WhatsApp.
+                Elige primero una empresa desde «Empresas» para conectar su WhatsApp.
               </p>
             ) : null}
 

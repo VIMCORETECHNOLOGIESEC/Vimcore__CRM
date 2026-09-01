@@ -232,7 +232,7 @@ function FuentesLinkedIn({ bridgeId }: FuentesLinkedInProps) {
       {!isLoading && !isError && fuentes && fuentes.length === 0 ? (
         <EmptyState
           title="Sin fuentes descubiertas todavía"
-          description="Usá «Descubrir fuentes» para traer las cuentas patrocinadas y organizaciones disponibles desde LinkedIn."
+          description="Usa «Descubrir fuentes» para traer las cuentas patrocinadas y organizaciones disponibles desde LinkedIn."
         />
       ) : null}
 

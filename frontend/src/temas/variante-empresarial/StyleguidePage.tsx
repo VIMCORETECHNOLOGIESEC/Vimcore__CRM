@@ -628,7 +628,7 @@ function SeccionInputs() {
               className="control-input"
             />
             <p className="text-xs !text-[var(--rojo)]">
-              Ingresá un teléfono válido.
+              Ingresa un teléfono válido.
             </p>
           </div>
         </ElementoCard>
@@ -938,7 +938,7 @@ function SeccionEstados() {
         <EmptyState
           className="w-full estado-vacio-tema"
           title="Sin leads en esta vista"
-          description="Ajustá los filtros para ver resultados."
+          description="Ajusta los filtros para ver resultados."
         />
       </ElementoCard>
       <ElementoCard
@@ -947,7 +947,7 @@ function SeccionEstados() {
       >
         <ErrorState
           className="w-full"
-          message="No se pudo cargar el listado de leads. Intentá de nuevo."
+          message="No se pudo cargar el listado de leads. Intenta de nuevo."
           onRetry={() => {}}
         />
       </ElementoCard>

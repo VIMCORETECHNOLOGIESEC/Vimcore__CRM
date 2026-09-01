@@ -15,7 +15,7 @@ export const cierreVentaOportunidadSchema = z.object({
     .number({ error: "El monto es obligatorio" })
     .positive("El monto debe ser mayor a 0"),
   formaPago: z.enum(["CONTADO", "CREDITO", "FINANCIAMIENTO"], {
-    error: "Elegí una forma de pago",
+    error: "Elige una forma de pago",
   }),
 });
 

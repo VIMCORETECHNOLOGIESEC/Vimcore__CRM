@@ -195,7 +195,7 @@ export function EmpresaAparienciaForm({
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        Dejá un color en blanco para usar el color heredado del holding en su lugar.
+        Deja un color en blanco para usar el color heredado del holding en su lugar.
       </p>
 
       <CampoLogoUpload

@@ -50,9 +50,9 @@ const PASOS = ["Conexión", "Mapeo de campos", "Probar"];
  * frontend-only de esta sesión.
  */
 const conexionSchema = z.object({
-  url: z.string().trim().url("Ingresá una dirección web válida."),
-  nombreHeaderApiKey: z.string().trim().min(1, "Ingresá el nombre de la llave.").optional(),
-  credencialExterna: z.string().trim().min(1, "Ingresá la llave de acceso."),
+  url: z.string().trim().url("Ingresa una dirección web válida."),
+  nombreHeaderApiKey: z.string().trim().min(1, "Ingresa el nombre de la llave.").optional(),
+  credencialExterna: z.string().trim().min(1, "Ingresa la llave de acceso."),
 });
 type ConexionValues = z.infer<typeof conexionSchema>;
 
@@ -77,7 +77,7 @@ const mapeoSchema = z
   })
   .refine((valores) => valores.mapeos.some((fila) => fila.clave !== "" && fila.campo === "idExternoLead"), {
     message:
-      "Marcá al menos un campo como idExternoLead: es el identificador único de cada lead, sin eso no podemos evitar duplicados.",
+      "Marca al menos un campo como idExternoLead: es el identificador único de cada lead, sin eso no podemos evitar duplicados.",
     path: ["mapeos"],
   });
 type MapeoValues = z.infer<typeof mapeoSchema>;
@@ -215,14 +215,14 @@ export function ApiExternaSetupDialog({ open, bridgeId, nombre, onClose }: ApiEx
                 {erroresConexion.url ? <p className="text-sm text-destructive">{erroresConexion.url.message}</p> : null}
               </div>
               <div className="flex flex-col gap-1.5">
-                <FieldLabel htmlFor="api-externa-header" label="Nombre de la llave" info="Es el nombre que usa tu sistema para recibir la API key. Si no te indicaron otro, dejá X-Api-Key." />
+                <FieldLabel htmlFor="api-externa-header" label="Nombre de la llave" info="Es el nombre que usa tu sistema para recibir la API key. Si no te indicaron otro, deja X-Api-Key." />
                 <Input id="api-externa-header" aria-invalid={erroresConexion.nombreHeaderApiKey ? "true" : undefined} {...registerConexion("nombreHeaderApiKey")} />
                 {erroresConexion.nombreHeaderApiKey ? <p className="text-sm text-destructive">{erroresConexion.nombreHeaderApiKey.message}</p> : null}
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel htmlFor="api-externa-credencial" label="Llave de acceso" info="Es la contraseña que permite leer los leads. Pedísela a quien administra tu sistema." />
-              <Input id="api-externa-credencial" type="password" placeholder="Pegá acá la llave que te dieron" aria-invalid={erroresConexion.credencialExterna ? "true" : undefined} {...registerConexion("credencialExterna")} />
+              <Input id="api-externa-credencial" type="password" placeholder="Pega aquí la llave que te dieron" aria-invalid={erroresConexion.credencialExterna ? "true" : undefined} {...registerConexion("credencialExterna")} />
               {erroresConexion.credencialExterna ? <p className="text-sm text-destructive">{erroresConexion.credencialExterna.message}</p> : null}
               <p className="text-xs text-muted-foreground">La usamos para conectar, pero no la mostramos ni la compartimos.</p>
             </div>
@@ -231,7 +231,7 @@ export function ApiExternaSetupDialog({ open, bridgeId, nombre, onClose }: ApiEx
 
         {paso === 1 ? (
           <div className="flex flex-col gap-4 py-1">
-            <div><p className="flex items-center gap-2 text-sm font-medium">Decinos qué significa cada dato <InfoButton text="Acá relacionás los nombres que usa tu sistema (por ejemplo, customer_id) con los campos que entiende el CRM. El ID del lead es obligatorio para no cargar dos veces la misma consulta." /></p><p className="mt-1 text-xs text-muted-foreground">El primer renglón ya está preparado: cada lead necesita un identificador único.</p></div>
+            <div><p className="flex items-center gap-2 text-sm font-medium">Cuéntanos qué significa cada dato <InfoButton text="Aquí relacionas los nombres que usa tu sistema (por ejemplo, customer_id) con los campos que entiende el CRM. El ID del lead es obligatorio para no cargar dos veces la misma consulta." /></p><p className="mt-1 text-xs text-muted-foreground">El primer renglón ya está preparado: cada lead necesita un identificador único.</p></div>
             {erroresMapeo.mapeos?.root?.message ? (
               <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{erroresMapeo.mapeos.root.message}</p>
             ) : saveMapeo.isError ? (

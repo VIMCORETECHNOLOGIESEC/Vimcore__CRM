@@ -36,7 +36,7 @@ const nuevoCanalSchema = z.object({
   nombre: z
     .string()
     .trim()
-    .min(1, "Ingresá el nombre del canal.")
+    .min(1, "Ingresa el nombre del canal.")
     .max(200, "El nombre no puede superar los 200 caracteres."),
 });
 
@@ -121,7 +121,7 @@ export function GestionarCanalesManualesDialog({
         ) : !canales || canales.length === 0 ? (
           <EmptyState
             title="Todavía no hay canales configurados"
-            description="Agregá el primero con el campo de arriba."
+            description="Agrega el primero con el campo de arriba."
           />
         ) : (
           <ul className="flex flex-col gap-2">

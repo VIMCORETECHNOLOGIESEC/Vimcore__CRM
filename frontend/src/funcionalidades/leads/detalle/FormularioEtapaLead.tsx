@@ -19,7 +19,7 @@ import { useFormularioEtapa, useSubmitFormularioEtapa } from "./useLeadDetalle";
 function buildEsquemaFormulario(formulario: FormularioEtapa) {
   const forma: Record<string, z.ZodString> = {};
   for (const pregunta of formulario.preguntas) {
-    forma[pregunta.clave] = z.string().min(1, "Elegí una opción");
+    forma[pregunta.clave] = z.string().min(1, "Elige una opción");
   }
   return z.object(forma);
 }

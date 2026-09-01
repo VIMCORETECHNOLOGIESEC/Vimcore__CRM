@@ -78,7 +78,7 @@ export function DashboardExportar({ data, contexto, filtros, rangoReal }: Dashbo
       window.setTimeout(() => toast.dismiss(toastId), 2200);
     } catch {
       ventanaPdf?.close();
-      toast.error("No se pudo preparar la exportación. Intentá nuevamente.", { id: toastId });
+      toast.error("No se pudo preparar la exportación. Intenta nuevamente.", { id: toastId });
     }
   }
 

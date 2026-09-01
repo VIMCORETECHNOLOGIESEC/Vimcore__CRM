@@ -19,9 +19,9 @@ import type { UpdateUsuarioInput } from "./usuarios.api";
 
 /** Mismos campos que `CrearUsuarioDialog`, sin `password` -- ver `RestablecerPasswordDialog.tsx`. */
 const editarUsuarioSchema = z.object({
-  nombre: z.string().trim().min(1, "Ingresá el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
-  correo: z.string().trim().pipe(z.email("Ingresá un correo electrónico válido.")),
-  rol: z.enum(ROLES_USUARIO, { error: "Elegí un rol." }),
+  nombre: z.string().trim().min(1, "Ingresa el nombre.").max(120, "El nombre no puede superar los 120 caracteres."),
+  correo: z.string().trim().pipe(z.email("Ingresa un correo electrónico válido.")),
+  rol: z.enum(ROLES_USUARIO, { error: "Elige un rol." }),
 });
 
 type EditarUsuarioValues = z.infer<typeof editarUsuarioSchema>;
@@ -74,7 +74,7 @@ export function EditarUsuarioDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Editar usuario</DialogTitle>
-          <DialogDescription>Actualizá los datos de {usuario.nombre}.</DialogDescription>
+          <DialogDescription>Actualiza los datos de {usuario.nombre}.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={enviar} noValidate className="flex flex-col gap-4">

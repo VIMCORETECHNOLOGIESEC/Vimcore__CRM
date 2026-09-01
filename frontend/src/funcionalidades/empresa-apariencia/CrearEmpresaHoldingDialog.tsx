@@ -34,7 +34,7 @@ export function CrearEmpresaHoldingDialog({
         <DialogHeader>
           <DialogTitle>Nueva empresa</DialogTitle>
           <DialogDescription>
-            Da de alta una empresa nueva dentro de esta instancia -- podés completar sus colores
+            Da de alta una empresa nueva dentro de esta instancia -- puedes completar sus colores
             de marca ahora o dejarlos para después.
           </DialogDescription>
         </DialogHeader>
