@@ -225,11 +225,11 @@ export async function probarConexion(
     // puramente diagnóstica y su contrato documentado es "siempre devuelve
     // `{ ok, mensaje }`", nunca un error HTTP inesperado. No se persiste
     // ningún cambio de estado acá, igual que el resto de esta función.
-    return { ok: false, mensaje: "No se pudo verificar el token guardado. Cargá uno nuevo." };
+    return { ok: false, mensaje: "No se pudo verificar el token guardado. Carga uno nuevo." };
   }
 
   if (!verificacion.valido) {
-    return { ok: false, mensaje: "El token expiró o fue revocado. Cargá uno nuevo." };
+    return { ok: false, mensaje: "El token expiró o fue revocado. Carga uno nuevo." };
   }
 
   return { ok: true, mensaje: "Conexión verificada correctamente." };

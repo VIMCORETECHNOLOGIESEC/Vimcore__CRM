@@ -48,7 +48,7 @@ function cancellationReported(): AppError {
 }
 
 function seleccionInvalida(): AppError {
-  return new AppError("meta_ads_seleccion_invalida", 401, "La selección de cuenta de anuncios es inválida o expiró — reiniciá el flujo de conexión");
+  return new AppError("meta_ads_seleccion_invalida", 401, "La selección de cuenta de anuncios es inválida o expiró — reinicia el flujo de conexión");
 }
 
 function requireRedirectUri(): string {

@@ -385,7 +385,7 @@ export async function applyAsignacion(
   );
 
   const tipo = input.tipoEvento === "TRASPASO" ? "LEAD_TRASPASADO" : "LEAD_ASIGNADO";
-  const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tenés un nuevo lead a cargo", leadId: input.leadId, empresaId: lead.empresaId }, tx);
+  const notification = await notificacionRepository.createNotificacion({ usuarioId: input.receptorId, tipo, titulo: input.tipoEvento === "TRASPASO" ? "Lead traspasado" : "Lead asignado", mensaje: "Tienes un nuevo lead a cargo", leadId: input.leadId, empresaId: lead.empresaId }, tx);
   // M9 (docs/08-dashboard-kpis.md §5): "asignación" — el hook de métricas NO
   // se llama acá: `applyAsignacion` corre dentro de la `tx` del llamador y
   // esa transacción puede todavía hacer rollback (p. ej. dentro del loop de
@@ -497,7 +497,7 @@ export async function applyAsignacionesEnLote(
     usuarioId: entrada.receptorId,
     tipo: tipoNotificacion,
     titulo: tituloNotificacion,
-    mensaje: "Tenés un nuevo lead a cargo",
+    mensaje: "Tienes un nuevo lead a cargo",
     leadId: entrada.leadId,
     empresaId: entrada.empresaId,
     canal: "IN_APP",

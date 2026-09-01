@@ -88,7 +88,7 @@ function seleccionInvalida(): AppError {
   return new AppError(
     "whatsapp_seleccion_invalida",
     401,
-    "La selección de número de WhatsApp es inválida o expiró — reiniciá el flujo de conexión",
+    "La selección de número de WhatsApp es inválida o expiró — reinicia el flujo de conexión",
   );
 }
 

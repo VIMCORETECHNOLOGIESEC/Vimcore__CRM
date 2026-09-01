@@ -47,7 +47,7 @@ function linkedinTokenExpirado(): AppError {
   return new AppError(
     "linkedin_token_expirado",
     409,
-    "La conexión de LinkedIn expiró. Volvé a conectarla.",
+    "La conexión de LinkedIn expiró. Vuelve a conectarla.",
   );
 }
 
@@ -63,7 +63,7 @@ function linkedinRateLimit(retryAfterSeconds?: number): LinkedInApiAppError {
   return new LinkedInApiAppError(
     "linkedin_rate_limit",
     503,
-    "LinkedIn limitó temporalmente las solicitudes. Probá de nuevo más tarde.",
+    "LinkedIn limitó temporalmente las solicitudes. Vuelve a intentarlo más tarde.",
     retryAfterSeconds,
   );
 }
