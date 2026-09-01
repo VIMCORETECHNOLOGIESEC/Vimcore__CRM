@@ -18,7 +18,17 @@ import { registrarBridgeLog } from "./bridge-log.service.js";
 // seteado dentro de ese docker-compose (ver config/env.ts) — en cualquier
 // otro entorno queda `undefined` y se usa la URL real de Meta sin cambio de
 // comportamiento.
-export const GRAPH_API_BASE_URL = env.META_GRAPH_API_BASE_URL ?? "https://graph.facebook.com";
+//
+// Fix (2026-08-31): sin versión en el path, Meta resuelve la request contra
+// la "default API version" configurada en el dashboard de la app -- un valor
+// mutable que Meta puede ir deprecando con el tiempo sin que este código
+// cambie. Así fue como `discoverAdAccounts()` (Meta Ads) empezó a fallar con
+// 400 `(#2635) You are calling a deprecated version of the Ads API`: la
+// default version de la app quedó vieja. Se fija acá una versión explícita
+// para dejar de depender de ese default silencioso -- afecta a todas las
+// llamadas de Graph API del backend (WhatsApp Cloud API, Meta Ads, webhook de
+// leadgen), todas comparten este mismo host.
+export const GRAPH_API_BASE_URL = env.META_GRAPH_API_BASE_URL ?? "https://graph.facebook.com/v26.0";
 const DETALLE_CAMPOS = "field_data,ad_id,form_id,campaign_id,campaign_name,ad_name";
 
 /** 3 intentos totales (docs/05-bridges.md §8): 2 backoffs entre los 3, exponencial (250ms, 500ms). */
