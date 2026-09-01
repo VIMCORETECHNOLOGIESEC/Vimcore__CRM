@@ -162,6 +162,18 @@ archivos versionados — ver `sdd-init/crm_comercial` y el ejemplo de
    resúmenes de los sub-agentes.
 4. **Idioma:** artefactos SDD (proposal, spec, design, tasks) en inglés.
    Comentarios de código, mensajes de commit y textos de interfaz en español.
+   **Todo texto que vea el usuario final (mensajes de error, validaciones,
+   toasts, tooltips, placeholders, textos de tutorial/onboarding, contenido de
+   emails) es OBLIGATORIO en español latino neutro — tuteo neutro ("ingresa",
+   "verifica", "tu sesión expiró"), nunca voseo rioplatense ("ingresá",
+   "verificá", "tu sesión expiró, volvé a intentar"). Esto aplica sin
+   excepción a `frontend/src/**`, `backend/src/**` (mensajes de error que se
+   propagan a la respuesta HTTP) y `packages/schemas/**` (mensajes de
+   validación Zod compartidos) — un barrido de 2026-09-01 encontró y corrigió
+   125+ strings en voseo filtrados desde el desarrollo asistido por IA
+   (configurado en voseo para la conversación con el equipo, nunca debía
+   llegar a los textos del producto). Antes de escribir cualquier string
+   user-facing nueva, revisala contra este criterio.**
    Identificadores de código: estructura en inglés (verbos, tipos, sufijos
    técnicos como `Id`, `At`, `Params`) combinada con sustantivos de dominio de
    negocio en español cuando el término ya está establecido en `docs/` — p. ej.
