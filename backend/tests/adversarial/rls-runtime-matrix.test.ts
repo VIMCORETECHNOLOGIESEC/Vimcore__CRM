@@ -58,7 +58,14 @@ async function crearGrafoEmpresa(empresaId: string, suffix: string): Promise<Rec
     },
   });
   const cita = await testAdminPrisma.cita.create({
-    data: { leadId: lead.id, usuarioId: usuario.id, empresaId, programadaPara: new Date(), modalidad: "VIRTUAL" },
+    data: {
+      leadId: lead.id,
+      usuarioId: usuario.id,
+      empresaId,
+      programadaPara: new Date(),
+      finalizaEn: new Date(Date.now() + 60 * 60 * 1000),
+      modalidad: "VIRTUAL",
+    },
   });
   const evento = await testAdminPrisma.leadEvento.create({
     data: { leadId: lead.id, empresaId, tipo: "INGRESO" },

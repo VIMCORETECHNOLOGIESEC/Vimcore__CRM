@@ -17,6 +17,40 @@ export function finDiaUTC(fecha: Date): Date {
   return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate(), 23, 59, 59, 999));
 }
 
+/**
+ * Ecuador es UTC-5 fijo, sin horario de verano (`citas-recordatorio.service.ts`,
+ * "recordatorio el día calendario siguiente en hora Ecuador"). Sin
+ * dependencia de timezone (no hay `date-fns-tz`/`luxon` en `package.json`,
+ * verificado antes de escribir esto) — el offset fijo alcanza.
+ */
+const OFFSET_ECUADOR_MS = 5 * 60 * 60 * 1000;
+
+/**
+ * Rango [00:00:00.000, 23:59:59.999] del día calendario SIGUIENTE en hora
+ * Ecuador, expresado en instantes UTC reales — para que un `WHERE
+ * programada_para BETWEEN desde AND hasta` en la BD (que guarda
+ * TIMESTAMPTZ, siempre UTC) capture exactamente "mañana en Ecuador" sin
+ * importar en qué huso corre el proceso Node.
+ *
+ * Truco: restar el offset a `ahora` antes de leer año/mes/día con los
+ * getters `getUTC*` "engaña" a esos getters para que devuelvan el
+ * año/mes/día del RELOJ DE PARED ecuatoriano en ese instante (en vez del
+ * día calendario UTC) — sin necesidad de ninguna librería de timezone. El
+ * mismo truco, invertido (sumar el offset de vuelta), convierte el
+ * resultado de `Date.UTC` (que quedó expresado en esa escala "corrida") al
+ * instante UTC real que representa la medianoche ecuatoriana.
+ */
+export function rangoManianaEcuador(ahora: Date): { desde: Date; hasta: Date } {
+  const relojEcuador = new Date(ahora.getTime() - OFFSET_ECUADOR_MS);
+  const anio = relojEcuador.getUTCFullYear();
+  const mes = relojEcuador.getUTCMonth();
+  const dia = relojEcuador.getUTCDate();
+
+  const desde = new Date(Date.UTC(anio, mes, dia + 1, 0, 0, 0, 0) + OFFSET_ECUADOR_MS);
+  const hasta = new Date(Date.UTC(anio, mes, dia + 1, 23, 59, 59, 999) + OFFSET_ECUADOR_MS);
+  return { desde, hasta };
+}
+
 function inicioMesUTC(fecha: Date): Date {
   return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), 1, 0, 0, 0, 0));
 }

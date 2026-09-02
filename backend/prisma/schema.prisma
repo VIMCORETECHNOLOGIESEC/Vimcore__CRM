@@ -801,6 +801,17 @@ model Cita {
   // Admin/Supervisor pueden asignarla a otro usuario explícito.
   usuarioId           String        @map("usuario_id") @db.Uuid
   programadaPara      DateTime      @map("programada_para") @db.Timestamptz(6)
+  // Vista de calendario (feature aditiva post-M7): fin explícito de la cita,
+  // en vez de derivarlo implícito de `programadaPara`. NOT NULL, con backfill
+  // (`finaliza_en = programada_para + 1h`) para las filas existentes — ver
+  // `migration.sql` de este cambio. Sostiene dos reglas de negocio nuevas, a
+  // mano en la migración (no expresables en el DSL de Prisma): (1) duración
+  // mínima de 1h (`CHECK`, defensa en profundidad — Zod ya la rechaza en el
+  // borde); (2) sin solapamiento de horario entre citas `AGENDADA` del MISMO
+  // `usuarioId` (`EXCLUDE USING gist`, requiere `btree_gist`) — dos citas
+  // `CANCELADA`/`CUMPLIDA`/`NO_ASISTIO` sí pueden solaparse libremente, el
+  // `WHERE (estado = 'AGENDADA')` del `EXCLUDE` las deja fuera.
+  finalizaEn          DateTime      @map("finaliza_en") @db.Timestamptz(6)
   modalidad           ModalidadCita
   estado              EstadoCita    @default(AGENDADA)
   notas               String?       @db.Text

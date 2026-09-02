@@ -243,12 +243,20 @@ describe("M8 scheduled and bridge producers", () => {
   it("claims an appointment reminder once under concurrent executions and publishes only after commit", async () => {
     const vendedor = await createUsuario("VENDEDOR");
     const lead = await createLead();
+    // Cambio de ventana (feature aditiva post-M7): `enviarRecordatoriosCita`
+    // ya no captura "próxima 1h" -- captura todo el día calendario de MAÑANA
+    // en hora Ecuador (`citas-recordatorio.service.ts`). `+24h` cae siempre
+    // dentro de esa ventana sin importar la hora real de la corrida (misma
+    // hora de reloj de pared, un día calendario después, en cualquier huso
+    // de offset fijo).
+    const programadaPara = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const cita = await testAdminPrisma.cita.create({
       data: {
         leadId: lead.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
         usuarioId: vendedor.id,
-        programadaPara: new Date(Date.now() + 30 * 60 * 1000),
+        programadaPara,
+        finalizaEn: new Date(programadaPara.getTime() + 60 * 60 * 1000),
         modalidad: "VIRTUAL",
       },
     });
@@ -315,12 +323,17 @@ describe("M8 scheduled and bridge producers", () => {
     const slaLead = await createLead(asesor.id);
     const citaLead = await createLead();
     const ahora = new Date();
+    // Cambio de ventana (feature aditiva post-M7): ver comentario análogo
+    // arriba en este archivo -- `+24h` cae siempre dentro de "mañana en
+    // Ecuador" relativo a `ahora`.
+    const citaProgramadaPara = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
     await testAdminPrisma.cita.create({
       data: {
         leadId: citaLead.id,
         empresaId: BOOTSTRAP_EMPRESA_ID,
         usuarioId: vendedor.id,
-        programadaPara: new Date(ahora.getTime() + 30 * 60 * 1000),
+        programadaPara: citaProgramadaPara,
+        finalizaEn: new Date(citaProgramadaPara.getTime() + 60 * 60 * 1000),
         modalidad: "VIRTUAL",
       },
     });

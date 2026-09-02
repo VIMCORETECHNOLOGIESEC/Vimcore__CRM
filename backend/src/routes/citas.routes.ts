@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getCita,
+  getCitasListado,
   getCitasPorLead,
   postCancelarCita,
   postCita,
@@ -16,6 +17,11 @@ export const citasRouter = Router();
 // duplicar la regla) evaluada dentro de `citas.service.ts`, nunca en middleware.
 citasRouter.post("/leads/:id/citas", requireAuthentication, postCita);
 citasRouter.get("/leads/:id/citas", requireAuthentication, getCitasPorLead);
+// Vista de calendario (feature aditiva post-M7): `GET /citas` (sin `:citaId`)
+// nunca colisiona con la ruta de abajo -- Express solo matchea `/citas/:citaId`
+// contra un path con un segundo segmento presente. Mismo patrón sin
+// `requireRole` -- autorización por listado dentro de `citas.service.ts::listCitas`.
+citasRouter.get("/citas", requireAuthentication, getCitasListado);
 citasRouter.get("/citas/:citaId", requireAuthentication, getCita);
 citasRouter.post("/citas/:citaId/cancelar", requireAuthentication, postCancelarCita);
 citasRouter.post("/citas/:citaId/reprogramar", requireAuthentication, postReprogramarCita);

@@ -2,15 +2,21 @@ import type { Cita, EtapaLead, Lead, Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
 import { CITAS_TRANSACTION_BOUNDS, runInTransaction } from "../lib/prisma.js";
 import * as citaRepository from "../repositories/cita.repository.js";
+import {
+  CONSTRAINT_NO_SOLAPAMIENTO,
+  type CitaConDetalle,
+  SQLSTATE_EXCLUSION_VIOLATION,
+} from "../repositories/cita.repository.js";
 import * as leadEventoRepository from "../repositories/lead-evento.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import type {
   CrearCitaBody,
+  ListCitasQuery,
   MarcarResultadoCitaBody,
   ReprogramarCitaBody,
 } from "../schemas/citas.schema.js";
-import { canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
+import { aplicarFiltroEmpresa, canEdit, canRead, type UsuarioAcceso } from "./leads.access.js";
 
 // Bloque F (aditivo): mismo alcance máximo que ADMINISTRADOR/SUPERVISOR,
 // holding-wide sin atarse a una empresa (ver `metricas.access.ts`/
@@ -102,6 +108,35 @@ async function resolveResponsable(
 }
 
 /**
+ * Vista de calendario (feature aditiva post-M7): traduce la violación del
+ * `EXCLUDE USING gist` de solapamiento (`citas_no_solapamiento_por_asesor`,
+ * `migration.sql`) a un `AppError` 409 de dominio — mismo split
+ * responsabilidad/HTTP que `VersionConflictError`/`asignacion.service.ts`
+ * (el repositorio deja pasar el error crudo de Postgres, el service lo
+ * traduce). Ver `cita.repository.ts` para la DEVIATION documentada de por
+ * qué esto detecta por texto de `.message` y no por `.code` estructurado.
+ *
+ * Solo traduce ESTE constraint puntual — cualquier otro error (incluida una
+ * violación del `CHECK citas_duracion_minima`, que Zod ya debería haber
+ * rechazado antes de llegar acá) se relanza sin tocar, para no enmascarar un
+ * fallo real detrás de un 409 engañoso.
+ */
+function traducirConflictoDeHorario(error: unknown): never {
+  if (
+    error instanceof Error &&
+    error.message.includes(SQLSTATE_EXCLUSION_VIOLATION) &&
+    error.message.includes(CONSTRAINT_NO_SOLAPAMIENTO)
+  ) {
+    throw new AppError(
+      "cita_horario_ocupado",
+      409,
+      "Ese horario ya está ocupado para este asesor",
+    );
+  }
+  throw error;
+}
+
+/**
  * `POST /api/v1/leads/:id/citas` (diseño M7). Autorización por recurso —
  * `canEdit` de `leads.access.ts`, reutilizada sin duplicar la regla (D4/M5):
  * el responsable operativo actual del lead (asesor antes del traspaso,
@@ -126,17 +161,20 @@ export async function scheduleCita(
 
       const usuarioId = await resolveResponsable(usuario, body.usuarioId);
 
-      const cita = await citaRepository.createCita(
-        {
-          leadId,
-          empresaId: lead.empresaId,
-          usuarioId,
-          programadaPara: body.programadaPara,
-          modalidad: body.modalidad,
-          notas: body.notas,
-        },
-        tx,
-      );
+      const cita = await citaRepository
+        .createCita(
+          {
+            leadId,
+            empresaId: lead.empresaId,
+            usuarioId,
+            programadaPara: body.programadaPara,
+            finalizaEn: body.finalizaEn,
+            modalidad: body.modalidad,
+            notas: body.notas,
+          },
+          tx,
+        )
+        .catch(traducirConflictoDeHorario);
 
       await leadEventoRepository.createEvento(
         {
@@ -158,6 +196,47 @@ export async function scheduleCita(
     },
     CITAS_TRANSACTION_BOUNDS,
   );
+}
+
+/**
+ * `GET /api/v1/citas` (vista de calendario, feature aditiva post-M7):
+ * autorización por listado (mismo criterio D4/D5 que
+ * `conversaciones.service.ts::listConversaciones`) — ASESOR/VENDEDOR quedan
+ * SIEMPRE acotados a sí mismos (`filtros.asesorId` de query se IGNORA para
+ * ellos, nunca pueden escalar a ver el calendario de otro responsable);
+ * Admin/Supervisor/holding-wide ven todo el alcance de empresa resuelto por
+ * `aplicarFiltroEmpresa`, con `filtros.asesorId` como acotamiento opcional.
+ *
+ * DEVIATION documentada (decisión propia, no dada literal en la tarea): el
+ * criterio de "es un ASESOR" acá es "no tiene el bypass de acceso total"
+ * (`ROLES_ACCESO_TOTAL`, ya definida arriba en este archivo — YA incluye
+ * `SUPERVISOR_HOLDING`/`SUPER_ADMIN`, a diferencia de `leads.access.ts` donde
+ * esos dos viven en una constante `ROLES_HOLDING_TOTAL` aparte) en vez de
+ * comparar literal `usuario.rol === "ASESOR"` — así un VENDEDOR (que agenda
+ * sus propias citas de cierre, ver `scheduleCita`) también queda acotado a
+ * sí mismo, en vez de caer sin querer en la rama "ve todo el calendario de
+ * la empresa" por no ser textualmente "ASESOR".
+ */
+export async function listCitas(
+  usuario: UsuarioAcceso,
+  filtros: ListCitasQuery,
+): Promise<CitaConDetalle[]> {
+  const tieneAccesoTotal = ROLES_ACCESO_TOTAL.includes(usuario.rol);
+
+  const where: Prisma.CitaWhereInput = aplicarFiltroEmpresa({}, usuario, filtros);
+  // Solapamiento de intervalos: `[programadaPara, finalizaEn]` de la cita
+  // contra `[desde, hasta]` del calendario — así un evento que ya empezó
+  // antes de `desde` y todavía no terminó no desaparece del calendario.
+  where.programadaPara = { lt: filtros.hasta };
+  where.finalizaEn = { gt: filtros.desde };
+
+  if (!tieneAccesoTotal) {
+    where.usuarioId = usuario.id;
+  } else if (filtros.asesorId) {
+    where.usuarioId = filtros.asesorId;
+  }
+
+  return citaRepository.findManyConDetalle(where);
 }
 
 /** `GET /api/v1/leads/:id/citas` — mismo control de lectura que `findLeadById` (D4, M5). */
@@ -240,11 +319,18 @@ export async function rescheduleCita(
       }
       assertProgramadaEnFuturo(body.programadaPara, ahora);
 
-      const citaActualizada = await citaRepository.updateCita(
-        citaId,
-        { programadaPara: body.programadaPara, estado: "AGENDADA", recordatorioEnviado: false },
-        tx,
-      );
+      const citaActualizada = await citaRepository
+        .updateCita(
+          citaId,
+          {
+            programadaPara: body.programadaPara,
+            finalizaEn: body.finalizaEn,
+            estado: "AGENDADA",
+            recordatorioEnviado: false,
+          },
+          tx,
+        )
+        .catch(traducirConflictoDeHorario);
 
       await leadEventoRepository.createEvento(
         {

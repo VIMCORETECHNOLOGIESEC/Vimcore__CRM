@@ -4,6 +4,7 @@ import { testAdminPrisma } from "./fixtures/admin-prisma.js";
 import {
   cancelCita,
   getCitaById,
+  listCitas,
   listCitasByLead,
   marcarResultadoCita,
   rescheduleCita,
@@ -79,6 +80,11 @@ function enUnaHora(): Date {
   return new Date(Date.now() + 60 * 60 * 1000);
 }
 
+/** Vista de calendario (feature aditiva post-M7): duración mínima válida (1h exacta) a partir de un inicio dado. */
+function finUnaHoraDespues(inicio: Date): Date {
+  return new Date(inicio.getTime() + 60 * 60 * 1000);
+}
+
 /**
  * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `citas.service.ts`
  * no acepta un `client` swappable — se llama DIRECTO (sin HTTP) en todo este
@@ -102,6 +108,7 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
 
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
       programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
@@ -121,9 +128,11 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     const admin = await crearUsuario("ADMINISTRADOR");
     const vendedor = await crearUsuario("VENDEDOR");
     const lead = await crearLead({ etapa: "CITA" });
+    const programadaPara = enUnaHora();
 
     const cita = await scheduleCita(comoActor(admin), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "PRESENCIAL",
       usuarioId: vendedor.id,
     });
@@ -146,9 +155,11 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     const supervisorHolding = await crearUsuario("SUPERVISOR_HOLDING");
     const vendedor = await crearUsuario("VENDEDOR");
     const lead = await crearLead({ etapa: "CITA", asesorId: supervisorHolding.id });
+    const programadaPara = enUnaHora();
 
     const cita = await scheduleCita(comoActor(supervisorHolding), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "PRESENCIAL",
       usuarioId: vendedor.id,
     });
@@ -161,9 +172,11 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     const superAdmin = await crearUsuario("SUPER_ADMIN");
     const vendedor = await crearUsuario("VENDEDOR");
     const lead = await crearLead({ etapa: "CITA", asesorId: superAdmin.id });
+    const programadaPara = enUnaHora();
 
     const cita = await scheduleCita(comoActor(superAdmin), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "PRESENCIAL",
       usuarioId: vendedor.id,
     });
@@ -176,10 +189,12 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     const asesor = await crearUsuario("ASESOR");
     const otroAsesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
 
     await expect(
       scheduleCita(comoActor(asesor), lead.id, {
-        programadaPara: enUnaHora(),
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
         modalidad: "TELEFONICA",
         usuarioId: otroAsesor.id,
       }),
@@ -190,10 +205,12 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = new Date(Date.now() - 60_000);
 
     await expect(
       scheduleCita(comoActor(asesor), lead.id, {
-        programadaPara: new Date(Date.now() - 60_000),
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
         modalidad: "VIRTUAL",
       }),
     ).rejects.toMatchObject({ code: "cita_en_pasado" });
@@ -203,10 +220,12 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     conContexto(async () => {
     const vendedor = await crearUsuario("VENDEDOR");
     const lead = await crearLead({ etapa: "VENTA", vendedorId: vendedor.id });
+    const programadaPara = enUnaHora();
 
     await expect(
       scheduleCita(comoActor(vendedor), lead.id, {
-        programadaPara: enUnaHora(),
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
         modalidad: "VIRTUAL",
       }),
     ).rejects.toMatchObject({ code: "lead_cerrado" });
@@ -217,10 +236,12 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
     const asesorTitular = await crearUsuario("ASESOR");
     const asesorAjeno = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesorTitular.id });
+    const programadaPara = enUnaHora();
 
     await expect(
       scheduleCita(comoActor(asesorAjeno), lead.id, {
-        programadaPara: enUnaHora(),
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
         modalidad: "VIRTUAL",
       }),
     ).rejects.toMatchObject({ code: "permiso_denegado" });
@@ -229,14 +250,123 @@ describe("citas.service — scheduleCita (M7, CRUD + evento CITA_AGENDADA)", () 
   it("404 lead_no_encontrado cuando el lead no existe", () =>
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
+    const programadaPara = enUnaHora();
 
     await expect(
       scheduleCita(comoActor(asesor), "00000000-0000-0000-0000-000000000000", {
-        programadaPara: enUnaHora(),
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
         modalidad: "VIRTUAL",
       }),
     ).rejects.toMatchObject({ code: "lead_no_encontrado" });
   }));
+
+  /**
+   * Vista de calendario (feature aditiva post-M7): `EXCLUDE USING gist`
+   * (`citas_no_solapamiento_por_asesor`, `migration.sql`) traducido a 409 por
+   * `citas.service.ts::traducirConflictoDeHorario`. Mismo `usuarioId`
+   * (responsable), horarios que se cruzan a mitad de camino (ni idénticos ni
+   * anidados, el caso general de "se pisan").
+   */
+  it("rechaza (409 cita_horario_ocupado) agendar una segunda cita que se solapa con otra AGENDADA del mismo responsable", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const lead1 = await crearLead({ asesorId: asesor.id });
+      const lead2 = await crearLead({ asesorId: asesor.id });
+      const inicio = enUnaHora();
+
+      await scheduleCita(comoActor(asesor), lead1.id, {
+        programadaPara: inicio,
+        finalizaEn: new Date(inicio.getTime() + 2 * 60 * 60 * 1000),
+        modalidad: "VIRTUAL",
+      });
+
+      const inicioSolapado = new Date(inicio.getTime() + 30 * 60 * 1000);
+      await expect(
+        scheduleCita(comoActor(asesor), lead2.id, {
+          programadaPara: inicioSolapado,
+          finalizaEn: finUnaHoraDespues(inicioSolapado),
+          modalidad: "VIRTUAL",
+        }),
+      ).rejects.toMatchObject({ code: "cita_horario_ocupado" });
+    }));
+
+  it("dos citas en el mismo horario para responsables DISTINTOS no chocan (triangulación: el EXCLUDE es por usuario_id, no global)", () =>
+    conContexto(async () => {
+      const asesorUno = await crearUsuario("ASESOR");
+      const asesorDos = await crearUsuario("ASESOR");
+      const lead1 = await crearLead({ asesorId: asesorUno.id });
+      const lead2 = await crearLead({ asesorId: asesorDos.id });
+      const inicio = enUnaHora();
+
+      await scheduleCita(comoActor(asesorUno), lead1.id, {
+        programadaPara: inicio,
+        finalizaEn: finUnaHoraDespues(inicio),
+        modalidad: "VIRTUAL",
+      });
+
+      const citaDos = await scheduleCita(comoActor(asesorDos), lead2.id, {
+        programadaPara: inicio,
+        finalizaEn: finUnaHoraDespues(inicio),
+        modalidad: "VIRTUAL",
+      });
+
+      expect(citaDos.estado).toBe("AGENDADA");
+    }));
+
+  it("una cita CANCELADA no bloquea el mismo horario para una cita nueva del mismo responsable (el EXCLUDE solo aplica a AGENDADA)", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const lead1 = await crearLead({ asesorId: asesor.id });
+      const lead2 = await crearLead({ asesorId: asesor.id });
+      const inicio = enUnaHora();
+
+      const primera = await scheduleCita(comoActor(asesor), lead1.id, {
+        programadaPara: inicio,
+        finalizaEn: finUnaHoraDespues(inicio),
+        modalidad: "VIRTUAL",
+      });
+      await cancelCita(comoActor(asesor), primera.id);
+
+      const segunda = await scheduleCita(comoActor(asesor), lead2.id, {
+        programadaPara: inicio,
+        finalizaEn: finUnaHoraDespues(inicio),
+        modalidad: "VIRTUAL",
+      });
+
+      expect(segunda.estado).toBe("AGENDADA");
+    }));
+});
+
+describe("citas.service — scheduleCita (duración mínima, defensa en profundidad de BD)", () => {
+  /**
+   * `citas.schema.ts` ya rechaza esto en el borde (`superRefine`) -- este
+   * test llama al REPOSITORIO directo (no `scheduleCita`), a propósito, para
+   * probar el `CHECK citas_duracion_minima` de la BD en sí mismo, sin pasar
+   * por Zod. `citas.service.ts::traducirConflictoDeHorario` NO traduce este
+   * error a un `AppError` de dominio (documentado explícito en su propio
+   * comentario) -- este test confirma que la BD sigue rechazando la fila
+   * incluso si algún llamador futuro se saltara la validación de Zod.
+   */
+  it("el CHECK citas_duracion_minima de la BD rechaza una duración menor a 1h aunque se bypasee Zod", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const lead = await crearLead({ asesorId: asesor.id });
+      const inicio = enUnaHora();
+
+      await expect(
+        testAdminPrisma.cita.create({
+          data: {
+            leadId: lead.id,
+            empresaId: EMPRESA_BOOTSTRAP_ID,
+            usuarioId: asesor.id,
+            programadaPara: inicio,
+            finalizaEn: new Date(inicio.getTime() + 10 * 60 * 1000),
+            modalidad: "VIRTUAL",
+          },
+        }),
+      ).rejects.toThrow();
+    }));
 });
 
 describe("citas.service — listCitasByLead / getCitaById (D4: autorización por recurso, canRead)", () => {
@@ -244,7 +374,12 @@ describe("citas.service — listCitasByLead / getCitaById (D4: autorización por
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
-    await scheduleCita(comoActor(asesor), lead.id, { programadaPara: enUnaHora(), modalidad: "VIRTUAL" });
+    const programadaPara = enUnaHora();
+    await scheduleCita(comoActor(asesor), lead.id, {
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
+      modalidad: "VIRTUAL",
+    });
 
     const citas = await listCitasByLead(comoActor(asesor), lead.id);
     expect(citas).toHaveLength(1);
@@ -276,8 +411,10 @@ describe("citas.service — cancelCita (máquina de estados)", () => {
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
@@ -289,8 +426,10 @@ describe("citas.service — cancelCita (máquina de estados)", () => {
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
     await cancelCita(comoActor(asesor), cita.id);
@@ -306,8 +445,10 @@ describe("citas.service — rescheduleCita (M7, checklist: reprogramación con r
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const original = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
     // Simula que ya se había enviado el recordatorio de la fecha original.
@@ -316,6 +457,7 @@ describe("citas.service — rescheduleCita (M7, checklist: reprogramación con r
     const nuevaFecha = new Date(Date.now() + 2 * 60 * 60 * 1000);
     const reprogramada = await rescheduleCita(comoActor(asesor), original.id, {
       programadaPara: nuevaFecha,
+      finalizaEn: finUnaHoraDespues(nuevaFecha),
     });
 
     expect(reprogramada.estado).toBe("AGENDADA");
@@ -333,16 +475,22 @@ describe("citas.service — rescheduleCita (M7, checklist: reprogramación con r
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
+    const primeraNuevaFecha = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await rescheduleCita(comoActor(asesor), cita.id, {
-      programadaPara: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      programadaPara: primeraNuevaFecha,
+      finalizaEn: finUnaHoraDespues(primeraNuevaFecha),
     });
+    const segundaNuevaFecha = new Date(Date.now() + 3 * 60 * 60 * 1000);
     await rescheduleCita(comoActor(asesor), cita.id, {
-      programadaPara: new Date(Date.now() + 3 * 60 * 60 * 1000),
+      programadaPara: segundaNuevaFecha,
+      finalizaEn: finUnaHoraDespues(segundaNuevaFecha),
     });
 
     const eventos = await prisma.leadEvento.findMany({
@@ -355,13 +503,19 @@ describe("citas.service — rescheduleCita (M7, checklist: reprogramación con r
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
+    const fechaPasada = new Date(Date.now() - 60_000);
     await expect(
-      rescheduleCita(comoActor(asesor), cita.id, { programadaPara: new Date(Date.now() - 60_000) }),
+      rescheduleCita(comoActor(asesor), cita.id, {
+        programadaPara: fechaPasada,
+        finalizaEn: finUnaHoraDespues(fechaPasada),
+      }),
     ).rejects.toMatchObject({ code: "cita_en_pasado" });
   }));
 
@@ -369,16 +523,54 @@ describe("citas.service — rescheduleCita (M7, checklist: reprogramación con r
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
     await cancelCita(comoActor(asesor), cita.id);
 
+    const nuevaFecha = enUnaHora();
     await expect(
-      rescheduleCita(comoActor(asesor), cita.id, { programadaPara: enUnaHora() }),
+      rescheduleCita(comoActor(asesor), cita.id, {
+        programadaPara: nuevaFecha,
+        finalizaEn: finUnaHoraDespues(nuevaFecha),
+      }),
     ).rejects.toMatchObject({ code: "cita_no_reprogramable" });
   }));
+
+  /**
+   * Vista de calendario (feature aditiva post-M7): reprogramar también pasa
+   * por el `EXCLUDE` -- mismo `traducirConflictoDeHorario` que `scheduleCita`.
+   */
+  it("rechaza (409 cita_horario_ocupado) reprogramar hacia un horario ya ocupado por otra cita AGENDADA del mismo responsable", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const leadOcupante = await crearLead({ asesorId: asesor.id });
+      const leadAReprogramar = await crearLead({ asesorId: asesor.id });
+      const inicioOcupado = new Date(Date.now() + 5 * 60 * 60 * 1000);
+
+      await scheduleCita(comoActor(asesor), leadOcupante.id, {
+        programadaPara: inicioOcupado,
+        finalizaEn: finUnaHoraDespues(inicioOcupado),
+        modalidad: "VIRTUAL",
+      });
+
+      const programadaPara = enUnaHora();
+      const citaAReprogramar = await scheduleCita(comoActor(asesor), leadAReprogramar.id, {
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
+        modalidad: "VIRTUAL",
+      });
+
+      await expect(
+        rescheduleCita(comoActor(asesor), citaAReprogramar.id, {
+          programadaPara: inicioOcupado,
+          finalizaEn: finUnaHoraDespues(inicioOcupado),
+        }),
+      ).rejects.toMatchObject({ code: "cita_horario_ocupado" });
+    }));
 });
 
 describe("citas.service — marcarResultadoCita (M7, checklist: estados de cita, sin duplicar el formulario de etapa)", () => {
@@ -386,8 +578,10 @@ describe("citas.service — marcarResultadoCita (M7, checklist: estados de cita,
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
@@ -399,8 +593,10 @@ describe("citas.service — marcarResultadoCita (M7, checklist: estados de cita,
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
@@ -412,8 +608,10 @@ describe("citas.service — marcarResultadoCita (M7, checklist: estados de cita,
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id, etapa: "CITA" });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
 
@@ -429,8 +627,10 @@ describe("citas.service — marcarResultadoCita (M7, checklist: estados de cita,
     conContexto(async () => {
     const asesor = await crearUsuario("ASESOR");
     const lead = await crearLead({ asesorId: asesor.id });
+    const programadaPara = enUnaHora();
     const cita = await scheduleCita(comoActor(asesor), lead.id, {
-      programadaPara: enUnaHora(),
+      programadaPara,
+      finalizaEn: finUnaHoraDespues(programadaPara),
       modalidad: "VIRTUAL",
     });
     await cancelCita(comoActor(asesor), cita.id);
@@ -439,4 +639,135 @@ describe("citas.service — marcarResultadoCita (M7, checklist: estados de cita,
       marcarResultadoCita(comoActor(asesor), cita.id, { estado: "CUMPLIDA" }),
     ).rejects.toMatchObject({ code: "cita_no_editable" });
   }));
+});
+
+describe("citas.service — listCitas (vista de calendario, feature aditiva post-M7)", () => {
+  /** Rango generoso: cubre cualquier `programadaPara` fijado con `enUnaHora()`/horas relativas de este archivo. */
+  function rangoAmplio(): { desde: Date; hasta: Date } {
+    return { desde: new Date(Date.now() - 24 * 60 * 60 * 1000), hasta: new Date(Date.now() + 24 * 60 * 60 * 1000) };
+  }
+
+  it("un ASESOR solo ve sus propias citas, incluso si manda el asesorId de otro en el filtro", () =>
+    conContexto(async () => {
+      const asesorUno = await crearUsuario("ASESOR");
+      const asesorDos = await crearUsuario("ASESOR");
+      const lead1 = await crearLead({ asesorId: asesorUno.id });
+      const lead2 = await crearLead({ asesorId: asesorDos.id });
+      const programadaPara1 = enUnaHora();
+      const programadaPara2 = enUnaHora();
+
+      await scheduleCita(comoActor(asesorUno), lead1.id, {
+        programadaPara: programadaPara1,
+        finalizaEn: finUnaHoraDespues(programadaPara1),
+        modalidad: "VIRTUAL",
+      });
+      await scheduleCita(comoActor(asesorDos), lead2.id, {
+        programadaPara: programadaPara2,
+        finalizaEn: finUnaHoraDespues(programadaPara2),
+        modalidad: "VIRTUAL",
+      });
+
+      const citas = await listCitas(comoActor(asesorUno), { ...rangoAmplio(), asesorId: asesorDos.id });
+
+      expect(citas).toHaveLength(1);
+      expect(citas[0]?.usuarioId).toBe(asesorUno.id);
+    }));
+
+  it("un ADMINISTRADOR ve todas las citas de la empresa sin filtro de asesorId", () =>
+    conContexto(async () => {
+      const admin = await crearUsuario("ADMINISTRADOR");
+      const asesorUno = await crearUsuario("ASESOR");
+      const asesorDos = await crearUsuario("ASESOR");
+      const lead1 = await crearLead({ asesorId: asesorUno.id });
+      const lead2 = await crearLead({ asesorId: asesorDos.id });
+      const programadaPara1 = enUnaHora();
+      const programadaPara2 = enUnaHora();
+
+      await scheduleCita(comoActor(asesorUno), lead1.id, {
+        programadaPara: programadaPara1,
+        finalizaEn: finUnaHoraDespues(programadaPara1),
+        modalidad: "VIRTUAL",
+      });
+      await scheduleCita(comoActor(asesorDos), lead2.id, {
+        programadaPara: programadaPara2,
+        finalizaEn: finUnaHoraDespues(programadaPara2),
+        modalidad: "VIRTUAL",
+      });
+
+      const citas = await listCitas(comoActor(admin), { ...rangoAmplio(), empresaId: EMPRESA_BOOTSTRAP_ID });
+
+      const usuarioIds = citas.map((c) => c.usuarioId);
+      expect(usuarioIds).toEqual(expect.arrayContaining([asesorUno.id, asesorDos.id]));
+    }));
+
+  it("un ADMINISTRADOR puede acotar el calendario a un asesorId puntual (triangulación: filtro opcional SÍ aplica para acceso total)", () =>
+    conContexto(async () => {
+      const admin = await crearUsuario("ADMINISTRADOR");
+      const asesorUno = await crearUsuario("ASESOR");
+      const asesorDos = await crearUsuario("ASESOR");
+      const lead1 = await crearLead({ asesorId: asesorUno.id });
+      const lead2 = await crearLead({ asesorId: asesorDos.id });
+      const programadaPara1 = enUnaHora();
+      const programadaPara2 = enUnaHora();
+
+      await scheduleCita(comoActor(asesorUno), lead1.id, {
+        programadaPara: programadaPara1,
+        finalizaEn: finUnaHoraDespues(programadaPara1),
+        modalidad: "VIRTUAL",
+      });
+      await scheduleCita(comoActor(asesorDos), lead2.id, {
+        programadaPara: programadaPara2,
+        finalizaEn: finUnaHoraDespues(programadaPara2),
+        modalidad: "VIRTUAL",
+      });
+
+      const citas = await listCitas(comoActor(admin), {
+        ...rangoAmplio(),
+        empresaId: EMPRESA_BOOTSTRAP_ID,
+        asesorId: asesorUno.id,
+      });
+
+      expect(citas).toHaveLength(1);
+      expect(citas[0]?.usuarioId).toBe(asesorUno.id);
+    }));
+
+  it("incluye lead.cliente y usuario en el resultado, sin una segunda consulta", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const lead = await crearLead({ asesorId: asesor.id });
+      const programadaPara = enUnaHora();
+      await scheduleCita(comoActor(asesor), lead.id, {
+        programadaPara,
+        finalizaEn: finUnaHoraDespues(programadaPara),
+        modalidad: "VIRTUAL",
+      });
+
+      const citas = await listCitas(comoActor(asesor), rangoAmplio());
+
+      expect(citas).toHaveLength(1);
+      expect(citas[0]?.lead.id).toBe(lead.id);
+      expect(citas[0]?.usuario.id).toBe(asesor.id);
+      expect(citas[0]?.usuario.nombre).toBeTruthy();
+    }));
+
+  it("un evento que empieza antes de `desde` y termina después no desaparece del calendario", () =>
+    conContexto(async () => {
+      const asesor = await crearUsuario("ASESOR");
+      const lead = await crearLead({ asesorId: asesor.id });
+      const inicio = new Date(Date.now() + 60 * 60 * 1000);
+      const fin = new Date(inicio.getTime() + 3 * 60 * 60 * 1000);
+      await scheduleCita(comoActor(asesor), lead.id, {
+        programadaPara: inicio,
+        finalizaEn: fin,
+        modalidad: "VIRTUAL",
+      });
+
+      // Rango de calendario que cae DENTRO de la cita (empieza después de
+      // que la cita ya arrancó, termina antes de que la cita termine).
+      const desde = new Date(inicio.getTime() + 60 * 60 * 1000);
+      const hasta = new Date(fin.getTime() - 60 * 60 * 1000);
+
+      const citas = await listCitas(comoActor(asesor), { desde, hasta });
+      expect(citas).toHaveLength(1);
+    }));
 });

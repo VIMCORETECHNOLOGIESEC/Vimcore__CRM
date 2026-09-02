@@ -10,6 +10,20 @@ import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 let contador = 0;
 
+/**
+ * Cambio de ventana (feature aditiva post-M7): "mañana" es SIEMPRE el mismo
+ * día calendario, en cualquier huso de offset fijo (Ecuador incluido), que
+ * `referencia + 24h` — sumar 24h preserva la misma hora de reloj de pared un
+ * día calendario después, sin importar en qué punto del día está
+ * `referencia`. Evita reimplementar acá la lógica de `rangoManianaEcuador`
+ * que ya se prueba aparte (`tests/rango-fechas.test.ts`) — este archivo solo
+ * necesita UN instante garantizado dentro de la ventana, no reconstruir el
+ * cálculo.
+ */
+function unDiaDespues(referencia: Date): Date {
+  return new Date(referencia.getTime() + 24 * 60 * 60 * 1000);
+}
+
 async function crearUsuario(): Promise<{ id: string }> {
   contador += 1;
   return prisma.usuario.create({
@@ -46,6 +60,7 @@ async function crearCita(overrides: {
       empresaId: EMPRESA_BOOTSTRAP_ID,
       usuarioId: usuario.id,
       programadaPara: overrides.programadaPara,
+      finalizaEn: new Date(overrides.programadaPara.getTime() + 60 * 60 * 1000),
       modalidad: "VIRTUAL",
       estado: overrides.estado ?? "AGENDADA",
       recordatorioEnviado: overrides.recordatorioEnviado ?? false,
@@ -57,12 +72,18 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist: recordatorio 1 hora antes)", () => {
-  it("marca recordatorioEnviado=true en una cita AGENDADA que entra en la ventana de 1h", async () => {
-    const ahora = new Date();
-    const cita = await crearCita({ programadaPara: new Date(ahora.getTime() + 30 * 60 * 1000) });
+// Referencia FIJA (no `new Date()`): 2026-08-18T15:30:00.000Z = 10:30 Ecuador
+// -- cómodamente a mitad del día, para que "más tarde hoy" (+2h) nunca
+// arriesgue cruzar la medianoche Ecuador y colarse en la ventana de
+// "mañana" por casualidad de la hora real de la corrida (misma referencia
+// fija que ya usa `tests/rango-fechas.test.ts`).
+const AHORA = new Date("2026-08-18T15:30:00.000Z");
 
-    const resultado = await enviarRecordatoriosCita(ahora);
+describe("citas-recordatorio.service — enviarRecordatoriosCita (feature aditiva post-M7: ventana = día calendario de MAÑANA en hora Ecuador)", () => {
+  it("marca recordatorioEnviado=true en una cita AGENDADA programada para mañana (Ecuador)", async () => {
+    const cita = await crearCita({ programadaPara: unDiaDespues(AHORA) });
+
+    const resultado = await enviarRecordatoriosCita(AHORA);
 
     expect(resultado.candidatos).toBeGreaterThanOrEqual(1);
     expect(resultado.recordatoriosMarcados).toBeGreaterThanOrEqual(1);
@@ -72,58 +93,57 @@ describe("citas-recordatorio.service — enviarRecordatoriosCita (M7, checklist:
   });
 
   it("una segunda corrida inmediata no vuelve a contar la misma cita (idempotencia)", async () => {
-    const ahora = new Date();
-    await crearCita({ programadaPara: new Date(ahora.getTime() + 30 * 60 * 1000) });
+    await crearCita({ programadaPara: unDiaDespues(AHORA) });
 
-    const primeraCorrida = await enviarRecordatoriosCita(ahora);
+    const primeraCorrida = await enviarRecordatoriosCita(AHORA);
     expect(primeraCorrida.recordatoriosMarcados).toBeGreaterThanOrEqual(1);
 
-    const segundaCorrida = await enviarRecordatoriosCita(ahora);
+    const segundaCorrida = await enviarRecordatoriosCita(AHORA);
     expect(segundaCorrida.candidatos).toBe(0);
     expect(segundaCorrida.recordatoriosMarcados).toBe(0);
   });
 
-  it("ignora una cita fuera de la ventana de 1h (programada en 2h)", async () => {
-    const ahora = new Date();
-    const cita = await crearCita({ programadaPara: new Date(ahora.getTime() + 2 * 60 * 60 * 1000) });
+  it("ignora una cita programada para HOY (fuera de la ventana de mañana)", async () => {
+    // Un par de horas hacia adelante, pero dentro del mismo día calendario
+    // Ecuador que `AHORA` -- nunca cruza a "mañana".
+    const masTardeHoy = new Date(AHORA.getTime() + 2 * 60 * 60 * 1000);
+    const cita = await crearCita({ programadaPara: masTardeHoy });
 
-    await enviarRecordatoriosCita(ahora);
-
-    const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
-    expect(citaSinCambios.recordatorioEnviado).toBe(false);
-  });
-
-  it("ignora una cita que ya pasó (fuera de la ventana [ahora, ahora+1h])", async () => {
-    const ahora = new Date();
-    const cita = await crearCita({ programadaPara: new Date(ahora.getTime() - 5 * 60 * 1000) });
-
-    await enviarRecordatoriosCita(ahora);
+    await enviarRecordatoriosCita(AHORA);
 
     const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaSinCambios.recordatorioEnviado).toBe(false);
   });
 
-  it("ignora una cita CANCELADA aunque esté dentro de la ventana de 1h", async () => {
-    const ahora = new Date();
+  it("ignora una cita programada para PASADO MAÑANA (fuera de la ventana de mañana)", async () => {
+    const pasadoManiana = unDiaDespues(unDiaDespues(AHORA));
+    const cita = await crearCita({ programadaPara: pasadoManiana });
+
+    await enviarRecordatoriosCita(AHORA);
+
+    const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
+    expect(citaSinCambios.recordatorioEnviado).toBe(false);
+  });
+
+  it("ignora una cita CANCELADA aunque caiga mañana", async () => {
     const cita = await crearCita({
-      programadaPara: new Date(ahora.getTime() + 30 * 60 * 1000),
+      programadaPara: unDiaDespues(AHORA),
       estado: "CANCELADA",
     });
 
-    await enviarRecordatoriosCita(ahora);
+    await enviarRecordatoriosCita(AHORA);
 
     const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
     expect(citaSinCambios.recordatorioEnviado).toBe(false);
   });
 
   it("ignora una cita cuyo recordatorio ya se marcó antes", async () => {
-    const ahora = new Date();
     const cita = await crearCita({
-      programadaPara: new Date(ahora.getTime() + 30 * 60 * 1000),
+      programadaPara: unDiaDespues(AHORA),
       recordatorioEnviado: true,
     });
 
-    const resultado = await enviarRecordatoriosCita(ahora);
+    const resultado = await enviarRecordatoriosCita(AHORA);
 
     expect(resultado.candidatos).toBe(0);
     const citaSinCambios = await testAdminPrisma.cita.findUniqueOrThrow({ where: { id: cita.id } });
