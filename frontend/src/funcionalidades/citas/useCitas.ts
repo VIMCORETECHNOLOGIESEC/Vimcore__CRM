@@ -3,22 +3,33 @@ import { toast } from "sonner";
 import type { EstadoCita } from "@/tipos/cita";
 import {
   cancelCitaCalendarioApi,
+  fetchClientesParaCitaApi,
   fetchCitasApi,
   markCitaResultCalendarioApi,
   rescheduleCitaCalendarioApi,
   scheduleCitaCalendarioApi,
+  type ClientesParaCitaQueryParams,
   type CitasQueryParams,
   type RescheduleCitaInput,
   type SaveCitaInput,
 } from "./citas.api";
 
 export const CITAS_QUERY_KEY = "citas";
+const CLIENTES_PARA_CITA_QUERY_KEY = "clientes-para-cita";
 
 export function useCitas(params: CitasQueryParams) {
   return useQuery({
     queryKey: [CITAS_QUERY_KEY, params],
     queryFn: () => fetchCitasApi(params),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useClientesParaCita(params: ClientesParaCitaQueryParams | null) {
+  return useQuery({
+    queryKey: [CLIENTES_PARA_CITA_QUERY_KEY, params],
+    queryFn: () => fetchClientesParaCitaApi(params as ClientesParaCitaQueryParams),
+    enabled: params !== null,
   });
 }
 

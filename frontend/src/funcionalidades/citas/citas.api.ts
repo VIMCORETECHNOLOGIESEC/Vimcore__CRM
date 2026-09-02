@@ -16,6 +16,16 @@ export interface CitaCalendario extends Cita {
   };
 }
 
+export interface ClienteParaCita {
+  leadId: string;
+  cliente: {
+    id: string;
+    nombre: string;
+    telefonoNormalizado: string | null;
+    telefonoOriginal: string | null;
+  };
+}
+
 interface BackendCitaCalendario {
   id: string;
   leadId: string;
@@ -39,13 +49,44 @@ interface BackendCitaCalendario {
 }
 
 interface CitasCalendarioEnvelope {
-  citas: BackendCitaCalendario[];
+  citas?: BackendCitaCalendario[] | null;
+  data?: BackendCitaCalendario[] | null;
+  datos?: BackendCitaCalendario[] | null;
+  items?: BackendCitaCalendario[] | null;
+}
+
+interface BackendClienteParaCita {
+  id?: string | null;
+  clienteId?: string | null;
+  leadId?: string | null;
+  lead_id?: string | null;
+  nombre?: string | null;
+  telefonoNormalizado?: string | null;
+  telefono_normalizado?: string | null;
+  telefonoOriginal?: string | null;
+  telefono_original?: string | null;
+  lead?: { id?: string | null } | null;
+  cliente?: {
+    id?: string | null;
+    nombre?: string | null;
+    telefonoNormalizado?: string | null;
+    telefonoOriginal?: string | null;
+  } | null;
+}
+
+interface ClientesParaCitaEnvelope {
+  clientes?: BackendClienteParaCita[] | null;
+  cliente?: BackendClienteParaCita[] | null;
+  data?: BackendClienteParaCita[] | null;
+  datos?: BackendClienteParaCita[] | null;
+  items?: BackendClienteParaCita[] | null;
 }
 
 export interface CitasQueryParams {
   desde: string;
   hasta: string;
   asesorId?: string;
+  empresaId?: string;
 }
 
 export interface SaveCitaInput {
@@ -55,6 +96,11 @@ export interface SaveCitaInput {
   modalidad: ModalidadCita;
   notas?: string;
   usuarioId?: string;
+}
+
+export interface ClientesParaCitaQueryParams {
+  empresaId: string;
+  asesorId?: string;
 }
 
 export type RescheduleCitaInput = Omit<SaveCitaInput, "leadId">;
@@ -83,8 +129,54 @@ function mapCitaCalendarioFromApi(raw: BackendCitaCalendario): CitaCalendario {
   };
 }
 
-function normalizeCitasResponse(response: CitasCalendarioEnvelope | BackendCitaCalendario[]): BackendCitaCalendario[] {
-  return Array.isArray(response) ? response : response.citas;
+function normalizeCitasResponse(response: CitasCalendarioEnvelope | BackendCitaCalendario[] | null | undefined): BackendCitaCalendario[] {
+  if (response == null) return [];
+  if (Array.isArray(response)) return response;
+
+  for (const key of ["citas", "data", "datos", "items"] as const) {
+    if (key in response) {
+      const value = response[key];
+      if (value == null) return [];
+      if (Array.isArray(value)) return value;
+    }
+  }
+
+  throw new Error("La respuesta de citas no tiene un formato válido.");
+}
+
+function normalizeClientesParaCitaResponse(
+  response: ClientesParaCitaEnvelope | BackendClienteParaCita[] | null | undefined,
+): BackendClienteParaCita[] {
+  if (response == null) return [];
+  if (Array.isArray(response)) return response;
+
+  for (const key of ["clientes", "cliente", "data", "datos", "items"] as const) {
+    if (key in response) {
+      const value = response[key];
+      if (value == null) return [];
+      if (Array.isArray(value)) return value;
+    }
+  }
+
+  throw new Error("La respuesta de clientes no tiene un formato válido.");
+}
+
+function mapClienteParaCitaFromApi(raw: BackendClienteParaCita): ClienteParaCita {
+  const leadId = raw.leadId ?? raw.lead_id ?? raw.lead?.id ?? null;
+
+  if (!leadId) {
+    throw new Error("La búsqueda de clientes no devolvió el lead asociado necesario para agendar la cita.");
+  }
+
+  return {
+    leadId,
+    cliente: {
+      id: raw.cliente?.id ?? raw.clienteId ?? raw.id ?? leadId,
+      nombre: raw.cliente?.nombre ?? raw.nombre ?? "Cliente sin nombre",
+      telefonoNormalizado: raw.cliente?.telefonoNormalizado ?? raw.telefonoNormalizado ?? raw.telefono_normalizado ?? null,
+      telefonoOriginal: raw.cliente?.telefonoOriginal ?? raw.telefonoOriginal ?? raw.telefono_original ?? null,
+    },
+  };
 }
 
 function mapCitaMutationError(error: unknown): never {
@@ -92,10 +184,21 @@ function mapCitaMutationError(error: unknown): never {
 }
 
 export async function fetchCitasApi(params: CitasQueryParams): Promise<CitaCalendario[]> {
-  const response = await httpClient.get<CitasCalendarioEnvelope | BackendCitaCalendario[]>("/citas", {
+  const response = await httpClient.get<CitasCalendarioEnvelope | BackendCitaCalendario[] | null | undefined>("/citas", {
     params: params as unknown as Record<string, QueryParamValue>,
   });
   return normalizeCitasResponse(response).map(mapCitaCalendarioFromApi);
+}
+
+export async function fetchClientesParaCitaApi(params: ClientesParaCitaQueryParams): Promise<ClienteParaCita[]> {
+  const queryParams: Record<string, QueryParamValue> = { id_empresa: params.empresaId };
+  if (params.asesorId) queryParams.id_asesor = params.asesorId;
+
+  const response = await httpClient.get<ClientesParaCitaEnvelope | BackendClienteParaCita[] | null | undefined>(
+    "/cliente",
+    { params: queryParams },
+  );
+  return normalizeClientesParaCitaResponse(response).map(mapClienteParaCitaFromApi);
 }
 
 export async function scheduleCitaCalendarioApi(input: SaveCitaInput): Promise<CitaCalendario> {

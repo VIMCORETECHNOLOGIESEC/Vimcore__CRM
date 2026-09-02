@@ -12,7 +12,7 @@ import { LoadingState } from "@/componentes/states/LoadingState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -30,14 +30,11 @@ import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
-import { useLeads } from "@/funcionalidades/leads/useLeads";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { cn } from "@/lib/utils";
 import type { ModalidadCita } from "@/tipos/cita";
-import type { Lead } from "@/tipos/lead";
 import type { RolUsuario } from "@/tipos/usuario";
-import type { CitaCalendario } from "./citas.api";
+import type { CitaCalendario, ClienteParaCita } from "./citas.api";
 import {
   CITAS_VISTA_ETIQUETAS,
   ESTADO_CITA_ETIQUETAS,
@@ -58,6 +55,7 @@ import {
 } from "./citas.utils";
 import {
   useCancelCitaCalendario,
+  useClientesParaCita,
   useCitas,
   useMarkCitaResultCalendario,
   useRescheduleCitaCalendario,
@@ -71,7 +69,7 @@ const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
 const citaFormSchema = z
   .object({
-    leadId: z.string().min(1, "Selecciona un lead existente"),
+    leadId: z.string().min(1, "Selecciona un cliente con lead asociado"),
     programadaPara: z
       .string()
       .min(1, "La fecha y hora son obligatorias")
@@ -163,28 +161,36 @@ function CitaEventButton({
   );
 }
 
-function LeadCombobox({
+function getClienteSearchErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return getErrorMessage(error);
+}
+
+function ClienteCombobox({
   value,
-  selectedLead,
+  selectedCliente,
   onChange,
-  empresaVistaId,
+  empresaId,
+  asesorId,
 }: {
   value: string;
-  selectedLead: Lead | null;
-  onChange: (lead: Lead) => void;
-  empresaVistaId?: string;
+  selectedCliente: ClienteParaCita | null;
+  onChange: (cliente: ClienteParaCita) => void;
+  empresaId?: string;
+  asesorId?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
-  const busquedaDebounced = useDebouncedValue(busqueda, 250);
-  const { data, isLoading } = useLeads({
-    pagina: 1,
-    porPagina: 5,
-    busqueda: busquedaDebounced || undefined,
-    empresaId: empresaVistaId,
-  });
-  const leads = data?.datos ?? [];
-  const textoBoton = selectedLead?.cliente.nombre ?? (value ? value : "Seleccionar lead");
+  const clientesQuery = useClientesParaCita(
+    empresaId
+      ? {
+          empresaId,
+          ...(asesorId ? { asesorId } : {}),
+        }
+      : null,
+  );
+  const clientes = clientesQuery.data ?? [];
+  const textoBoton = selectedCliente?.cliente.nombre ?? (value ? value : "Seleccionar cliente");
 
   return (
     <Popover open={abierto} onOpenChange={setAbierto}>
@@ -194,42 +200,59 @@ function LeadCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={abierto}
-          aria-label="Seleccionar lead existente"
+          aria-label="Seleccionar cliente existente"
           className="w-full justify-start font-normal"
         >
           <span className="truncate">{textoBoton}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command shouldFilter={false}>
+        <Command>
           <CommandInput
-            placeholder="Buscar por nombre o teléfono…"
+            placeholder="Buscar cliente por nombre o teléfono…"
             value={busqueda}
             onValueChange={setBusqueda}
           />
           <CommandList>
-            {isLoading ? <p className="py-6 text-center text-sm text-muted-foreground">Buscando leads…</p> : null}
-            {!isLoading && leads.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">No hay leads que coincidan.</p>
+            {!empresaId ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Selecciona una empresa para buscar clientes.</p>
             ) : null}
-            <CommandGroup>
-              {leads.map((lead) => (
-                <CommandItem
-                  key={lead.id}
-                  value={lead.id}
-                  onSelect={() => {
-                    onChange(lead);
-                    setAbierto(false);
-                    setBusqueda("");
-                  }}
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate font-medium">{lead.cliente.nombre}</span>
-                    <span className="truncate text-xs text-muted-foreground">{lead.cliente.telefonoNormalizado}</span>
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {clientesQuery.isLoading ? <p className="py-6 text-center text-sm text-muted-foreground">Buscando clientes…</p> : null}
+            {clientesQuery.isError ? (
+              <p className="py-6 text-center text-sm text-destructive">{getClienteSearchErrorMessage(clientesQuery.error)}</p>
+            ) : null}
+            {empresaId && !clientesQuery.isLoading && !clientesQuery.isError ? (
+              <>
+                <CommandEmpty>No hay clientes que coincidan.</CommandEmpty>
+                <CommandGroup>
+                  {clientes.map((cliente) => (
+                    <CommandItem
+                      key={cliente.leadId}
+                      value={[
+                        cliente.leadId,
+                        cliente.cliente.nombre,
+                        cliente.cliente.telefonoNormalizado,
+                        cliente.cliente.telefonoOriginal,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onSelect={() => {
+                        onChange(cliente);
+                        setAbierto(false);
+                        setBusqueda("");
+                      }}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate font-medium">{cliente.cliente.nombre}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {cliente.cliente.telefonoNormalizado ?? cliente.cliente.telefonoOriginal ?? "Sin teléfono registrado"}
+                        </span>
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>
@@ -243,7 +266,8 @@ function CitaFormDialog({
   cita,
   asesores,
   mostrarAsesor,
-  empresaVistaId,
+  empresaId,
+  asesorIdBusquedaClientes,
   onOpenChange,
   onSubmit,
   isPending,
@@ -254,14 +278,15 @@ function CitaFormDialog({
   cita?: CitaCalendario;
   asesores: { id: string; nombre: string }[];
   mostrarAsesor: boolean;
-  empresaVistaId?: string;
+  empresaId?: string;
+  asesorIdBusquedaClientes?: string;
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CitaFormValues) => void;
   isPending: boolean;
   error: unknown;
 }) {
   const inicio = cita ? toDatetimeLocalValue(cita.programadaPara) : defaultStart();
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedCliente, setSelectedCliente] = useState<ClienteParaCita | null>(null);
   const {
     register,
     control,
@@ -284,7 +309,7 @@ function CitaFormDialog({
 
   const title = mode === "crear" ? "Agendar cita" : "Reprogramar cita";
   const description = mode === "crear"
-    ? "Elige un lead existente y reserva un horario de al menos una hora."
+    ? "Elige un cliente con lead asociado y reserva un horario de al menos una hora."
     : "Ajusta el horario y los datos de esta cita.";
 
   return (
@@ -296,15 +321,16 @@ function CitaFormDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label>Lead</Label>
+            <Label>Cliente</Label>
             {mode === "crear" ? (
-              <LeadCombobox
+              <ClienteCombobox
                 value={leadId}
-                selectedLead={selectedLead}
-                empresaVistaId={empresaVistaId}
-                onChange={(lead) => {
-                  setSelectedLead(lead);
-                  setValue("leadId", lead.id, { shouldValidate: true });
+                selectedCliente={selectedCliente}
+                empresaId={empresaId}
+                asesorId={asesorIdBusquedaClientes}
+                onChange={(cliente) => {
+                  setSelectedCliente(cliente);
+                  setValue("leadId", cliente.leadId, { shouldValidate: true });
                 }}
               />
             ) : (
@@ -566,6 +592,8 @@ export function CalendarCitasPage() {
   const { empresaVistaId } = useVistaEmpresa();
   const esGestor = puedeGestionarCitas(user?.rol);
   const mostrarAsesor = esGestor;
+  const empresaIdBusquedaClientes = user?.sessionScope === "holding" ? (empresaVistaId ?? undefined) : (user?.empresaId ?? undefined);
+  const asesorIdBusquedaClientes = user?.rol === "ASESOR" ? user.id : undefined;
   const [vista, setVista] = useState<VistaCalendarioCitas>("mes");
   const [fechaBase, setFechaBase] = useState(() => new Date());
   const [asesorId, setAsesorId] = useState(ASESOR_TODOS);
@@ -664,17 +692,32 @@ export function CalendarCitasPage() {
             <LoadingState rows={6} rowHeight="h-20" />
           ) : citasQuery.isError ? (
             <ErrorState message={getErrorMessage(citasQuery.error)} onRetry={() => void citasQuery.refetch()} />
-          ) : citas.length === 0 ? (
-            <EmptyState
-              icon={Clock3}
-              title="No hay citas en este periodo"
-              description="Agenda una cita o cambia el rango para revisar otra fecha."
-              action={<Button onClick={() => setCrearOpen(true)}>Agendar cita</Button>}
-            />
           ) : vista === "mes" ? (
-            <CalendarMonthView fechaBase={fechaBase} citas={citas} mostrarAsesor={mostrarAsesor} onOpenCita={(cita) => { setCitaSeleccionada(cita); setDetalleOpen(true); }} />
+            <div className="flex flex-col gap-4">
+              {citas.length === 0 ? (
+                <EmptyState
+                  icon={Clock3}
+                  title="No hay citas en este rango."
+                  description="Agenda una cita o cambia el rango para revisar otra fecha."
+                  action={<Button onClick={() => setCrearOpen(true)}>Agendar cita</Button>}
+                  className="py-6"
+                />
+              ) : null}
+              <CalendarMonthView fechaBase={fechaBase} citas={citas} mostrarAsesor={mostrarAsesor} onOpenCita={(cita) => { setCitaSeleccionada(cita); setDetalleOpen(true); }} />
+            </div>
           ) : (
-            <CalendarAgendaView fechaBase={fechaBase} vista={vista} citas={citas} mostrarAsesor={mostrarAsesor} onOpenCita={(cita) => { setCitaSeleccionada(cita); setDetalleOpen(true); }} />
+            <div className="flex flex-col gap-4">
+              {citas.length === 0 ? (
+                <EmptyState
+                  icon={Clock3}
+                  title="No hay citas en este rango."
+                  description="Agenda una cita o cambia el rango para revisar otra fecha."
+                  action={<Button onClick={() => setCrearOpen(true)}>Agendar cita</Button>}
+                  className="py-6"
+                />
+              ) : null}
+              <CalendarAgendaView fechaBase={fechaBase} vista={vista} citas={citas} mostrarAsesor={mostrarAsesor} onOpenCita={(cita) => { setCitaSeleccionada(cita); setDetalleOpen(true); }} />
+            </div>
           )}
         </CardContent>
       </Card>
@@ -684,7 +727,8 @@ export function CalendarCitasPage() {
         mode="crear"
         asesores={asesores}
         mostrarAsesor={mostrarAsesor}
-        empresaVistaId={empresaVistaId ?? undefined}
+        empresaId={empresaIdBusquedaClientes}
+        asesorIdBusquedaClientes={asesorIdBusquedaClientes}
         onOpenChange={setCrearOpen}
         isPending={crearCita.isPending}
         error={crearCita.error}
@@ -721,7 +765,8 @@ export function CalendarCitasPage() {
           cita={citaSeleccionada}
           asesores={asesores}
           mostrarAsesor={mostrarAsesor}
-          empresaVistaId={empresaVistaId ?? undefined}
+          empresaId={empresaIdBusquedaClientes}
+          asesorIdBusquedaClientes={asesorIdBusquedaClientes}
           onOpenChange={setEditarOpen}
           isPending={reprogramarCita.isPending}
           error={reprogramarCita.error}
