@@ -695,6 +695,7 @@ describe("adversarial/http-cross-company — POST /empresas/:empresaId/administr
       empresaId: empresa.id,
       rol: "ADMINISTRADOR",
       membresiaId: provision.body.administrador.membresia.id,
+      correo,
     });
   });
 

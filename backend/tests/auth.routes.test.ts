@@ -100,6 +100,7 @@ describe("POST /api/v1/auth/login — dual-login-routing (Bloque B, Fase 2)", ()
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.user.id).toBe(usuario.id);
+    expect(respuesta.body.user.correo).toBe(correoMembresia);
     expect(respuesta.body.accessToken).toEqual(expect.any(String));
   });
 
