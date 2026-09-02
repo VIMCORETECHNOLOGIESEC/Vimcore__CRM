@@ -12,7 +12,19 @@ import type { ConversacionListItem, Mensaje } from "@/tipos/conversacion";
  * test replica el toast global de error real (mismo criterio que
  * `tests/bridges/BridgesPage.test.tsx`). El tiempo real vive en el consumidor
  * central `useNotificacionesRealtime`, fuera de esta página.
+ *
+ * Fix (2026-09-02): `ConversacionesPage` ahora lee `useVistaEmpresa()` (fix
+ * de la fuga de datos real de holding-wide, ver `ConversacionesPage.tsx`),
+ * que internamente exige `useAuth()` -- sin mockearlo, cualquier render acá
+ * tira "useAuth debe usarse dentro de <AuthProvider>". Mismo patrón que
+ * `tests/bridges/BridgesPage.test.tsx`: mock directo del hook, sesión
+ * `company` fija (ningún test de este archivo ejercita el drill-down de
+ * vista de empresa en sí, así que alcanza con una sesión estable que nunca
+ * dispara `enVistaDeEmpresa`).
  */
+vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
+  useAuth: () => ({ user: { sessionScope: "company", rol: "ADMINISTRADOR" } }),
+}));
 vi.mock("@/funcionalidades/whatsapp/conversaciones.api", () => ({
   LIMITES_CONVERSACIONES: [10, 25, 50, 100],
   LONGITUD_MAXIMA_MENSAJE: 4096,
