@@ -37,10 +37,26 @@ whatsappRouter.post(
   requireRole("ADMINISTRADOR"),
   postWhatsAppConexion,
 );
+// Fix (bug de seguridad: chat de WhatsApp invisible para todo rol que no
+// fuera ADMINISTRADOR): esta ruta es una LECTURA de estado ("¿está
+// conectado el WhatsApp de mi empresa?"), no la acción de conectar —
+// `frontend/.../LeadDetallePage.tsx` la consume desde el panel de chat que
+// ve cualquier rol al trabajar un lead (asesor, vendedor, supervisor), no
+// solo el administrador. `requireRole("ADMINISTRADOR")` acá hacía que un
+// asesor SIEMPRE viera "no conectado" aunque la empresa sí tuviera WhatsApp
+// activo. El aislamiento por empresa sigue garantizado independientemente
+// del rol: `getWhatsAppConexionStatus` resuelve `empresaId` con
+// `usuario.empresaId ?? parsed.data.empresaId`, así que una sesión
+// company-scoped nunca puede sobreescribirlo vía query param (mismo
+// criterio D9/D10 que `createWhatsAppConexion`); solo una sesión
+// holding-wide, que ya requiere ADMINISTRADOR/SUPERVISOR/SUPERVISOR_HOLDING
+// para existir, cae al query param. El DTO tampoco expone ningún token
+// (`WhatsAppConexionDto`: id/empresaId/numeroTelefonoId/numeroDisplay/
+// wabaId/estado/creadoEn). `whatsapp/conectar` y `POST /whatsapp/conexion`
+// siguen admin-only: esas sí son la acción real de conectar.
 whatsappRouter.get(
   "/whatsapp/conexion",
   requireAuthentication,
-  requireRole("ADMINISTRADOR"),
   getWhatsAppConexionStatus,
 );
 
