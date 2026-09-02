@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { EstadoCita, ModalidadCita } from "@/tipos/cita";
 import type { FormaPago } from "@/tipos/lead";
 import type { EtapaCalificable, RespuestasFormulario } from "@/tipos/formulario";
+import { TUTORIAL_MOCK_LEAD, TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import {
   cancelCitaApi,
   fetchCitasLeadApi,
@@ -36,7 +37,12 @@ const CITAS_LEAD_QUERY_KEY = "citas-lead";
 export function useLeadDetalle(leadId: string, empresaId?: string) {
   return useQuery({
     queryKey: [LEAD_DETALLE_QUERY_KEY, leadId, empresaId],
-    queryFn: () => fetchLeadDetalleApi(leadId, empresaId),
+    // Lead demo del tutorial (`tutorialMockLead.ts`): se sirve local, sin red
+    // -- el tour nunca debe pegarle al backend real con este id inventado.
+    queryFn: () =>
+      leadId === TUTORIAL_MOCK_LEAD_ID
+        ? Promise.resolve(TUTORIAL_MOCK_LEAD)
+        : fetchLeadDetalleApi(leadId, empresaId),
   });
 }
 
@@ -51,7 +57,9 @@ export function useFormularioEtapa(etapa: EtapaCalificable | null) {
 export function useCitasLead(leadId: string) {
   return useQuery({
     queryKey: [CITAS_LEAD_QUERY_KEY, leadId],
-    queryFn: () => fetchCitasLeadApi(leadId),
+    // Mismo criterio que `useLeadDetalle`: el lead demo del tutorial nunca
+    // tiene citas reales que consultar.
+    queryFn: () => (leadId === TUTORIAL_MOCK_LEAD_ID ? Promise.resolve([]) : fetchCitasLeadApi(leadId)),
   });
 }
 

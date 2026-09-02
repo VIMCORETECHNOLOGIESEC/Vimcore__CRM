@@ -4,6 +4,7 @@ import { es } from "date-fns/locale";
 import { useState } from "react";
 import { CalendarDays, CalendarIcon, Clock3 } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import type { Cita, ModalidadCita } from "@/tipos/cita";
+import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import {
   citaRescheduleSchema,
   citaScheduleSchema,
@@ -216,6 +218,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
   const { data: citas, isLoading, isError } = useCitasLead(leadId);
   const scheduleCita = useScheduleCita(leadId);
   const rescheduleCita = useRescheduleCita(leadId);
+  const esLeadDemo = leadId === TUTORIAL_MOCK_LEAD_ID;
 
   const {
     register,
@@ -257,6 +260,12 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
           Próxima actividad
         </span>
       </div>
+
+      {esLeadDemo ? (
+        <Alert>
+          <AlertDescription>Estás en el tutorial: los cambios no se guardan.</AlertDescription>
+        </Alert>
+      ) : null}
 
       {isLoading ? (
         <LoadingState rows={2} rowHeight="h-16" />
@@ -331,7 +340,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
           />
         </div>
 
-        <Button type="submit" disabled={scheduleCita.isPending} className="h-10 w-full">
+        <Button type="submit" disabled={scheduleCita.isPending || esLeadDemo} className="h-10 w-full">
           {scheduleCita.isPending ? "Agendando…" : "Agendar"}
         </Button>
       </form>

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Lead } from "@/tipos/lead";
+import { TUTORIAL_MOCK_LEAD_ID } from "@/funcionalidades/leads/tutorial/tutorialMockLead";
 
 vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: vi.fn(),
@@ -188,6 +189,22 @@ describe("LeadDetallePage — useVistaEmpresa().esVistaSoloLectura", () => {
     await screen.findByText("Roberto Salazar");
     expect(screen.queryByText("Acciones responsable")).not.toBeInTheDocument();
   });
+
+  it("lead de ejemplo del tutorial: oculta AccionesResponsable y Nueva oportunidad", async () => {
+    useLeadDetalleMock.mockReturnValue({
+      data: buildLead({ id: TUTORIAL_MOCK_LEAD_ID, cliente: { ...buildLead().cliente, nombre: "Valeria Sosa" } }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderPage(`/leads/${TUTORIAL_MOCK_LEAD_ID}`);
+
+    await screen.findByText("Valeria Sosa");
+    expect(screen.queryByText("Acciones responsable")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nueva oportunidad")).not.toBeInTheDocument();
+  });
 });
 
 describe("LeadDetallePage tutorial anchors", () => {
@@ -268,11 +285,10 @@ describe("LeadDetallePage — chat de WhatsApp", () => {
     window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
 
     expect(await screen.findByText("ConversacionAbierta mock — conv-9")).toBeInTheDocument();
-    expect(useConversacionesMock).toHaveBeenCalledWith({
-      clienteId: "cliente-01",
-      pagina: 1,
-      limite: 10,
-    });
+    expect(useConversacionesMock).toHaveBeenCalledWith(
+      { clienteId: "cliente-01", pagina: 1, limite: 10 },
+      { enabled: true },
+    );
   });
 
   it("lead WHATSAPP sin conversación todavía: muestra estado vacío", async () => {
@@ -310,16 +326,15 @@ describe("LeadDetallePage — chat de WhatsApp", () => {
     renderPage();
     await screen.findByText("Roberto Salazar");
 
-    expect(screen.getByLabelText("Abrir chat de WhatsApp")).toBeInTheDocument();
+    expect(screen.getByLabelText("Abrir espacio de trabajo")).toBeInTheDocument();
 
     window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
 
     expect(await screen.findByLabelText("Chat de WhatsApp")).toBeInTheDocument();
-    expect(useConversacionesMock).toHaveBeenCalledWith({
-      clienteId: "cliente-01",
-      pagina: 1,
-      limite: 10,
-    });
+    expect(useConversacionesMock).toHaveBeenCalledWith(
+      { clienteId: "cliente-01", pagina: 1, limite: 10 },
+      { enabled: true },
+    );
   });
 
   it("empresa sin WhatsApp conectado (estado !== ACTIVA): muestra WhatsAppSinConexion en vez del chat/estado vacío", async () => {
@@ -335,6 +350,42 @@ describe("LeadDetallePage — chat de WhatsApp", () => {
     expect(await screen.findByText("WhatsAppSinConexion mock — puedeIrABridges:true")).toBeInTheDocument();
     expect(screen.queryByText("Todavía no hay conversación")).not.toBeInTheDocument();
     expect(screen.queryByText(/ConversacionAbierta mock/)).not.toBeInTheDocument();
+  });
+
+  it("llama a useWhatsAppEstadoActual con { silent: true } -- un error de esa consulta no debe sumar un toast al estado ya calmo de WhatsAppSinConexion", async () => {
+    renderPage();
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    await screen.findByLabelText("Chat de WhatsApp");
+    expect(useWhatsAppEstadoActualMock).toHaveBeenCalledWith(undefined, { silent: true });
+  });
+
+  it("lead de ejemplo del tutorial: no llama a useConversaciones habilitada y oculta 'Ir a Bridges' aunque el rol sea ADMINISTRADOR", async () => {
+    useLeadDetalleMock.mockReturnValue({
+      data: buildLead({
+        id: TUTORIAL_MOCK_LEAD_ID,
+        cliente: { ...buildLead().cliente, id: "tutorial-demo-cliente", nombre: "Valeria Sosa" },
+      }),
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    useWhatsAppEstadoActualMock.mockReturnValue({
+      data: null,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useWhatsAppEstadoActual>);
+
+    renderPage(`/leads/${TUTORIAL_MOCK_LEAD_ID}`);
+
+    window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail: { action: "open-workspace" } }));
+
+    expect(await screen.findByText("WhatsAppSinConexion mock — puedeIrABridges:false")).toBeInTheDocument();
+    expect(useConversacionesMock).toHaveBeenCalledWith(
+      { clienteId: "tutorial-demo-cliente", pagina: 1, limite: 10 },
+      { enabled: false },
+    );
   });
 
   it("empresa sin WhatsApp conectado y rol sin acceso a Bridges: pasa puedeIrABridges=false", async () => {

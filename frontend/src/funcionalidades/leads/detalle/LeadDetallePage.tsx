@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Handshake, X } from "lucide-react";
+import { ArrowRight, Briefcase, CalendarClock, CalendarDays, Check, CircleGauge, Clock3, Handshake, X } from "lucide-react";
 import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
@@ -10,6 +10,7 @@ import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { NuevaOportunidadButton } from "@/funcionalidades/oportunidades/NuevaOportunidadButton";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
+import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import { AccionesResponsable } from "./AccionesResponsable";
 import { LeadDatosContacto } from "./LeadDatosContacto";
 import { LeadDetalleEncabezado } from "./LeadDetalleEncabezado";
@@ -24,9 +25,9 @@ import { ETAPA_ETIQUETAS } from "../catalogos";
 import { ConversacionAbierta } from "@/funcionalidades/whatsapp/ConversacionAbierta";
 import { useConversaciones } from "@/funcionalidades/whatsapp/useConversaciones";
 import { useWhatsAppEstadoActual } from "@/funcionalidades/whatsapp/useWhatsApp";
-import { WhatsAppIcon } from "@/funcionalidades/whatsapp/WhatsAppIcon";
 import { WhatsAppSinConexion } from "@/funcionalidades/whatsapp/WhatsAppSinConexion";
 import type { Lead, EtapaLead } from "@/tipos/lead";
+import { TUTORIAL_MOCK_LEAD } from "../tutorial/tutorialMockLead";
 
 type VistaDetalle = "progreso" | "cita" | "cierre" | "oportunidad";
 
@@ -213,8 +214,19 @@ function WhatsAppChat({ clienteId }: { clienteId: string }) {
   const { user, hasRole } = useAuth();
   const { empresaVistaId } = useVistaEmpresa();
   const empresaIdWhatsApp = user?.sessionScope === "holding" ? (empresaVistaId ?? undefined) : undefined;
-  const estadoWhatsApp = useWhatsAppEstadoActual(empresaIdWhatsApp);
-  const { data, isLoading } = useConversaciones({ clienteId, pagina: 1, limite: 10 });
+  const estadoWhatsApp = useWhatsAppEstadoActual(empresaIdWhatsApp, { silent: true });
+  /**
+   * `TUTORIAL_MOCK_LEAD.cliente.id` no es un UUID real -- el backend rechaza
+   * la consulta (400) apenas se abre el panel para el lead de ejemplo del
+   * tutorial. Se deshabilita la query y se oculta "Ir a Bridges" para ese
+   * caso, mismo criterio ya aplicado a `AccionesResponsable`/
+   * `NuevaOportunidadButton` en `LeadDetallePage`.
+   */
+  const esLeadDemo = clienteId === TUTORIAL_MOCK_LEAD.cliente.id;
+  const { data, isLoading } = useConversaciones(
+    { clienteId, pagina: 1, limite: 10 },
+    { enabled: !esLeadDemo },
+  );
 
   if (isLoading || estadoWhatsApp.isLoading) {
     return (
@@ -239,7 +251,7 @@ function WhatsAppChat({ clienteId }: { clienteId: string }) {
     >
       {!conectado ? (
         <WhatsAppSinConexion
-          puedeIrABridges={hasRole(["ADMINISTRADOR"])}
+          puedeIrABridges={hasRole(["ADMINISTRADOR"]) && !esLeadDemo}
           empresaVistaId={empresaVistaId}
         />
       ) : conversacion ? (
@@ -367,8 +379,17 @@ export function LeadDetallePage() {
              * `AccionesResponsable` (que no llama `useVistaEmpresa()` para
              * no exigir Router en sus propios tests).
              */}
-            {esVistaSoloLectura ? null : <AccionesResponsable lead={lead} user={user} />}
-            <NuevaOportunidadButton leadId={lead.id} />
+            {esVistaSoloLectura || lead.id === TUTORIAL_MOCK_LEAD_ID ? null : (
+              <AccionesResponsable lead={lead} user={user} />
+            )}
+            {/*
+             * Sin gate de `esVistaSoloLectura` acá -- ese es el
+             * comportamiento previo a este cambio (fuera de alcance
+             * corregirlo ahora); solo se agrega el lead de ejemplo del
+             * tutorial, mismo criterio que el botón de arriba y que
+             * `OportunidadesLeadTab.tsx`.
+             */}
+            {lead.id === TUTORIAL_MOCK_LEAD_ID ? null : <NuevaOportunidadButton leadId={lead.id} />}
           </div>
         </div>
         <div data-tour="lead-summary">
@@ -447,11 +468,11 @@ export function LeadDetallePage() {
           type="button"
           onClick={() => setChatAbierto(true)}
           data-tour="lead-whatsapp"
-          aria-label="Abrir chat de WhatsApp"
-          title="Abrir chat de WhatsApp"
+          aria-label="Abrir espacio de trabajo"
+          title="Abrir espacio de trabajo"
           className="fixed bottom-6 right-6 z-30 flex size-14 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_28px_-8px_rgb(var(--primary)/0.55)] transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 active:scale-95"
         >
-          <WhatsAppIcon />
+          <Briefcase className="size-7" aria-hidden="true" />
         </button>
       ) : null}
     </>

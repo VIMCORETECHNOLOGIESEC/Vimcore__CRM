@@ -32,9 +32,11 @@ const fetchWhatsAppConexionApiMock = vi.mocked(fetchWhatsAppConexionApi);
 const guardarEmpresaFlujoMock = vi.mocked(guardarEmpresaFlujo);
 const redirectToMock = vi.mocked(redirectTo);
 
+let ultimoQueryClient: QueryClient;
+
 function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  ultimoQueryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  return <QueryClientProvider client={ultimoQueryClient}>{children}</QueryClientProvider>;
 }
 
 beforeEach(() => {
@@ -129,5 +131,40 @@ describe("useWhatsAppEstadoActual — estado ACTUAL (GET /whatsapp/conexion), mo
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.estado).toBe("ACTIVA");
     expect(result.current.data?.numeroDisplay).toBe("+54 9 11 1234-5678");
+  });
+
+  /**
+   * `LeadDetallePage.tsx` pasa `{ silent: true }` para que un error de esta
+   * consulta (ej. sin permiso, red) no dispare el toast GLOBAL de
+   * `queryClient.ts` encima de `WhatsAppSinConexion`, que ya es su propio
+   * estado "calmo" esperado. Se verifica acá, a nivel de hook, que la
+   * `query` registrada en el `QueryClient` real queda con `meta: { silent:
+   * true }` -- el toast en sí lo dispara `queryClient.ts` (ya cubierto en
+   * `tests/queryClient.test.ts`), no este hook.
+   */
+  it("con options.silent=true, registra la query con meta: { silent: true }", async () => {
+    fetchWhatsAppConexionApiMock.mockResolvedValue(null);
+
+    renderHook(() => useWhatsAppEstadoActual(undefined, { silent: true }), { wrapper });
+
+    await waitFor(() => expect(fetchWhatsAppConexionApiMock).toHaveBeenCalledWith(undefined));
+
+    const query = ultimoQueryClient
+      .getQueryCache()
+      .find({ queryKey: ["whatsapp-estado-actual", undefined] });
+    expect(query?.meta).toEqual({ silent: true });
+  });
+
+  it("sin options.silent (uso normal de ConectarWhatsAppCard), la query NO lleva meta.silent", async () => {
+    fetchWhatsAppConexionApiMock.mockResolvedValue(null);
+
+    renderHook(() => useWhatsAppEstadoActual(undefined), { wrapper });
+
+    await waitFor(() => expect(fetchWhatsAppConexionApiMock).toHaveBeenCalledWith(undefined));
+
+    const query = ultimoQueryClient
+      .getQueryCache()
+      .find({ queryKey: ["whatsapp-estado-actual", undefined] });
+    expect(query?.meta?.silent).toBeUndefined();
   });
 });

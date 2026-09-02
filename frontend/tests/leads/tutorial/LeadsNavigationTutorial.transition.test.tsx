@@ -67,6 +67,7 @@ const { useConversaciones } = await import("@/funcionalidades/whatsapp/useConver
 const { LeadDetallePage } = await import("@/funcionalidades/leads/detalle/LeadDetallePage");
 const {
   LeadsNavigationTutorialProvider,
+  dispatchTutorialReady,
 } = await import("@/funcionalidades/leads/tutorial/LeadsNavigationTutorial");
 
 const useAuthMock = vi.mocked(useAuth);
@@ -213,13 +214,31 @@ describe("LeadsNavigationTutorial -- retroceder revierte los side-effects del av
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
 
+    /**
+     * Bug real reportado ("Regresar" rompía el tutorial): el paso 4->3
+     * ahora espera el evento "list" (`waitFor: "list"` en el provider) antes
+     * de mover `stepIndex`, igual que el avance 3->4 espera "detail". Este
+     * stub NO dispara el "ready" solo -- el test lo dispara a mano más abajo
+     * para poder comprobar que el `stepIndex` de verdad queda esperando (no
+     * avanza en el acto, que era exactamente el bug: antes se movía sin
+     * esperar a que la tabla existiera).
+     */
+    function LeadsListStub() {
+      return (
+        <div data-testid="leads-list-stub">
+          Lista de leads
+          <div data-tour="leads-table-row">Fila de ejemplo</div>
+        </div>
+      );
+    }
+
     render(
       <QueryClientProvider client={client}>
         <TooltipProvider>
           <MemoryRouter initialEntries={["/leads/lead-01"]}>
             <LeadsNavigationTutorialProvider>
               <Routes>
-                <Route path="/leads" element={<div data-testid="leads-list-stub">Lista de leads</div>} />
+                <Route path="/leads" element={<LeadsListStub />} />
                 <Route path="/leads/:id" element={<LeadDetallePage />} />
               </Routes>
             </LeadsNavigationTutorialProvider>
@@ -241,6 +260,15 @@ describe("LeadsNavigationTutorial -- retroceder revierte los side-effects del av
 
     await waitFor(() => {
       expect(screen.getByTestId("leads-list-stub")).toBeInTheDocument();
+    });
+    // Todavía no debería haberse movido al paso 3: está esperando el "ready" de "list".
+    expect(screen.getByTestId("joyride-mock")).not.toHaveAttribute("data-step-index", "3");
+
+    act(() => {
+      dispatchTutorialReady("list", '[data-tour="leads-table-row"]');
+    });
+
+    await waitFor(() => {
       expect(screen.getByTestId("joyride-mock")).toHaveAttribute("data-step-index", "3");
     });
   });

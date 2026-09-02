@@ -7,6 +7,7 @@ import {
 import { RotateCcw } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -22,6 +23,7 @@ import { ETAPA_ETIQUETAS } from "./catalogos";
 import { getResponsable } from "./leads.utils";
 import { SemaforoBadge } from "./SemaforoBadge";
 import { SlaCountdownCell } from "./SlaCountdownCell";
+import { TUTORIAL_MOCK_LEAD_ID } from "./tutorial/tutorialMockLead";
 
 function formatFechaIngreso(iso: string): string {
   const fecha = new Date(iso);
@@ -89,7 +91,12 @@ export function LeadsTable({
   onToggleSeleccion,
   onToggleSeleccionTodos,
 }: LeadsTableProps) {
-  const todosSeleccionados = leads.length > 0 && leads.every((l) => seleccionados.has(l.id));
+  // El lead demo del tutorial (`TUTORIAL_MOCK_LEAD_ID`) no es seleccionable
+  // (ver la columna de selección más abajo) -- se excluye acá para que
+  // "seleccionar todos" nunca dependa de un checkbox que ni siquiera existe.
+  const leadsSeleccionables = leads.filter((l) => l.id !== TUTORIAL_MOCK_LEAD_ID);
+  const todosSeleccionados =
+    leadsSeleccionables.length > 0 && leadsSeleccionables.every((l) => seleccionados.has(l.id));
 
   const columns = useMemo(() => {
     /*
@@ -117,13 +124,14 @@ export function LeadsTable({
           className="border-white data-[state=checked]:bg-white data-[state=checked]:text-primary"
         />
       ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={seleccionados.has(row.original.id)}
-          onCheckedChange={() => onToggleSeleccion(row.original.id)}
-          aria-label={`Seleccionar a ${row.original.cliente.nombre}`}
-        />
-      ),
+      cell: ({ row }) =>
+        row.original.id === TUTORIAL_MOCK_LEAD_ID ? null : (
+          <Checkbox
+            checked={seleccionados.has(row.original.id)}
+            onCheckedChange={() => onToggleSeleccion(row.original.id)}
+            aria-label={`Seleccionar a ${row.original.cliente.nombre}`}
+          />
+        ),
     });
 
     const base = [
@@ -153,6 +161,11 @@ export function LeadsTable({
                 </TooltipTrigger>
                 <TooltipContent>{row.original.cliente.nombre}</TooltipContent>
               </Tooltip>
+              {row.original.id === TUTORIAL_MOCK_LEAD_ID ? (
+                <Badge variant="outline" className="shrink-0">
+                  Ejemplo
+                </Badge>
+              ) : null}
               {row.original.origen === "REINGRESO" ? (
                 <Tooltip>
                   <TooltipTrigger asChild>

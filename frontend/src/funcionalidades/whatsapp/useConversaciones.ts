@@ -31,11 +31,12 @@ export const CONVERSACIONES_QUERY_KEY = "conversaciones";
 export const LIMITE_CONVERSACIONES_DEFECTO: LimiteConversaciones = 25;
 
 /** Listado paginado (`GET /conversaciones`), ordenado `ultimoMensajeEn` desc. */
-export function useConversaciones(params: ConversacionesQueryParams) {
+export function useConversaciones(params: ConversacionesQueryParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [CONVERSACIONES_QUERY_KEY, params],
     queryFn: () => listarConversacionesApi(params),
     placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
   });
 }
 

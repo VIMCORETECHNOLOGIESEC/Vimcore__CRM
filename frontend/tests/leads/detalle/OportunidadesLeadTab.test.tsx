@@ -62,10 +62,10 @@ function buildOportunidad(overrides: Partial<Oportunidad> = {}): Oportunidad {
   };
 }
 
-function renderTab() {
+function renderTab(leadId = "lead-01") {
   return render(
     <MemoryRouter>
-      <OportunidadesLeadTab leadId="lead-01" />
+      <OportunidadesLeadTab leadId={leadId} />
     </MemoryRouter>,
   );
 }
@@ -108,7 +108,29 @@ describe("OportunidadesLeadTab", () => {
 
     renderTab();
 
-    expect(useOportunidadesMock).toHaveBeenCalledWith({ leadId: "lead-01", pagina: 1, limite: 25 });
+    expect(useOportunidadesMock).toHaveBeenCalledWith(
+      { leadId: "lead-01", pagina: 1, limite: 25 },
+      { enabled: true },
+    );
+  });
+
+  it("lead de ejemplo del tutorial: no consulta el backend y muestra el vacío real sin botón de alta", () => {
+    useOportunidadesMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useOportunidades>);
+
+    renderTab("tutorial-demo-lead");
+
+    expect(useOportunidadesMock).toHaveBeenCalledWith(
+      { leadId: "tutorial-demo-lead", pagina: 1, limite: 25 },
+      { enabled: false },
+    );
+    expect(screen.getByText("Sin oportunidades")).toBeInTheDocument();
+    expect(screen.queryByText(/Nueva oportunidad/)).not.toBeInTheDocument();
   });
 
   it("muestra un estado vacío cuando el lead no tiene oportunidades", () => {

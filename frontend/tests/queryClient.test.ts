@@ -20,8 +20,7 @@ describe("queryClient — manejo global de errores", () => {
     expect(onError).toBeTypeOf("function");
 
     const error = new ApiError("no_encontrado", 404, "El lead solicitado no existe");
-    // @ts-expect-error -- los demás argumentos de la firma no importan para esta prueba.
-    onError?.(error);
+    onError?.(error, { meta: undefined } as Parameters<NonNullable<typeof onError>>[1]);
 
     expect(toastErrorMock).toHaveBeenCalledWith("El lead solicitado no existe");
   });
@@ -29,8 +28,10 @@ describe("queryClient — manejo global de errores", () => {
   it("QueryCache.onError cae al mensaje genérico ante un error que no es ApiError", () => {
     const onError = queryClient.getQueryCache().config.onError;
 
-    // @ts-expect-error -- los demás argumentos de la firma no importan para esta prueba.
-    onError?.(new Error("fallo interno sin forma conocida"));
+    onError?.(
+      new Error("fallo interno sin forma conocida"),
+      { meta: undefined } as Parameters<NonNullable<typeof onError>>[1],
+    );
 
     expect(toastErrorMock).toHaveBeenCalledWith(
       "Ocurrió un error inesperado. Intenta nuevamente en unos segundos.",
@@ -54,5 +55,32 @@ describe("queryClient — manejo global de errores", () => {
 
   it("las mutaciones no reintentan automáticamente (retry: 0)", () => {
     expect(queryClient.getDefaultOptions().mutations?.retry).toBe(0);
+  });
+
+  it("QueryCache.onError NO muestra el toast cuando la query tiene meta.silent === true", () => {
+    const onError = queryClient.getQueryCache().config.onError;
+    const error = new ApiError("no_encontrado", 404, "El lead solicitado no existe");
+
+    onError?.(error, { meta: { silent: true } } as Parameters<NonNullable<typeof onError>>[1]);
+
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("QueryCache.onError SÍ muestra el toast cuando la query no tiene meta.silent (comportamiento sin cambios)", () => {
+    const onError = queryClient.getQueryCache().config.onError;
+    const error = new ApiError("no_encontrado", 404, "El lead solicitado no existe");
+
+    onError?.(error, { meta: undefined } as Parameters<NonNullable<typeof onError>>[1]);
+
+    expect(toastErrorMock).toHaveBeenCalledWith("El lead solicitado no existe");
+  });
+
+  it("QueryCache.onError SÍ muestra el toast cuando meta.silent === false explícito", () => {
+    const onError = queryClient.getQueryCache().config.onError;
+    const error = new ApiError("no_encontrado", 404, "El lead solicitado no existe");
+
+    onError?.(error, { meta: { silent: false } } as Parameters<NonNullable<typeof onError>>[1]);
+
+    expect(toastErrorMock).toHaveBeenCalledWith("El lead solicitado no existe");
   });
 });

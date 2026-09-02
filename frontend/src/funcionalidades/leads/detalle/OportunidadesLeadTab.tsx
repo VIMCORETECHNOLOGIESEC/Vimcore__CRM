@@ -8,6 +8,7 @@ import { ETAPA_OPORTUNIDAD_ETIQUETAS } from "@/funcionalidades/oportunidades/cat
 import { NuevaOportunidadButton } from "@/funcionalidades/oportunidades/NuevaOportunidadButton";
 import { useOportunidades } from "@/funcionalidades/oportunidades/useOportunidades";
 import type { Oportunidad } from "@/tipos/oportunidad";
+import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 
 const FORMATO_MONTO = new Intl.NumberFormat("es-EC", { style: "currency", currency: "USD" });
 
@@ -61,40 +62,57 @@ interface OportunidadesLeadTabProps {
  */
 export function OportunidadesLeadTab({ leadId }: OportunidadesLeadTabProps) {
   const { esVistaSoloLectura } = useVistaEmpresa();
+  const esLeadDemo = leadId === TUTORIAL_MOCK_LEAD_ID;
   const {
     data,
     isLoading,
     isError,
     error,
     refetch,
-  } = useOportunidades({ leadId, pagina: 1, limite: 25 });
+  } = useOportunidades({ leadId, pagina: 1, limite: 25 }, { enabled: !esLeadDemo });
 
   return (
     <div className="flex flex-col gap-4">
-      {esVistaSoloLectura ? null : <NuevaOportunidadButton leadId={leadId} />}
+      {esVistaSoloLectura || esLeadDemo ? null : <NuevaOportunidadButton leadId={leadId} />}
 
-      {isLoading ? <LoadingState rows={2} rowHeight="h-20" /> : null}
-
-      {!isLoading && isError ? (
-        <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
-      ) : null}
-
-      {!isLoading && !isError && data && data.oportunidades.length === 0 ? (
+      {/*
+       * Lead de ejemplo del tutorial (`tutorialMockLead.ts`): no existe en el
+       * backend, así que la query queda `enabled: false` arriba -- acá se
+       * muestra directamente el mismo estado vacío real en vez de dejar el
+       * tab en blanco o esperar un error de "lead no encontrado" en el
+       * último paso del recorrido.
+       */}
+      {esLeadDemo ? (
         <EmptyState
           title="Sin oportunidades"
           description="Este lead todavía no tiene oportunidades registradas."
         />
-      ) : null}
+      ) : (
+        <>
+          {isLoading ? <LoadingState rows={2} rowHeight="h-20" /> : null}
 
-      {!isLoading && !isError && data && data.oportunidades.length > 0 ? (
-        <ul className="flex flex-col gap-3">
-          {data.oportunidades.map((oportunidad) => (
-            <li key={oportunidad.id}>
-              <OportunidadCard oportunidad={oportunidad} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
+          {!isLoading && isError ? (
+            <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
+          ) : null}
+
+          {!isLoading && !isError && data && data.oportunidades.length === 0 ? (
+            <EmptyState
+              title="Sin oportunidades"
+              description="Este lead todavía no tiene oportunidades registradas."
+            />
+          ) : null}
+
+          {!isLoading && !isError && data && data.oportunidades.length > 0 ? (
+            <ul className="flex flex-col gap-3">
+              {data.oportunidades.map((oportunidad) => (
+                <li key={oportunidad.id}>
+                  <OportunidadCard oportunidad={oportunidad} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

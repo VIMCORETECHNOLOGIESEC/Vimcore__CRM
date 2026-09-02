@@ -22,11 +22,12 @@ export const PRODUCTOS_QUERY_KEY = "productos-oportunidad";
  * a partir del JWT; `empresaId`/`asesorId` solo se honran para
  * ADMINISTRADOR/SUPERVISOR.
  */
-export function useOportunidades(params: OportunidadesQueryParams) {
+export function useOportunidades(params: OportunidadesQueryParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [OPORTUNIDADES_QUERY_KEY, params],
     queryFn: () => fetchOportunidadesApi(params),
     placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
   });
 }
 

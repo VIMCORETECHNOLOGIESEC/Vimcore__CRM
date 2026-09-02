@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Info } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { EtapaCalificable, FormularioEtapa } from "@/tipos/formulario";
+import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import { ETAPA_ETIQUETAS } from "../catalogos";
 import { calculatePuntuacion, calculateSemaforo, GUIA_ACCION_SEMAFORO } from "./puntuacion";
 import { useFormularioEtapa, useSubmitFormularioEtapa } from "./useLeadDetalle";
@@ -62,6 +64,7 @@ export function FormularioEtapaLead({
   const { data: formulario, isLoading, isError } = useFormularioEtapa(etapaActual);
   const submitFormulario = useSubmitFormularioEtapa(leadId);
   const [infoAbierta, setInfoAbierta] = useState(false);
+  const esLeadDemo = leadId === TUTORIAL_MOCK_LEAD_ID;
 
   // El esquema es dinámico (depende de las preguntas de `formulario`, que
   // llegan del backend). Mientras `formulario` no cargó todavía, se usa un
@@ -113,6 +116,11 @@ export function FormularioEtapaLead({
 
   return (
     <section className="flex flex-col gap-4 bg-transparent p-0">
+      {esLeadDemo ? (
+        <Alert>
+          <AlertDescription>Estás en el tutorial: los cambios no se guardan.</AlertDescription>
+        </Alert>
+      ) : null}
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
         <Popover open={infoAbierta} onOpenChange={setInfoAbierta}>
           <PopoverTrigger asChild>
@@ -153,7 +161,11 @@ export function FormularioEtapaLead({
           ))}
         </div>
 
-        <Button type="submit" disabled={!isValid || !formularioCompleto || submitFormulario.isPending} className="w-fit">
+        <Button
+          type="submit"
+          disabled={!isValid || !formularioCompleto || submitFormulario.isPending || esLeadDemo}
+          className="w-fit"
+        >
           {submitFormulario.isPending
             ? "Guardando…"
             : `Guardar y pasar a ${ETAPA_ETIQUETAS[etapaDestino]}`}

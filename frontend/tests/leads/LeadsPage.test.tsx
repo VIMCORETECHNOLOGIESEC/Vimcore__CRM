@@ -120,6 +120,13 @@ beforeEach(() => {
   assignLeadsMasivoApiMock.mockResolvedValue(undefined);
   fetchRedesSocialesCatalogoApiMock.mockReset();
   fetchRedesSocialesCatalogoApiMock.mockResolvedValue(["FACEBOOK", "INSTAGRAM", "X", "LINKEDIN", "GOOGLE_FORMS"]);
+  // Modal de entrada del tutorial de Leads (`TutorialEntryDialog.tsx`,
+  // `useTutorialEntryModal.ts`): pre-descartado para que no tape la UI real
+  // en tests ajenos al tutorial -- `mockearAuth` siempre usa `id: "u1"`, el
+  // mismo `userId` que gatea la key acá. Su propio comportamiento tiene tests
+  // dedicados en `tests/leads/tutorial/useTutorialEntryModal.test.tsx` y
+  // `tests/leads/LeadsPage.tutorial.test.tsx`.
+  localStorage.setItem("crm.leads-navigation-tour.modal-dismissed.u1", "true");
 });
 
 afterEach(() => {

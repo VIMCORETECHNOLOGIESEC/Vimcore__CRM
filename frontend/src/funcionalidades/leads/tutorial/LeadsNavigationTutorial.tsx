@@ -1,34 +1,56 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ACTIONS, EVENTS, Joyride, STATUS, type EventData, type Step } from "react-joyride";
 import { useLocation, useNavigate } from "react-router";
+import { toast } from "sonner";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { CONFIGURACION_EMPRESA_DEFAULT } from "@/funcionalidades/configuracion-empresa/configuracion-empresa.api";
+import { TourClickHint } from "./TourClickHint";
+import { marcarTutorialFinalizadoEnSesion } from "./useTutorialEntryModal";
 
 type TutorialTransitionAction = { action: "open-workspace" | "close-workspace" | "select-tab"; tab?: string };
 
 interface LeadsNavigationTutorialContextValue {
   startTour: (leadId: string) => void;
   startTourIfNeeded: (leadId: string) => void;
+  /** Solo lectura: `true` mientras Joyride está corriendo (ver `run` en el provider). */
+  tourActivo: boolean;
 }
 
 const LEADS_NAVIGATION_TUTORIAL_DISABLED: LeadsNavigationTutorialContextValue = {
   startTour: () => undefined,
   startTourIfNeeded: () => undefined,
+  tourActivo: false,
 };
 
 const LeadsNavigationTutorialContext = createContext<LeadsNavigationTutorialContextValue>(LEADS_NAVIGATION_TUTORIAL_DISABLED);
 
 const TOUR_COMPLETED_KEY_PREFIX = "crm.leads-navigation-tour.completed.";
 const APP_SCROLL_CONTAINER_SELECTOR = '[data-tour="app-scroll-container"]';
-const LEADS_TOUR_READY_EVENT = "leads-navigation-tour-ready";
+export const LEADS_TOUR_READY_EVENT = "leads-navigation-tour-ready";
 
 type TutorialReadyTarget =
+  | "list"
   | "detail"
   | "workspace"
   | "workspace-progreso"
   | "workspace-cita"
   | "workspace-cierre"
   | "workspace-oportunidad";
+
+/**
+ * Dispara el evento que le avisa al provider que un target del tour ya
+ * existe en el DOM y puede recibir el siguiente `stepIndex` (ver
+ * `queuePendingTransition`/`LEADS_TOUR_READY_EVENT` más abajo). Exportado
+ * para que cualquier página que participe del tour (`LeadsPage.tsx`,
+ * `LeadDetallePage.tsx`) lo use sin reimplementar el mismo `CustomEvent` a
+ * mano -- evita que el nombre del evento quede duplicado como string suelto
+ * en más de un archivo.
+ */
+export function dispatchTutorialReady(target: TutorialReadyTarget, selector: string) {
+  if (typeof document === "undefined") return;
+  if (!document.querySelector(selector)) return;
+  window.dispatchEvent(new CustomEvent(LEADS_TOUR_READY_EVENT, { detail: { target } }));
+}
 
 interface PendingStepTransition {
   stepIndex: number;
@@ -201,6 +223,21 @@ function dispatchLeadTourEvent(detail: TutorialTransitionAction) {
   window.dispatchEvent(new CustomEvent("leads-navigation-tour", { detail }));
 }
 
+/**
+ * Pasos cuyo target de Joyride es un control real que, sin
+ * `options.blockTargetInteraction`, se podía clickear de verdad (fila del
+ * lead mock, botón de espacio de trabajo, pestañas del workspace) -- ahora
+ * ese clic queda bloqueado (ver `options` del `<Joyride>` más abajo), así que
+ * estos pasos muestran `TourClickHint` como pista puramente decorativa de
+ * "acá harías clic en el uso real". El resto de los pasos son de solo lectura
+ * o ya no tienen un control real bajo el spotlight.
+ */
+const PASOS_CON_HINT_DE_CLIC = new Set([
+  '[data-tour="leads-table-row"]',
+  '[data-tour="lead-whatsapp"]',
+  '[data-tour="lead-workspace-tabs"]',
+]);
+
 interface LeadsNavigationTutorialProviderProps {
   children: ReactNode;
   /**
@@ -280,9 +317,14 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
     if (completedKey) {
       localStorage.setItem(completedKey, "true");
     }
+    marcarTutorialFinalizadoEnSesion();
     setRun(false);
     setLeadId(null);
     queuePendingTransition(null);
+    navigate("/leads");
+    toast.success("Tutorial finalizado", {
+      description: "Puedes volver a verlo cuando quieras desde el botón \"Ver tutorial\", junto al título de Leads.",
+    });
   }
 
   function handleTourEvent(data: EventData) {
@@ -314,8 +356,13 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
         return;
       }
       if (index === 4) {
+        // Simétrico al avance 3->4 (más abajo, `waitFor: "detail"`): sin
+        // esperar a que la tabla de leads vuelva a existir en el DOM tras la
+        // navegación real a /leads, Joyride intentaba apuntar
+        // `[data-tour="leads-table-row"]` antes de que React terminara de
+        // renderizarla (bug real reportado: "Regresar" rompía el tutorial).
+        queuePendingTransition({ stepIndex: nextIndex, waitFor: "list" });
         navigate("/leads");
-        setStepIndex(nextIndex);
         return;
       }
       if (index === 11) {
@@ -389,7 +436,7 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
   }
 
   return (
-    <LeadsNavigationTutorialContext.Provider value={{ startTour, startTourIfNeeded }}>
+    <LeadsNavigationTutorialContext.Provider value={{ startTour, startTourIfNeeded, tourActivo: run }}>
       {children}
       <Joyride
         continuous
@@ -408,6 +455,15 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
           spotlightRadius: 8,
           textColor: "#18181B",
           zIndex: 60,
+          /**
+           * Sin esto (default `false`), el elemento resaltado por el
+           * spotlight queda 100% clickeable de verdad -- el overlay solo
+           * bloquea el resto de la pantalla. Eso permitía clics reales fuera
+           * de `handleTourEvent` (fila del lead mock, botón de espacio de
+           * trabajo, pestañas del workspace, botón real "Ir a Bridges") que
+           * desincronizaban `stepIndex` del estado real de la página.
+           */
+          blockTargetInteraction: true,
         }}
         locale={{
           back: "Atrás",
@@ -426,6 +482,9 @@ export function LeadsNavigationTutorialProvider({ children, colorAcento }: Leads
           buttonSkip: { color: "#52525B", fontSize: 13 },
         }}
       />
+      {run && PASOS_CON_HINT_DE_CLIC.has(LEADS_NAVIGATION_TOUR_STEPS[stepIndex]?.target as string) ? (
+        <TourClickHint targetSelector={LEADS_NAVIGATION_TOUR_STEPS[stepIndex].target as string} key={stepIndex} />
+      ) : null}
     </LeadsNavigationTutorialContext.Provider>
   );
 }

@@ -86,15 +86,24 @@ export const WHATSAPP_ESTADO_ACTUAL_QUERY_KEY = "whatsapp-estado-actual";
  * al recargar la página o entrar por primera vez con una empresa ya
  * conectada de antes. Mientras la conexión está ACTIVA, se revalida sola
  * cada 60s para detectar si se cae (token expirado, etc.) sin exigir un F5.
+ *
+ * `options.silent` -- cuando el consumidor ya tiene su propio estado "calmo"
+ * para el caso de error (ej. `WhatsAppChat` en `LeadDetallePage.tsx`, que
+ * muestra `WhatsAppSinConexion` como resultado esperado), silencia el toast
+ * GLOBAL de error de `queryClient.ts` vía `meta: { silent: true }` para no
+ * duplicar el mensaje. `ConectarWhatsAppCard.tsx` (la pantalla real de
+ * gestión en Bridges) NO lo usa a propósito -- ahí un error real de esta
+ * consulta SÍ debe mostrarse.
  */
 export function useWhatsAppEstadoActual(
   empresaId: string | undefined,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; silent?: boolean },
 ) {
   return useQuery({
     queryKey: [WHATSAPP_ESTADO_ACTUAL_QUERY_KEY, empresaId],
     queryFn: () => fetchWhatsAppConexionApi(empresaId),
     enabled: options?.enabled ?? true,
     refetchInterval: (query) => (query.state.data?.estado === "ACTIVA" ? 60_000 : false),
+    meta: options?.silent ? { silent: true } : undefined,
   });
 }

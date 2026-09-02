@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
@@ -9,7 +9,10 @@ import { getErrorMessage } from "@/api/httpClient";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
-import { useLeadsNavigationTutorial } from "./tutorial/LeadsNavigationTutorial";
+import { dispatchTutorialReady, useLeadsNavigationTutorial } from "./tutorial/LeadsNavigationTutorial";
+import { TUTORIAL_MOCK_LEAD, TUTORIAL_MOCK_LEAD_ID } from "./tutorial/tutorialMockLead";
+import { TutorialEntryDialog } from "./tutorial/TutorialEntryDialog";
+import { useTutorialEntryModal } from "./tutorial/useTutorialEntryModal";
 import { AccionesMasivas } from "./AccionesMasivas";
 import { CargarLeadManualDialog } from "./CargarLeadManualDialog";
 import { CargaMasivaLeadsDialog } from "./CargaMasivaLeadsDialog";
@@ -39,7 +42,22 @@ export function LeadsPage() {
 
   const { user, hasRole } = useAuth();
   const { empresaVistaId, esVistaSoloLectura } = useVistaEmpresa();
-  const { startTour, startTourIfNeeded } = useLeadsNavigationTutorial();
+  const { startTour, tourActivo } = useLeadsNavigationTutorial();
+  const { mostrarModal, marcarNoMostrar, cerrar } = useTutorialEntryModal();
+
+  /**
+   * Bug real reportado ("Regresar" rompía el tutorial): al retroceder del
+   * paso 4 (encabezado del lead) al 3 (fila de la tabla), el provider navega
+   * de vuelta a /leads y espera este evento antes de mover el `stepIndex` de
+   * Joyride (`LeadsNavigationTutorial.tsx`, `waitFor: "list"`) -- sin esto,
+   * apuntaba a la fila antes de que React terminara de remontar la tabla.
+   * Se dispara en cada render con `tourActivo` true (no solo al montar):
+   * `dispatchTutorialReady` ya es un no-op si el selector no existe todavía,
+   * así que no hay costo en llamarlo de más.
+   */
+  useEffect(() => {
+    if (tourActivo) dispatchTutorialReady("list", '[data-tour="leads-table-row"]');
+  }, [tourActivo]);
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
   /**
    * Reasignación masiva es una acción de escritura: un holding-wide en "Ver
@@ -132,12 +150,6 @@ export function LeadsPage() {
   const desde = total === 0 ? 0 : (pagina - 1) * LEADS_POR_PAGINA + 1;
   const hasta = Math.min(pagina * LEADS_POR_PAGINA, total);
 
-  const primerLeadId = data?.datos[0]?.id;
-  const iniciarTutorialPendiente = useEffectEvent((leadId: string) => startTourIfNeeded(leadId));
-  useEffect(() => {
-    if (primerLeadId) iniciarTutorialPendiente(primerLeadId);
-  }, [primerLeadId]);
-
   return (
     <div className="flex flex-col gap-4">
       {/*
@@ -174,9 +186,7 @@ export function LeadsPage() {
         campanias={campanias}
         mostrarFiltroResponsable={esGestorDeCartera}
         responsables={responsables}
-        onStartTutorial={() => {
-          if (primerLeadId) startTour(primerLeadId);
-        }}
+        onStartTutorial={() => startTour(TUTORIAL_MOCK_LEAD_ID)}
       />
 
       {puedeAsignarMasivo ? (
@@ -192,7 +202,7 @@ export function LeadsPage() {
         <LoadingState rows={LEADS_POR_PAGINA} rowHeight="h-10" />
       ) : isError ? (
         <ErrorState message={getErrorMessage(error)} onRetry={() => void refetch()} />
-      ) : !data || data.datos.length === 0 ? (
+      ) : (!data || data.datos.length === 0) && !tourActivo ? (
         <EmptyState
           title="No hay leads que coincidan con estos filtros"
           description="Prueba ajustar o limpiar los filtros combinados."
@@ -200,7 +210,7 @@ export function LeadsPage() {
       ) : (
         <div className="flex flex-col">
           <LeadsTable
-            leads={data.datos}
+            leads={tourActivo ? [TUTORIAL_MOCK_LEAD, ...(data?.datos ?? [])] : (data?.datos ?? [])}
             mostrarColumnaResponsable={esGestorDeCartera}
             permitirSeleccion={puedeAsignarMasivo}
             seleccionados={seleccionados}
@@ -306,6 +316,12 @@ export function LeadsPage() {
           empresaId={empresaId}
         />
       ) : null}
+
+      <TutorialEntryDialog
+        open={mostrarModal}
+        onIniciar={() => startTour(TUTORIAL_MOCK_LEAD_ID)}
+        onCerrar={(noMostrarDeNuevo) => (noMostrarDeNuevo ? marcarNoMostrar() : cerrar())}
+      />
     </div>
   );
 }

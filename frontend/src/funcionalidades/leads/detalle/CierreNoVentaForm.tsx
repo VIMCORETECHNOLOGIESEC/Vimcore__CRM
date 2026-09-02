@@ -1,11 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/componentes/ConfirmDialog";
+import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import { cierreNoVentaSchema, type CierreNoVentaFormValues } from "./cierre.schemas";
 import { useSubmitCierreNoVenta } from "./useLeadDetalle";
 
@@ -21,6 +23,7 @@ interface CierreNoVentaFormProps {
 export function CierreNoVentaForm({ leadId }: CierreNoVentaFormProps) {
   const [confirmando, setConfirmando] = useState(false);
   const submitCierre = useSubmitCierreNoVenta(leadId);
+  const esLeadDemo = leadId === TUTORIAL_MOCK_LEAD_ID;
 
   const {
     register,
@@ -45,6 +48,12 @@ export function CierreNoVentaForm({ leadId }: CierreNoVentaFormProps) {
     <section className="flex flex-col gap-4 rounded-lg border border-border bg-background p-4">
       <h2 className="text-sm font-semibold text-foreground">Cierre — No Venta</h2>
 
+      {esLeadDemo ? (
+        <Alert>
+          <AlertDescription>Estás en el tutorial: los cambios no se guardan.</AlertDescription>
+        </Alert>
+      ) : null}
+
       <form onSubmit={onValidSubmit} noValidate className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="fechaCierreNoVenta">Fecha de cierre</Label>
@@ -63,7 +72,7 @@ export function CierreNoVentaForm({ leadId }: CierreNoVentaFormProps) {
           ) : null}
         </div>
 
-        <Button type="submit" variant="destructive" className="w-fit">
+        <Button type="submit" variant="destructive" disabled={esLeadDemo} className="w-fit">
           Cerrar como No Venta
         </Button>
       </form>

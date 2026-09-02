@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/componentes/ConfirmDialog";
+import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import { cierreVentaSchema, type CierreVentaFormValues } from "./cierre.schemas";
 import { useSubmitCierreVenta } from "./useLeadDetalle";
 
@@ -36,6 +38,7 @@ const FORMA_PAGO_ETIQUETAS: Record<CierreVentaFormValues["formaPago"], string> =
 export function CierreVentaForm({ leadId }: CierreVentaFormProps) {
   const [confirmando, setConfirmando] = useState(false);
   const submitCierre = useSubmitCierreVenta(leadId);
+  const esLeadDemo = leadId === TUTORIAL_MOCK_LEAD_ID;
 
   const {
     register,
@@ -64,6 +67,12 @@ export function CierreVentaForm({ leadId }: CierreVentaFormProps) {
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-border bg-background p-4">
       <h2 className="text-sm font-semibold text-foreground">Cierre — Venta</h2>
+
+      {esLeadDemo ? (
+        <Alert>
+          <AlertDescription>Estás en el tutorial: los cambios no se guardan.</AlertDescription>
+        </Alert>
+      ) : null}
 
       <form onSubmit={onValidSubmit} noValidate className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -127,7 +136,7 @@ export function CierreVentaForm({ leadId }: CierreVentaFormProps) {
           <Textarea id="observaciones" {...register("observaciones")} />
         </div>
 
-        <Button type="submit" variant="success" className="w-fit">
+        <Button type="submit" variant="success" disabled={esLeadDemo} className="w-fit">
           Cerrar como Venta
         </Button>
       </form>
