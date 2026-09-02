@@ -10,4 +10,9 @@ export const TIPO_NOTIFICACION_ETIQUETAS: Record<TipoNotificacion, string> = {
   ERROR_BRIDGE: "Error de bridge",
   INTERACCION_REPETIDA: "Interacción repetida",
   TOKEN_POR_EXPIRAR: "Token por expirar",
+  LEAD_DATO_INCOMPLETO: "Dato incompleto",
+  ASIGNACION_CONFLICTO: "Conflicto de asignación",
+  CANAL_O_PRODUCTO_FALTANTE: "Falta canal o producto",
+  WHATSAPP_NO_CONECTADO: "WhatsApp no conectado",
+  WHATSAPP_MENSAJE_NUEVO: "Nuevo mensaje de WhatsApp",
 };
