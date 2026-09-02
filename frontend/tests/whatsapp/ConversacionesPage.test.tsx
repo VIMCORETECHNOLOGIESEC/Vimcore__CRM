@@ -18,9 +18,11 @@ import type { ConversacionListItem, Mensaje } from "@/tipos/conversacion";
  * que internamente exige `useAuth()` -- sin mockearlo, cualquier render acá
  * tira "useAuth debe usarse dentro de <AuthProvider>". Mismo patrón que
  * `tests/bridges/BridgesPage.test.tsx`: mock directo del hook, sesión
- * `company` fija (ningún test de este archivo ejercita el drill-down de
- * vista de empresa en sí, así que alcanza con una sesión estable que nunca
- * dispara `enVistaDeEmpresa`).
+ * `company` fija. `empresaVistaId` sale del query param `?empresaId=` en la
+ * URL (`useVistaEmpresa` usa `useSearchParams`, no `sessionScope`), así que
+ * el test de regresión de la fuga de datos ("en vista de empresa...") no
+ * necesita tocar este mock -- alcanza con `renderPage` a una ruta con ese
+ * param.
  */
 vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
   useAuth: () => ({ user: { sessionScope: "company", rol: "ADMINISTRADOR" } }),
@@ -138,6 +140,17 @@ describe("ConversacionesPage — listado (panel izquierdo)", () => {
     await waitFor(() =>
       expect(listarConversacionesApiMock).toHaveBeenCalledWith({ pagina: 2, limite: 25 }),
     );
+  });
+
+  it("en vista de empresa (holding-wide sobre una empresa puntual), reenvía empresaId al backend", async () => {
+    renderPage("/conversaciones?empresaId=emp-1");
+    await screen.findByText("Ana Gómez");
+
+    expect(listarConversacionesApiMock).toHaveBeenCalledWith({
+      pagina: 1,
+      limite: 25,
+      empresaId: "emp-1",
+    });
   });
 });
 
