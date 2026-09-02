@@ -4,6 +4,7 @@ import { NavMain } from "@/components/nav-main"
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context"
 import { hasRoleAccess, hasScopeAccess, hasVistaEmpresaAccess } from "@/funcionalidades/autenticacion/permissions"
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
+import { useEmpresaHolding } from "@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding"
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa"
 import { resolveLogoMarca, resolveNombreMarca } from "@/lib/color-marca"
 import { NAVIGATION_ITEMS, resolveNavigationHref } from "@/layouts/navigation"
@@ -44,12 +45,32 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // `AppLayout.tsx` para los acentos de color (`resolveEstilosMarca`).
   // PASO 6: isotipo, mismo criterio, ver `color-marca.ts`.
   const { data: configuracionHolding } = useConfiguracionEmpresa()
-  const nombreMarca = resolveNombreMarca(user, configuracionHolding)
-  const logoMarca = resolveLogoMarca(user, configuracionHolding)
   // Bloque D/E: un holding-wide sin "entrar" a una empresa concreta no
   // gestiona oportunidades/bridges de ninguna en particular -- ver
   // `hasVistaEmpresaAccess`/`resolveNavigationHref` (navigation.ts).
   const { empresaVistaId } = useVistaEmpresa()
+  // Fix (2026-09-01, bug real): un holding-wide en vista de una empresa
+  // puntual seguía viendo el logo/nombre del HOLDING en el sidebar, nunca
+  // el de la empresa que estaba mirando -- `resolveNombreMarca`/
+  // `resolveLogoMarca` solo conocen dos niveles (empresa propia de una
+  // sesión `company`, o el holding). Se suma acá, ANTES de esos dos, un
+  // tercer nivel exclusivo de sesión `holding` con vista activa: la
+  // `Empresa` puntual que se está mirando (`GET /empresas/:empresaId`,
+  // mismo `useEmpresaHolding` que ya usa `EmpresaDetallePage.tsx`).
+  // `enVistaDeEmpresa` filtra explícitamente por `sessionScope === "holding"`
+  // -- una sesión `company` nunca debe verse afectada por un `?empresaId=`
+  // residual en la URL (mismo criterio que `resolveNavigationHref`) -- Y por
+  // `rol === "ADMINISTRADOR"`: `GET /empresas/:empresaId`
+  // (`empresa-apariencia.routes.ts`) exige ese rol exacto, y es el único que
+  // puede llegar a "Empresas" -> "Ver detalles" para entrar a una vista en
+  // primer lugar -- sin este chequeo, un SUPERVISOR_HOLDING/SUPER_ADMIN con
+  // un `?empresaId=` a mano en la URL dispararía una consulta que el
+  // backend siempre rechaza con 403.
+  const enVistaDeEmpresa =
+    user?.sessionScope === "holding" && user.rol === "ADMINISTRADOR" && Boolean(empresaVistaId)
+  const { data: empresaEnVista } = useEmpresaHolding(enVistaDeEmpresa ? (empresaVistaId ?? undefined) : undefined)
+  const nombreMarca = empresaEnVista?.nombre ?? resolveNombreMarca(user, configuracionHolding)
+  const logoMarca = empresaEnVista?.logoUrl ?? resolveLogoMarca(user, configuracionHolding)
 
   const items = NAVIGATION_ITEMS.filter(
     (item) =>
