@@ -23,9 +23,13 @@ import type { RolUsuario, SessionScope } from "@/tipos/usuario";
  */
 const entrarAEmpresaMock = vi.fn();
 const salirDeEmpresaMock = vi.fn();
+// Fix (2026-09-02, sync con la vista de empresa): `empresaVistaId` mutable
+// (antes hardcodeado a `null`) -- `mockearVistaEmpresa` de abajo lo cambia
+// por test, mismo patrón que `mockearAuth`.
+let empresaVistaIdMock: string | null = null;
 vi.mock("@/funcionalidades/empresa-apariencia/useVistaEmpresa", () => ({
   useVistaEmpresa: () => ({
-    empresaVistaId: null,
+    empresaVistaId: empresaVistaIdMock,
     entrarAEmpresa: entrarAEmpresaMock,
     salirDeEmpresa: salirDeEmpresaMock,
     esVistaSoloLectura: false,
@@ -108,6 +112,10 @@ function mockearAuth(rol: RolUsuario, sessionScope: SessionScope = "company") {
   } as never);
 }
 
+function mockearVistaEmpresa(empresaId: string | null) {
+  empresaVistaIdMock = empresaId;
+}
+
 // Igual que `SelectorEmpresaDashboard.test.tsx`: lee `?empresaId=` real desde
 // el test sin depender de `window.location` (jsdom + MemoryRouter no lo
 // sincroniza).
@@ -162,6 +170,7 @@ beforeEach(() => {
   });
   entrarAEmpresaMock.mockReset();
   salirDeEmpresaMock.mockReset();
+  empresaVistaIdMock = null;
   mockearAuth("ADMINISTRADOR", "company");
 });
 
@@ -273,5 +282,31 @@ describe("DashboardPage — regresión: el filtro de empresa NO es el mecanismo 
     );
     expect(entrarAEmpresaMock).not.toHaveBeenCalled();
     expect(salirDeEmpresaMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("DashboardPage — sincroniza el filtro con la vista de empresa activa", () => {
+  it("con ?empresaId= ya activo (vista de empresa) al montar, pide las métricas de esa empresa desde el inicio", async () => {
+    mockearAuth("ADMINISTRADOR", "holding");
+    mockearVistaEmpresa("empresa-1");
+    renderPage("/panel");
+    await screen.findByRole("combobox", { name: "Empresa" });
+
+    await waitFor(() =>
+      expect(fetchResumenMetricasApiMock).toHaveBeenCalledWith(
+        expect.objectContaining({ empresaId: "empresa-1" }),
+      ),
+    );
+  });
+
+  it("sin vista de empresa activa al montar, sigue pidiendo el agregado de todo el holding", async () => {
+    mockearAuth("ADMINISTRADOR", "holding");
+    mockearVistaEmpresa(null);
+    renderPage("/panel");
+    await screen.findByRole("combobox", { name: "Empresa" });
+
+    await waitFor(() =>
+      expect(fetchResumenMetricasApiMock).toHaveBeenCalledWith(expect.objectContaining({ empresaId: undefined })),
+    );
   });
 });

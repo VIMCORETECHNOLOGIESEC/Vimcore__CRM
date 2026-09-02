@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
 import type { Comparativa, ResumenMetricas } from "@/tipos/metricas";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { ErrorState } from "@/componentes/states/ErrorState";
 import { LoadingState } from "@/componentes/states/LoadingState";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
 import { DashboardFiltros } from "./DashboardFiltros";
@@ -71,10 +72,25 @@ export function DashboardPage() {
   });
   const [filtrosDashboard, setFiltrosDashboard] = useState<DashboardFiltrosState>(FILTROS_DASHBOARD_VACIOS);
   // Estado local del filtro de empresa (docs/23 item 14) -- deliberadamente
-  // NO `useVistaEmpresa`: ese hook es el mecanismo global de "entrar a mirar
-  // en vivo" una empresa (cambia sidebar + tema en toda la app vía
-  // `?empresaId=` en la URL), y este selector es solo un filtro de métricas.
-  const [empresaFiltroId, setEmpresaFiltroId] = useState<string | null>(null);
+  // NO atado 1:1 a `useVistaEmpresa`: ese hook es el mecanismo global de
+  // "entrar a mirar en vivo" una empresa (cambia sidebar + tema en toda la
+  // app vía `?empresaId=` en la URL), y este selector es un filtro de
+  // métricas aparte -- el usuario puede seguir usándolo para comparar la
+  // empresa X contra la Y sin salir de la vista de X.
+  //
+  // Fix (2026-09-02, bug real): SÍ se sincroniza como valor INICIAL/default
+  // -- antes arrancaba siempre en `null` (agregado de todo el holding)
+  // aunque ya se estuviera "adentro" de la vista de una empresa, así que
+  // Dashboard mostraba datos mezclados de todo el holding mientras
+  // Leads/Bridges/etc. ya mostraban solo la empresa en vista. El `useEffect`
+  // de abajo solo dispara cuando `empresaVistaId` CAMBIA (entrar/salir/
+  // cambiar de vista) -- nunca pisa una elección manual del selector
+  // mientras la vista se mantiene igual.
+  const { empresaVistaId } = useVistaEmpresa();
+  const [empresaFiltroId, setEmpresaFiltroId] = useState<string | null>(empresaVistaId);
+  useEffect(() => {
+    setEmpresaFiltroId(empresaVistaId);
+  }, [empresaVistaId]);
 
   // `empresaFiltroId` solo tiene efecto real para una sesión holding-wide
   // (`resolveEmpresaId` en `metricas.access.ts`, backend); para una sesión
