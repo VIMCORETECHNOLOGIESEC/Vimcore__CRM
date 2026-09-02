@@ -48,11 +48,21 @@ function hashRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function toPublicUser(user: Usuario): PublicUser {
+/**
+ * Fix (correo de portador visible en "Mi perfil"/dropdown): mismo bug y
+ * mismo criterio que `usuario.repository.ts::toListView` -- `Usuario.correo`
+ * de un portador es el placeholder sintético `@no-login.crm.local`, nunca la
+ * identidad real. Cuando el login resolvió por el camino de `Membresia`
+ * (dual-login-routing), `membresia.correo` ES el correo con el que la
+ * persona efectivamente inició sesión -- se usa sin condicionar por dominio
+ * (a diferencia de `toListView`, acá no hace falta detectar el portador:
+ * `membresia` solo viaja cuando la sesión se resolvió por ese camino).
+ */
+function toPublicUser(user: Usuario, membresia?: Pick<Membresia, "correo">): PublicUser {
   return {
     id: user.id,
     nombre: user.nombre,
-    correo: user.correo,
+    correo: membresia?.correo ?? user.correo,
     rol: user.rol,
   };
 }
@@ -147,7 +157,7 @@ export async function login(
   }
 
   const pair = await issueTokenPair(usuarioDeMembresia, membresia);
-  return { ...pair, user: toPublicUser(usuarioDeMembresia) };
+  return { ...pair, user: toPublicUser(usuarioDeMembresia, membresia) };
 }
 
 /**

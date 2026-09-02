@@ -179,10 +179,15 @@ describe("auth.service.login — dual-login-routing (Bloque B, Fase 2)", () => {
     const resultado = await login("ana@empresa.local", "clave-correcta");
 
     expect(resultado.accessToken).toBe("access.jwt.fake");
+    // Fix (correo de portador visible en "Mi perfil"/dropdown): el correo
+    // expuesto es el de la Membresia (el que la persona efectivamente
+    // tipeó para loguearse), no `Usuario.correo` -- que para un portador es
+    // el placeholder sintético `@no-login.crm.local` (ver
+    // `usuario.repository.ts::toListView`, mismo criterio).
     expect(resultado.user).toEqual({
       id: "usuario-1",
       nombre: "Ana",
-      correo: "ana@crm.local",
+      correo: "ana@empresa.local",
       rol: "ASESOR",
     });
     expect(jwtLib.signAccessToken).toHaveBeenCalledWith(

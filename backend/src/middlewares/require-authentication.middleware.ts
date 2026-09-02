@@ -67,6 +67,7 @@ export async function requireAuthentication(
 
   let empresaId: string | null | undefined;
   let membresiaId: string | undefined;
+  let correoMembresia: string | undefined;
   if (payload.sessionScope === "holding") {
     if (
       payload.membresiaId !== undefined ||
@@ -88,6 +89,7 @@ export async function requireAuthentication(
     if (membresiaCoincide(membresia, user, payload)) {
       empresaId = membresia.empresaId;
       membresiaId = membresia.id;
+      correoMembresia = membresia.correo ?? undefined;
     }
   }
 
@@ -107,10 +109,16 @@ export async function requireAuthentication(
   }
 
   // El claim `rol` del token es una pista; la BD es la verdad (D-F).
+  // Fix (correo de portador visible en "Mi perfil"/dropdown, mismo bug y
+  // criterio que `usuario.repository.ts::toListView`): `Usuario.correo` de
+  // un portador es el placeholder sintético `@no-login.crm.local`. Una
+  // sesión `company` con `membresiaId` se autenticó necesariamente vía
+  // `Membresia.correo` (dual-login-routing) -- ese ES el correo real, se usa
+  // sin condicionar por dominio.
   req.user = {
     id: user.id,
     nombre: user.nombre,
-    correo: user.correo,
+    correo: correoMembresia ?? user.correo,
     rol: user.rol,
     sessionScope: payload.sessionScope,
     ...(membresiaId ? { membresiaId } : {}),

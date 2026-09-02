@@ -122,6 +122,33 @@ describe("middlewares/require-authentication — TenantContext (Bloque C, D2)", 
     expect(req.user?.membresiaId).toBe("membresia-1");
   });
 
+  it("un portador (Usuario.correo sintético) expone en req.user el correo real de la Membresia", async () => {
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      sub: "usuario-1",
+      rol: "ASESOR",
+      sessionScope: "company",
+      membresiaId: "membresia-1",
+      empresaId: "empresa-1",
+      type: "access",
+    } as never);
+    vi.mocked(usuarioRepository.findById).mockResolvedValue(
+      usuarioFalso({
+        rol: "ASESOR",
+        correo: "portador-asesor-empresa-1-abc123@no-login.crm.local",
+      }),
+    );
+    vi.mocked(membresiaRepository.findById).mockResolvedValue(
+      membresiaFalsa({ rol: "ASESOR", correo: "ana@empresa.local" }),
+    );
+    const req = reqConToken();
+    const next = vi.fn();
+
+    await requireAuthentication(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user?.correo).toBe("ana@empresa.local");
+  });
+
   it("resuelve únicamente la membresía identificada por el JWT", async () => {
     vi.mocked(verifyAccessToken).mockResolvedValue({
       sub: "usuario-1",
