@@ -55,31 +55,25 @@ interface CitasCalendarioEnvelope {
   items?: BackendCitaCalendario[] | null;
 }
 
-interface BackendClienteParaCita {
-  id?: string | null;
-  clienteId?: string | null;
-  leadId?: string | null;
-  lead_id?: string | null;
-  nombre?: string | null;
-  telefonoNormalizado?: string | null;
-  telefono_normalizado?: string | null;
-  telefonoOriginal?: string | null;
-  telefono_original?: string | null;
-  lead?: { id?: string | null } | null;
-  cliente?: {
-    id?: string | null;
-    nombre?: string | null;
-    telefonoNormalizado?: string | null;
-    telefonoOriginal?: string | null;
-  } | null;
+/**
+ * `GET /leads` (mismo endpoint real que ya usa `leads.api.ts::fetchLeadsApi`
+ * -- NO existe ningun `/cliente`/`/clientes` propio, `Cliente` no tiene ruta
+ * publica en toda la API, ver `BackendLeadDetalleConSla` en `leads.api.ts`).
+ * Fix (bug real, 2026-09-02): esta pantalla apuntaba a `/cliente`, un
+ * endpoint que nunca existio -- 404 siempre al buscar un lead para agendar.
+ */
+interface BackendLeadParaCita {
+  id: string;
+  cliente: {
+    id: string;
+    nombre: string | null;
+    telefonoOriginal: string | null;
+    telefonoNormalizado: string | null;
+  };
 }
 
-interface ClientesParaCitaEnvelope {
-  clientes?: BackendClienteParaCita[] | null;
-  cliente?: BackendClienteParaCita[] | null;
-  data?: BackendClienteParaCita[] | null;
-  datos?: BackendClienteParaCita[] | null;
-  items?: BackendClienteParaCita[] | null;
+interface LeadsParaCitaEnvelope {
+  leads: BackendLeadParaCita[];
 }
 
 export interface CitasQueryParams {
@@ -144,37 +138,14 @@ function normalizeCitasResponse(response: CitasCalendarioEnvelope | BackendCitaC
   throw new Error("La respuesta de citas no tiene un formato válido.");
 }
 
-function normalizeClientesParaCitaResponse(
-  response: ClientesParaCitaEnvelope | BackendClienteParaCita[] | null | undefined,
-): BackendClienteParaCita[] {
-  if (response == null) return [];
-  if (Array.isArray(response)) return response;
-
-  for (const key of ["clientes", "cliente", "data", "datos", "items"] as const) {
-    if (key in response) {
-      const value = response[key];
-      if (value == null) return [];
-      if (Array.isArray(value)) return value;
-    }
-  }
-
-  throw new Error("La respuesta de clientes no tiene un formato válido.");
-}
-
-function mapClienteParaCitaFromApi(raw: BackendClienteParaCita): ClienteParaCita {
-  const leadId = raw.leadId ?? raw.lead_id ?? raw.lead?.id ?? null;
-
-  if (!leadId) {
-    throw new Error("La búsqueda de clientes no devolvió el lead asociado necesario para agendar la cita.");
-  }
-
+function mapClienteParaCitaFromApi(raw: BackendLeadParaCita): ClienteParaCita {
   return {
-    leadId,
+    leadId: raw.id,
     cliente: {
-      id: raw.cliente?.id ?? raw.clienteId ?? raw.id ?? leadId,
-      nombre: raw.cliente?.nombre ?? raw.nombre ?? "Cliente sin nombre",
-      telefonoNormalizado: raw.cliente?.telefonoNormalizado ?? raw.telefonoNormalizado ?? raw.telefono_normalizado ?? null,
-      telefonoOriginal: raw.cliente?.telefonoOriginal ?? raw.telefonoOriginal ?? raw.telefono_original ?? null,
+      id: raw.cliente.id,
+      nombre: raw.cliente.nombre ?? "Cliente sin nombre",
+      telefonoNormalizado: raw.cliente.telefonoNormalizado,
+      telefonoOriginal: raw.cliente.telefonoOriginal,
     },
   };
 }
@@ -191,14 +162,15 @@ export async function fetchCitasApi(params: CitasQueryParams): Promise<CitaCalen
 }
 
 export async function fetchClientesParaCitaApi(params: ClientesParaCitaQueryParams): Promise<ClienteParaCita[]> {
-  const queryParams: Record<string, QueryParamValue> = { id_empresa: params.empresaId };
-  if (params.asesorId) queryParams.id_asesor = params.asesorId;
+  // `limite: 100` -- tope real del backend (`listLeadsQuerySchema`, solo
+  // acepta 10/25/50/100), el filtrado fino por texto lo hace `Command`/cmdk
+  // del lado del cliente sobre esta lista (mismo patron que el resto de los
+  // combobox del proyecto).
+  const queryParams: Record<string, QueryParamValue> = { empresaId: params.empresaId, limite: 100 };
+  if (params.asesorId) queryParams.responsableId = params.asesorId;
 
-  const response = await httpClient.get<ClientesParaCitaEnvelope | BackendClienteParaCita[] | null | undefined>(
-    "/cliente",
-    { params: queryParams },
-  );
-  return normalizeClientesParaCitaResponse(response).map(mapClienteParaCitaFromApi);
+  const response = await httpClient.get<LeadsParaCitaEnvelope>("/leads", { params: queryParams });
+  return (response.leads ?? []).map(mapClienteParaCitaFromApi);
 }
 
 export async function scheduleCitaCalendarioApi(input: SaveCitaInput): Promise<CitaCalendario> {
