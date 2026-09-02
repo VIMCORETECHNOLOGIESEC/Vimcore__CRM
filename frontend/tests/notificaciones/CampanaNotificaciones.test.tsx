@@ -134,6 +134,18 @@ describe("CampanaNotificaciones — panel desplegable", () => {
     expect(enlace).toHaveAttribute("href", "/leads/lead-01");
   });
 
+  it("bug real reportado (título duplicado): cuando titulo repite la etiqueta del tipo, se muestra una sola vez", async () => {
+    fetchNotificacionesApiMock.mockResolvedValue([
+      notificacionFake({ id: "1", tipo: "WHATSAPP_NO_CONECTADO", leadId: null, titulo: "WhatsApp no conectado" }),
+    ]);
+    const user = userEvent.setup();
+    renderCampana();
+
+    await user.click(await screen.findByRole("button", { name: /Notificaciones/ }));
+
+    expect(await screen.findAllByText("WhatsApp no conectado")).toHaveLength(1);
+  });
+
   it("sin lead pero con metadata.conversacionId (WHATSAPP_MENSAJE_NUEVO), enlaza a la conversación", async () => {
     fetchNotificacionesApiMock.mockResolvedValue([
       notificacionFake({

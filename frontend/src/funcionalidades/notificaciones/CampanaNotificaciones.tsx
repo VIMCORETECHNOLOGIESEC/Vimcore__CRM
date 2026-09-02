@@ -16,7 +16,6 @@ import { LoadingState } from "@/componentes/states/LoadingState";
 import { getErrorMessage } from "@/api/httpClient";
 import { cn } from "@/lib/utils";
 import type { Notificacion } from "@/tipos/notificacion";
-import { TIPO_NOTIFICACION_ETIQUETAS } from "./catalogos";
 import { countNoLeidas, formatFechaRelativa, resolveDestinoNotificacion } from "./notificaciones.utils";
 import { showNotificacionToast } from "./NotificacionToast";
 import {
@@ -43,9 +42,14 @@ function FilaNotificacion({ notificacion, onOpen, onMarkLeida }: FilaNotificacio
         className={cn("mt-1.5 size-2 shrink-0 rounded-full", noLeida ? "bg-primary" : "bg-transparent")}
       />
       <span className="flex flex-1 flex-col gap-0.5 text-left">
-        <span className="text-xs font-medium text-muted-foreground">
-          {TIPO_NOTIFICACION_ETIQUETAS[notificacion.tipo]}
-        </span>
+        {/*
+         * Bloque fix (título duplicado): `notificacion.titulo` siempre
+         * repite literalmente `TIPO_NOTIFICACION_ETIQUETAS[tipo]` -- son el
+         * mismo texto seteado en el backend (ver `notificaciones.service.ts`/
+         * `asignacion.service.ts`/`sla-atrasado.service.ts`), nunca dos datos
+         * distintos. Se muestra una sola vez, el título grande, que es
+         * también el que marca no leído/leído con `font-semibold`.
+         */}
         <span className={cn("text-sm text-foreground", noLeida && "font-semibold")}>
           {notificacion.titulo}
         </span>
