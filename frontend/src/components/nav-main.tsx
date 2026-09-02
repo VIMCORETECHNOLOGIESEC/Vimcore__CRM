@@ -1,6 +1,7 @@
 import { NavLink } from "react-router";
 import { type LucideIcon } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -14,6 +15,13 @@ export interface NavMainItem {
   label: string;
   route: string;
   icon: LucideIcon;
+  /**
+   * Contador opcional junto al label (ej. conversaciones sin leer). Mismo
+   * estilo visual que el badge de la campana de notificaciones
+   * (`CampanaNotificaciones.tsx`, `Badge variant="destructive"`, "9+" si
+   * supera 9) -- sin badge cuando es `0`/`undefined`.
+   */
+  badge?: number;
 }
 
 /**
@@ -45,6 +53,14 @@ export function NavMain({ items }: { items: NavMainItem[] }) {
                   >
                     <item.icon />
                     <span>{item.label}</span>
+                    {item.badge ? (
+                      <Badge
+                        variant="destructive"
+                        className="ml-auto h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none group-data-[collapsible=icon]:hidden"
+                      >
+                        {item.badge > 9 ? "9+" : item.badge}
+                      </Badge>
+                    ) : null}
                   </span>
                 </SidebarMenuButton>
               )}

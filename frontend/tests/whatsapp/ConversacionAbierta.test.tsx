@@ -17,6 +17,7 @@ vi.mock("@/funcionalidades/whatsapp/conversaciones.api", () => ({
   listarConversacionesApi: vi.fn(),
   listarMensajesApi: vi.fn(),
   enviarMensajeApi: vi.fn(),
+  marcarConversacionLeidaApi: vi.fn(),
 }));
 
 const api = await import("@/funcionalidades/whatsapp/conversaciones.api");
@@ -24,6 +25,7 @@ const { ConversacionAbierta } = await import("@/funcionalidades/whatsapp/Convers
 
 const listarMensajesApiMock = vi.mocked(api.listarMensajesApi);
 const enviarMensajeApiMock = vi.mocked(api.enviarMensajeApi);
+const marcarConversacionLeidaApiMock = vi.mocked(api.marcarConversacionLeidaApi);
 
 function encabezadoFake(overrides: Partial<ConversacionListItem> = {}): ConversacionListItem {
   return {
@@ -35,6 +37,7 @@ function encabezadoFake(overrides: Partial<ConversacionListItem> = {}): Conversa
     asesorNombre: "Carlos Ruiz",
     ultimoMensajeEn: "2026-08-30T10:05:00.000Z",
     creadaEn: "2026-08-29T09:00:00.000Z",
+    noLeido: false,
     ...overrides,
   };
 }
@@ -65,7 +68,9 @@ function renderComponente(encabezado?: ConversacionListItem) {
 beforeEach(() => {
   listarMensajesApiMock.mockReset();
   enviarMensajeApiMock.mockReset();
+  marcarConversacionLeidaApiMock.mockReset();
   listarMensajesApiMock.mockResolvedValue({ mensajes: [], total: 0 });
+  marcarConversacionLeidaApiMock.mockResolvedValue(undefined);
 });
 
 describe("ConversacionAbierta", () => {
@@ -88,6 +93,23 @@ describe("ConversacionAbierta", () => {
 
     const cabecera = await screen.findByTestId("encabezado-conversacion");
     expect(within(cabecera).getByText("Conversación")).toBeInTheDocument();
+  });
+
+  it("al abrir una conversación no leída, la marca como leída", async () => {
+    renderComponente(encabezadoFake({ noLeido: true }));
+
+    await screen.findByTestId("encabezado-conversacion");
+
+    await waitFor(() => expect(marcarConversacionLeidaApiMock).toHaveBeenCalledWith("conv-1"));
+  });
+
+  it("al abrir una conversación ya leída, no llama al backend de nuevo", async () => {
+    renderComponente(encabezadoFake({ noLeido: false }));
+
+    await screen.findByTestId("encabezado-conversacion");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(marcarConversacionLeidaApiMock).not.toHaveBeenCalled();
   });
 
   it("envía un mensaje con la caja de respuesta", async () => {

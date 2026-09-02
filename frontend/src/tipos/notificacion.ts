@@ -6,11 +6,16 @@
  */
 
 /**
- * Confirmado contra el enum real de Prisma (`backend/prisma/schema.prisma`,
- * `TipoNotificacion`, worktree `dev-back`) -- 8 valores, uno más que la
- * propuesta original de `docs/02-reglas-negocio.md` §8:
- * `INTERACCION_REPETIDA` (interacción repetida de un mismo lead/canal) no
- * tenía equivalente en la lista original.
+ * Sincronizado contra el enum real de Prisma (`backend/prisma/schema.prisma`,
+ * `TipoNotificacion`) -- 13 valores. Los últimos 5 se agregaron
+ * append-only en integraciones posteriores a la propuesta original de
+ * `docs/02-reglas-negocio.md` §8: `INTERACCION_REPETIDA` (interacción
+ * repetida de un mismo lead/canal), `LEAD_DATO_INCOMPLETO` (log de bridge
+ * ADVERTENCIA por datos incompletos), `ASIGNACION_CONFLICTO` (agotamiento
+ * del CAS de asignación), `CANAL_O_PRODUCTO_FALTANTE` y
+ * `WHATSAPP_NO_CONECTADO` (avisos manuales Supervisor/Asesor ->
+ * Administrador) y `WHATSAPP_MENSAJE_NUEVO` (push en vivo de mensajes de
+ * WhatsApp a la campanita).
  */
 export type TipoNotificacion =
   | "LEAD_ASIGNADO"
@@ -20,7 +25,12 @@ export type TipoNotificacion =
   | "RECORDATORIO_CITA"
   | "ERROR_BRIDGE"
   | "INTERACCION_REPETIDA"
-  | "TOKEN_POR_EXPIRAR";
+  | "TOKEN_POR_EXPIRAR"
+  | "LEAD_DATO_INCOMPLETO"
+  | "ASIGNACION_CONFLICTO"
+  | "CANAL_O_PRODUCTO_FALTANTE"
+  | "WHATSAPP_NO_CONECTADO"
+  | "WHATSAPP_MENSAJE_NUEVO";
 
 export interface Notificacion {
   id: string;
@@ -35,4 +45,16 @@ export interface Notificacion {
   /** `null` mientras no se haya marcado como leída. */
   leidaEn: string | null;
   creadaEn: string;
+  /**
+   * Denormalizado desde `Lead.empresaId` cuando hay `leadId`; `null` para
+   * notificaciones holding-wide (`backend/prisma/schema.prisma`, modelo
+   * `Notificacion`).
+   */
+  empresaId: string | null;
+  /**
+   * Payload estructurado libre por tipo de notificación (ej.
+   * `{ conversacionId: string }` para `WHATSAPP_MENSAJE_NUEVO`). `null` para
+   * toda notificación que no lo necesita.
+   */
+  metadata: Record<string, unknown> | null;
 }

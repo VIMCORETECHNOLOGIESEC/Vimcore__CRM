@@ -3,6 +3,7 @@ import type { Notificacion } from "@/tipos/notificacion";
 import {
   countNoLeidas,
   formatFechaRelativa,
+  resolveDestinoNotificacion,
 } from "@/funcionalidades/notificaciones/notificaciones.utils";
 
 function notificacionFake(overrides: Partial<Notificacion> = {}): Notificacion {
@@ -16,6 +17,8 @@ function notificacionFake(overrides: Partial<Notificacion> = {}): Notificacion {
     leadId: "lead-01",
     leidaEn: null,
     creadaEn: new Date().toISOString(),
+    empresaId: null,
+    metadata: null,
     ...overrides,
   };
 }
@@ -40,6 +43,40 @@ describe("countNoLeidas", () => {
       notificacionFake({ leidaEn: new Date().toISOString() }),
     ];
     expect(countNoLeidas(notificaciones)).toBe(0);
+  });
+});
+
+describe("resolveDestinoNotificacion", () => {
+  it("prioriza el lead cuando existe", () => {
+    const notificacion = notificacionFake({
+      leadId: "lead-01",
+      tipo: "WHATSAPP_MENSAJE_NUEVO",
+      metadata: { conversacionId: "conv-1" },
+    });
+    expect(resolveDestinoNotificacion(notificacion)).toBe("/leads/lead-01");
+  });
+
+  it("sin lead, un WHATSAPP_MENSAJE_NUEVO con metadata.conversacionId navega a la conversación", () => {
+    const notificacion = notificacionFake({
+      leadId: null,
+      tipo: "WHATSAPP_MENSAJE_NUEVO",
+      metadata: { conversacionId: "conv-1" },
+    });
+    expect(resolveDestinoNotificacion(notificacion)).toBe("/conversaciones/conv-1");
+  });
+
+  it("sin lead ni metadata.conversacionId, no hay destino", () => {
+    const notificacion = notificacionFake({ leadId: null, tipo: "ERROR_BRIDGE", metadata: null });
+    expect(resolveDestinoNotificacion(notificacion)).toBeNull();
+  });
+
+  it("WHATSAPP_MENSAJE_NUEVO con metadata.conversacionId no-string ignora el deep-link", () => {
+    const notificacion = notificacionFake({
+      leadId: null,
+      tipo: "WHATSAPP_MENSAJE_NUEVO",
+      metadata: { conversacionId: 123 },
+    });
+    expect(resolveDestinoNotificacion(notificacion)).toBeNull();
   });
 });
 

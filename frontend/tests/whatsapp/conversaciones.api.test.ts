@@ -17,9 +17,8 @@ vi.mock("@/api/httpClient", () => ({
 }));
 
 const { httpClient } = await import("@/api/httpClient");
-const { listarConversacionesApi, listarMensajesApi, enviarMensajeApi } = await import(
-  "@/funcionalidades/whatsapp/conversaciones.api"
-);
+const { listarConversacionesApi, listarMensajesApi, enviarMensajeApi, marcarConversacionLeidaApi } =
+  await import("@/funcionalidades/whatsapp/conversaciones.api");
 
 const getMock = vi.mocked(httpClient.get);
 const postMock = vi.mocked(httpClient.post);
@@ -90,5 +89,16 @@ describe("enviarMensajeApi — POST /conversaciones/:id/mensajes", () => {
       texto: "Hola, ¿en qué te puedo ayudar?",
     });
     expect(resultado).toEqual(mensaje);
+  });
+});
+
+describe("marcarConversacionLeidaApi — POST /conversaciones/:id/leido", () => {
+  it("interpola el id en la ruta, sin body, y no espera contenido (204)", async () => {
+    postMock.mockResolvedValue(undefined);
+
+    const resultado = await marcarConversacionLeidaApi("conv-1");
+
+    expect(postMock).toHaveBeenCalledWith("/conversaciones/conv-1/leido");
+    expect(resultado).toBeUndefined();
   });
 });

@@ -17,7 +17,7 @@ import { getErrorMessage } from "@/api/httpClient";
 import { cn } from "@/lib/utils";
 import type { Notificacion } from "@/tipos/notificacion";
 import { TIPO_NOTIFICACION_ETIQUETAS } from "./catalogos";
-import { countNoLeidas, formatFechaRelativa } from "./notificaciones.utils";
+import { countNoLeidas, formatFechaRelativa, resolveDestinoNotificacion } from "./notificaciones.utils";
 import { showNotificacionToast } from "./NotificacionToast";
 import {
   useMarkAllNotificacionesLeidas,
@@ -34,6 +34,7 @@ interface FilaNotificacionProps {
 
 function FilaNotificacion({ notificacion, onOpen, onMarkLeida }: FilaNotificacionProps) {
   const noLeida = !notificacion.leidaEn;
+  const destino = resolveDestinoNotificacion(notificacion);
 
   const contenido = (
     <>
@@ -58,9 +59,9 @@ function FilaNotificacion({ notificacion, onOpen, onMarkLeida }: FilaNotificacio
 
   return (
     <div className="flex items-start gap-2 rounded-md p-2 hover:bg-accent/50">
-      {notificacion.leadId ? (
+      {destino ? (
         <Link
-          to={`/leads/${notificacion.leadId}`}
+          to={destino}
           className="flex flex-1 items-start gap-2"
           onClick={() => onOpen(notificacion)}
         >

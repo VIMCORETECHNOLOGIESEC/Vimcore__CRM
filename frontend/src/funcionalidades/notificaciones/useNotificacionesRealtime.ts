@@ -4,6 +4,7 @@ import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
 import type { Notificacion } from "@/tipos/notificacion";
 import type { UsuariosResponse } from "@/funcionalidades/usuarios/usuarios.api";
 import { USUARIOS_QUERY_KEY } from "@/funcionalidades/usuarios/useUsuarios";
+import { marcarNoLeidoEnCache } from "@/funcionalidades/whatsapp/useConversaciones";
 import {
   connectNotificacionesSse,
   type EstadoConexion,
@@ -58,6 +59,15 @@ export function useNotificacionesRealtime(onNuevaNotificacion?: (value: Notifica
           queryKey: ["conversaciones", event.data.conversacionId, "mensajes"],
         });
         void queryClient.invalidateQueries({ queryKey: ["conversaciones"] });
+        return;
+      }
+      if (event.type === "whatsapp.conversacion-leida") {
+        // Sincroniza el badge de leído entre las propias pestañas/dispositivos
+        // del usuario -- el backend ya dirige este evento solo a él (mismo
+        // `usuarioId`, no hace falta filtrar acá). Flip en caché, no
+        // invalidación: es el mismo dato que ya escribe la mutación local
+        // (`useMarcarConversacionLeida`), sin refetch de por medio.
+        marcarNoLeidoEnCache(queryClient, event.data.conversacionId, false);
         return;
       }
       if (event.type === "usuario.presencia-cambiada") {

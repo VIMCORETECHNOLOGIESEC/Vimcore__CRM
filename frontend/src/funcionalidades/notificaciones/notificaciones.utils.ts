@@ -12,6 +12,26 @@ export function countNoLeidas(notificaciones: Notificacion[]): number {
   return notificaciones.reduce((total, n) => (n.leidaEn ? total : total + 1), 0);
 }
 
+/**
+ * Deep-link de una notificación al recurso relacionado. `leadId` tiene
+ * prioridad (comportamiento histórico); si no hay lead, un
+ * `WHATSAPP_MENSAJE_NUEVO` con `metadata.conversacionId` navega a esa
+ * conversación (`/conversaciones/:id` ya existe, `router.tsx`). `null`
+ * cuando la notificación no tiene destino navegable (ej. avisos de bridge,
+ * token por expirar). Compartido por `CampanaNotificaciones.tsx` y
+ * `NotificacionToast.tsx` para no duplicar el criterio.
+ */
+export function resolveDestinoNotificacion(notificacion: Notificacion): string | null {
+  if (notificacion.leadId) return `/leads/${notificacion.leadId}`;
+  if (
+    notificacion.tipo === "WHATSAPP_MENSAJE_NUEVO" &&
+    typeof notificacion.metadata?.conversacionId === "string"
+  ) {
+    return `/conversaciones/${notificacion.metadata.conversacionId}`;
+  }
+  return null;
+}
+
 const MINUTO_MS = 60 * 1000;
 const HORA_MS = 60 * MINUTO_MS;
 const DIA_MS = 24 * HORA_MS;

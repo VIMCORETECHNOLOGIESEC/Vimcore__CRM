@@ -23,7 +23,7 @@ const connectMock = vi.mocked(connectNotificacionesSse);
 const notification: Notificacion = {
   id: "n1", usuarioId: "u1", tipo: "LEAD_ASIGNADO", canal: "IN_APP",
   titulo: "Lead", mensaje: "Asignado", leadId: "lead-1", leidaEn: null,
-  creadaEn: "2026-08-17T12:00:00.000Z",
+  creadaEn: "2026-08-17T12:00:00.000Z", empresaId: null, metadata: null,
 };
 
 function setup() {
@@ -120,6 +120,32 @@ it("invalida la bandeja de conversaciones ante whatsapp.mensaje-nuevo sin tocar 
   expect(invalidate).toHaveBeenCalledTimes(2);
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["notificaciones", "u1"], exact: true });
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["leads"] });
+});
+
+it("flipea noLeido en el listado de conversaciones cacheado ante whatsapp.conversacion-leida, sin invalidar leads/notificaciones", () => {
+  const context = setup();
+  context.client.setQueryData(["conversaciones", { pagina: 1, limite: 25 }], {
+    conversaciones: [
+      { id: "conv-9", clienteId: "c1", clienteNombre: "Ana", clienteTelefono: null, asesorId: null, asesorNombre: null, ultimoMensajeEn: null, creadaEn: "2026-08-30T09:00:00.000Z", noLeido: true },
+    ],
+    total: 1,
+  });
+  const invalidate = vi.spyOn(context.client, "invalidateQueries");
+
+  act(() => {
+    context.options.onEvent({
+      type: "whatsapp.conversacion-leida",
+      data: { conversacionId: "conv-9", usuarioId: "u1" },
+      id: "e10",
+    });
+  });
+
+  const cache = context.client.getQueryData<{ conversaciones: Array<{ id: string; noLeido: boolean }> }>([
+    "conversaciones",
+    { pagina: 1, limite: 25 },
+  ]);
+  expect(cache?.conversaciones[0]?.noLeido).toBe(false);
+  expect(invalidate).not.toHaveBeenCalled();
 });
 
 it("parchea la presencia del usuario en todas las queries de usuarios", () => {

@@ -13,12 +13,15 @@ export type EventoNotificaciones =
   | { id: string; type: "reporte.listo"; data: { jobId: string; archivoUrl: string } }
   | { id: string; type: "reporte.error"; data: { jobId: string; error: string } }
   | { id: string; type: "whatsapp.mensaje-nuevo"; data: { conversacionId: string } }
+  | { id: string; type: "whatsapp.conversacion-leida"; data: { conversacionId: string; usuarioId: string } }
   | { id: string; type: "usuario.presencia-cambiada"; data: PresenciaUsuario & { usuarioId: string; empresaId: string } };
 
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 16000] as const;
 const TIPOS_NOTIFICACION = new Set<TipoNotificacion>([
   "LEAD_ASIGNADO", "LEAD_TRASPASADO", "LEAD_SIN_ATENDER", "LEAD_SIN_ASIGNAR",
   "RECORDATORIO_CITA", "ERROR_BRIDGE", "INTERACCION_REPETIDA", "TOKEN_POR_EXPIRAR",
+  "LEAD_DATO_INCOMPLETO", "ASIGNACION_CONFLICTO", "CANAL_O_PRODUCTO_FALTANTE",
+  "WHATSAPP_NO_CONECTADO", "WHATSAPP_MENSAJE_NUEVO",
 ]);
 
 /** Parser incremental: conserva texto incompleto y solo emite al recibir una línea vacía. */
@@ -72,6 +75,7 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
     "reporte.listo",
     "reporte.error",
     "whatsapp.mensaje-nuevo",
+    "whatsapp.conversacion-leida",
     "usuario.presencia-cambiada",
   ];
   if (!known.includes(frame.event)) return null;
@@ -109,6 +113,16 @@ function decodeKnownEvent(frame: SseFrame): EventoNotificaciones | null {
   if (frame.event === "whatsapp.mensaje-nuevo") {
     if (!isRecord(data) || typeof data.conversacionId !== "string") throw new Error("evento_malformado");
     return { id: frame.id, type: frame.event, data: { conversacionId: data.conversacionId } };
+  }
+  if (frame.event === "whatsapp.conversacion-leida") {
+    if (!isRecord(data) || typeof data.conversacionId !== "string" || typeof data.usuarioId !== "string") {
+      throw new Error("evento_malformado");
+    }
+    return {
+      id: frame.id,
+      type: frame.event,
+      data: { conversacionId: data.conversacionId, usuarioId: data.usuarioId },
+    };
   }
   if (frame.event === "usuario.presencia-cambiada") {
     if (!isRecord(data) ||

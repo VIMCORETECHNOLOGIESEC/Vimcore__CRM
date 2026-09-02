@@ -6,6 +6,7 @@ import { hasRoleAccess, hasScopeAccess, hasVistaEmpresaAccess, hasVistaEmpresaAu
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
 import { useEmpresaHolding } from "@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding"
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa"
+import { useConversacionesNoLeidasCount } from "@/funcionalidades/whatsapp/useConversaciones"
 import { resolveLogoMarca, resolveNombreMarca } from "@/lib/color-marca"
 import { NAVIGATION_ITEMS, resolveNavigationHref } from "@/layouts/navigation"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -29,6 +30,11 @@ function iniciales(nombre: string): string {
 const ETIQUETA_ROL: Record<string, string> = {
   ADMINISTRADOR: "Administrador",
   SUPERVISOR: "Supervisor",
+  // Bloque F (aditivo, holding-wide con acceso total): sin estas dos
+  // entradas, el footer del sidebar caía al fallback `user.rol` crudo
+  // ("SUPERVISOR_HOLDING"/"SUPER_ADMIN" sin formatear) para estos roles.
+  SUPERVISOR_HOLDING: "Supervisor de holding",
+  SUPER_ADMIN: "Super administrador",
   ASESOR: "Asesor",
   VENDEDOR: "Vendedor",
 }
@@ -60,17 +66,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // `enVistaDeEmpresa` filtra explícitamente por `sessionScope === "holding"`
   // -- una sesión `company` nunca debe verse afectada por un `?empresaId=`
   // residual en la URL (mismo criterio que `resolveNavigationHref`) -- Y por
-  // `rol === "ADMINISTRADOR"`: `GET /empresas/:empresaId`
-  // (`empresa-apariencia.routes.ts`) exige ese rol exacto, y es el único que
-  // puede llegar a "Empresas" -> "Ver detalles" para entrar a una vista en
-  // primer lugar -- sin este chequeo, un SUPERVISOR_HOLDING/SUPER_ADMIN con
-  // un `?empresaId=` a mano en la URL dispararía una consulta que el
-  // backend siempre rechaza con 403.
+  // "holding-wide con acceso total" vía `hasRoleAccess(rol, ["ADMINISTRADOR"])`
+  // en vez de un literal `rol === "ADMINISTRADOR"`: `GET /empresas/:empresaId`
+  // (`empresa-apariencia.routes.ts`) usa `requireRole("ADMINISTRADOR")`, pero
+  // `require-role.middleware.ts::ROLES_HOLDING_BYPASS` (Bloque F) ya deja
+  // pasar también a `SUPERVISOR_HOLDING`/`SUPER_ADMIN` -- mismo bypass que
+  // `hasRoleAccess` ya replica acá (ver su docblock en `permissions.ts`), así
+  // que estos dos SÍ pueden llegar a "Empresas" -> "Ver detalles" y entrar a
+  // una vista igual que `ADMINISTRADOR`. Fix (2026-09-02, bug real): antes el
+  // literal exacto los dejaba afuera de este chequeo puntual (aunque ya
+  // podían LLEGAR a la vista vía `EmpresaDetallePage.tsx::hasRole` y
+  // `ProtectedRoute`, que sí usan `hasRoleAccess`), y el sidebar seguía
+  // mostrando el logo/nombre del HOLDING en vez del de la empresa que
+  // estaban mirando.
   const enVistaDeEmpresa =
-    user?.sessionScope === "holding" && user.rol === "ADMINISTRADOR" && Boolean(empresaVistaId)
+    user?.sessionScope === "holding" &&
+    hasRoleAccess(user.rol, ["ADMINISTRADOR"]) &&
+    Boolean(empresaVistaId)
   const { data: empresaEnVista } = useEmpresaHolding(enVistaDeEmpresa ? (empresaVistaId ?? undefined) : undefined)
   const nombreMarca = empresaEnVista?.nombre ?? resolveNombreMarca(user, configuracionHolding)
   const logoMarca = empresaEnVista?.logoUrl ?? resolveLogoMarca(user, configuracionHolding)
+  // D-mensajería (leído/no leído): badge global de conversaciones sin leer,
+  // fuera de `ConversacionesPage` -- ver `useConversacionesNoLeidasCount`
+  // (simplificación deliberada sin endpoint de conteo dedicado).
+  const conversacionesNoLeidas = useConversacionesNoLeidasCount()
 
   const items = NAVIGATION_ITEMS.filter(
     (item) =>
@@ -81,6 +100,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   ).map((item) => ({
     ...item,
     route: resolveNavigationHref(item, user?.sessionScope, empresaVistaId),
+    badge: item.route === "/conversaciones" ? conversacionesNoLeidas : undefined,
   }))
 
   return (

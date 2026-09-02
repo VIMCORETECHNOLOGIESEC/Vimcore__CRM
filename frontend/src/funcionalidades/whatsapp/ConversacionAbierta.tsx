@@ -1,8 +1,13 @@
+import { useEffect } from "react";
 import type { ConversacionListItem } from "@/tipos/conversacion";
 import { CajaRespuesta } from "./CajaRespuesta";
 import { nombreConversacion } from "./conversaciones.utils";
 import { HiloMensajes } from "./HiloMensajes";
-import { useEnviarMensaje, useMensajesConversacion } from "./useConversaciones";
+import {
+  useEnviarMensaje,
+  useMarcarConversacionLeida,
+  useMensajesConversacion,
+} from "./useConversaciones";
 
 /**
  * Hilo abierto de una conversación (cabecera + mensajes + caja de
@@ -18,6 +23,19 @@ interface ConversacionAbiertaProps {
 export function ConversacionAbierta({ conversacionId, encabezado }: ConversacionAbiertaProps) {
   const historial = useMensajesConversacion(conversacionId);
   const enviarMensaje = useEnviarMensaje(conversacionId);
+  const marcarLeida = useMarcarConversacionLeida();
+
+  // D-mensajería (leído/no leído): al abrir una conversación no leída, se
+  // marca como leída HASTA AHORA. `encabezado` puede llegar `undefined` en el
+  // primer render (deep-link a un id fuera de la página actual del listado)
+  // y completarse después -- el efecto reacciona a ese cambio de `noLeido`,
+  // no solo al montaje.
+  useEffect(() => {
+    if (encabezado?.noLeido) {
+      marcarLeida.mutate(conversacionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversacionId, encabezado?.noLeido]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
