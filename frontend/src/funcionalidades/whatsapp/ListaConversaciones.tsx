@@ -66,6 +66,7 @@ export function ListaConversaciones({
             {conversaciones.map((conversacion) => {
               const activa = conversacion.id === idActivo;
               const nombre = nombreConversacion(conversacion);
+              const noLeida = conversacion.noLeido;
               return (
                 <li key={conversacion.id}>
                   <Link
@@ -78,7 +79,20 @@ export function ListaConversaciones({
                     }`}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{nombre}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {noLeida ? (
+                          <span
+                            data-testid="punto-no-leido"
+                            aria-hidden="true"
+                            className="size-2 shrink-0 rounded-full bg-primary"
+                          />
+                        ) : null}
+                        <span
+                          className={`truncate text-sm ${noLeida ? "font-semibold" : "font-medium"}`}
+                        >
+                          {nombre}
+                        </span>
+                      </span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
                         {formatearFechaHora(conversacion.ultimoMensajeEn)}
                       </span>

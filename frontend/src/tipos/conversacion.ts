@@ -27,6 +27,13 @@ export interface ConversacionListItem {
   ultimoMensajeEn: string | null;
   /** ISO 8601. */
   creadaEn: string;
+  /**
+   * D-mensajería (leído/no leído): calculado server-side por usuario
+   * (`ConversacionListItemDto`, `toListItemDto` en el backend). `true` si el
+   * usuario en sesión todavía no marcó esta conversación como leída
+   * (`POST /conversaciones/:id/leido`).
+   */
+  noLeido: boolean;
 }
 
 /** Un mensaje dentro de una conversación (`GET /conversaciones/:id/mensajes`). */

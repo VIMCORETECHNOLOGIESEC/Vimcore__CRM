@@ -16,6 +16,7 @@ vi.mock("@/funcionalidades/whatsapp/conversaciones.api", () => ({
   listarConversacionesApi: vi.fn(),
   listarMensajesApi: vi.fn(),
   enviarMensajeApi: vi.fn(),
+  marcarConversacionLeidaApi: vi.fn(),
 }));
 
 const api = await import("@/funcionalidades/whatsapp/conversaciones.api");
@@ -24,11 +25,14 @@ const {
   useConversaciones,
   useMensajesConversacion,
   useEnviarMensaje,
+  useMarcarConversacionLeida,
+  useConversacionesNoLeidasCount,
 } = await import("@/funcionalidades/whatsapp/useConversaciones");
 
 const listarConversacionesApiMock = vi.mocked(api.listarConversacionesApi);
 const listarMensajesApiMock = vi.mocked(api.listarMensajesApi);
 const enviarMensajeApiMock = vi.mocked(api.enviarMensajeApi);
+const marcarConversacionLeidaApiMock = vi.mocked(api.marcarConversacionLeidaApi);
 
 function crearEntorno() {
   const client = new QueryClient({
@@ -49,6 +53,7 @@ function conversacionFake(overrides: Partial<ConversacionListItem> = {}): Conver
     asesorNombre: "Carlos Ruiz",
     ultimoMensajeEn: "2026-08-30T10:05:00.000Z",
     creadaEn: "2026-08-29T09:00:00.000Z",
+    noLeido: false,
     ...overrides,
   };
 }
@@ -69,6 +74,7 @@ beforeEach(() => {
   listarConversacionesApiMock.mockReset();
   listarMensajesApiMock.mockReset();
   enviarMensajeApiMock.mockReset();
+  marcarConversacionLeidaApiMock.mockReset();
 });
 
 describe("useConversaciones", () => {
@@ -171,5 +177,72 @@ describe("useEnviarMensaje", () => {
       queryKey: [CONVERSACIONES_QUERY_KEY, "conv-1", "mensajes"],
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [CONVERSACIONES_QUERY_KEY] });
+  });
+});
+
+describe("useMarcarConversacionLeida", () => {
+  it("llama al backend y actualiza el listado en caché de forma optimista (noLeido: false)", async () => {
+    marcarConversacionLeidaApiMock.mockResolvedValue(undefined);
+    const { client, wrapper } = crearEntorno();
+    client.setQueryData(
+      [CONVERSACIONES_QUERY_KEY, { pagina: 1, limite: 25 }],
+      { conversaciones: [conversacionFake({ id: "conv-1", noLeido: true })], total: 1 },
+    );
+
+    const { result } = renderHook(() => useMarcarConversacionLeida(), { wrapper });
+    result.current.mutate("conv-1");
+
+    await waitFor(() => expect(marcarConversacionLeidaApiMock).toHaveBeenCalledWith("conv-1"));
+    const cache = client.getQueryData<{ conversaciones: ConversacionListItem[] }>([
+      CONVERSACIONES_QUERY_KEY,
+      { pagina: 1, limite: 25 },
+    ]);
+    expect(cache?.conversaciones[0]?.noLeido).toBe(false);
+  });
+
+  it("no toca la caché del hilo de mensajes (clave de distinto largo)", async () => {
+    marcarConversacionLeidaApiMock.mockResolvedValue(undefined);
+    const { client, wrapper } = crearEntorno();
+    client.setQueryData(
+      [CONVERSACIONES_QUERY_KEY, "conv-1", "mensajes", { pagina: 1, limite: 25 }],
+      { mensajes: [], total: 0 },
+    );
+
+    const { result } = renderHook(() => useMarcarConversacionLeida(), { wrapper });
+    result.current.mutate("conv-1");
+
+    await waitFor(() => expect(marcarConversacionLeidaApiMock).toHaveBeenCalledWith("conv-1"));
+    expect(
+      client.getQueryData([CONVERSACIONES_QUERY_KEY, "conv-1", "mensajes", { pagina: 1, limite: 25 }]),
+    ).toEqual({ mensajes: [], total: 0 });
+  });
+});
+
+describe("useConversacionesNoLeidasCount", () => {
+  it("cuenta las conversaciones con noLeido: true del listado", async () => {
+    listarConversacionesApiMock.mockResolvedValue({
+      conversaciones: [
+        conversacionFake({ id: "c1", noLeido: true }),
+        conversacionFake({ id: "c2", noLeido: false }),
+        conversacionFake({ id: "c3", noLeido: true }),
+      ],
+      total: 3,
+    });
+    const { wrapper } = crearEntorno();
+
+    const { result } = renderHook(() => useConversacionesNoLeidasCount(), { wrapper });
+
+    await waitFor(() => expect(result.current).toBe(2));
+  });
+
+  it("devuelve 0 mientras carga o si el listado viene vacío", async () => {
+    listarConversacionesApiMock.mockResolvedValue({ conversaciones: [], total: 0 });
+    const { wrapper } = crearEntorno();
+
+    const { result } = renderHook(() => useConversacionesNoLeidasCount(), { wrapper });
+
+    expect(result.current).toBe(0);
+    await waitFor(() => expect(listarConversacionesApiMock).toHaveBeenCalled());
+    expect(result.current).toBe(0);
   });
 });

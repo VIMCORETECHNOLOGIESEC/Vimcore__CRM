@@ -16,6 +16,8 @@ const notificacion: Notificacion = {
   leadId: "lead-1",
   leidaEn: null,
   creadaEn: "2026-08-17T12:00:00.000Z",
+  empresaId: null,
+  metadata: null,
 };
 
 function streamResponse(text: string): Response {
@@ -149,6 +151,68 @@ describe("connectNotificacionesSse", () => {
       data: { conversacionId: "conv-1" },
     });
     expect(connection.getCursor()).toBe("evt-w");
+    connection.abort();
+  });
+
+  it("entrega un evento whatsapp.conversacion-leida con conversacionId y usuarioId", async () => {
+    const onEvent = vi.fn();
+    const fetcher = vi.fn().mockResolvedValue(
+      streamResponse(
+        'id: evt-cl\nevent: whatsapp.conversacion-leida\ndata: {"conversacionId":"conv-1","usuarioId":"u1"}\n\n',
+      ),
+    );
+
+    const connection = connectNotificacionesSse({ onEvent, fetcher });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith({
+      id: "evt-cl",
+      type: "whatsapp.conversacion-leida",
+      data: { conversacionId: "conv-1", usuarioId: "u1" },
+    });
+    expect(connection.getCursor()).toBe("evt-cl");
+    connection.abort();
+  });
+
+  it("un whatsapp.conversacion-leida sin usuarioId termina sin adelantar el cursor", async () => {
+    const estados: string[] = [];
+    const connection = connectNotificacionesSse({
+      cursor: "evt-previo",
+      onEvent: vi.fn(),
+      onStateChange: (estado) => estados.push(estado),
+      fetcher: vi.fn().mockResolvedValue(
+        streamResponse('id: evt-malo\nevent: whatsapp.conversacion-leida\ndata: {"conversacionId":"conv-1"}\n\n'),
+      ),
+    });
+
+    await waitFor(() => expect(estados).toContain("terminal"));
+    expect(connection.getCursor()).toBe("evt-previo");
+    connection.abort();
+  });
+
+  it("entrega un evento notificacion.nueva con tipo WHATSAPP_MENSAJE_NUEVO (sincronizado con el enum de Prisma)", async () => {
+    const onEvent = vi.fn();
+    const notificacionMensajeNuevo: Notificacion = {
+      ...notificacion,
+      tipo: "WHATSAPP_MENSAJE_NUEVO",
+      leadId: null,
+      empresaId: "empresa-1",
+      metadata: { conversacionId: "conv-1" },
+    };
+    const fetcher = vi.fn().mockResolvedValue(
+      streamResponse(
+        `id: evt-wn\nevent: notificacion.nueva\ndata: ${JSON.stringify(notificacionMensajeNuevo)}\n\n`,
+      ),
+    );
+
+    const connection = connectNotificacionesSse({ onEvent, fetcher });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith({
+      id: "evt-wn",
+      type: "notificacion.nueva",
+      data: notificacionMensajeNuevo,
+    });
     connection.abort();
   });
 

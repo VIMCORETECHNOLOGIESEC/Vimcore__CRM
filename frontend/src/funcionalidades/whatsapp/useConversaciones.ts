@@ -4,14 +4,17 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import type { Mensaje } from "@/tipos/conversacion";
 import {
   enviarMensajeApi,
   listarConversacionesApi,
   listarMensajesApi,
+  marcarConversacionLeidaApi,
   type ConversacionesQueryParams,
   type LimiteConversaciones,
+  type ListarConversacionesResponse,
 } from "./conversaciones.api";
 import { combinarHistorial } from "./conversaciones.utils";
 
@@ -132,4 +135,77 @@ export function useEnviarMensaje(conversacionId: string) {
       void queryClient.invalidateQueries({ queryKey: [CONVERSACIONES_QUERY_KEY] });
     },
   });
+}
+
+/**
+ * Escribe `noLeido` para una conversación puntual en toda página cacheada
+ * del listado (`useConversaciones`), sin tocar el hilo de mensajes (clave de
+ * distinto largo: `[CONVERSACIONES_QUERY_KEY, id, "mensajes", ...]` vs.
+ * `[CONVERSACIONES_QUERY_KEY, { pagina, limite, ... }]`). Compartido por
+ * `useMarcarConversacionLeida` (mutación local, al abrir una conversación) y
+ * `useNotificacionesRealtime.ts` (evento SSE `whatsapp.conversacion-leida`,
+ * sincroniza el mismo flip entre las propias pestañas/dispositivos del
+ * usuario).
+ */
+export function marcarNoLeidoEnCache(
+  queryClient: QueryClient,
+  conversacionId: string,
+  noLeido: boolean,
+): void {
+  queryClient.setQueriesData<ListarConversacionesResponse>(
+    {
+      predicate: (query) =>
+        query.queryKey[0] === CONVERSACIONES_QUERY_KEY && query.queryKey.length === 2,
+    },
+    (current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        conversaciones: current.conversaciones.map((conversacion) =>
+          conversacion.id === conversacionId ? { ...conversacion, noLeido } : conversacion,
+        ),
+      };
+    },
+  );
+}
+
+/**
+ * `POST /conversaciones/:id/leido` (D-mensajería, leído/no leído). Flip
+ * optimista de `noLeido` sobre el listado en caché en `onMutate` -- sin
+ * esperar el refetch, mismo criterio de "sin UI congelada" que el resto del
+ * módulo. Sin rollback en error: como mucho el badge tarda un refetch en
+ * corregirse, y el toast global de error ya avisa del fallo.
+ */
+export function useMarcarConversacionLeida() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (conversacionId: string) => marcarConversacionLeidaApi(conversacionId),
+    onMutate: (conversacionId: string) => {
+      marcarNoLeidoEnCache(queryClient, conversacionId, false);
+    },
+  });
+}
+
+/** Tope máximo admitido por el backend para `limite` (`LIMITES_CONVERSACIONES`). */
+const LIMITE_CONTEO_NO_LEIDAS: LimiteConversaciones = 100;
+
+/**
+ * Contador global de conversaciones no leídas para el badge del sidebar
+ * (`AppSidebar.tsx`, fuera de `ConversacionesPage`). Simplificación
+ * deliberada sin endpoint de conteo dedicado: reutiliza el listado paginado
+ * con el límite máximo admitido y cuenta `noLeido` en esa única página --
+ * correcto para el volumen esperado del MVP. Si en algún momento hay más de
+ * `LIMITE_CONTEO_NO_LEIDAS` conversaciones no leídas a la vez, el badge se
+ * queda corto (haría falta un endpoint de conteo dedicado en el backend para
+ * eliminar ese techo). Se mantiene al día solo por los eventos SSE que ya
+ * invalidan/actualizan la clave `[CONVERSACIONES_QUERY_KEY, ...]` en
+ * `useNotificacionesRealtime.ts` -- no abre su propia conexión.
+ */
+export function useConversacionesNoLeidasCount(): number {
+  const query = useQuery({
+    queryKey: [CONVERSACIONES_QUERY_KEY, { pagina: 1, limite: LIMITE_CONTEO_NO_LEIDAS }],
+    queryFn: () => listarConversacionesApi({ pagina: 1, limite: LIMITE_CONTEO_NO_LEIDAS }),
+  });
+  const conversaciones = query.data?.conversaciones ?? [];
+  return conversaciones.filter((conversacion) => conversacion.noLeido).length;
 }

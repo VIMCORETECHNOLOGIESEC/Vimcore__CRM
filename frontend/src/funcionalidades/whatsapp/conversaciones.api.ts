@@ -109,3 +109,12 @@ export async function enviarMensajeApi(conversacionId: string, texto: string): P
   );
   return mensaje;
 }
+
+/**
+ * `POST /conversaciones/:id/leido`: marca la conversación como leída HASTA
+ * AHORA para el usuario actual (D-mensajería, leído/no leído). Responde
+ * `204` sin cuerpo.
+ */
+export async function marcarConversacionLeidaApi(conversacionId: string): Promise<void> {
+  await httpClient.post<void>(`/conversaciones/${conversacionId}/leido`);
+}

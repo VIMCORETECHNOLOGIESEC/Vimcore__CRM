@@ -31,6 +31,7 @@ vi.mock("@/funcionalidades/whatsapp/conversaciones.api", () => ({
   listarConversacionesApi: vi.fn(),
   listarMensajesApi: vi.fn(),
   enviarMensajeApi: vi.fn(),
+  marcarConversacionLeidaApi: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -41,6 +42,7 @@ const { ConversacionesPage } = await import("@/funcionalidades/whatsapp/Conversa
 const listarConversacionesApiMock = vi.mocked(api.listarConversacionesApi);
 const listarMensajesApiMock = vi.mocked(api.listarMensajesApi);
 const enviarMensajeApiMock = vi.mocked(api.enviarMensajeApi);
+const marcarConversacionLeidaApiMock = vi.mocked(api.marcarConversacionLeidaApi);
 const toastErrorMock = vi.mocked(toast.error);
 
 function conversacionFake(overrides: Partial<ConversacionListItem> = {}): ConversacionListItem {
@@ -53,6 +55,7 @@ function conversacionFake(overrides: Partial<ConversacionListItem> = {}): Conver
     asesorNombre: "Carlos Ruiz",
     ultimoMensajeEn: "2026-08-30T10:05:00.000Z",
     creadaEn: "2026-08-29T09:00:00.000Z",
+    noLeido: false,
     ...overrides,
   };
 }
@@ -90,9 +93,11 @@ beforeEach(() => {
   listarConversacionesApiMock.mockReset();
   listarMensajesApiMock.mockReset();
   enviarMensajeApiMock.mockReset();
+  marcarConversacionLeidaApiMock.mockReset();
   toastErrorMock.mockReset();
   listarConversacionesApiMock.mockResolvedValue({ conversaciones: [conversacionFake()], total: 1 });
   listarMensajesApiMock.mockResolvedValue({ mensajes: [], total: 0 });
+  marcarConversacionLeidaApiMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -124,6 +129,39 @@ describe("ConversacionesPage — listado (panel izquierdo)", () => {
     resolver({ conversaciones: [], total: 0 });
     await waitFor(() =>
       expect(screen.queryByRole("status", { name: "Cargando" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("marca visualmente las conversaciones no leídas (punto + texto en negrita)", async () => {
+    listarConversacionesApiMock.mockResolvedValue({
+      conversaciones: [
+        conversacionFake({ id: "conv-1", clienteNombre: "Ana Gómez", noLeido: true }),
+        conversacionFake({ id: "conv-2", clienteNombre: "Beto Ruiz", noLeido: false }),
+      ],
+      total: 2,
+    });
+    renderPage();
+
+    const filaNoLeida = (await screen.findByText("Ana Gómez")).closest("a")!;
+    expect(within(filaNoLeida).getByText("Ana Gómez")).toHaveClass("font-semibold");
+    expect(filaNoLeida.querySelector('[data-testid="punto-no-leido"]')).toBeInTheDocument();
+
+    const filaLeida = screen.getByText("Beto Ruiz").closest("a")!;
+    expect(within(filaLeida).getByText("Beto Ruiz")).not.toHaveClass("font-semibold");
+    expect(filaLeida.querySelector('[data-testid="punto-no-leido"]')).not.toBeInTheDocument();
+  });
+
+  it("al abrir una conversación no leída, la marca como leída en el backend", async () => {
+    listarConversacionesApiMock.mockResolvedValue({
+      conversaciones: [conversacionFake({ id: "conv-1", noLeido: true })],
+      total: 1,
+    });
+    renderPage("/conversaciones/conv-1");
+
+    await screen.findByTestId("encabezado-conversacion");
+
+    await waitFor(() =>
+      expect(marcarConversacionLeidaApiMock).toHaveBeenCalledWith("conv-1"),
     );
   });
 
