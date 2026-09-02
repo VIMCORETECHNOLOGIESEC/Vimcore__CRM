@@ -13,7 +13,7 @@ vi.mock("sonner", () => ({ toast: { custom: vi.fn(), dismiss: vi.fn() } }));
 const notification: Notificacion = {
   id: "n1", usuarioId: "u1", tipo: "LEAD_ASIGNADO", canal: "IN_APP",
   titulo: "Nuevo lead asignado", mensaje: "Se te asignó Elena.", leadId: "lead-1",
-  leidaEn: null, creadaEn: "2026-08-17T12:00:00.000Z",
+  leidaEn: null, creadaEn: "2026-08-17T12:00:00.000Z", empresaId: null, metadata: null,
 };
 
 describe("NotificacionToast", () => {
@@ -33,6 +33,44 @@ describe("NotificacionToast", () => {
   it("no ofrece una acción inexistente cuando la notificación no tiene lead", () => {
     render(<NotificacionToast notificacion={{ ...notification, leadId: null }} onNavigate={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Ver lead" })).not.toBeInTheDocument();
+  });
+
+  it("ofrece 'Ver conversación' para WHATSAPP_MENSAJE_NUEVO con metadata.conversacionId", async () => {
+    const onNavigate = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <NotificacionToast
+        notificacion={{
+          ...notification,
+          leadId: null,
+          tipo: "WHATSAPP_MENSAJE_NUEVO",
+          metadata: { conversacionId: "conv-1" },
+        }}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Ver conversación" }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("navega a /conversaciones/:id al hacer clic en el toast de un mensaje nuevo", async () => {
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    showNotificacionToast(
+      {
+        ...notification,
+        leadId: null,
+        tipo: "WHATSAPP_MENSAJE_NUEVO",
+        metadata: { conversacionId: "conv-1" },
+      },
+      navigate,
+    );
+    const [renderToast] = vi.mocked(toast.custom).mock.calls.at(-1)!;
+    render(renderToast("toast-id"));
+
+    await user.click(screen.getByRole("button", { name: "Ver conversación" }));
+    expect(navigate).toHaveBeenCalledWith("/conversaciones/conv-1");
   });
 
   it("publica un toast único, polite por Sonner y con duración exacta de cinco segundos", () => {

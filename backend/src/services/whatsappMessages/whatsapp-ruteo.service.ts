@@ -6,9 +6,9 @@ import * as leadRepository from "../../repositories/lead.repository.js";
 import * as conversacionRepository from "../../repositories/whatsappMessages/conversacion.repository.js";
 import * as conversacionEventoRepository from "../../repositories/whatsappMessages/conversacion-evento.repository.js";
 import * as mensajeRepository from "../../repositories/whatsappMessages/mensaje.repository.js";
-import { findActiveRecipientIds } from "../../repositories/notificacion.repository.js";
+import { createNotificacion, findActiveRecipientIds } from "../../repositories/notificacion.repository.js";
 import { assignAfterCommit } from "../asignacion.service.js";
-import { publishCommittedEvents, type CommittedEvent } from "../committed-events.service.js";
+import { notificationEvents, publishCommittedEvents, type CommittedEvent } from "../committed-events.service.js";
 import { decideAccionDeduplicacion, type DeduplicacionState } from "../deduplicacion.decider.js";
 import type { WhatsAppMensajeEntrante } from "../../types/whatsappMessages/whatsapp-mensaje-entrante.js";
 
@@ -43,6 +43,23 @@ function normalizarWaId(waId: string): { original: string; normalizado: string }
 interface RuteoResultado {
   asesorId: string | null;
   leadCreadoId: string | null;
+}
+
+const TEXTO_NOTIFICACION_MAX_LENGTH = 80;
+
+/**
+ * Fix (campanita de notificaciones para mensajes de WhatsApp, 2026-09-01):
+ * `entrante.texto` es `null` para tipos de mensaje no soportados aún (imagen,
+ * audio, etc. — ver `WhatsAppMensajeEntrante`), así que ese caso usa un
+ * mensaje genérico en vez de reventar o mostrar `"null"`. Texto normal se
+ * trunca a `TEXTO_NOTIFICACION_MAX_LENGTH` — el mensaje completo ya vive en
+ * la `Conversacion`, la notificación solo necesita un preview.
+ */
+function construirMensajeNotificacion(nombreCliente: string | null, texto: string | null): string {
+  if (texto === null || texto.trim() === "") return "Nuevo mensaje de WhatsApp";
+  const truncado =
+    texto.length > TEXTO_NOTIFICACION_MAX_LENGTH ? `${texto.slice(0, TEXTO_NOTIFICACION_MAX_LENGTH)}…` : texto;
+  return `${nombreCliente || "Un cliente"} escribió: "${truncado}"`;
 }
 
 /**
@@ -298,11 +315,40 @@ export async function procesarMensajeEntrante(
         ),
       ];
 
+      // Fix (campanita de notificaciones para mensajes de WhatsApp,
+      // 2026-09-01): mismo conjunto de destinatarios que `eventosMensaje`
+      // arriba (asesor asignado + Administrador/Supervisor activos de la
+      // empresa, sin duplicar entre sí por el mismo motivo ya comentado) —
+      // pero acá además queda PERSISTIDO como `Notificacion` (a diferencia
+      // del evento SSE silencioso de arriba, que solo invalida queries) para
+      // que aparezca en la campanita aunque el destinatario no tenga la
+      // pantalla abierta en ese momento.
+      const mensajeNotificacion = construirMensajeNotificacion(cliente.nombre, entrante.texto);
+      const destinatariosNotificacion = [
+        ...(aplicado.asesorId ? [aplicado.asesorId] : []),
+        ...destinatariosGestion,
+      ];
+      const eventosNotificacion: CommittedEvent[] = [];
+      for (const usuarioId of destinatariosNotificacion) {
+        const notificacion = await createNotificacion(
+          {
+            usuarioId,
+            tipo: "WHATSAPP_MENSAJE_NUEVO",
+            titulo: "Nuevo mensaje de WhatsApp",
+            mensaje: mensajeNotificacion,
+            empresaId: conexion.empresaId,
+            metadata: { conversacionId: aplicado.conversacionId },
+          },
+          tx,
+        );
+        eventosNotificacion.push(...notificationEvents(notificacion));
+      }
+
       return {
         clienteId: cliente.id,
         conversacionId: aplicado.conversacionId,
         leadCreadoId: ruteo.leadCreadoId,
-        events: [...aplicado.events, ...eventosMensaje],
+        events: [...aplicado.events, ...eventosMensaje, ...eventosNotificacion],
       };
     },
     ASIGNACION_TRANSACTION_BOUNDS,

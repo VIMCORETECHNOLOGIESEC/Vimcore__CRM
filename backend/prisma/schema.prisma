@@ -74,6 +74,13 @@ enum TipoNotificacion {
   // Administrador de su empresa cuando el detalle de un lead detecta que no
   // hay conexión de WhatsApp activa.
   WHATSAPP_NO_CONECTADO
+  // Fix (push en vivo de mensajes de WhatsApp a la campanita, 2026-09-01):
+  // agregado AL FINAL, mismo criterio append-only de arriba. Dispara en
+  // `whatsapp-ruteo.service.ts::procesarMensajeEntrante` por cada mensaje
+  // entrante de WhatsApp, para el asesor asignado a la conversación y para
+  // ADMINISTRADOR/SUPERVISOR activos de la empresa (mismo destinatario que ya
+  // recibe el evento SSE silencioso `whatsapp.mensaje-nuevo`).
+  WHATSAPP_MENSAJE_NUEVO
 
   @@map("tipo_notificacion")
 }

@@ -60,6 +60,8 @@ function notificacionFake(overrides: Partial<Notificacion> = {}): Notificacion {
     leadId: "lead-01",
     leidaEn: null,
     creadaEn: new Date().toISOString(),
+    empresaId: null,
+    metadata: null,
     ...overrides,
   };
 }
@@ -130,6 +132,25 @@ describe("CampanaNotificaciones — panel desplegable", () => {
 
     const enlace = await screen.findByRole("link", { name: /Nuevo lead asignado/ });
     expect(enlace).toHaveAttribute("href", "/leads/lead-01");
+  });
+
+  it("sin lead pero con metadata.conversacionId (WHATSAPP_MENSAJE_NUEVO), enlaza a la conversación", async () => {
+    fetchNotificacionesApiMock.mockResolvedValue([
+      notificacionFake({
+        id: "1",
+        tipo: "WHATSAPP_MENSAJE_NUEVO",
+        leadId: null,
+        metadata: { conversacionId: "conv-9" },
+        titulo: "Nuevo mensaje de WhatsApp",
+      }),
+    ]);
+    const user = userEvent.setup();
+    renderCampana();
+
+    await user.click(await screen.findByRole("button", { name: /Notificaciones/ }));
+
+    const enlace = await screen.findByRole("link", { name: /Nuevo mensaje de WhatsApp/ });
+    expect(enlace).toHaveAttribute("href", "/conversaciones/conv-9");
   });
 
   it("muestra estado vacío cuando no hay notificaciones", async () => {
