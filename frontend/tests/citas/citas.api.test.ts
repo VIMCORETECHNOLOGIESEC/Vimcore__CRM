@@ -23,6 +23,7 @@ vi.mock("@/api/httpClient", () => {
 
 const { ApiError, httpClient } = await import("@/api/httpClient");
 const {
+  fetchClientesParaCitaApi,
   fetchCitasApi,
   markCitaResultCalendarioApi,
   rescheduleCitaCalendarioApi,
@@ -76,6 +77,93 @@ describe("citas.api", () => {
       lead: { cliente: { nombre: "Roberto Salazar" } },
       usuario: { nombre: "Marta Herrera" },
     });
+  });
+
+  it("normaliza respuestas exitosas vacías como lista de citas vacía", async () => {
+    for (const response of [{ citas: [] }, { data: [] }, { datos: [] }, { items: [] }, [], null, undefined]) {
+      getMock.mockResolvedValueOnce(response);
+
+      await expect(
+        fetchCitasApi({
+          desde: "2026-03-01T00:00:00.000Z",
+          hasta: "2026-03-31T23:59:59.999Z",
+        }),
+      ).resolves.toEqual([]);
+    }
+  });
+
+  it("preserva errores HTTP y rechaza respuestas exitosas malformadas", async () => {
+    const httpError = new ApiError("error_servidor", 500, "No se pudo cargar la agenda.");
+    getMock.mockRejectedValueOnce(httpError);
+
+    await expect(
+      fetchCitasApi({
+        desde: "2026-03-01T00:00:00.000Z",
+        hasta: "2026-03-31T23:59:59.999Z",
+      }),
+    ).rejects.toBe(httpError);
+
+    getMock.mockResolvedValueOnce({ cita: [] });
+
+    await expect(
+      fetchCitasApi({
+        desde: "2026-03-01T00:00:00.000Z",
+        hasta: "2026-03-31T23:59:59.999Z",
+      }),
+    ).rejects.toThrow("La respuesta de citas no tiene un formato válido.");
+  });
+
+  it("busca clientes en GET /cliente con id_empresa únicamente cuando no hay asesor", async () => {
+    getMock.mockResolvedValue({ cliente: [] });
+
+    await expect(fetchClientesParaCitaApi({ empresaId: "empresa-1" })).resolves.toEqual([]);
+
+    expect(getMock).toHaveBeenCalledWith("/cliente", {
+      params: {
+        id_empresa: "empresa-1",
+      },
+    });
+  });
+
+  it("busca clientes en GET /cliente con id_empresa e id_asesor para asesor", async () => {
+    getMock.mockResolvedValue({
+      cliente: [
+        {
+          leadId: "lead-confirmado",
+          id: "cliente-1",
+          nombre: "Cliente Confirmado",
+          telefono_normalizado: "+593991234567",
+        },
+      ],
+    });
+
+    const resultado = await fetchClientesParaCitaApi({ empresaId: "empresa-1", asesorId: "asesor-1" });
+
+    expect(getMock).toHaveBeenCalledWith("/cliente", {
+      params: {
+        id_empresa: "empresa-1",
+        id_asesor: "asesor-1",
+      },
+    });
+    expect(resultado).toEqual([
+      {
+        leadId: "lead-confirmado",
+        cliente: {
+          id: "cliente-1",
+          nombre: "Cliente Confirmado",
+          telefonoNormalizado: "+593991234567",
+          telefonoOriginal: null,
+        },
+      },
+    ]);
+  });
+
+  it("rechaza clientes sin lead asociado en la respuesta", async () => {
+    getMock.mockResolvedValue({ cliente: [{ id: "cliente-1", nombre: "Cliente sin lead" }] });
+
+    await expect(fetchClientesParaCitaApi({ empresaId: "empresa-1" })).rejects.toThrow(
+      "La búsqueda de clientes no devolvió el lead asociado necesario para agendar la cita.",
+    );
   });
 
   it("agenda contra POST /leads/:leadId/citas con finalizaEn", async () => {
