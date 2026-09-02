@@ -59,12 +59,13 @@ describe("NAVIGATION_ITEMS -- Oportunidades (Bloque D)", () => {
   });
 });
 
-describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads/Conversaciones)", () => {
-  it("Oportunidades, Bridges, Leads y Conversaciones están marcados con requiereVistaEmpresaSiHolding", () => {
+describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportunidades/Bridges/Leads/Conversaciones/Citas)", () => {
+  it("Oportunidades, Bridges, Leads, Conversaciones y Citas están marcados con requiereVistaEmpresaSiHolding", () => {
     const oportunidades = NAVIGATION_ITEMS.find((item) => item.label === "Oportunidades");
     const bridges = NAVIGATION_ITEMS.find((item) => item.label === "Bridges");
     const leads = NAVIGATION_ITEMS.find((item) => item.label === "Leads");
     const conversaciones = NAVIGATION_ITEMS.find((item) => item.label === "Conversaciones");
+    const citas = NAVIGATION_ITEMS.find((item) => item.label === "Citas");
     expect(oportunidades?.requiereVistaEmpresaSiHolding).toBe(true);
     expect(bridges?.requiereVistaEmpresaSiHolding).toBe(true);
     // Bloqueado antes por falta de soporte de `?empresaId=` en `GET /leads`
@@ -75,6 +76,7 @@ describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportu
     // no gestiona conversaciones de ninguna empresa en particular sin entrar
     // a la vista de una concreta.
     expect(conversaciones?.requiereVistaEmpresaSiHolding).toBe(true);
+    expect(citas?.requiereVistaEmpresaSiHolding).toBe(true);
   });
 
   it("Usuarios NO está marcado con requiereVistaEmpresaSiHolding (fix, regresión de e0cb7f8)", () => {
@@ -88,7 +90,7 @@ describe("NAVIGATION_ITEMS -- gate de vista de empresa para holding-wide (Oportu
 
   it("Dashboard, Reportes, Apariencia, Empresas y Usuarios no están marcados", () => {
     const sinFlag = NAVIGATION_ITEMS.filter(
-      (item) => !["Oportunidades", "Bridges", "Leads", "Conversaciones"].includes(item.label),
+      (item) => !["Oportunidades", "Bridges", "Leads", "Conversaciones", "Citas"].includes(item.label),
     );
     for (const item of sinFlag) {
       expect(item.requiereVistaEmpresaSiHolding).toBeUndefined();

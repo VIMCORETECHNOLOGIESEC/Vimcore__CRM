@@ -1,4 +1,4 @@
-import { Building2, FileText, Handshake, LayoutDashboard, MessageSquare, Palette, Plug, UserCog, Users } from "lucide-react";
+import { Building2, CalendarDays, FileText, Handshake, LayoutDashboard, MessageSquare, Palette, Plug, UserCog, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
@@ -110,6 +110,12 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     label: "Leads",
     route: "/leads",
     icon: Users,
+    requiereVistaEmpresaSiHolding: true,
+  },
+  {
+    label: "Citas",
+    route: "/citas",
+    icon: CalendarDays,
     requiereVistaEmpresaSiHolding: true,
   },
   {

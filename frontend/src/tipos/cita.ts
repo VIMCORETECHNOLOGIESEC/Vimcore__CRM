@@ -15,6 +15,8 @@ export interface Cita {
   usuarioId: string;
   /** ISO 8601 (UTC). */
   programadaPara: string;
+  /** ISO 8601 (UTC). Opcional para tolerar respuestas antiguas del detalle de lead. */
+  finalizaEn?: string;
   modalidad: ModalidadCita;
   estado: EstadoCita;
   notas?: string;
