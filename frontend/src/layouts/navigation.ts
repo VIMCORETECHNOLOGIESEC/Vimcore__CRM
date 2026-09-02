@@ -51,6 +51,15 @@ export interface NavigationItem {
    * vista activa al hacer clic.
    */
   preservaVistaEmpresaSiHolding?: boolean;
+  /**
+   * Fix (2026-09-02, bug real): inverso de `requiereVistaEmpresaSiHolding`
+   * -- oculta el ítem MIENTRAS un holding-wide está en la vista de una
+   * empresa puntual (`hasVistaEmpresaAusente`, permissions.ts). Apariencia
+   * (branding GLOBAL del holding) y Empresas (gestión cross-empresa) dejan
+   * de tener sentido ahí -- antes seguían visibles, invitando a editar el
+   * recurso equivocado creyendo que se edita el de la empresa en vista.
+   */
+  ocultarSiVistaEmpresa?: boolean;
 }
 
 /**
@@ -160,17 +169,26 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
     preservaVistaEmpresaSiHolding: true,
   },
   {
+    // Fix (2026-09-02): oculta durante la vista de empresa -- edita el
+    // branding GLOBAL del holding, no el de la empresa en vista. Una
+    // sesión `company` nunca se ve afectada (routea a `/apariencia-empresa`,
+    // self-service, sin relación con esto).
     label: "Apariencia",
     route: "/configuracion-empresa",
     icon: Palette,
     allowedRoles: ["ADMINISTRADOR"],
     routeByScope: { holding: "/configuracion-empresa", company: "/apariencia-empresa" },
+    ocultarSiVistaEmpresa: true,
   },
   {
+    // Fix (2026-09-02): oculta durante la vista de empresa -- es la
+    // gestión cross-empresa del holding, no algo que se edite "desde
+    // adentro" de una empresa puntual.
     label: "Empresas",
     route: "/empresas",
     icon: Building2,
     allowedRoles: ["ADMINISTRADOR"],
     allowedScopes: ["holding"],
+    ocultarSiVistaEmpresa: true,
   },
 ];

@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context"
-import { hasRoleAccess, hasScopeAccess, hasVistaEmpresaAccess } from "@/funcionalidades/autenticacion/permissions"
+import { hasRoleAccess, hasScopeAccess, hasVistaEmpresaAccess, hasVistaEmpresaAusente } from "@/funcionalidades/autenticacion/permissions"
 import { useConfiguracionEmpresa } from "@/funcionalidades/configuracion-empresa/useConfiguracionEmpresa"
 import { useEmpresaHolding } from "@/funcionalidades/empresa-apariencia/useEmpresaAparienciaHolding"
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa"
@@ -76,7 +76,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     (item) =>
       hasRoleAccess(user?.rol, item.allowedRoles) &&
       hasScopeAccess(user?.sessionScope, item.allowedScopes) &&
-      hasVistaEmpresaAccess(user?.sessionScope, empresaVistaId, item.requiereVistaEmpresaSiHolding),
+      hasVistaEmpresaAccess(user?.sessionScope, empresaVistaId, item.requiereVistaEmpresaSiHolding) &&
+      hasVistaEmpresaAusente(user?.sessionScope, empresaVistaId, item.ocultarSiVistaEmpresa),
   ).map((item) => ({
     ...item,
     route: resolveNavigationHref(item, user?.sessionScope, empresaVistaId),

@@ -94,6 +94,34 @@ export function hasVistaEmpresaAccess(
 }
 
 /**
+ * Fix (2026-09-02, bug real reportado por Mateo): inverso de
+ * `hasVistaEmpresaAccess` -- para ítems que dejan de tener sentido MIENTRAS
+ * un holding-wide está "adentro" de la vista de una empresa puntual
+ * (Apariencia edita el branding GLOBAL del holding, no el de esa empresa;
+ * Empresas es la gestión cross-empresa del holding). Antes seguían visibles
+ * en el sidebar durante la vista -- confuso, invita a editar el recurso
+ * equivocado pensando que se edita el de la empresa que se está mirando.
+ *
+ * Mismo criterio "sin restricción por defecto" que el resto de estas
+ * funciones: sin `ocultarSiVistaEmpresa` (o `false`), o para sesión
+ * `company`, o para holding-wide SIN vista activa, el ítem sigue visible
+ * igual que siempre.
+ */
+export function hasVistaEmpresaAusente(
+  scope: SessionScope | null | undefined,
+  empresaVistaId: string | null | undefined,
+  ocultarSiVistaEmpresa?: boolean,
+): boolean {
+  if (!ocultarSiVistaEmpresa) {
+    return true;
+  }
+  if (scope !== "holding") {
+    return true;
+  }
+  return !empresaVistaId;
+}
+
+/**
  * Ruta de aterrizaje tras iniciar sesión, según rol (F2, "Redirección
  * post-login según rol"). Primer ítem de `NAVIGATION_ITEMS` accesible para el
  * rol -- única fuente de verdad, ya usada por la barra lateral.
