@@ -146,7 +146,7 @@ describe("PanelCitas -- form Reprogramar", () => {
     // 2026") en vez del placeholder "Elige una fecha" -- matcheamos
     // cualquiera de los dos, el único botón disparador del calendario dentro
     // de este form ya está acotado por `within`.
-    const botonFecha = dentroDelForm.getByRole("button", { name: /elige una fecha|de \d{4}$/i });
+    const botonFecha = dentroDelForm.getAllByRole("button", { name: /elige una fecha|de \d{4}$/i })[0];
     await userEvent.click(botonFecha);
     const diaBoton = await waitFor(() => {
       const elemento = document.querySelector(`[data-day="${fechaFutura.toLocaleDateString()}"]`);

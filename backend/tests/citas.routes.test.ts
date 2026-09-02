@@ -76,6 +76,11 @@ function enUnaHoraIso(): string {
   return new Date(Date.now() + 60 * 60 * 1000).toISOString();
 }
 
+/** Vista de calendario (feature aditiva post-M7): duración mínima válida (1h) desde un ISO de inicio dado. */
+function finUnaHoraDespuesIso(inicioIso: string): string {
+  return new Date(new Date(inicioIso).getTime() + 60 * 60 * 1000).toISOString();
+}
+
 afterAll(async () => {
   await prisma.$disconnect();
 });
@@ -85,7 +90,11 @@ describe("POST /api/v1/leads/:id/citas", () => {
     const lead = await crearLead();
     const respuesta = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
     expect(respuesta.status).toBe(401);
   });
 
@@ -96,7 +105,12 @@ describe("POST /api/v1/leads/:id/citas", () => {
     const respuesta = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL", notas: "Primera reunión" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+        notas: "Primera reunión",
+      });
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body.cita.estado).toBe("AGENDADA");
@@ -111,7 +125,11 @@ describe("POST /api/v1/leads/:id/citas", () => {
     const respuesta = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesorAjeno.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     expect(respuesta.status).toBe(403);
   });
@@ -123,7 +141,11 @@ describe("POST /api/v1/leads/:id/citas", () => {
     const respuesta = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: new Date(Date.now() - 60_000).toISOString(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: new Date(Date.now() - 60_000).toISOString(),
+        finalizaEn: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        modalidad: "VIRTUAL",
+      });
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.code).toBe("cita_en_pasado");
@@ -136,7 +158,11 @@ describe("POST /api/v1/leads/:id/citas", () => {
     const respuesta = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "NO_EXISTE" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "NO_EXISTE",
+      });
 
     expect(respuesta.status).toBe(400);
   });
@@ -151,7 +177,11 @@ describe("GET /api/v1/leads/:id/citas y GET /api/v1/citas/:citaId", () => {
     await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     const respuesta = await request(app)
       .get(`/api/v1/leads/${lead.id}/citas`)
@@ -168,7 +198,11 @@ describe("GET /api/v1/leads/:id/citas y GET /api/v1/citas/:citaId", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "PRESENCIAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "PRESENCIAL",
+      });
 
     const respuesta = await request(app)
       .get(`/api/v1/citas/${creada.body.cita.id}`)
@@ -197,7 +231,11 @@ describe("POST /api/v1/citas/:citaId/cancelar", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     const respuesta = await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/cancelar`)
@@ -215,7 +253,11 @@ describe("POST /api/v1/citas/:citaId/cancelar", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/cancelar`)
@@ -240,13 +282,17 @@ describe("POST /api/v1/citas/:citaId/reprogramar", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     const nuevaFecha = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
     const respuesta = await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/reprogramar`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: nuevaFecha });
+      .send({ programadaPara: nuevaFecha, finalizaEn: finUnaHoraDespuesIso(nuevaFecha) });
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.cita.estado).toBe("AGENDADA");
@@ -260,7 +306,11 @@ describe("POST /api/v1/citas/:citaId/reprogramar", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/cancelar`)
@@ -270,7 +320,7 @@ describe("POST /api/v1/citas/:citaId/reprogramar", () => {
     const respuesta = await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/reprogramar`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso() });
+      .send({ programadaPara: enUnaHoraIso(), finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()) });
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.code).toBe("cita_no_reprogramable");
@@ -285,7 +335,11 @@ describe("POST /api/v1/citas/:citaId/resultado", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     const respuesta = await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/resultado`)
@@ -303,7 +357,11 @@ describe("POST /api/v1/citas/:citaId/resultado", () => {
     const creada = await request(app)
       .post(`/api/v1/leads/${lead.id}/citas`)
       .set("Authorization", `Bearer ${asesor.token}`)
-      .send({ programadaPara: enUnaHoraIso(), modalidad: "VIRTUAL" });
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
 
     const respuesta = await request(app)
       .post(`/api/v1/citas/${creada.body.cita.id}/resultado`)
@@ -311,5 +369,81 @@ describe("POST /api/v1/citas/:citaId/resultado", () => {
       .send({ estado: "CANCELADA" });
 
     expect(respuesta.status).toBe(400);
+  });
+});
+
+// Vista de calendario (feature aditiva post-M7): `GET /citas`.
+describe("GET /api/v1/citas", () => {
+  function rangoAmplioQuery(): string {
+    const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const hasta = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    return `desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
+  }
+
+  it("200: un asesor solo ve sus propias citas dentro del rango", async () => {
+    const asesorUno = await crearUsuarioConToken("ASESOR");
+    const asesorDos = await crearUsuarioConToken("ASESOR");
+    const lead1 = await crearLead({ asesorId: asesorUno.id });
+    const lead2 = await crearLead({ asesorId: asesorDos.id });
+
+    await request(app)
+      .post(`/api/v1/leads/${lead1.id}/citas`)
+      .set("Authorization", `Bearer ${asesorUno.token}`)
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
+    await request(app)
+      .post(`/api/v1/leads/${lead2.id}/citas`)
+      .set("Authorization", `Bearer ${asesorDos.token}`)
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
+
+    const respuesta = await request(app)
+      .get(`/api/v1/citas?${rangoAmplioQuery()}`)
+      .set("Authorization", `Bearer ${asesorUno.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.citas).toHaveLength(1);
+    expect(respuesta.body.citas[0].usuarioId).toBe(asesorUno.id);
+  });
+
+  it("200: un administrador ve todas las citas de la empresa", async () => {
+    const asesor = await crearUsuarioConToken("ASESOR");
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+    const lead = await crearLead({ asesorId: asesor.id });
+
+    await request(app)
+      .post(`/api/v1/leads/${lead.id}/citas`)
+      .set("Authorization", `Bearer ${asesor.token}`)
+      .send({
+        programadaPara: enUnaHoraIso(),
+        finalizaEn: finUnaHoraDespuesIso(enUnaHoraIso()),
+        modalidad: "VIRTUAL",
+      });
+
+    const respuesta = await request(app)
+      .get(`/api/v1/citas?${rangoAmplioQuery()}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.citas.some((c: { usuarioId: string }) => c.usuarioId === asesor.id)).toBe(true);
+  });
+
+  it("400: desde/hasta faltantes se rechaza en el borde (Zod)", async () => {
+    const admin = await crearUsuarioConToken("ADMINISTRADOR");
+
+    const respuesta = await request(app).get("/api/v1/citas").set("Authorization", `Bearer ${admin.token}`);
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it("401 sin token de acceso", async () => {
+    const respuesta = await request(app).get(`/api/v1/citas?${rangoAmplioQuery()}`);
+    expect(respuesta.status).toBe(401);
   });
 });

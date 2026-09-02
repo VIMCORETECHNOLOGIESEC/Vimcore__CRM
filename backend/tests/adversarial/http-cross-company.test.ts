@@ -153,13 +153,25 @@ async function crearUsuarioHoldingWide(rol: "ADMINISTRADOR" | "SUPERVISOR"): Pro
   return { id: usuario.id, token: login.body.accessToken as string };
 }
 
+// Vista de calendario (feature aditiva post-M7, EXCLUDE de solapamiento):
+// dos `it` de este archivo llaman `crearCita` con el MISMO `usuarioId`
+// (`empresaB.usuarioId`, compartido entre tests) -- sin este offset
+// incremental, ambas citas caerían ~1h desde `Date.now()` casi al mismo
+// instante y colisionarían con `citas_no_solapamiento_por_asesor`. Cada
+// llamada se corre 2h más tarde que la anterior, garantizando cero
+// solapamiento entre citas del mismo responsable en todo este archivo.
+let offsetCitaHoras = 0;
+
 async function crearCita(empresaId: string, usuarioId: string, leadId: string): Promise<{ id: string }> {
+  offsetCitaHoras += 2;
+  const programadaPara = new Date(Date.now() + offsetCitaHoras * 60 * 60 * 1000);
   const cita = await testAdminPrisma.cita.create({
     data: {
       leadId,
       usuarioId,
       empresaId,
-      programadaPara: new Date(Date.now() + 60 * 60 * 1000),
+      programadaPara,
+      finalizaEn: new Date(programadaPara.getTime() + 60 * 60 * 1000),
       modalidad: "VIRTUAL",
     },
   });

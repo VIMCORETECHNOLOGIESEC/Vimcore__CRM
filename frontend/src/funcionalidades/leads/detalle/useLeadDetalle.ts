@@ -109,7 +109,7 @@ export function useReassignLead(leadId: string) {
 export function useScheduleCita(leadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { usuarioId: string; programadaPara: string; modalidad: ModalidadCita; notas?: string }) =>
+    mutationFn: (input: { usuarioId: string; programadaPara: string; finalizaEn?: string; modalidad: ModalidadCita; notas?: string }) =>
       scheduleCitaApi({ leadId, ...input }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [CITAS_LEAD_QUERY_KEY, leadId] });
@@ -121,8 +121,15 @@ export function useScheduleCita(leadId: string) {
 export function useRescheduleCita(leadId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ citaId, programadaPara }: { citaId: string; programadaPara: string }) =>
-      rescheduleCitaApi(citaId, programadaPara),
+    mutationFn: ({ citaId, programadaPara, finalizaEn, modalidad, notas, usuarioId }: {
+      citaId: string;
+      programadaPara: string;
+      finalizaEn?: string;
+      modalidad?: ModalidadCita;
+      notas?: string;
+      usuarioId?: string;
+    }) =>
+      rescheduleCitaApi(citaId, { programadaPara, finalizaEn, modalidad, notas, usuarioId }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [CITAS_LEAD_QUERY_KEY, leadId] });
       toast.success("Cita reprogramada correctamente.");

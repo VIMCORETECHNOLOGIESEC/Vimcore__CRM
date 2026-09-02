@@ -5,12 +5,14 @@ import { idParamSchema } from "../schemas/leads.schema.js";
 import {
   citaIdParamSchema,
   crearCitaBodySchema,
+  listCitasQuerySchema,
   marcarResultadoCitaBodySchema,
   reprogramarCitaBodySchema,
 } from "../schemas/citas.schema.js";
 import {
   cancelCita,
   getCitaById,
+  listCitas,
   listCitasByLead,
   marcarResultadoCita,
   rescheduleCita,
@@ -37,6 +39,21 @@ export async function postCita(req: Request, res: Response): Promise<void> {
 
   const cita = await scheduleCita(usuario, parsedId.data.id, parsedBody.data);
   res.status(201).json({ cita });
+}
+
+/**
+ * `GET /api/v1/citas` (vista de calendario, feature aditiva post-M7):
+ * traducción HTTP pura, mismo patrón que el resto del archivo —
+ * `citas.service.ts::listCitas` hace toda la autorización por listado.
+ */
+export async function getCitasListado(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedQuery = listCitasQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) throw zodValidationError();
+
+  const citas = await listCitas(usuario, parsedQuery.data);
+  res.status(200).json({ citas });
 }
 
 export async function getCitasPorLead(req: Request, res: Response): Promise<void> {

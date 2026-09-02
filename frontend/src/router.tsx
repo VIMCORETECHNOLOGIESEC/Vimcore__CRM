@@ -4,6 +4,7 @@ import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetal
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { EmpresaBridgesPage } from "@/funcionalidades/bridges/EmpresaBridgesPage";
 import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
+import { CalendarCitasPage } from "@/funcionalidades/citas/CalendarCitasPage";
 import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { EmpresaAparienciaPage } from "@/funcionalidades/empresa-apariencia/EmpresaAparienciaPage";
 import { EmpresaDetallePage } from "@/funcionalidades/empresa-apariencia/EmpresaDetallePage";
@@ -123,6 +124,10 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/panel" replace /> },
           { path: "panel", element: <DashboardPage /> },
           { path: "leads", element: <LeadsPage /> },
+          {
+            element: <ProtectedRoute requiereVistaEmpresaSiHolding />,
+            children: [{ path: "citas", element: <CalendarCitasPage /> }],
+          },
           {
             // Mismo gate real que Oportunidades/Bridges/Conversaciones: un
             // holding-wide no tiene un lead concreto para ver hasta "entrar"

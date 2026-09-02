@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRangoFechas } from "../src/lib/rango-fechas.js";
+import { rangoManianaEcuador, resolveRangoFechas } from "../src/lib/rango-fechas.js";
 
 // Referencia fija: 2026-08-18T15:30:00.000Z (miércoles) — evita flakiness por
 // hora de corrida.
@@ -61,5 +61,33 @@ describe("lib/rango-fechas — resolveRangoFechas (docs/08 §4)", () => {
     expect(r.hasta.getTime()).toBe(hasta.getTime());
     expect(r.anteriorHasta.getTime()).toBe(desde.getTime() - 1);
     expect(r.anteriorDesde.getTime()).toBe(desde.getTime() - 1 - (hasta.getTime() - desde.getTime()));
+  });
+});
+
+// Vista de calendario (feature aditiva post-M7, `citas-recordatorio.service.ts`):
+// Ecuador es UTC-5 fijo, sin horario de verano.
+describe("lib/rango-fechas — rangoManianaEcuador (feature aditiva post-M7)", () => {
+  it("mitad del día UTC (10:30 Ecuador un martes): mañana Ecuador = todo el miércoles siguiente en instantes UTC", () => {
+    const r = rangoManianaEcuador(AHORA); // 2026-08-18T15:30:00.000Z = 10:30 Ecuador, martes 18
+    expect(r.desde.toISOString()).toBe("2026-08-19T05:00:00.000Z");
+    expect(r.hasta.toISOString()).toBe("2026-08-20T04:59:59.999Z");
+  });
+
+  it("madrugada UTC (22:00 Ecuador del día anterior): el día calendario Ecuador va un día atrás del día calendario UTC", () => {
+    // 2026-08-18T03:00:00.000Z UTC es todavía 2026-08-17T22:00:00 en Ecuador
+    // (UTC-5) -- el caso límite que justifica todo el truco de shift: si se
+    // leyera el día calendario directo de `ahora` en UTC (sin restar el
+    // offset primero), "mañana" daría el 19, no el 18.
+    const madrugadaUTC = new Date("2026-08-18T03:00:00.000Z");
+    const r = rangoManianaEcuador(madrugadaUTC);
+    expect(r.desde.toISOString()).toBe("2026-08-18T05:00:00.000Z");
+    expect(r.hasta.toISOString()).toBe("2026-08-19T04:59:59.999Z");
+  });
+
+  it("cruce de mes (31 de agosto Ecuador): mañana = 1° de septiembre completo", () => {
+    const finDeMes = new Date("2026-08-31T20:00:00.000Z"); // 15:00 Ecuador, 31 de agosto
+    const r = rangoManianaEcuador(finDeMes);
+    expect(r.desde.toISOString()).toBe("2026-09-01T05:00:00.000Z");
+    expect(r.hasta.toISOString()).toBe("2026-09-02T04:59:59.999Z");
   });
 });

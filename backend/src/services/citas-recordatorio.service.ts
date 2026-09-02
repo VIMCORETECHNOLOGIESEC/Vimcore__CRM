@@ -1,11 +1,9 @@
 import * as citaRepository from "../repositories/cita.repository.js";
 import { CITAS_TRANSACTION_BOUNDS, prisma, runAsBypassJob, runWithTenantContext } from "../lib/prisma.js";
+import { rangoManianaEcuador } from "../lib/rango-fechas.js";
 import * as notificationRepository from "../repositories/notificacion.repository.js";
 import { notificationEvents, publishCommittedEvents } from "./committed-events.service.js";
 import { partitionByEmpresa } from "./company-partition.js";
-
-/** Ventana del checklist M7: "recordatorio 1 hora antes". */
-const VENTANA_RECORDATORIO_MS = 60 * 60 * 1000;
 
 export interface ResultadoRecordatorioCitas {
   candidatos: number;
@@ -14,15 +12,22 @@ export interface ResultadoRecordatorioCitas {
 
 /**
  * D-recordatorio (diseño M7, checklist "Trabajo programado: recordatorio 1
- * hora antes"). Handler PURO de efectos — recibe `ahora`, nunca consulta el
- * reloj real ni conoce `setInterval` (eso vive en
+ * hora antes" — ventana cambiada por una feature aditiva post-M7, ver
+ * abajo). Handler PURO de efectos — recibe `ahora`, nunca consulta el reloj
+ * real ni conoce `setInterval` (eso vive en
  * `jobs/citas-recordatorio.job.ts`, mismo split que
  * `sla-atrasado.service.ts`/`sla-atrasado.job.ts` de M6).
  *
- * Candidatos: `estado = AGENDADA`, `recordatorioEnviado = false`,
- * `programadaPara` dentro de `[ahora, ahora + 1h]` — forma exacta del
- * checklist. La marca de "recordatorio enviado" es atómica a nivel de fila
- * (`cita.repository.ts::marcarRecordatorioEnviado`, `WHERE
+ * Cambio de ventana (feature aditiva post-M7, vista de calendario): ya no es
+ * "próxima 1h" — es TODO el día calendario de MAÑANA en hora Ecuador
+ * (`lib/rango-fechas.ts::rangoManianaEcuador`, offset fijo UTC-5, sin
+ * horario de verano). Candidatos: `estado = AGENDADA`, `recordatorioEnviado
+ * = false`, `programadaPara` dentro de `[mañana 00:00:00, mañana
+ * 23:59:59.999]` Ecuador. Se mantiene UNA notificación por cada `Cita`
+ * individual (NUNCA se agrupan varias citas del mismo responsable en una
+ * sola notificación) — el loop de abajo sigue siendo por-cita, sin cambios
+ * en ese punto. La marca de "recordatorio enviado" sigue siendo atómica a
+ * nivel de fila (`cita.repository.ts::marcarRecordatorioEnviado`, `WHERE
  * recordatorioEnviado = false` en el propio `updateMany`), mismo espíritu
  * anti-duplicado que el filtro de idempotencia de `detectLeadsAtrasados`.
  *
@@ -39,7 +44,7 @@ export interface ResultadoRecordatorioCitas {
 export async function enviarRecordatoriosCita(
   ahora: Date = new Date(),
 ): Promise<ResultadoRecordatorioCitas> {
-  const hasta = new Date(ahora.getTime() + VENTANA_RECORDATORIO_MS);
+  const { desde, hasta } = rangoManianaEcuador(ahora);
 
   // Bloque C (Etapa 3, D1/spec §2 "Approved job crosses companies", batch 3
   // discovery): este cron (`jobs/citas-recordatorio.job.ts`) corre sin
@@ -48,7 +53,7 @@ export async function enviarRecordatoriosCita(
   // detectLeadsAtrasados`.
   const candidatos = await runAsBypassJob(
     "appointment-reminder",
-    (tx) => citaRepository.findPendientesDeRecordatorio(ahora, hasta, tx),
+    (tx) => citaRepository.findPendientesDeRecordatorio(desde, hasta, tx),
     CITAS_TRANSACTION_BOUNDS,
   );
   if (candidatos.length === 0) return { candidatos: 0, recordatoriosMarcados: 0 };

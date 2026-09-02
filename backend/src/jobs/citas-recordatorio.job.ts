@@ -5,12 +5,17 @@ import {
 import { scheduledNotificationProducers } from "./notificaciones-programadas.js";
 
 /**
- * Mismo intervalo que `sla-atrasado.job.ts` (M6, `INTERVALO_SLA_MS`):
- * independiente, no se deriva de él. 15 minutos da un margen aceptable frente
- * a una ventana de recordatorio de 1h (peor caso: hasta 15 minutos de
- * demora sobre el instante exacto en el que la cita entra en la ventana).
+ * Cambio de ventana (feature aditiva post-M7): la ventana de recordatorio
+ * dejó de ser "próxima 1h" (`VENTANA_RECORDATORIO_MS`, M7 original) y pasó a
+ * ser "todo el día calendario de MAÑANA en hora Ecuador"
+ * (`citas-recordatorio.service.ts::enviarRecordatoriosCita`, vía
+ * `lib/rango-fechas.ts::rangoManianaEcuador`) — una ventana de 24h no
+ * necesita un tick cada 15 minutos para dar un margen aceptable; 5h alcanza
+ * de sobra (peor caso: hasta 5h de demora sobre el instante exacto en el que
+ * una cita entra en la ventana de "mañana", frente a una ventana total de
+ * ~24-48h de anticipación real del recordatorio).
  */
-export const INTERVALO_RECORDATORIO_CITA_MS = 15 * 60 * 1000;
+export const INTERVALO_RECORDATORIO_CITA_MS = 5 * 60 * 60 * 1000;
 
 export type { ResultadoRecordatorioCitas } from "../services/citas-recordatorio.service.js";
 

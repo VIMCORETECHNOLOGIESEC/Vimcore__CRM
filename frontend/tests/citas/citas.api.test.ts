@@ -1,0 +1,255 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/api/httpClient", () => {
+  class ApiError extends Error {
+    public readonly code: string;
+    public readonly status: number;
+
+    constructor(code: string, status: number, message: string) {
+      super(message);
+      this.code = code;
+      this.status = status;
+    }
+  }
+
+  return {
+    ApiError,
+    httpClient: {
+      get: vi.fn(),
+      post: vi.fn(),
+    },
+  };
+});
+
+const { ApiError, httpClient } = await import("@/api/httpClient");
+const {
+  fetchClientesParaCitaApi,
+  fetchCitasApi,
+  markCitaResultCalendarioApi,
+  rescheduleCitaCalendarioApi,
+  scheduleCitaCalendarioApi,
+} = await import("@/funcionalidades/citas/citas.api");
+
+const getMock = vi.mocked(httpClient.get);
+const postMock = vi.mocked(httpClient.post);
+
+function citaBackendFake(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "cita-01",
+    leadId: "lead-01",
+    usuarioId: "asesor-1",
+    programadaPara: "2026-03-01T10:00:00.000Z",
+    finalizaEn: "2026-03-01T11:00:00.000Z",
+    modalidad: "VIRTUAL",
+    estado: "AGENDADA",
+    notas: null,
+    lead: { id: "lead-01", cliente: { nombre: "Roberto Salazar", telefonoNormalizado: "+593991234567" } },
+    usuario: { id: "asesor-1", nombre: "Marta Herrera" },
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  getMock.mockReset();
+  postMock.mockReset();
+});
+
+describe("citas.api", () => {
+  it("GET /citas manda rango y asesorId opcional, y mapea relaciones", async () => {
+    getMock.mockResolvedValue({ citas: [citaBackendFake()] });
+
+    const resultado = await fetchCitasApi({
+      desde: "2026-03-01T00:00:00.000Z",
+      hasta: "2026-03-31T23:59:59.999Z",
+      asesorId: "asesor-1",
+    });
+
+    expect(getMock).toHaveBeenCalledWith("/citas", {
+      params: {
+        desde: "2026-03-01T00:00:00.000Z",
+        hasta: "2026-03-31T23:59:59.999Z",
+        asesorId: "asesor-1",
+      },
+    });
+    expect(resultado[0]).toMatchObject({
+      id: "cita-01",
+      finalizaEn: "2026-03-01T11:00:00.000Z",
+      lead: { cliente: { nombre: "Roberto Salazar" } },
+      usuario: { nombre: "Marta Herrera" },
+    });
+  });
+
+  it("normaliza respuestas exitosas vacías como lista de citas vacía", async () => {
+    for (const response of [{ citas: [] }, { data: [] }, { datos: [] }, { items: [] }, [], null, undefined]) {
+      getMock.mockResolvedValueOnce(response);
+
+      await expect(
+        fetchCitasApi({
+          desde: "2026-03-01T00:00:00.000Z",
+          hasta: "2026-03-31T23:59:59.999Z",
+        }),
+      ).resolves.toEqual([]);
+    }
+  });
+
+  it("preserva errores HTTP y rechaza respuestas exitosas malformadas", async () => {
+    const httpError = new ApiError("error_servidor", 500, "No se pudo cargar la agenda.");
+    getMock.mockRejectedValueOnce(httpError);
+
+    await expect(
+      fetchCitasApi({
+        desde: "2026-03-01T00:00:00.000Z",
+        hasta: "2026-03-31T23:59:59.999Z",
+      }),
+    ).rejects.toBe(httpError);
+
+    getMock.mockResolvedValueOnce({ cita: [] });
+
+    await expect(
+      fetchCitasApi({
+        desde: "2026-03-01T00:00:00.000Z",
+        hasta: "2026-03-31T23:59:59.999Z",
+      }),
+    ).rejects.toThrow("La respuesta de citas no tiene un formato válido.");
+  });
+
+  it("busca clientes en GET /cliente con id_empresa únicamente cuando no hay asesor", async () => {
+    getMock.mockResolvedValue({ cliente: [] });
+
+    await expect(fetchClientesParaCitaApi({ empresaId: "empresa-1" })).resolves.toEqual([]);
+
+    expect(getMock).toHaveBeenCalledWith("/cliente", {
+      params: {
+        id_empresa: "empresa-1",
+      },
+    });
+  });
+
+  it("busca clientes en GET /cliente con id_empresa e id_asesor para asesor", async () => {
+    getMock.mockResolvedValue({
+      cliente: [
+        {
+          leadId: "lead-confirmado",
+          id: "cliente-1",
+          nombre: "Cliente Confirmado",
+          telefono_normalizado: "+593991234567",
+        },
+      ],
+    });
+
+    const resultado = await fetchClientesParaCitaApi({ empresaId: "empresa-1", asesorId: "asesor-1" });
+
+    expect(getMock).toHaveBeenCalledWith("/cliente", {
+      params: {
+        id_empresa: "empresa-1",
+        id_asesor: "asesor-1",
+      },
+    });
+    expect(resultado).toEqual([
+      {
+        leadId: "lead-confirmado",
+        cliente: {
+          id: "cliente-1",
+          nombre: "Cliente Confirmado",
+          telefonoNormalizado: "+593991234567",
+          telefonoOriginal: null,
+        },
+      },
+    ]);
+  });
+
+  it("rechaza clientes sin lead asociado en la respuesta", async () => {
+    getMock.mockResolvedValue({ cliente: [{ id: "cliente-1", nombre: "Cliente sin lead" }] });
+
+    await expect(fetchClientesParaCitaApi({ empresaId: "empresa-1" })).rejects.toThrow(
+      "La búsqueda de clientes no devolvió el lead asociado necesario para agendar la cita.",
+    );
+  });
+
+  it("agenda contra POST /leads/:leadId/citas con finalizaEn", async () => {
+    postMock.mockResolvedValue({ cita: citaBackendFake() });
+
+    await scheduleCitaCalendarioApi({
+      leadId: "lead-01",
+      usuarioId: "asesor-1",
+      programadaPara: "2026-03-01T10:00:00.000Z",
+      finalizaEn: "2026-03-01T11:00:00.000Z",
+      modalidad: "VIRTUAL",
+      notas: "Confirmar documentos",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/leads/lead-01/citas", {
+      usuarioId: "asesor-1",
+      programadaPara: "2026-03-01T10:00:00.000Z",
+      finalizaEn: "2026-03-01T11:00:00.000Z",
+      modalidad: "VIRTUAL",
+      notas: "Confirmar documentos",
+    });
+  });
+
+  it("reprograma con el body completo del contrato actual", async () => {
+    postMock.mockResolvedValue({ cita: citaBackendFake({ estado: "REPROGRAMADA" }) });
+
+    await rescheduleCitaCalendarioApi("cita-01", {
+      usuarioId: "asesor-2",
+      programadaPara: "2026-03-02T10:00:00.000Z",
+      finalizaEn: "2026-03-02T11:00:00.000Z",
+      modalidad: "PRESENCIAL",
+      notas: "Nueva sede",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/reprogramar", {
+      usuarioId: "asesor-2",
+      programadaPara: "2026-03-02T10:00:00.000Z",
+      finalizaEn: "2026-03-02T11:00:00.000Z",
+      modalidad: "PRESENCIAL",
+      notas: "Nueva sede",
+    });
+  });
+
+  it("resultado usa el body existente { estado }", async () => {
+    postMock.mockResolvedValue({ cita: citaBackendFake({ estado: "CUMPLIDA" }) });
+
+    await markCitaResultCalendarioApi("cita-01", "CUMPLIDA");
+
+    expect(postMock).toHaveBeenCalledWith("/citas/cita-01/resultado", { estado: "CUMPLIDA" });
+  });
+
+  it("convierte un 409 por solapamiento en un mensaje accionable", async () => {
+    postMock.mockRejectedValue(new ApiError("cita_solapada", 409, "conflict"));
+
+    await expect(
+      scheduleCitaCalendarioApi({
+        leadId: "lead-01",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        finalizaEn: "2026-03-01T11:00:00.000Z",
+        modalidad: "VIRTUAL",
+      }),
+    ).rejects.toThrow("Ese horario ya está ocupado para este asesor. Elige otro horario.");
+  });
+
+  it("convierte un 409 por duración mínima en un mensaje accionable", async () => {
+    postMock.mockRejectedValue(new ApiError("cita_duracion_minima", 409, "citas_duracion_minima"));
+
+    await expect(
+      scheduleCitaCalendarioApi({
+        leadId: "lead-01",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        finalizaEn: "2026-03-01T10:30:00.000Z",
+        modalidad: "VIRTUAL",
+      }),
+    ).rejects.toThrow("La cita debe durar al menos 1 hora. Ajusta la hora de finalización.");
+  });
+
+  it("preserva otros 409 específicos del backend", async () => {
+    postMock.mockRejectedValue(new ApiError("cita_no_reprogramable", 409, "La cita no puede reprogramarse"));
+
+    await expect(
+      rescheduleCitaCalendarioApi("cita-01", {
+        programadaPara: "2026-03-02T10:00:00.000Z",
+        finalizaEn: "2026-03-02T11:00:00.000Z",
+        modalidad: "VIRTUAL",
+      }),
+    ).rejects.toThrow("La cita no puede reprogramarse");
+  });
+});

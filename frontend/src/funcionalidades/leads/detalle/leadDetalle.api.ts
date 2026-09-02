@@ -1,4 +1,6 @@
 import { httpClient } from "@/api/httpClient";
+import { normalizeCitaSchedulingError } from "@/funcionalidades/citas/citas.errors";
+import { ensureFinalizaEn } from "@/funcionalidades/citas/citas.utils";
 import type { Cita, EstadoCita, ModalidadCita } from "@/tipos/cita";
 import type { FormaPago, Lead } from "@/tipos/lead";
 import type { EtapaCalificable, FormularioEtapa, RespuestasFormulario } from "@/tipos/formulario";
@@ -138,6 +140,7 @@ interface BackendCita {
   leadId: string;
   usuarioId: string;
   programadaPara: string;
+  finalizaEn?: string | null;
   modalidad: ModalidadCita;
   estado: EstadoCita;
   notas: string | null;
@@ -149,6 +152,7 @@ function mapCitaFromApi(raw: BackendCita): Cita {
     leadId: raw.leadId,
     usuarioId: raw.usuarioId,
     programadaPara: raw.programadaPara,
+    finalizaEn: raw.finalizaEn ?? undefined,
     modalidad: raw.modalidad,
     estado: raw.estado,
     notas: raw.notas ?? undefined,
@@ -165,6 +169,7 @@ interface ScheduleCitaInput {
   leadId: string;
   usuarioId: string;
   programadaPara: string;
+  finalizaEn?: string;
   modalidad: ModalidadCita;
   notas?: string;
 }
@@ -175,21 +180,39 @@ interface ScheduleCitaInput {
  * -- `httpClient` traduce el 422 a `ApiError`, no se duplica la validación acá.
  */
 export async function scheduleCitaApi(input: ScheduleCitaInput): Promise<Cita> {
-  const { cita } = await httpClient.post<{ cita: BackendCita }>(`/leads/${input.leadId}/citas`, {
-    usuarioId: input.usuarioId,
-    programadaPara: input.programadaPara,
-    modalidad: input.modalidad,
-    notas: input.notas,
-  });
-  return mapCitaFromApi(cita);
+  try {
+    const { cita } = await httpClient.post<{ cita: BackendCita }>(`/leads/${input.leadId}/citas`, {
+      usuarioId: input.usuarioId,
+      programadaPara: input.programadaPara,
+      finalizaEn: ensureFinalizaEn(input.programadaPara, input.finalizaEn),
+      modalidad: input.modalidad,
+      notas: input.notas,
+    });
+    return mapCitaFromApi(cita);
+  } catch (error) {
+    normalizeCitaSchedulingError(error);
+  }
+}
+
+interface RescheduleCitaInput {
+  programadaPara: string;
+  finalizaEn?: string;
+  modalidad?: ModalidadCita;
+  notas?: string;
+  usuarioId?: string;
 }
 
 /** `POST /citas/:citaId/reprogramar` (backend real -- verbo POST, no PATCH). */
-export async function rescheduleCitaApi(citaId: string, programadaPara: string): Promise<Cita> {
-  const { cita } = await httpClient.post<{ cita: BackendCita }>(`/citas/${citaId}/reprogramar`, {
-    programadaPara,
-  });
-  return mapCitaFromApi(cita);
+export async function rescheduleCitaApi(citaId: string, input: RescheduleCitaInput): Promise<Cita> {
+  try {
+    const { cita } = await httpClient.post<{ cita: BackendCita }>(`/citas/${citaId}/reprogramar`, {
+      ...input,
+      finalizaEn: ensureFinalizaEn(input.programadaPara, input.finalizaEn),
+    });
+    return mapCitaFromApi(cita);
+  } catch (error) {
+    normalizeCitaSchedulingError(error);
+  }
 }
 
 /**

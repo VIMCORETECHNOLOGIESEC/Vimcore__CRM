@@ -19,7 +19,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingState } from "@/componentes/states/LoadingState";
-import type { Cita, ModalidadCita } from "@/tipos/cita";
+import type { Cita } from "@/tipos/cita";
+import {
+  ESTADO_CITA_ETIQUETAS,
+  MODALIDAD_ETIQUETAS,
+  ensureFinalizaEn,
+  formatFechaHora,
+  formatRangoHora,
+} from "@/funcionalidades/citas/citas.utils";
 import { TUTORIAL_MOCK_LEAD_ID } from "../tutorial/tutorialMockLead";
 import {
   citaRescheduleSchema,
@@ -29,37 +36,20 @@ import {
 } from "./cita.schemas";
 import { useCancelCita, useCitasLead, useMarkCitaResult, useRescheduleCita, useScheduleCita } from "./useLeadDetalle";
 
-const MODALIDAD_ETIQUETAS: Record<ModalidadCita, string> = {
-  PRESENCIAL: "Presencial",
-  VIRTUAL: "Virtual",
-  TELEFONICA: "Telefónica",
-};
-
-const ESTADO_CITA_ETIQUETAS: Record<Cita["estado"], string> = {
-  AGENDADA: "Agendada",
-  CUMPLIDA: "Cumplida",
-  NO_ASISTIO: "No asistió",
-  REPROGRAMADA: "Reprogramada",
-  CANCELADA: "Cancelada",
-};
-
-function formatFechaHora(iso: string): string {
-  const fecha = new Date(iso);
-  const dia = String(fecha.getDate()).padStart(2, "0");
-  const mes = String(fecha.getMonth() + 1).padStart(2, "0");
-  const horas = String(fecha.getHours()).padStart(2, "0");
-  const minutos = String(fecha.getMinutes()).padStart(2, "0");
-  return `${dia}/${mes}/${fecha.getFullYear()} ${horas}:${minutos}`;
-}
-
 function CitaDateTimeField({
   value,
   onChange,
   error,
+  label = "Fecha y hora",
+  idPrefix = "cita",
+  timeAriaLabel = "Hora de la cita",
 }: {
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  label?: string;
+  idPrefix?: string;
+  timeAriaLabel?: string;
 }) {
   const [datePart, timePart] = value.split("T");
   const selectedDate = datePart ? new Date(`${datePart}T12:00:00`) : undefined;
@@ -71,14 +61,14 @@ function CitaDateTimeField({
 
   return (
     <fieldset className="flex min-w-0 flex-col gap-2">
-      <legend className="text-sm font-medium text-foreground">Fecha y hora</legend>
+      <legend className="text-sm font-medium text-foreground">{label}</legend>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_7.5rem] gap-2">
         <Popover>
           <PopoverTrigger asChild>
             <Button
               type="button"
               variant="outline"
-              id="fecha-cita"
+              id={`${idPrefix}-fecha`}
               className="h-10 min-w-0 justify-start gap-2 border-input bg-background px-3 text-left font-normal hover:bg-accent hover:text-accent-foreground"
             >
               <CalendarIcon className="size-4 shrink-0 text-marca-texto" aria-hidden="true" />
@@ -97,8 +87,8 @@ function CitaDateTimeField({
           </PopoverContent>
         </Popover>
         <Input
-          id="hora-cita"
-          aria-label="Hora de la cita"
+          id={`${idPrefix}-hora`}
+          aria-label={timeAriaLabel}
           type="time"
           value={timePart ?? ""}
           onChange={(event) =>
@@ -114,7 +104,14 @@ function CitaDateTimeField({
 
 interface CitaItemProps {
   cita: Cita;
-  onReschedule: (citaId: string, programadaPara: string) => void;
+  onReschedule: (input: {
+    citaId: string;
+    programadaPara: string;
+    finalizaEn?: string;
+    modalidad: Cita["modalidad"];
+    notas?: string;
+    usuarioId: string;
+  }) => void;
   reschedulingId: string | null;
 }
 
@@ -129,20 +126,29 @@ function CitaItem({ cita, onReschedule, reschedulingId }: CitaItemProps) {
     formState: { errors: rescheduleErrors },
   } = useForm<CitaRescheduleFormValues>({
     resolver: zodResolver(citaRescheduleSchema),
-    defaultValues: { programadaPara: "" },
+    defaultValues: { programadaPara: "", finalizaEn: "" },
   });
 
   const puedeAccionar = cita.estado === "AGENDADA" || cita.estado === "REPROGRAMADA";
 
   const confirmReschedule = handleRescheduleSubmit((valores) => {
-    onReschedule(cita.id, new Date(valores.programadaPara).toISOString());
+    onReschedule({
+      citaId: cita.id,
+      programadaPara: new Date(valores.programadaPara).toISOString(),
+      finalizaEn: ensureFinalizaEn(valores.programadaPara, valores.finalizaEn),
+      modalidad: cita.modalidad,
+      notas: cita.notas,
+      usuarioId: cita.usuarioId,
+    });
     setReprogramando(false);
   });
 
   return (
     <li className="flex flex-col gap-2 rounded-md border border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium text-foreground">{formatFechaHora(cita.programadaPara)}</span>
+        <span className="text-sm font-medium text-foreground">
+          {formatFechaHora(cita.programadaPara)} · {formatRangoHora(cita)}
+        </span>
         <span className="rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
           {MODALIDAD_ETIQUETAS[cita.modalidad]} · {ESTADO_CITA_ETIQUETAS[cita.estado]}
         </span>
@@ -192,6 +198,23 @@ function CitaItem({ cita, onReschedule, reschedulingId }: CitaItemProps) {
                   value={field.value}
                   onChange={field.onChange}
                   error={rescheduleErrors.programadaPara?.message}
+                  idPrefix={`reprogramar-${cita.id}-inicio`}
+                />
+              )}
+            />
+          </div>
+          <div className="min-w-0">
+            <Controller
+              control={rescheduleControl}
+              name="finalizaEn"
+              render={({ field }) => (
+                <CitaDateTimeField
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  error={rescheduleErrors.finalizaEn?.message}
+                  label="Finaliza"
+                  idPrefix={`reprogramar-${cita.id}-fin`}
+                  timeAriaLabel="Hora de finalización"
                 />
               )}
             />
@@ -228,7 +251,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
     formState: { errors },
   } = useForm<CitaScheduleFormValues>({
     resolver: zodResolver(citaScheduleSchema),
-    defaultValues: { programadaPara: "", modalidad: "VIRTUAL" },
+    defaultValues: { programadaPara: "", finalizaEn: "", modalidad: "VIRTUAL" },
   });
 
   const onSubmit = handleSubmit((valores) => {
@@ -236,6 +259,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
       {
         usuarioId,
         programadaPara: new Date(valores.programadaPara).toISOString(),
+        finalizaEn: ensureFinalizaEn(valores.programadaPara, valores.finalizaEn),
         modalidad: valores.modalidad,
         notas: valores.notas,
       },
@@ -288,7 +312,7 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
               key={cita.id}
               cita={cita}
               reschedulingId={rescheduleCita.isPending ? rescheduleCita.variables?.citaId ?? null : null}
-              onReschedule={(citaId, programadaPara) => rescheduleCita.mutate({ citaId, programadaPara })}
+              onReschedule={(input) => rescheduleCita.mutate(input)}
             />
           ))}
         </ul>
@@ -304,6 +328,23 @@ export function PanelCitas({ leadId, usuarioId }: PanelCitasProps) {
                 value={field.value}
                 onChange={field.onChange}
                 error={errors.programadaPara?.message}
+                idPrefix="agendar-cita-inicio"
+              />
+            )}
+          />
+        </div>
+        <div className="min-w-0">
+          <Controller
+            control={control}
+            name="finalizaEn"
+            render={({ field }) => (
+              <CitaDateTimeField
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                error={errors.finalizaEn?.message}
+                label="Finaliza"
+                idPrefix="agendar-cita-fin"
+                timeAriaLabel="Hora de finalización"
               />
             )}
           />

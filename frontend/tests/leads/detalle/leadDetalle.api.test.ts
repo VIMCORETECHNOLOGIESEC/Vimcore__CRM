@@ -1,15 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/api/httpClient", () => ({
-  httpClient: {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-  },
-}));
+vi.mock("@/api/httpClient", () => {
+  class ApiError extends Error {
+    public readonly code: string;
+    public readonly status: number;
 
-const { httpClient } = await import("@/api/httpClient");
+    constructor(code: string, status: number, message: string) {
+      super(message);
+      this.code = code;
+      this.status = status;
+    }
+  }
+
+  return {
+    ApiError,
+    httpClient: {
+      get: vi.fn(),
+      post: vi.fn(),
+      patch: vi.fn(),
+      delete: vi.fn(),
+    },
+  };
+});
+
+const { ApiError, httpClient } = await import("@/api/httpClient");
 const {
   fetchLeadDetalleApi,
   fetchFormularioEtapaApi,
@@ -217,6 +231,7 @@ describe("citas: agendar, reprogramar y marcar resultado (backend real, M7)", ()
     expect(postMock).toHaveBeenCalledWith("/leads/lead-01/citas", {
       usuarioId: "asesor-1",
       programadaPara: "2026-03-01T10:00:00.000Z",
+      finalizaEn: "2026-03-01T11:00:00.000Z",
       modalidad: "VIRTUAL",
       notas: undefined,
     });
@@ -243,18 +258,35 @@ describe("citas: agendar, reprogramar y marcar resultado (backend real, M7)", ()
         leadId: "lead-01",
         usuarioId: "asesor-1",
         programadaPara: "2026-03-02T10:00:00.000Z",
+        finalizaEn: "2026-03-02T11:00:00.000Z",
         modalidad: "VIRTUAL",
         estado: "AGENDADA",
         notas: null,
       },
     });
 
-    const cita = await rescheduleCitaApi("cita-01", "2026-03-02T10:00:00.000Z");
+    const cita = await rescheduleCitaApi("cita-01", { programadaPara: "2026-03-02T10:00:00.000Z" });
 
     expect(postMock).toHaveBeenCalledWith("/citas/cita-01/reprogramar", {
       programadaPara: "2026-03-02T10:00:00.000Z",
+      finalizaEn: "2026-03-02T11:00:00.000Z",
     });
     expect(cita.programadaPara).toBe("2026-03-02T10:00:00.000Z");
+    expect(cita.finalizaEn).toBe("2026-03-02T11:00:00.000Z");
+  });
+
+  it("scheduleCitaApi normaliza el 409 por duración mínima", async () => {
+    postMock.mockRejectedValue(new ApiError("cita_duracion_minima", 409, "citas_duracion_minima"));
+
+    await expect(
+      scheduleCitaApi({
+        leadId: "lead-01",
+        usuarioId: "asesor-1",
+        programadaPara: "2026-03-01T10:00:00.000Z",
+        finalizaEn: "2026-03-01T10:30:00.000Z",
+        modalidad: "VIRTUAL",
+      }),
+    ).rejects.toThrow("La cita debe durar al menos 1 hora. Ajusta la hora de finalización.");
   });
 
   it("fetchCitasLeadApi llama a GET /leads/:id/citas y mapea la lista", async () => {
