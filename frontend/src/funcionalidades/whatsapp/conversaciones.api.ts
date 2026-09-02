@@ -35,6 +35,19 @@ export interface ConversacionesQueryParams {
   limite: LimiteConversaciones;
   /** Aditivo al scope RBAC (`empresaId`/`asesorId`): acota a las conversaciones de un cliente puntual. */
   clienteId?: string;
+  /**
+   * Fix (2026-09-02, bug real de producción): drill-down de un holding-wide
+   * sobre una empresa puntual (`useVistaEmpresa()`) -- el backend
+   * (`conversaciones.service.ts::listConversaciones`, vía
+   * `leads.access.ts::aplicarFiltroEmpresa`) ya lo soporta desde hace días,
+   * pero esta interfaz nunca lo declaraba y ningún llamador lo mandaba: un
+   * holding-wide "entrando" a la vista de una empresa seguía viendo TODAS
+   * las conversaciones de TODO el holding mezcladas, sin ningún error --
+   * la rama 3 de `aplicarFiltroEmpresa` (holding-wide sin `query.empresaId`)
+   * agrega todo el holding en silencio. Mismo campo que ya usan
+   * `leads.api.ts`/`usuarios.api.ts`/`reportes` para este mismo patrón.
+   */
+  empresaId?: string;
 }
 
 export interface ListarConversacionesResponse {

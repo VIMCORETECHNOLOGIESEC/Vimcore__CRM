@@ -1,6 +1,7 @@
 import { MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router";
+import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { ConversacionAbierta } from "./ConversacionAbierta";
 import { ListaConversaciones } from "./ListaConversaciones";
 import { LIMITE_CONVERSACIONES_DEFECTO, useConversaciones } from "./useConversaciones";
@@ -20,11 +21,19 @@ export function ConversacionesPage() {
   const { id } = useParams<{ id: string }>();
   const [pagina, setPagina] = useState(1);
   const limite = LIMITE_CONVERSACIONES_DEFECTO;
+  // Fix (2026-09-02, bug real de producción): esta página nunca leía la
+  // vista de empresa de un holding-wide -- `GET /conversaciones` salía
+  // siempre sin `empresaId`, así que un holding-wide "entrando" a la vista
+  // de una empresa seguía viendo TODAS las conversaciones del holding
+  // mezcladas (el backend ya soportaba el filtro desde hace días, nadie lo
+  // mandaba). Mismo patrón que `LeadsPage.tsx`/`UsuariosPage.tsx`/
+  // `ReportesPage.tsx`.
+  const { empresaVistaId } = useVistaEmpresa();
 
   // El tiempo real (evento SSE `whatsapp.mensaje-nuevo`) lo maneja el consumidor
   // central `useNotificacionesRealtime`, montado en el layout: invalida las
   // queries de `conversaciones` sin que esta página abra su propia conexión.
-  const listaQuery = useConversaciones({ pagina, limite });
+  const listaQuery = useConversaciones({ pagina, limite, empresaId: empresaVistaId ?? undefined });
   const conversaciones = listaQuery.data?.conversaciones ?? [];
   const encabezado = conversaciones.find((conversacion) => conversacion.id === id);
 
