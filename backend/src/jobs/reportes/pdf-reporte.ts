@@ -113,6 +113,7 @@ function seccionPortada(datos: DatosReporte, logoDataUrl: string | null): Conten
     { text: "Reporte de embudo de leads", fontSize: 26, bold: true, color: datos.marca.colorPrimario, alignment: "center" },
     { text: alcance, fontSize: 12, alignment: "center", margin: [0, 12, 0, 0] },
     { text: `Generado el ${generadoEn} UTC`, fontSize: 10, alignment: "center", margin: [0, 4, 0, 0] },
+    { text: "Plantilla: Detallado", fontSize: 8, color: "#94A3B8", alignment: "center", margin: [0, 10, 0, 0] },
   );
 
   return [
@@ -397,6 +398,7 @@ function seccionPortadaEjecutiva(datos: DatosReporte, logoDataUrl: string | null
       stack: [
         { text: `Período: ${formatoRangoEjecutivo(datos)}`, fontSize: 9, color: "#334155" },
         { text: `Generado el: ${generadoEn} UTC`, fontSize: 9, color: "#334155", margin: [0, 2, 0, 0] },
+        { text: "Plantilla: Ejecutivo", fontSize: 8, color: "#94A3B8", margin: [0, 6, 0, 0] },
       ],
       absolutePosition: { x: 40, y: A4_ALTO - 110 },
     },
@@ -474,12 +476,21 @@ function tarjetaKpi(
   };
 }
 
+/**
+ * `columns`, no `table`: un `table` de pdfmake agrega padding por celda
+ * incluso con `layout: "noBorders"` (los `paddingLeft/Right` del layout por
+ * defecto no quedan en cero solo por sacar los bordes) -- con 4 columnas de
+ * 121pt + 3 gaps de 10pt (514pt, el ancho original) contra un área de
+ * contenido de 515.28pt (A4 menos márgenes de 40pt), ese padding extra
+ * alcanzaba para desbordar la última tarjeta fuera de la página (visto en
+ * producción, PDF real). Un `columns` no tiene ese padding implícito, así
+ * que el mismo ancho fijo por tarjeta queda seguro; se bajó igual a 120pt
+ * (480pt + 30pt de gaps = 510pt) para dejar un margen de seguridad real.
+ */
 function filaKpis(datos: DatosReporte): Content {
   const { colorPrimario, colorSecundario } = datos.marca;
   const { totalIngresados, tasaConversion, cumplimientoSla, tiempoPromedioCierre } = datos.resumen;
-  const colWidth = 121;
-  const gap = 10;
-  const espaciador: Content = { text: "" };
+  const colWidth = 120;
 
   const tiempoCierreValor = tiempoPromedioCierre.diasPromedio === null ? "—" : `${tiempoPromedioCierre.diasPromedio.toFixed(1)} d`;
 
@@ -491,11 +502,8 @@ function filaKpis(datos: DatosReporte): Content {
   ];
 
   return {
-    table: {
-      widths: [colWidth, gap, colWidth, gap, colWidth, gap, colWidth],
-      body: [[tarjetas[0]!, espaciador, tarjetas[1]!, espaciador, tarjetas[2]!, espaciador, tarjetas[3]!]],
-    },
-    layout: "noBorders",
+    columns: tarjetas.map((tarjeta) => ({ width: colWidth, ...tarjeta }) as ColumnaAncha),
+    columnGap: 10,
     margin: [0, 8, 0, 16],
   };
 }
@@ -558,13 +566,29 @@ function tablaCanales(datos: DatosReporte): Content {
       widths: ["*", "auto", "auto", "auto"],
       body: [
         [encabezado("Canal", colorSecundario), encabezado("Leads", colorSecundario), encabezado("Ventas", colorSecundario), encabezado("CAC", colorSecundario)],
-        ...filas.map((fila) => [
-          celda(fila.nombreCampania),
-          celda(String(fila.leads)),
-          celda(String(fila.ventas)),
-          celda(formatoCosto(fila.cac, fila.moneda)),
-        ]),
+        ...(filas.length === 0
+          ? [[{ text: "Sin datos de campañas para este período.", colSpan: 4, italics: true, color: "#94A3B8" }, {}, {}, {}]]
+          : filas.map((fila) => [
+              celda(fila.nombreCampania),
+              celda(String(fila.leads)),
+              celda(String(fila.ventas)),
+              celda(formatoCosto(fila.cac, fila.moneda)),
+            ])),
       ],
+    },
+    // Layout propio, no el grid con línea completa por defecto de pdfmake
+    // (fuera de lugar en esta plantilla, todo lo demás en "ejecutivo" es
+    // borderless -- el grid default solo tenía sentido en "detallado", que
+    // reusa `encabezado()`/`celda()` tal cual sin tocar su layout). Solo
+    // hairlines finas ENTRE filas de datos, nunca verticales, nada bajo el
+    // encabezado (su propio fondo de color ya lo separa) ni bajo la última
+    // fila.
+    layout: {
+      hLineWidth: (i: number, node: { table: { body: unknown[] } }) => (i > 1 && i < node.table.body.length ? 0.5 : 0),
+      vLineWidth: () => 0,
+      hLineColor: () => "#E2E8F0",
+      paddingTop: () => 4,
+      paddingBottom: () => 4,
     },
     fontSize: 8,
   };
@@ -646,7 +670,10 @@ function mayorCaidaFraseEjecutiva(pasos: DatosReporte["embudo"]["pasos"]): strin
     return "No se registran caídas significativas entre etapas del embudo en este período.";
   }
   const peor = conCaida.reduce((max, p) => (p.caidaPct > max.caidaPct ? p : max));
-  return `La mayor fuga del embudo está en el paso ${peor.etapa} (−${peor.caidaPct.toFixed(1)}%).`;
+  // Guion ASCII normal, nunca el signo menos Unicode (U+2212): Helvetica
+  // estándar de pdfmake solo soporta WinAnsi/CP1252, que no incluye ese
+  // glifo -- se renderiza como un caracter roto (visto en producción).
+  return `La mayor fuga del embudo está en el paso ${peor.etapa} (-${peor.caidaPct.toFixed(1)}%).`;
 }
 
 function seccionConclusiones(datos: DatosReporte): Content[] {
