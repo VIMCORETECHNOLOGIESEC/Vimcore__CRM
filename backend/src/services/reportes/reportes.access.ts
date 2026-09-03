@@ -45,12 +45,23 @@ export function puedeGenerarReportes(usuario: Pick<AuthenticatedUser, "rol">): b
  *   desde una `Membresia` real, o `null` = holding-wide) -- mismo criterio que
  *   los 7 endpoints de `metricas.service.ts` (sin selector de empresa
  *   explícito, el alcance es el de la sesión).
- * - Con él: debe corresponder a una `Membresia` ACTIVA real del usuario --
- *   se rechaza aunque coincida por casualidad con `usuario.empresaId` de la
- *   sesión actual, para no depender implícitamente de qué sesión abrió el
- *   usuario en este momento (un usuario con membresías activas en varias
- *   empresas puede pedir un reporte de cualquiera de ellas, no solo la de su
- *   sesión vigente).
+ * - Con él, sesión holding-wide (`usuario.empresaId === null`): se confía
+ *   directo, SIN exigir `Membresia` -- mismo criterio que
+ *   `metricas.access.ts::resolveEmpresaId` (el drill-down holding-wide del
+ *   Dashboard). Una sesión holding-wide por definición no tiene ninguna
+ *   `Membresia` propia (eso es justamente lo que la hace holding-wide, ver
+ *   `ROLES_REPORTES` arriba), así que exigirle una siempre rechazaba con 403
+ *   a cualquier holding-wide que pidiera un reporte acotado a una empresa
+ *   puntual -- bug real encontrado en producción (2026-09-03): el holding,
+ *   como contenedor de todas las empresas, ya tiene autorización sobre
+ *   cualquiera de ellas por construcción (docs/08 §1, `ROLES_ACCESO_TOTAL`).
+ * - Con él, sesión company-scoped (`usuario.empresaId !== null`): debe
+ *   corresponder a una `Membresia` ACTIVA real del usuario -- se rechaza
+ *   aunque coincida por casualidad con `usuario.empresaId` de la sesión
+ *   actual, para no depender implícitamente de qué sesión abrió el usuario
+ *   en este momento (un usuario con membresías activas en varias empresas
+ *   puede pedir un reporte de cualquiera de ellas, no solo la de su sesión
+ *   vigente).
  */
 export async function resolverEmpresaIdReporte(
   usuario: AuthenticatedUser,
@@ -59,6 +70,10 @@ export async function resolverEmpresaIdReporte(
 ): Promise<string | null> {
   if (empresaIdSolicitado === undefined) {
     return usuario.empresaId;
+  }
+
+  if (usuario.empresaId === null) {
+    return empresaIdSolicitado;
   }
 
   const membresiasActivas = await membresiaRepository.findActivasByUsuarioId(usuario.id, client);

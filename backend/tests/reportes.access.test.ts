@@ -75,11 +75,22 @@ describe("services/reportes/reportes.access — resolverEmpresaIdReporte (docs/b
     ).rejects.toMatchObject({ code: "empresa_no_autorizada", statusHttp: 403 });
   });
 
-  it("con empresaId solicitado y el usuario sin ninguna Membresia activa, rechaza con 403", async () => {
+  it("con empresaId solicitado y sesión company-scoped sin ninguna Membresia activa, rechaza con 403", async () => {
     mocks.findActivasByUsuarioId.mockResolvedValue([]);
 
     await expect(
-      resolverEmpresaIdReporte(usuario({ empresaId: null }), "empresa-cualquiera", {} as never),
+      resolverEmpresaIdReporte(usuario({ empresaId: "empresa-1" }), "empresa-cualquiera", {} as never),
     ).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("con empresaId solicitado y sesión holding-wide, lo acepta SIN consultar Membresia (el holding tiene autorización sobre cualquier empresa)", async () => {
+    const resultado = await resolverEmpresaIdReporte(
+      usuario({ empresaId: null }),
+      "empresa-cualquiera",
+      {} as never,
+    );
+
+    expect(resultado).toBe("empresa-cualquiera");
+    expect(mocks.findActivasByUsuarioId).not.toHaveBeenCalled();
   });
 });
