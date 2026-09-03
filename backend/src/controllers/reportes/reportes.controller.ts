@@ -8,6 +8,7 @@ import {
   obtenerJob,
   obtenerJobActivo,
   obtenerJobParaDescarga,
+  obtenerNombreArchivoReporte,
 } from "../../services/reportes/reportes.service.js";
 
 /**
@@ -67,6 +68,7 @@ export async function getReporteJobDescarga(req: Request, res: Response): Promis
     throw new AppError("archivo_no_encontrado", 404, "El archivo del reporte ya no está disponible");
   }
 
-  const url = await generarUrlTemporalReporte(job.archivoUrl);
+  const nombreArchivo = await obtenerNombreArchivoReporte(job);
+  const url = await generarUrlTemporalReporte(job.archivoUrl, nombreArchivo);
   res.status(200).json({ url });
 }

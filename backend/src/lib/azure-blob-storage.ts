@@ -209,8 +209,18 @@ export async function uploadReporteArchivo(input: UploadReporteInput): Promise<s
  * la cadena, el mismo formato que ya usa este archivo y el que trae Azurite
  * por default) -- si algún día la connection string cambia a un formato sin
  * account key, esta llamada fallaría explícito, no en silencio.
+ *
+ * `nombreDescarga` (nombre de archivo legible, 2026-09-03,
+ * `services/reportes/reportes.service.ts::obtenerNombreArchivoReporte`) va
+ * como override de `Content-Disposition` DENTRO de la propia URL firmada
+ * (`BlobGenerateSasUrlOptions.contentDisposition`) -- el navegador lo lee al
+ * descargar sin que el blob en sí necesite renombrarse ni el backend
+ * proxee el archivo.
  */
-export async function generarUrlTemporalReporte(blobName: string): Promise<string> {
+export async function generarUrlTemporalReporte(
+  blobName: string,
+  nombreDescarga: string,
+): Promise<string> {
   if (!env.AZURE_STORAGE_CONNECTION_STRING) throw storageNotConfigured();
 
   const blobServiceClient = BlobServiceClient.fromConnectionString(
@@ -233,5 +243,6 @@ export async function generarUrlTemporalReporte(blobName: string): Promise<strin
   return blockBlobClient.generateSasUrl({
     permissions: BlobSASPermissions.parse("r"),
     expiresOn: new Date(Date.now() + SAS_URL_TTL_MS),
+    contentDisposition: `attachment; filename="${nombreDescarga}"`,
   });
 }

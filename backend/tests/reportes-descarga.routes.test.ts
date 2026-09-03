@@ -102,7 +102,16 @@ describe("GET /api/v1/reportes/jobs/:id/descargar", () => {
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body).toEqual({ url: urlFirmada });
-    expect(mocks.generarUrlTemporalReporte).toHaveBeenCalledWith("un-blob-uuid.pdf");
+    // El nombre de marca depende de `configuracion_empresa` (fila singleton,
+    // real DB) -- no se hardcodea el valor exacto acá para no acoplar este
+    // test al orden de ejecución del resto de la suite (`fileParallelism:
+    // false`, misma BD compartida). Solo se valida la FORMA del nombre
+    // legible (`reporte-nombre-archivo.test.ts` cubre la sanitización en
+    // detalle, unitariamente).
+    expect(mocks.generarUrlTemporalReporte).toHaveBeenCalledWith(
+      "un-blob-uuid.pdf",
+      expect.stringMatching(/^[A-Z0-9_]+_\d{8}_\d{4}\.pdf$/),
+    );
   });
 
   it("404 cuando Azure Blob Storage ya no tiene el blob (generarUrlTemporalReporte rechaza con archivo_no_encontrado)", async () => {

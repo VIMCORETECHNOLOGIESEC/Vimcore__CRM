@@ -3,10 +3,12 @@ import { AppError } from "../../lib/app-error.js";
 import { eventBroker } from "../../lib/event-broker.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolverMarcaReporte } from "../../jobs/reportes/reporte-marca.js";
+import { construirNombreArchivoReporte } from "../../jobs/reportes/reporte-nombre-archivo.js";
 import * as reporteJobRepository from "../../repositories/reportes/reporte-job.repository.js";
 import type { CrearReporteJobBody } from "../../schemas/reportes/reporte.schema.js";
 import type { AuthenticatedUser } from "../../types/authenticated-user.js";
-import { comoJson, serializarParametros } from "./reporte-parametros.js";
+import { comoJson, serializarParametros, type ParametrosReportePersistidos } from "./reporte-parametros.js";
 import { puedeGenerarReportes, resolverEmpresaIdReporte } from "./reportes.access.js";
 
 /**
@@ -106,4 +108,27 @@ export async function obtenerJobParaDescarga(usuario: AuthenticatedUser, id: str
     throw new AppError("reporte_no_disponible", 409, "El reporte todavía no está listo para descargar");
   }
   return job;
+}
+
+/**
+ * Nombre de archivo legible para `GET /reportes/jobs/:id/descargar` --
+ * distinto del nombre del BLOB en Azure (un uuid opaco, ver
+ * `lib/azure-blob-storage.ts::uploadReporteArchivo`). Importa
+ * `jobs/reportes/reporte-marca.ts` de forma estática y segura: ese módulo
+ * solo depende de `repositories/empresa.repository.ts` y
+ * `services/configuracion-empresa.service.ts`, nunca de
+ * `services/metricas.service.ts` (ni siquiera transitivamente) -- el
+ * aislamiento de import dinámico que documenta el docblock de arriba es
+ * específico de `jobs/reportes/reporte-generacion.job.ts` (el módulo que sí
+ * ejecuta la agregación real vía `metricas.service.ts`), no aplica acá.
+ *
+ * `job.tipo` es `String` en el schema de Prisma (comentario `"pdf" | "xlsx"`,
+ * no un enum real) -- se normaliza defensivamente a `"xlsx"` solo con match
+ * exacto, cualquier otro valor cae a `"pdf"`.
+ */
+export async function obtenerNombreArchivoReporte(job: ReporteJob): Promise<string> {
+  const parametros = job.parametros as unknown as ParametrosReportePersistidos;
+  const marca = await resolverMarcaReporte(parametros.empresaId ?? null);
+  const extension: "pdf" | "xlsx" = job.tipo === "xlsx" ? "xlsx" : "pdf";
+  return construirNombreArchivoReporte(marca.nombre, job.finalizadoEn ?? job.creadoEn, extension);
 }

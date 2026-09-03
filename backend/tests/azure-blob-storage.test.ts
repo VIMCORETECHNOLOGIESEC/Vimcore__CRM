@@ -189,17 +189,20 @@ describe("lib/azure-blob-storage — uploadReporteArchivo", () => {
 });
 
 describe("lib/azure-blob-storage — generarUrlTemporalReporte", () => {
-  it("genera una URL firmada (SAS) de solo lectura para el blob privado", async () => {
+  it("genera una URL firmada (SAS) de solo lectura para el blob privado, con Content-Disposition (nombre de descarga legible)", async () => {
     mocks.exists.mockResolvedValue(true);
     const sasUrl = "https://nexuscorp.blob.core.windows.net/reportes/un-blob.pdf?sv=2024&sig=abc";
     mocks.generateSasUrl.mockResolvedValue(sasUrl);
 
-    const resultado = await generarUrlTemporalReporte("un-blob.pdf");
+    const resultado = await generarUrlTemporalReporte("un-blob.pdf", "ARCANO_CRM_03092026_1530.pdf");
 
     expect(mocks.getContainerClient).toHaveBeenCalledWith("reportes");
     expect(mocks.getBlockBlobClient).toHaveBeenCalledWith("un-blob.pdf");
     expect(mocks.generateSasUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ permissions: { read: true } }),
+      expect.objectContaining({
+        permissions: { read: true },
+        contentDisposition: 'attachment; filename="ARCANO_CRM_03092026_1530.pdf"',
+      }),
     );
     expect(resultado).toBe(sasUrl);
   });
@@ -207,7 +210,9 @@ describe("lib/azure-blob-storage — generarUrlTemporalReporte", () => {
   it("lanza archivo_no_encontrado (404) cuando el blob no existe", async () => {
     mocks.exists.mockResolvedValue(false);
 
-    await expect(generarUrlTemporalReporte("no-existe.pdf")).rejects.toMatchObject({
+    await expect(
+      generarUrlTemporalReporte("no-existe.pdf", "REPORTE_03092026_1530.pdf"),
+    ).rejects.toMatchObject({
       code: "archivo_no_encontrado",
       statusHttp: 404,
     });
@@ -218,7 +223,9 @@ describe("lib/azure-blob-storage — generarUrlTemporalReporte", () => {
   it("lanza archivo_no_encontrado (404) cuando Azure responde que el blob no existe (error, no false)", async () => {
     mocks.exists.mockRejectedValue({ statusCode: 404, code: "BlobNotFound" });
 
-    await expect(generarUrlTemporalReporte("no-existe.pdf")).rejects.toMatchObject({
+    await expect(
+      generarUrlTemporalReporte("no-existe.pdf", "REPORTE_03092026_1530.pdf"),
+    ).rejects.toMatchObject({
       code: "archivo_no_encontrado",
       statusHttp: 404,
     });
@@ -227,7 +234,9 @@ describe("lib/azure-blob-storage — generarUrlTemporalReporte", () => {
   it("responde 503 cuando falta AZURE_STORAGE_CONNECTION_STRING", async () => {
     mocks.env.AZURE_STORAGE_CONNECTION_STRING = undefined;
 
-    await expect(generarUrlTemporalReporte("un-blob.pdf")).rejects.toMatchObject({
+    await expect(
+      generarUrlTemporalReporte("un-blob.pdf", "REPORTE_03092026_1530.pdf"),
+    ).rejects.toMatchObject({
       code: "almacenamiento_no_configurado",
       statusHttp: 503,
     });
