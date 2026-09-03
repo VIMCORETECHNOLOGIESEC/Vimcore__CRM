@@ -10,6 +10,7 @@ import { getEmbudo, getPorAsesor, getPorCampania, getRendimientoCampanias, getRe
 import type { ParametrosReportePersistidos } from "../../services/reportes/reporte-parametros.js";
 import { aMetricasQuery } from "../../services/reportes/reporte-parametros.js";
 import { generarPdfReporte } from "./pdf-reporte.js";
+import { resolverMarcaReporte } from "./reporte-marca.js";
 import type { DatosReporte } from "./tipos.js";
 import { generarXlsxReporte } from "./xlsx-reporte.js";
 
@@ -84,7 +85,7 @@ async function generarArchivo(
   usuarioView: UsuarioAcceso,
   query: ReturnType<typeof aMetricasQuery>,
 ): Promise<string> {
-  const [resumen, embudo, porCampania, rendimientoCampanias, porAsesor] = await Promise.all([
+  const [resumen, embudo, porCampania, rendimientoCampanias, porAsesor, marca] = await Promise.all([
     getResumen(usuarioView, query),
     getEmbudo(usuarioView, query),
     getPorCampania(usuarioView, query),
@@ -96,9 +97,22 @@ async function generarArchivo(
       if (err instanceof AppError && err.statusHttp === 403) return null;
       throw err;
     }),
+    // pdfmake-migracion: `Empresa`/`ConfiguracionEmpresa` no tienen RLS
+    // (mismo comentario que en `empresa.repository.ts::findById`), así que
+    // resolver esto en paralelo con las 5 llamadas de métricas no tiene
+    // ningún problema de tenant-context.
+    resolverMarcaReporte(usuarioView.empresaId),
   ]);
 
-  const datos: DatosReporte = { empresaId: usuarioView.empresaId, resumen, embudo, porCampania, rendimientoCampanias, porAsesor };
+  const datos: DatosReporte = {
+    empresaId: usuarioView.empresaId,
+    resumen,
+    embudo,
+    porCampania,
+    rendimientoCampanias,
+    porAsesor,
+    marca,
+  };
 
   const buffer = tipo === "pdf" ? await generarPdfReporte(datos) : await generarXlsxReporte(datos);
   const mimeType = tipo === "pdf" ? PDF_MIME_TYPE : XLSX_MIME_TYPE;

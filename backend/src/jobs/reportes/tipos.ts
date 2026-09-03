@@ -17,6 +17,20 @@ import type { MetaAdsRendimientoCampaniaDto } from "../../types/metaAds/meta-ads
  * esta gráfica"). `rendimientoCampanias` viene del mismo servicio de métricas
  * que usa el dashboard, ya con CPC/CPL/CAC reales de `CampaniaMetricaDiaria`.
  */
+/**
+ * pdfmake-migracion: branding a aplicar en la portada/encabezados de tabla
+ * del PDF (y, en el futuro, del XLSX) -- ya resuelto por
+ * `reporte-marca.ts::resolverMarcaReporte` ANTES de llegar acá, así que
+ * `pdf-reporte.ts` se mantiene como renderer puro (nunca vuelve a tocar
+ * Prisma ni la jerarquía empresa/holding).
+ */
+export interface MarcaReporte {
+  nombre: string;
+  colorPrimario: string;
+  colorSecundario: string;
+  logoUrl: string | null;
+}
+
 export interface DatosReporte {
   empresaId: string | null;
   resumen: ResumenResponse;
@@ -24,4 +38,5 @@ export interface DatosReporte {
   porCampania: PorCampaniaItem[];
   rendimientoCampanias: MetaAdsRendimientoCampaniaDto[];
   porAsesor: PorAsesorItem[] | null;
+  marca: MarcaReporte;
 }
