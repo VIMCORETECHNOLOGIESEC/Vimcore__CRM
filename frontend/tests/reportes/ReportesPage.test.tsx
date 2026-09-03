@@ -13,6 +13,13 @@ import type { RolUsuario, SessionScope } from "@/tipos/usuario";
  * (mismo criterio que `tests/whatsapp/ConversacionesPage.test.tsx`). El
  * catálogo de campañas/responsables (`leads.api`) y `useAuth` también van
  * mockeados -- misma composición que `DashboardPage.tsx`.
+ *
+ * Sesión holding-wide: el filtro de empresa usa `SelectorEmpresaDashboard`
+ * (mismo componente que `DashboardPage.tsx`, con su propio test unitario en
+ * `SelectorEmpresaDashboard.test.tsx`) -- acá solo se mockea
+ * `empresa-apariencia-holding.api` (mismo mock que ya usa
+ * `DashboardPage.test.tsx`) para poder abrir el combobox y elegir una
+ * empresa, sin volver a probar el combobox en sí.
  */
 vi.mock("@/funcionalidades/reportes/reportes.api", () => ({
   crearReporteJobApi: vi.fn(),
@@ -25,10 +32,14 @@ vi.mock("@/funcionalidades/leads/leads.api", () => ({
   getCatalogoResponsables: vi.fn(() => Promise.resolve([])),
 }));
 vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({ useAuth: vi.fn() }));
+vi.mock("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api", () => ({
+  fetchEmpresasHoldingApi: vi.fn(),
+}));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const api = await import("@/funcionalidades/reportes/reportes.api");
 const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
+const empresasApi = await import("@/funcionalidades/empresa-apariencia/empresa-apariencia-holding.api");
 const { toast } = await import("sonner");
 const { ReportesPage } = await import("@/funcionalidades/reportes/ReportesPage");
 
@@ -37,6 +48,7 @@ const fetchReporteJobActivoApiMock = vi.mocked(api.fetchReporteJobActivoApi);
 const fetchReporteJobApiMock = vi.mocked(api.fetchReporteJobApi);
 const descargarReporteApiMock = vi.mocked(api.descargarReporteApi);
 const useAuthMock = vi.mocked(useAuth);
+const fetchEmpresasHoldingApiMock = vi.mocked(empresasApi.fetchEmpresasHoldingApi);
 const toastErrorMock = vi.mocked(toast.error);
 
 function jobFake(overrides: Partial<ReporteJob> = {}): ReporteJob {
@@ -88,6 +100,13 @@ beforeEach(() => {
   descargarReporteApiMock.mockReset();
   toastErrorMock.mockReset();
   fetchReporteJobActivoApiMock.mockResolvedValue(null);
+  fetchEmpresasHoldingApiMock.mockReset().mockResolvedValue({
+    items: [
+      { id: "empresa-1", nombre: "Empresa A", colorPrimario: null, colorSecundario: null, logoUrl: null },
+      { id: "empresa-2", nombre: "Empresa B", colorPrimario: null, colorSecundario: null, logoUrl: null },
+    ],
+    total: 2,
+  } as never);
   mockearAuth("ADMINISTRADOR");
 });
 
@@ -227,13 +246,19 @@ describe("ReportesPage — descarga del archivo", () => {
 });
 
 describe("ReportesPage — sesión holding-wide", () => {
-  it("sin ?empresaId en la URL, avisa que el reporte cubre todo el holding y no manda empresaId", async () => {
+  it("muestra el selector de empresa (SelectorEmpresaDashboard)", async () => {
+    mockearAuth("ADMINISTRADOR", "holding");
+    renderPage();
+    expect(await screen.findByRole("combobox", { name: "Empresa" })).toBeInTheDocument();
+  });
+
+  it("sin seleccionar empresa, el reporte sale holding-wide (sin empresaId)", async () => {
     mockearAuth("ADMINISTRADOR", "holding");
     const user = userEvent.setup();
     crearReporteJobApiMock.mockResolvedValue(jobFake());
     fetchReporteJobApiMock.mockResolvedValue(jobFake());
-    renderPage("/reportes");
-    await screen.findByText(/todo el holding/i);
+    renderPage();
+    await screen.findByRole("combobox", { name: "Empresa" });
 
     await user.click(screen.getByRole("button", { name: "Generar reporte" }));
 
@@ -242,28 +267,30 @@ describe("ReportesPage — sesión holding-wide", () => {
     );
   });
 
-  it("con ?empresaId= en la URL, manda ese empresaId en los parámetros", async () => {
+  it("eligiendo una empresa en el selector, manda ese empresaId en los parámetros", async () => {
     mockearAuth("ADMINISTRADOR", "holding");
     const user = userEvent.setup();
     crearReporteJobApiMock.mockResolvedValue(jobFake());
     fetchReporteJobApiMock.mockResolvedValue(jobFake());
-    renderPage("/reportes?empresaId=empresa-9");
-    await screen.findByText(/empresa seleccionada/i);
+    renderPage();
+    const boton = await screen.findByRole("combobox", { name: "Empresa" });
+    await user.click(boton);
+    await user.click(await screen.findByText("Empresa A"));
 
     await user.click(screen.getByRole("button", { name: "Generar reporte" }));
 
     await waitFor(() =>
       expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", {
         rango: "7d",
-        empresaId: "empresa-9",
+        empresaId: "empresa-1",
       }),
     );
   });
 
-  it("una sesión company nunca muestra el aviso de holding", async () => {
+  it("una sesión company nunca ve el selector de empresa", async () => {
     mockearAuth("ADMINISTRADOR", "company");
     renderPage();
     await screen.findByText("Todavía no generaste ningún reporte");
-    expect(screen.queryByText(/todo el holding/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Empresa" })).not.toBeInTheDocument();
   });
 });

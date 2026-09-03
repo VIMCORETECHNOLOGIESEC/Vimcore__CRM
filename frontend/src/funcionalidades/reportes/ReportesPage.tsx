@@ -18,6 +18,7 @@ import {
 import { DashboardFiltros } from "@/funcionalidades/dashboard/DashboardFiltros";
 import { FiltroRangoFechas } from "@/funcionalidades/dashboard/FiltroRangoFechas";
 import { formatFechaLocal } from "@/funcionalidades/dashboard/rangoFechas";
+import { SelectorEmpresaDashboard } from "@/funcionalidades/dashboard/SelectorEmpresaDashboard";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
@@ -65,19 +66,34 @@ type GenerarReporteValues = z.infer<typeof generarReporteSchema>;
  * cableada en `useNotificacionesRealtime.ts` -- esta página nunca hace
  * polling.
  *
- * Sesión holding-wide: reusa la MISMA técnica que
- * `ConectarWhatsAppCard.tsx`/`GraficoRankingProductosPorEmpresa.tsx`
- * (`user?.sessionScope === "holding"` + `useVistaEmpresa()` sobre
- * `?empresaId=` en la URL) en vez de construir un selector de empresa
- * nuevo -- a diferencia de WhatsApp, acá `empresaId` es opcional (el
- * backend real no lo exige), así que sin `?empresaId=` el reporte
- * simplemente cubre todo el holding.
+ * Sesión holding-wide: reusa el mismo patrón que `DashboardPage.tsx` para su
+ * filtro de empresa -- un combobox dedicado (`SelectorEmpresaDashboard`) con
+ * estado local (`empresaFiltroId`) sembrado como valor INICIAL desde
+ * `useVistaEmpresa()` y resincronizado solo cuando `empresaVistaId` cambia
+ * (entrar/salir/cambiar de vista de empresa en otra pantalla) -- mientras la
+ * vista se mantiene igual, una elección manual en este selector no se pisa
+ * sola. El gate, sin embargo, es `esHoldingWide` (`sessionScope ===
+ * "holding"`), NO el `hasRole(["ADMINISTRADOR"])` que usa el Dashboard: el
+ * backend de Reportes (`ROLES_REPORTES`) es más permisivo que el de métricas
+ * (ADMINISTRADOR-only para el override de `empresaId`), así que copiar el
+ * gate del Dashboard ocultaría el selector a un SUPERVISOR holding-wide al
+ * que el backend sí le acepta un `empresaId` explícito. `empresaId` sigue
+ * siendo opcional (a diferencia de WhatsApp): sin selección, el reporte
+ * cubre todo el holding.
  */
 export function ReportesPage() {
   const { hasRole, user } = useAuth();
   const esGestorDeCartera = hasRole(["ADMINISTRADOR", "SUPERVISOR"]);
   const esHoldingWide = user?.sessionScope === "holding";
+  // Estado local del selector de empresa -- mismo patrón que
+  // `DashboardPage.tsx::empresaFiltroId`: sembrado desde `useVistaEmpresa()`
+  // solo como valor inicial, resincronizado cuando la vista de empresa
+  // cambia, pero sin pisar una elección manual mientras se mantiene igual.
   const { empresaVistaId } = useVistaEmpresa();
+  const [empresaFiltroId, setEmpresaFiltroId] = useState<string | null>(empresaVistaId);
+  useEffect(() => {
+    setEmpresaFiltroId(empresaVistaId);
+  }, [empresaVistaId]);
 
   usePageHeader({ title: "Reportes" });
 
@@ -123,8 +139,8 @@ export function ReportesPage() {
 
   const enviar = handleSubmit((valores) => {
     const parametros: ReporteParametros = { ...buildMetricasFiltros(filtrosDashboard, rango) };
-    if (esHoldingWide && empresaVistaId) {
-      parametros.empresaId = empresaVistaId;
+    if (esHoldingWide && empresaFiltroId) {
+      parametros.empresaId = empresaFiltroId;
     }
     crearJob.mutate({ tipo: valores.tipo, parametros });
   });
@@ -178,11 +194,7 @@ export function ReportesPage() {
         />
 
         {esHoldingWide ? (
-          <p className="text-sm text-muted-foreground">
-            {empresaVistaId
-              ? "Se generará para la empresa seleccionada en «Empresas»."
-              : "Se generará para todo el holding (sin acotar a una empresa). Elige una empresa desde «Empresas» para acotarlo."}
-          </p>
+          <SelectorEmpresaDashboard empresaId={empresaFiltroId} onChange={setEmpresaFiltroId} />
         ) : null}
 
         <Button type="submit" disabled={crearJob.isPending} className="w-fit">
