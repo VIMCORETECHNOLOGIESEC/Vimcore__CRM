@@ -62,6 +62,7 @@ function datosBase(overrides: Partial<DatosReporte> = {}): DatosReporte {
       { responsableId: "u-1", nombre: "Ana Vendedora", total: 20, ventas: 8, noVentas: 12, tasaConversionPct: 40, cumplimientoSlaPct: 90 },
     ],
     marca: { nombre: "Holding Demo", colorPrimario: "#7c2d12", colorSecundario: "#f97316", logoUrl: null },
+    plantilla: "detallado",
     ...overrides,
   };
 }
@@ -151,6 +152,106 @@ describe("jobs/reportes/pdf-reporte — generarPdfReporte", () => {
     );
 
     const datos = datosBase({
+      empresaId: "empresa-1",
+      marca: { nombre: "Empresa Uno", colorPrimario: "#123456", colorSecundario: "#abcdef", logoUrl: "https://storage.local/logo.png" },
+    });
+
+    const buffer = await generarPdfReporte(datos);
+
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+});
+
+/**
+ * pdf-ejecutivo: plantilla nueva y aditiva -- el PDF "detallado" (suite de
+ * arriba) sigue intacto y es el default. Mismo criterio de la suite de
+ * arriba: solo se verifica que el buffer sea un PDF válido (`%PDF-`), nunca
+ * se parsea/inspecciona el contenido interno (no hay librería de lectura de
+ * PDF en el proyecto, y no se agrega una para esto).
+ */
+describe("jobs/reportes/pdf-reporte — generarPdfReporte (plantilla ejecutivo)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("genera un PDF ejecutivo válido para un reporte holding-wide sin logo", async () => {
+    const buffer = await generarPdfReporte(datosBase({ plantilla: "ejecutivo" }));
+
+    expect(Buffer.isBuffer(buffer)).toBe(true);
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("genera un PDF ejecutivo válido para un reporte de empresa con logo embebible", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(pngResponse());
+
+    const datos = datosBase({
+      plantilla: "ejecutivo",
+      empresaId: "empresa-1",
+      marca: { nombre: "Empresa Uno", colorPrimario: "#123456", colorSecundario: "#abcdef", logoUrl: "https://storage.local/logo.png" },
+    });
+
+    const buffer = await generarPdfReporte(datos);
+
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(fetch).toHaveBeenCalledWith("https://storage.local/logo.png", expect.anything());
+  });
+
+  it("distribucionSemaforo en cero (sin leads en gestión) no lanza -- guarda contra división por cero", async () => {
+    const datos = datosBase({
+      plantilla: "ejecutivo",
+      resumen: {
+        ...datosBase().resumen,
+        distribucionSemaforo: { rojo: 0, amarillo: 0, verde: 0, sinCalificar: 0 },
+      },
+    });
+
+    const buffer = await generarPdfReporte(datos);
+
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("embudo.pasos vacío no lanza -- guarda contra Math.max sobre un array vacío", async () => {
+    const datos = datosBase({ plantilla: "ejecutivo", embudo: { pasos: [], noVenta: 0 } });
+
+    const buffer = await generarPdfReporte(datos);
+
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("rendimientoCampanias vacío no lanza -- top 5 de un array vacío", async () => {
+    const buffer = await generarPdfReporte(datosBase({ plantilla: "ejecutivo", rendimientoCampanias: [] }));
+
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("variaciones nulas (sin comparación posible) no lanzan y no rompen el semáforo de color de las tarjetas KPI", async () => {
+    const base = datosBase();
+    const datos = datosBase({
+      plantilla: "ejecutivo",
+      resumen: {
+        ...base.resumen,
+        totalIngresados: { ...base.resumen.totalIngresados, variacionPorcentual: null },
+        tasaConversion: { ...base.resumen.tasaConversion, variacionPorcentual: null },
+        cumplimientoSla: { ...base.resumen.cumplimientoSla, variacionPorcentual: null },
+        tiempoPromedioCierre: { ...base.resumen.tiempoPromedioCierre, variacionPorcentual: null },
+      },
+    });
+
+    const buffer = await generarPdfReporte(datos);
+
+    expect(buffer.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("fetch de logo rechazado degrada a PDF ejecutivo sin logo (fallback de marca), sin lanzar", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("network down"));
+
+    const datos = datosBase({
+      plantilla: "ejecutivo",
       empresaId: "empresa-1",
       marca: { nombre: "Empresa Uno", colorPrimario: "#123456", colorSecundario: "#abcdef", logoUrl: "https://storage.local/logo.png" },
     });

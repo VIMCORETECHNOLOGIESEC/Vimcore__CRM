@@ -243,6 +243,483 @@ function seccionAsesor(datos: DatosReporte): Content[] {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// pdf-ejecutivo: plantilla ALTERNATIVA y ADITIVA -- todo lo de arriba
+// (`construirDocDefinition`/`seccion*` del "detallado") queda intacto y
+// sigue siendo el default (`DatosReporte.plantilla === "detallado"`).
+// `generarPdfReporte` (al final de este archivo) decide cuál renderer llamar
+// según ese campo, ya resuelto por `reporte-generacion.job.ts` a partir de
+// `parametros.plantilla` (`reporteParametrosSchema`, default "detallado").
+//
+// Sin fuente custom embebida (`defaultStyle: { font: "Helvetica" }`, decisión
+// explícita v1, igual que el "detallado") y sin librería de gráficos/canvas
+// server-side nueva -- todo lo visual (franjas, barras, semáforo apilado) es
+// `canvas` nativo de pdfmake (motor pdfkit).
+// ---------------------------------------------------------------------------
+
+const A4_ANCHO = 595.28;
+const A4_ALTO = 841.89;
+
+/**
+ * `@types/pdfmake` define `Column = Content & ColumnProperties` en
+ * `interfaces.d.ts` (`width?: Size`), pero NO lo re-exporta desde el paquete
+ * `"pdfmake"` en sí (`index.d.ts` solo exporta `Content`, `Table`,
+ * `TableCell`, etc.) -- se redeclara acá localmente en vez de importarlo,
+ * exactamente con la misma forma, para poder tipar el retorno de funciones
+ * que arman una entrada de `columns` con ancho fijo (`marcaMarcaColumna`)
+ * sin que el chequeo de propiedades excedentes de TS rechace `width` contra
+ * el tipo `Content` "pelado" (que no lo tiene en la variante `ContentStack`).
+ */
+type ColumnaAncha = Content & { width?: string | number };
+
+// Colores del semáforo: FIJOS y reservados, nunca `colorPrimario`/
+// `colorSecundario` de marca (a diferencia de todo lo demás en esta
+// plantilla, que SIEMPRE usa `datos.marca.*` -- nunca un color hardcodeado
+// de una empresa puntual). Mismos 4 valores ya establecidos en el proyecto
+// para el semáforo de leads (frontend, `docs/09-linea-grafica-frontend.md`).
+const SEMAFORO_VERDE = "#16A34A";
+const SEMAFORO_AMBAR = "#D97706";
+const SEMAFORO_ROJO = "#DC2626";
+const SEMAFORO_GRIS = "#94A3B8";
+
+function formatoFechaCorta(fecha: Date): string {
+  return fecha.toLocaleDateString("es-AR", { timeZone: "UTC" });
+}
+
+function formatoRangoEjecutivo(datos: DatosReporte): string {
+  const { desde, hasta } = datos.resumen.rango;
+  return `${formatoFechaCorta(desde)} – ${formatoFechaCorta(hasta)}`;
+}
+
+/**
+ * Logo real (SI `logoDataUrl !== null`) o fallback a un cuadrado
+ * `colorPrimario` con la primera letra de `nombre` en `colorSecundario`
+ * (canvas rect + texto superpuesto vía `relativePosition`) -- nunca un
+ * ícono genérico, mismo criterio que ya sigue `resolverLogoDataUrl` de no
+ * inventar un logo que no existe. Devuelve contenido SIN ancho propio salvo
+ * en el caso de imagen real (`width` en el nodo `image`) -- quien lo use
+ * dentro de `columns` debe envolverlo con `{ width: size, ... }` para que
+ * el motor de layout no lo estire a lo ancho del contenedor (necesario para
+ * que el texto superpuesto del fallback quede centrado sobre el cuadrado).
+ */
+type MarcaMarcaContenido = { image: string; width: number } | { stack: Content[] };
+
+function marcaMarcaContenido(
+  nombre: string,
+  colorPrimario: string,
+  colorSecundario: string,
+  logoDataUrl: string | null,
+  size: number,
+): MarcaMarcaContenido {
+  if (logoDataUrl !== null) {
+    return { image: logoDataUrl, width: size };
+  }
+
+  const letra = (nombre.trim().charAt(0) || "?").toUpperCase();
+  return {
+    stack: [
+      { canvas: [{ type: "rect", x: 0, y: 0, w: size, h: size, color: colorPrimario }] },
+      {
+        text: letra,
+        color: colorSecundario,
+        bold: true,
+        fontSize: Math.round(size * 0.5),
+        alignment: "center",
+        relativePosition: { x: 0, y: -Math.round(size * 0.78) },
+      },
+    ],
+  };
+}
+
+function marcaMarcaColumna(
+  nombre: string,
+  colorPrimario: string,
+  colorSecundario: string,
+  logoDataUrl: string | null,
+  size: number,
+): ColumnaAncha {
+  return { width: size, ...marcaMarcaContenido(nombre, colorPrimario, colorSecundario, logoDataUrl, size) };
+}
+
+/**
+ * Página 1 -- "terrazas del embudo": 4 franjas verticales apiladas,
+ * ancho decreciente hacia abajo, alineadas al borde derecho de la página
+ * (A4 = 595.28 × 841.89pt), ignorando el margen de 40pt del documento SOLO
+ * para estos rects (`absolutePosition`). Traducción directa de un mock ya
+ * aprobado -- las proporciones (42%/54.76%/67.52%/79.12% del ancho de
+ * página) no son arbitrarias, no reinterpretar.
+ */
+function franjasPortada(colorPrimario: string, colorSecundario: string): Content {
+  const franjas = [
+    { xPct: 0.42, color: colorSecundario, fillOpacity: 1 },
+    { xPct: 0.5476, color: colorPrimario, fillOpacity: 1 },
+    { xPct: 0.6752, color: colorSecundario, fillOpacity: 0.55 },
+    { xPct: 0.7912, color: colorPrimario, fillOpacity: 0.85 },
+  ];
+  const alturaFranja = A4_ALTO / franjas.length;
+
+  return {
+    canvas: franjas.map((f, i) => ({
+      type: "rect" as const,
+      x: A4_ANCHO * f.xPct,
+      y: i * alturaFranja,
+      w: A4_ANCHO * (1 - f.xPct),
+      h: alturaFranja,
+      color: f.color,
+      fillOpacity: f.fillOpacity,
+    })),
+    absolutePosition: { x: 0, y: 0 },
+  };
+}
+
+function seccionPortadaEjecutiva(datos: DatosReporte, logoDataUrl: string | null): Content[] {
+  const generadoEn = new Date().toLocaleString("es-AR", { timeZone: "UTC" });
+  const { colorPrimario, colorSecundario, nombre } = datos.marca;
+  const alcance = datos.empresaId === null ? "Holding · todas las empresas" : "Vista de empresa";
+
+  return [
+    franjasPortada(colorPrimario, colorSecundario),
+    {
+      columns: [marcaMarcaColumna(nombre, colorPrimario, colorSecundario, logoDataUrl, 32)],
+      margin: [0, 0, 0, 8],
+    },
+    { text: nombre, bold: true, fontSize: 13, color: colorPrimario },
+    { text: alcance, fontSize: 9, color: "#64748B", margin: [0, 2, 0, 0] },
+    {
+      stack: [
+        { text: "INFORME EJECUTIVO", fontSize: 10, bold: true, color: colorSecundario },
+        { text: "Resumen de\nembudo de ventas", fontSize: 30, bold: true, color: colorPrimario, margin: [0, 8, 0, 14] },
+        { canvas: [{ type: "line", x1: 0, y1: 0, x2: 140, y2: 0, lineWidth: 2, lineColor: colorSecundario }] },
+      ],
+      margin: [0, 230, 0, 0],
+    },
+    {
+      stack: [
+        { text: `Período: ${formatoRangoEjecutivo(datos)}`, fontSize: 9, color: "#334155" },
+        { text: `Generado el: ${generadoEn} UTC`, fontSize: 9, color: "#334155", margin: [0, 2, 0, 0] },
+      ],
+      absolutePosition: { x: 40, y: A4_ALTO - 110 },
+    },
+    { text: "", pageBreak: "after" },
+  ];
+}
+
+function tituloSeccionEjecutiva(texto: string, colorPrimario: string): Content {
+  return { text: texto, fontSize: 13, bold: true, color: colorPrimario, margin: [0, 14, 0, 6] };
+}
+
+function letterheadEjecutivo(datos: DatosReporte, logoDataUrl: string | null): Content[] {
+  const { colorPrimario, colorSecundario, nombre } = datos.marca;
+
+  return [
+    {
+      columns: [
+        marcaMarcaColumna(nombre, colorPrimario, colorSecundario, logoDataUrl, 20),
+        { width: "*", text: nombre, bold: true, fontSize: 10, color: colorPrimario, margin: [8, 3, 0, 0] },
+      ],
+      columnGap: 4,
+    },
+    { text: "Resumen de embudo de ventas", fontSize: 18, bold: true, color: colorPrimario, margin: [0, 10, 0, 2] },
+    { text: `Período: ${formatoRangoEjecutivo(datos)}`, fontSize: 9, color: "#64748B", margin: [0, 0, 0, 4] },
+  ];
+}
+
+function deltaTextoEjecutivo(variacion: number | null): string {
+  if (variacion === null) return "—";
+  const signo = variacion > 0 ? "+" : "";
+  return `${signo}${variacion.toFixed(1)}%`;
+}
+
+/**
+ * `subeEsFavorable`: para todos los KPI salvo "tiempo promedio de cierre",
+ * subir es favorable (verde). Para tiempo de cierre es al revés -- bajar
+ * (cerrar más rápido) es lo favorable, así que ese KPI se llama con `false`.
+ */
+function deltaColorEjecutivo(variacion: number | null, subeEsFavorable: boolean): string {
+  if (variacion === null || variacion === 0) return "#64748B";
+  const favorable = subeEsFavorable ? variacion > 0 : variacion < 0;
+  return favorable ? "#16A34A" : "#DC2626";
+}
+
+function tarjetaKpi(
+  colWidth: number,
+  label: string,
+  valor: string,
+  variacion: number | null,
+  subeEsFavorable: boolean,
+  colorPrimario: string,
+  colorSecundario: string,
+): Content {
+  return {
+    fillColor: "#F8FAFC",
+    stack: [
+      {
+        canvas: [
+          {
+            type: "polyline",
+            points: [
+              { x: colWidth - 18, y: 0 },
+              { x: colWidth - 4, y: 0 },
+              { x: colWidth - 4, y: 12 },
+            ],
+            color: colorSecundario,
+            closePath: true,
+          },
+        ],
+      },
+      { text: label, fontSize: 8, color: "#64748B", margin: [8, 2, 8, 2] },
+      { text: valor, fontSize: 17, bold: true, color: colorPrimario, margin: [8, 0, 8, 2] },
+      { text: deltaTextoEjecutivo(variacion), fontSize: 8, bold: true, color: deltaColorEjecutivo(variacion, subeEsFavorable), margin: [8, 0, 8, 6] },
+    ],
+  };
+}
+
+function filaKpis(datos: DatosReporte): Content {
+  const { colorPrimario, colorSecundario } = datos.marca;
+  const { totalIngresados, tasaConversion, cumplimientoSla, tiempoPromedioCierre } = datos.resumen;
+  const colWidth = 121;
+  const gap = 10;
+  const espaciador: Content = { text: "" };
+
+  const tiempoCierreValor = tiempoPromedioCierre.diasPromedio === null ? "—" : `${tiempoPromedioCierre.diasPromedio.toFixed(1)} d`;
+
+  const tarjetas = [
+    tarjetaKpi(colWidth, "Total ingresados", String(totalIngresados.actual), totalIngresados.variacionPorcentual, true, colorPrimario, colorSecundario),
+    tarjetaKpi(colWidth, "Tasa de conversión", formatoPct(tasaConversion.actual.porcentaje), tasaConversion.variacionPorcentual, true, colorPrimario, colorSecundario),
+    tarjetaKpi(colWidth, "Cumplimiento SLA", formatoPct(cumplimientoSla.porcentaje), cumplimientoSla.variacionPorcentual, true, colorPrimario, colorSecundario),
+    tarjetaKpi(colWidth, "Tiempo prom. de cierre", tiempoCierreValor, tiempoPromedioCierre.variacionPorcentual, false, colorPrimario, colorSecundario),
+  ];
+
+  return {
+    table: {
+      widths: [colWidth, gap, colWidth, gap, colWidth, gap, colWidth],
+      body: [[tarjetas[0]!, espaciador, tarjetas[1]!, espaciador, tarjetas[2]!, espaciador, tarjetas[3]!]],
+    },
+    layout: "noBorders",
+    margin: [0, 8, 0, 16],
+  };
+}
+
+const EMBUDO_BAR_MAX_W = 280;
+
+/**
+ * Embudo en barras horizontales: color `colorPrimario` con `fillOpacity`
+ * creciente hacia el final del embudo, EXCEPTO el último paso ("Venta"),
+ * que va en `colorSecundario` sólido para destacarlo como el objetivo.
+ * Generalizado a cualquier cantidad de pasos (el fixture de test más simple
+ * usa solo 2) -- nunca asume exactamente 4/5 etapas.
+ */
+function seccionEmbudoBarras(datos: DatosReporte): Content[] {
+  const { colorPrimario, colorSecundario } = datos.marca;
+  const pasos = datos.embudo.pasos;
+  const n = pasos.length;
+  const maxTotal = pasos.reduce((max, p) => Math.max(max, p.total), 0);
+
+  const filas: Content[] = pasos.flatMap((paso, i) => {
+    const esUltimo = i === n - 1;
+    const color = esUltimo ? colorSecundario : colorPrimario;
+    const fillOpacity = esUltimo ? 1 : n <= 1 ? 1 : 0.35 + (i / Math.max(n - 1, 1)) * 0.4;
+    const anchoBarra = maxTotal === 0 ? 0 : Math.round((paso.total / maxTotal) * EMBUDO_BAR_MAX_W);
+
+    const fila: Content = {
+      columns: [
+        { width: 100, text: paso.etapa, fontSize: 9 },
+        { width: EMBUDO_BAR_MAX_W, canvas: anchoBarra > 0 ? [{ type: "rect", x: 0, y: 0, w: anchoBarra, h: 14, color, fillOpacity }] : [] },
+        { width: "*", text: String(paso.total), fontSize: 9, alignment: "right" },
+      ],
+      columnGap: 8,
+      margin: [0, 0, 0, 2],
+    };
+
+    const caida: Content = {
+      text: paso.caidaPct === null ? "" : `Caída: ${paso.caidaPct.toFixed(1)}%`,
+      fontSize: 7,
+      color: "#94A3B8",
+      margin: [108, 0, 0, 8],
+    };
+
+    return [fila, caida];
+  });
+
+  return [tituloSeccionEjecutiva("Embudo", colorPrimario), ...filas];
+}
+
+function top5PorLeads(rendimientoCampanias: DatosReporte["rendimientoCampanias"]): DatosReporte["rendimientoCampanias"] {
+  return [...rendimientoCampanias].sort((a, b) => b.leads - a.leads).slice(0, 5);
+}
+
+function tablaCanales(datos: DatosReporte): Content {
+  const colorSecundario = datos.marca.colorSecundario;
+  const filas = top5PorLeads(datos.rendimientoCampanias);
+
+  return {
+    table: {
+      headerRows: 1,
+      widths: ["*", "auto", "auto", "auto"],
+      body: [
+        [encabezado("Canal", colorSecundario), encabezado("Leads", colorSecundario), encabezado("Ventas", colorSecundario), encabezado("CAC", colorSecundario)],
+        ...filas.map((fila) => [
+          celda(fila.nombreCampania),
+          celda(String(fila.leads)),
+          celda(String(fila.ventas)),
+          celda(formatoCosto(fila.cac, fila.moneda)),
+        ]),
+      ],
+    },
+    fontSize: 8,
+  };
+}
+
+/**
+ * Semáforo como barra apilada horizontal (un solo `canvas` con hasta 4
+ * segmentos) + leyenda con swatch+etiqueta+% para cada segmento (nunca solo
+ * color, criterio de accesibilidad ya establecido en el proyecto). Guarda
+ * contra total=0 (sin leads "en gestión" en el período): sin eso, dividir
+ * por el total produce NaN/Infinity y pdfkit revienta al dibujar el rect.
+ */
+function barraSemaforo(datos: DatosReporte): Content[] {
+  const { rojo, amarillo, verde, sinCalificar } = datos.resumen.distribucionSemaforo;
+  const total = rojo + amarillo + verde + sinCalificar;
+  const anchoTotal = 200;
+
+  const segmentos = [
+    { valor: verde, color: SEMAFORO_VERDE, etiqueta: "Verde" },
+    { valor: amarillo, color: SEMAFORO_AMBAR, etiqueta: "Ámbar" },
+    { valor: rojo, color: SEMAFORO_ROJO, etiqueta: "Rojo" },
+    { valor: sinCalificar, color: SEMAFORO_GRIS, etiqueta: "Sin calificar" },
+  ];
+
+  const rects: { type: "rect"; x: number; y: number; w: number; h: number; color: string }[] = [];
+  let cursor = 0;
+  if (total > 0) {
+    for (const s of segmentos) {
+      if (s.valor === 0) continue;
+      const w = (s.valor / total) * anchoTotal;
+      rects.push({ type: "rect", x: cursor, y: 0, w, h: 16, color: s.color });
+      cursor += w;
+    }
+  }
+
+  const barra: Content = {
+    canvas: rects.length > 0 ? rects : [{ type: "rect", x: 0, y: 0, w: anchoTotal, h: 16, color: "#E2E8F0" }],
+  };
+
+  const leyenda: Content[] = segmentos.map((s) => ({
+    columns: [
+      { width: 8, canvas: [{ type: "rect", x: 0, y: 2, w: 8, h: 8, color: s.color }] },
+      { width: "*", text: `${s.etiqueta}: ${total === 0 ? "—" : `${((s.valor / total) * 100).toFixed(0)}%`}`, fontSize: 8, margin: [4, 0, 0, 0] },
+    ],
+    margin: [0, 3, 0, 0],
+  }));
+
+  return [barra, ...leyenda];
+}
+
+function seccionDesglose(datos: DatosReporte): Content[] {
+  const colorPrimario = datos.marca.colorPrimario;
+
+  return [
+    tituloSeccionEjecutiva("Desglose por canal y calificación", colorPrimario),
+    {
+      columns: [
+        { width: 300, stack: [tablaCanales(datos)] },
+        { width: "*", stack: [{ text: "Semáforo (leads en gestión)", fontSize: 9, bold: true, margin: [0, 0, 0, 6] }, ...barraSemaforo(datos)] },
+      ],
+      columnGap: 16,
+    },
+  ];
+}
+
+/**
+ * Conclusiones: template DETERMINÍSTICO (sin IA) a partir de datos reales
+ * -- nunca inventa nada que no esté en `datos`.
+ */
+function tendenciaFraseEjecutiva(sujeto: string, variacion: number | null): string {
+  if (variacion === null) return `${sujeto} no tiene comparación suficiente frente al período anterior.`;
+  const direccion = variacion >= 0 ? "subió" : "bajó";
+  return `${sujeto} ${direccion} ${Math.abs(variacion).toFixed(1)}% frente al período anterior.`;
+}
+
+function mayorCaidaFraseEjecutiva(pasos: DatosReporte["embudo"]["pasos"]): string {
+  const conCaida = pasos.filter((p): p is typeof p & { caidaPct: number } => p.caidaPct !== null);
+  if (conCaida.length === 0) {
+    return "No se registran caídas significativas entre etapas del embudo en este período.";
+  }
+  const peor = conCaida.reduce((max, p) => (p.caidaPct > max.caidaPct ? p : max));
+  return `La mayor fuga del embudo está en el paso ${peor.etapa} (−${peor.caidaPct.toFixed(1)}%).`;
+}
+
+function seccionConclusiones(datos: DatosReporte): Content[] {
+  const { colorPrimario, colorSecundario } = datos.marca;
+  const texto = [
+    tendenciaFraseEjecutiva("La conversión general", datos.resumen.tasaConversion.variacionPorcentual),
+    tendenciaFraseEjecutiva("El cumplimiento de SLA", datos.resumen.cumplimientoSla.variacionPorcentual),
+    mayorCaidaFraseEjecutiva(datos.embudo.pasos),
+  ].join(" ");
+
+  return [
+    {
+      table: {
+        widths: ["*"],
+        body: [
+          [
+            {
+              stack: [
+                { text: "Conclusiones", fontSize: 11, bold: true, color: colorPrimario, margin: [0, 0, 0, 4] },
+                { text: texto, fontSize: 9, lineHeight: 1.3 },
+              ],
+              margin: [10, 10, 10, 10],
+            },
+          ],
+        ],
+      },
+      layout: {
+        hLineColor: () => colorSecundario,
+        vLineColor: () => colorSecundario,
+        hLineWidth: () => 1,
+        vLineWidth: () => 1,
+      },
+      margin: [0, 16, 0, 8],
+    },
+  ];
+}
+
+function seccionCuerpoEjecutivo(datos: DatosReporte, logoDataUrl: string | null): Content[] {
+  return [
+    ...letterheadEjecutivo(datos, logoDataUrl),
+    filaKpis(datos),
+    ...seccionEmbudoBarras(datos),
+    ...seccionDesglose(datos),
+    ...seccionConclusiones(datos),
+  ];
+}
+
+/**
+ * Plantilla "ejecutivo" (pdf-ejecutivo, aditiva): portada "terrazas del
+ * embudo" -> letterhead -> 4 KPIs -> embudo en barras -> desglose canal +
+ * semáforo -> conclusiones -> footer con paginación. Nunca reusa
+ * `construirDocDefinition`/estilos del "detallado" (ese objeto define su
+ * propio `styles.sectionHeader`, no aplicable acá).
+ */
+function construirDocDefinitionEjecutivo(datos: DatosReporte, logoDataUrl: string | null) {
+  const generadoEn = new Date().toLocaleString("es-AR", { timeZone: "UTC" });
+  const content: Content[] = [...seccionPortadaEjecutiva(datos, logoDataUrl), ...seccionCuerpoEjecutivo(datos, logoDataUrl)];
+
+  return {
+    pageSize: "A4" as const,
+    pageMargins: [40, 40, 40, 40] as [number, number, number, number],
+    defaultStyle: { font: "Helvetica", fontSize: 10 },
+    footer: (currentPage: number, pageCount: number): Content => ({
+      columns: [
+        { text: `Generado el ${generadoEn} UTC · Documento confidencial de uso interno`, fontSize: 7, color: "#94A3B8" },
+        { text: `${currentPage} / ${pageCount}`, fontSize: 7, color: "#94A3B8", alignment: "right" },
+      ],
+      margin: [40, 0, 40, 20],
+    }),
+    content,
+  };
+}
+
 /**
  * `TDocumentDefinitions` no está exportado por nombre desde `"pdfmake"` --
  * no se importa por nombre acá. El objeto se arma estructuralmente contra lo
@@ -284,6 +761,7 @@ function construirDocDefinition(datos: DatosReporte, logoDataUrl: string | null)
  */
 export async function generarPdfReporte(datos: DatosReporte): Promise<Buffer> {
   const logoDataUrl = await resolverLogoDataUrl(datos.marca.logoUrl);
-  const docDefinition = construirDocDefinition(datos, logoDataUrl);
+  const docDefinition =
+    datos.plantilla === "ejecutivo" ? construirDocDefinitionEjecutivo(datos, logoDataUrl) : construirDocDefinition(datos, logoDataUrl);
   return pdfmake.createPdf(docDefinition).getBuffer();
 }

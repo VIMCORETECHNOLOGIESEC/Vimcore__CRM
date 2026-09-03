@@ -22,6 +22,7 @@ function parametrosBase(overrides: Partial<ReporteParametros> = {}): ReportePara
     campania: undefined,
     responsableId: undefined,
     empresaId: undefined,
+    plantilla: "detallado",
     ...overrides,
   };
 }
@@ -30,9 +31,15 @@ describe("services/reportes/reporte-parametros — serializarParametros (pura, s
   it("omite del todo las claves opcionales ausentes en vez de persistirlas como undefined", () => {
     const resultado = serializarParametros(parametrosBase(), null);
 
-    expect(resultado).toEqual({ rango: "30d" });
+    expect(resultado).toEqual({ rango: "30d", plantilla: "detallado" });
     expect(Object.keys(resultado)).not.toContain("empresaId");
     expect(Object.keys(resultado)).not.toContain("desde");
+  });
+
+  it("persiste plantilla SIEMPRE (tiene default, igual que rango -- nunca se omite)", () => {
+    const resultado = serializarParametros(parametrosBase({ plantilla: "ejecutivo" }), null);
+
+    expect(resultado.plantilla).toBe("ejecutivo");
   });
 
   it("serializa desde/hasta a ISO 8601 (Prisma.InputJsonValue no admite Date)", () => {
@@ -89,6 +96,7 @@ describe("services/reportes/reporte-parametros — aMetricasQuery (pura, sin BD)
       responsableId: "asesor-1",
     });
     expect(query).not.toHaveProperty("empresaId");
+    expect(query).not.toHaveProperty("plantilla");
   });
 
   it("reconstruye desde/hasta como instancias de Date a partir del ISO persistido", () => {

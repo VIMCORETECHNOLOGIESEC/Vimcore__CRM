@@ -22,7 +22,7 @@ import { SelectorEmpresaDashboard } from "@/funcionalidades/dashboard/SelectorEm
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoCampanias, getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { usePageHeader } from "@/layouts/PageHeaderContext";
-import type { ReporteParametros, TipoReporte } from "@/tipos/reporte";
+import type { PlantillaReporte, ReporteParametros, TipoReporte } from "@/tipos/reporte";
 import { DescargarReporteButton } from "./DescargarReporteButton";
 import { EstadoReporteJobBadge } from "./EstadoReporteJobBadge";
 import { useCrearReporteJob, useReporteJob, useReporteJobActivo } from "./useReportes";
@@ -32,22 +32,37 @@ const TIPOS_REPORTE: { valor: TipoReporte; etiqueta: string }[] = [
   { valor: "xlsx", etiqueta: "Excel" },
 ];
 
+const PLANTILLAS_REPORTE: { valor: PlantillaReporte; etiqueta: string }[] = [
+  { valor: "detallado", etiqueta: "Detallado" },
+  { valor: "ejecutivo", etiqueta: "Ejecutivo" },
+];
+
 /**
- * `tipo` es el único campo de este formulario que necesita validación real
- * (AGENTS.md §4 -- React Hook Form + Zod; `ReporteParametros`/
+ * `tipo`/`plantilla` son los únicos campos de este formulario que necesitan
+ * validación real (AGENTS.md §4 -- React Hook Form + Zod; `ReporteParametros`/
  * `reporteParametrosSchema` vive solo en
  * `backend/src/schemas/reportes/reporte.schema.ts`, fuera de cualquier
- * paquete compartido, así que se duplica localmente el único campo que
- * corresponde -- mismo criterio que `crearBridgeSchema` en
+ * paquete compartido, así que se duplica localmente los campos que
+ * corresponden -- mismo criterio que `crearBridgeSchema` en
  * `NuevoBridgeDialog.tsx`). `rango`/`filtrosDashboard` quedan FUERA de este
  * schema a propósito: no son texto libre, los maneja
  * `FiltroRangoFechas`/`DashboardFiltros` -- los mismos componentes
  * controlados que `DashboardPage.tsx` ya usa sin `<form>`/RHF -- forzarlos
  * por `Controller` duplicaría una validación que esos componentes ya
  * resuelven.
+ *
+ * `plantilla` solo tiene sentido para `tipo === "pdf"` -- el backend lo
+ * agrega en paralelo dentro de `parametros` (mismo nivel que `rango`,
+ * `empresaId`, etc.), nunca a nivel de `tipo`. `enviar` solo lo incluye en
+ * `parametros` cuando el formato elegido es PDF. El default ("detallado")
+ * lo fija `defaultValues` de `useForm` (igual que `tipo: "pdf"`) y no
+ * `.default()` de Zod -- mezclar ambos rompe la inferencia de tipos de
+ * `zodResolver` entre el tipo de entrada (opcional) y el de salida
+ * (requerido) del formulario.
  */
 const generarReporteSchema = z.object({
   tipo: z.enum(["pdf", "xlsx"]),
+  plantilla: z.enum(["detallado", "ejecutivo"]),
 });
 type GenerarReporteValues = z.infer<typeof generarReporteSchema>;
 
@@ -99,9 +114,10 @@ export function ReportesPage() {
 
   const { handleSubmit, watch, setValue } = useForm<GenerarReporteValues>({
     resolver: zodResolver(generarReporteSchema),
-    defaultValues: { tipo: "pdf" },
+    defaultValues: { tipo: "pdf", plantilla: "detallado" },
   });
   const tipo = watch("tipo");
+  const plantilla = watch("plantilla");
   const [rango, setRango] = useState<RangoSeleccionado>(() => {
     const hoy = formatFechaLocal(new Date());
     return { preset: "7d", desde: hoy, hasta: hoy };
@@ -141,6 +157,9 @@ export function ReportesPage() {
     const parametros: ReporteParametros = { ...buildMetricasFiltros(filtrosDashboard, rango) };
     if (esHoldingWide && empresaFiltroId) {
       parametros.empresaId = empresaFiltroId;
+    }
+    if (valores.tipo === "pdf") {
+      parametros.plantilla = valores.plantilla;
     }
     crearJob.mutate({ tipo: valores.tipo, parametros });
   });
@@ -183,6 +202,26 @@ export function ReportesPage() {
             ))}
           </div>
         </div>
+
+        {tipo === "pdf" ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-muted-foreground">Plantilla</span>
+            <div className="flex gap-1.5" role="group" aria-label="Plantilla del reporte">
+              {PLANTILLAS_REPORTE.map((opcion) => (
+                <Button
+                  key={opcion.valor}
+                  type="button"
+                  size="sm"
+                  variant={plantilla === opcion.valor ? "default" : "outline"}
+                  aria-pressed={plantilla === opcion.valor}
+                  onClick={() => setValue("plantilla", opcion.valor)}
+                >
+                  {opcion.etiqueta}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <FiltroRangoFechas rango={rango} onChange={setRango} />
         <DashboardFiltros

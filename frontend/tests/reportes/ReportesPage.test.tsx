@@ -140,7 +140,7 @@ describe("ReportesPage — estado inicial", () => {
 });
 
 describe("ReportesPage — generar reporte", () => {
-  it("por defecto (PDF, rango 7d) manda { tipo: 'pdf', parametros: { rango: '7d' } }", async () => {
+  it("por defecto (PDF, rango 7d) manda { tipo: 'pdf', parametros: { rango: '7d', plantilla: 'detallado' } }", async () => {
     const user = userEvent.setup();
     const jobCreado = jobFake({ id: "job-nuevo", estado: "PENDIENTE" });
     crearReporteJobApiMock.mockResolvedValue(jobCreado);
@@ -151,12 +151,15 @@ describe("ReportesPage — generar reporte", () => {
     await user.click(screen.getByRole("button", { name: "Generar reporte" }));
 
     await waitFor(() =>
-      expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", { rango: "7d" }),
+      expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", {
+        rango: "7d",
+        plantilla: "detallado",
+      }),
     );
     expect(await screen.findByText("Pendiente")).toBeInTheDocument();
   });
 
-  it("cambiar el formato a Excel manda tipo: 'xlsx'", async () => {
+  it("cambiar el formato a Excel manda tipo: 'xlsx' sin plantilla", async () => {
     const user = userEvent.setup();
     crearReporteJobApiMock.mockResolvedValue(jobFake({ tipo: "xlsx" }));
     fetchReporteJobApiMock.mockResolvedValue(jobFake({ tipo: "xlsx" }));
@@ -168,6 +171,39 @@ describe("ReportesPage — generar reporte", () => {
 
     await waitFor(() =>
       expect(crearReporteJobApiMock).toHaveBeenCalledWith("xlsx", { rango: "7d" }),
+    );
+  });
+
+  it("el toggle de plantilla solo aparece con formato PDF", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText("Todavía no generaste ningún reporte");
+
+    expect(screen.getByRole("group", { name: "Plantilla del reporte" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Excel" }));
+    expect(screen.queryByRole("group", { name: "Plantilla del reporte" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "PDF" }));
+    expect(screen.getByRole("group", { name: "Plantilla del reporte" })).toBeInTheDocument();
+  });
+
+  it("elegir la plantilla Ejecutivo manda plantilla: 'ejecutivo' en los parámetros", async () => {
+    const user = userEvent.setup();
+    const jobCreado = jobFake({ id: "job-nuevo", estado: "PENDIENTE" });
+    crearReporteJobApiMock.mockResolvedValue(jobCreado);
+    fetchReporteJobApiMock.mockResolvedValue(jobCreado);
+    renderPage();
+    await screen.findByText("Todavía no generaste ningún reporte");
+
+    await user.click(screen.getByRole("button", { name: "Ejecutivo" }));
+    await user.click(screen.getByRole("button", { name: "Generar reporte" }));
+
+    await waitFor(() =>
+      expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", {
+        rango: "7d",
+        plantilla: "ejecutivo",
+      }),
     );
   });
 
@@ -263,7 +299,10 @@ describe("ReportesPage — sesión holding-wide", () => {
     await user.click(screen.getByRole("button", { name: "Generar reporte" }));
 
     await waitFor(() =>
-      expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", { rango: "7d" }),
+      expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", {
+        rango: "7d",
+        plantilla: "detallado",
+      }),
     );
   });
 
@@ -282,6 +321,7 @@ describe("ReportesPage — sesión holding-wide", () => {
     await waitFor(() =>
       expect(crearReporteJobApiMock).toHaveBeenCalledWith("pdf", {
         rango: "7d",
+        plantilla: "detallado",
         empresaId: "empresa-1",
       }),
     );

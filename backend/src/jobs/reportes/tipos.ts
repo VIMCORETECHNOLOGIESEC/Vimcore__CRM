@@ -31,6 +31,13 @@ export interface MarcaReporte {
   logoUrl: string | null;
 }
 
+/**
+ * pdf-ejecutivo: alternativa aditiva al PDF "detallado" (5 secciones ya
+ * existentes, sin tocar). Solo tiene efecto para `tipo === "pdf"` --
+ * `xlsx-reporte.ts` no lee este campo, ignorándolo sin error.
+ */
+export type PlantillaReporte = "detallado" | "ejecutivo";
+
 export interface DatosReporte {
   empresaId: string | null;
   resumen: ResumenResponse;
@@ -39,4 +46,5 @@ export interface DatosReporte {
   rendimientoCampanias: MetaAdsRendimientoCampaniaDto[];
   porAsesor: PorAsesorItem[] | null;
   marca: MarcaReporte;
+  plantilla: PlantillaReporte;
 }

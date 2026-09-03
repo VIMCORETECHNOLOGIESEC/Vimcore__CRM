@@ -19,6 +19,10 @@ export interface ParametrosReportePersistidos {
   campania?: string;
   responsableId?: string;
   empresaId?: string;
+  // pdf-ejecutivo: igual que `rango`, siempre presente (tiene `.default()`
+  // en `reporteParametrosSchema`) -- nunca se omite condicionalmente como
+  // los demás campos opcionales de acá arriba.
+  plantilla: string;
 }
 
 /**
@@ -40,6 +44,7 @@ export function serializarParametros(
     ...(parametros.campania ? { campania: parametros.campania } : {}),
     ...(parametros.responsableId ? { responsableId: parametros.responsableId } : {}),
     ...(empresaIdResuelto ? { empresaId: empresaIdResuelto } : {}),
+    plantilla: parametros.plantilla,
   };
 }
 

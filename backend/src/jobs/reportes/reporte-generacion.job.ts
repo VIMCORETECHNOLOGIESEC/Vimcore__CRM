@@ -66,8 +66,12 @@ export async function procesarReporteJob(jobId: string): Promise<void> {
 
   try {
     const usuarioView: UsuarioAcceso = { id: job.usuarioId, rol: usuario.rol, empresaId };
+    // pdf-ejecutivo: `plantilla` NO es parte de `MetricasQuery`
+    // (`aMetricasQuery` no la proyecta, ver ese archivo) -- se lee directo
+    // de lo persistido y se pasa aparte, solo para elegir el renderer PDF.
+    const plantilla = parametros.plantilla === "ejecutivo" ? "ejecutivo" : "detallado";
     const archivoUrl = await runWithTenantContext({ empresaId }, () =>
-      generarArchivo(job.tipo, usuarioView, aMetricasQuery(parametros)),
+      generarArchivo(job.tipo, usuarioView, aMetricasQuery(parametros), plantilla),
     );
 
     await reporteJobRepository.marcarListo(job.id, archivoUrl);
@@ -84,6 +88,7 @@ async function generarArchivo(
   tipo: string,
   usuarioView: UsuarioAcceso,
   query: ReturnType<typeof aMetricasQuery>,
+  plantilla: DatosReporte["plantilla"],
 ): Promise<string> {
   const [resumen, embudo, porCampania, rendimientoCampanias, porAsesor, marca] = await Promise.all([
     getResumen(usuarioView, query),
@@ -112,6 +117,7 @@ async function generarArchivo(
     rendimientoCampanias,
     porAsesor,
     marca,
+    plantilla,
   };
 
   const buffer = tipo === "pdf" ? await generarPdfReporte(datos) : await generarXlsxReporte(datos);

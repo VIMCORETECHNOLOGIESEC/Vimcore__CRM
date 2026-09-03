@@ -13,6 +13,15 @@ import type { RangoMetricas } from "./metricas";
 export type TipoReporte = "pdf" | "xlsx";
 
 /**
+ * Plantilla del PDF (solo aplica cuando `tipo === "pdf"`) -- `"detallado"`
+ * es el formato actual, `"ejecutivo"` es la alternativa nueva que el
+ * backend agrega en paralelo (mismo endpoint, mismo contrato). No tiene
+ * sentido para `tipo === "xlsx"`, por eso viaja opcional dentro de
+ * `ReporteParametros` y `ReportesPage.tsx` solo la incluye para PDF.
+ */
+export type PlantillaReporte = "detallado" | "ejecutivo";
+
+/**
  * NO hay campo de progreso/porcentaje en el contrato real -- solo estos 4
  * valores. La UI debe representarlos como un indicador de estado (badge),
  * nunca como una barra de progreso.
@@ -33,6 +42,7 @@ export interface ReporteParametros {
   campania?: string;
   responsableId?: string;
   empresaId?: string;
+  plantilla?: PlantillaReporte;
 }
 
 export interface ReporteJob {

@@ -34,6 +34,17 @@ export const reporteParametrosSchema = z
     campania: z.string().trim().min(1).optional(),
     responsableId: z.uuid().optional(),
     empresaId: z.uuid().optional(),
+    // pdf-ejecutivo: selección de plantilla del PDF -- ADITIVO, el PDF
+    // "detallado" (5 secciones ya existentes) sigue siendo el default y no
+    // se toca. Solo aplica cuando `tipo === "pdf"` -- para `tipo === "xlsx"`
+    // este campo se ignora sin error (el xlsx no cambia), a propósito no hay
+    // ningún `.refine` acá que lo prohíba fuera de "pdf": este schema
+    // (`reporteParametrosSchema`) es compartido por ambos `tipo`, y
+    // acoplarlo al `tipo` hermano (otro campo del mismo objeto padre,
+    // `crearReporteJobBodySchema`) requeriría un `superRefine` a nivel de
+    // ese padre, no de este subschema -- no vale la pena la complejidad para
+    // un campo que ya es un no-op inofensivo del lado del xlsx.
+    plantilla: z.enum(["detallado", "ejecutivo"]).default("detallado"),
   })
   .superRefine((data, ctx) => {
     if (data.rango !== "personalizado") return;
