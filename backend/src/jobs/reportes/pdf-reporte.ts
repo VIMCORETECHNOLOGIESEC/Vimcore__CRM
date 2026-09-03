@@ -443,6 +443,16 @@ function deltaColorEjecutivo(variacion: number | null, subeEsFavorable: boolean)
   return favorable ? "#16A34A" : "#DC2626";
 }
 
+/**
+ * Tipo de retorno propio, no `Content` -- `Content` es una unión de
+ * pdfmake que incluye `string` (shorthand de `{ text }`), así que TS
+ * rechaza el spread (`...tarjeta`) en `filaKpis` con "Spread types may
+ * only be created from object types" (TS2698) si se tipa como `Content`
+ * a secas. Mismo criterio que `MarcaMarcaContenido` para
+ * `marcaMarcaColumna` más arriba.
+ */
+type TarjetaKpiContenido = { fillColor: string; stack: Content[] };
+
 function tarjetaKpi(
   colWidth: number,
   label: string,
@@ -451,7 +461,7 @@ function tarjetaKpi(
   subeEsFavorable: boolean,
   colorPrimario: string,
   colorSecundario: string,
-): Content {
+): TarjetaKpiContenido {
   return {
     fillColor: "#F8FAFC",
     stack: [
