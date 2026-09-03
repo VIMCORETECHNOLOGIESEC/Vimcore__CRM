@@ -131,7 +131,7 @@ export const LEADS_NAVIGATION_TOUR_STEPS: Step[] = [
   },
   {
     target: '[data-tour="lead-header"]',
-    title: "Ubicate antes de actuar",
+    title: "Ubícate antes de actuar",
     content: buildStepContent([
       "El nombre te confirma a quién atiendes.",
       "El semáforo marca la prioridad comercial y el reloj de SLA cuánto tiempo queda para actuar.",

@@ -38,7 +38,7 @@ export function EmpresaAparienciaPage() {
     <div className="flex max-w-xl flex-col gap-6">
       <p className="text-sm text-muted-foreground">
         Personaliza los colores de marca y el isotipo que ve tu equipo, específicos de{" "}
-        {user.empresaNombre ?? "tu empresa"}. Si no configurás un color propio, se usa el color
+        {user.empresaNombre ?? "tu empresa"}. Si no configuras un color propio, se usa el color
         vigente del holding.
       </p>
       <EmpresaAparienciaForm
