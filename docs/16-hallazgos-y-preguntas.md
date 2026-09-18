@@ -233,6 +233,9 @@ fundación pendiente.
   `telefonoNormalizado` identifica a la misma persona en todas las empresas;
   se mantiene el `@unique` global de `backend/prisma/schema.prisma:136`, sin
   cambio de esquema en Cliente.
+  **Supersedido (2026-09-18):** `Cliente` pasó a ser tenant-scoped
+  (`empresaId` NOT NULL, único `[empresaId, telefonoNormalizado]`, RLS) →
+  ver `backend/prisma/migrations/20260918120000_cliente_empresa_tenant_isolation/`.
 - **Lead:** scope por empresa, no por holding. Un mismo Cliente puede tener
   varios leads simultáneos, cada uno abierto e independiente en distintas
   empresas — cada empresa lleva su propio proceso de venta. El chequeo de
