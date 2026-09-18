@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { type Express } from "express";
 import { pinoHttp } from "pino-http";
 import { apiRouter } from "./routes/index.js";
+import { gatewayRouter } from "./routes/gateway.routes.js";
 import { errorHandler } from "./middlewares/error-handler.middleware.js";
 import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
@@ -45,6 +46,12 @@ export function createApp(): Express {
     }),
   );
   app.use("/api/v1", apiRouter);
+  // crm-gateway-proxy (CRM Gateway Trust, Architecture Decision #1): pilot
+  // único (`canales-manuales`) de tráfico server-to-server confiado vía el
+  // Api Gateway (`requireGatewayTrust`) -- deliberadamente FUERA de
+  // `/api/v1`/`apiRouter` (ese prefijo es para clientes con JWT propio de
+  // CRM via `requireAuthentication`, no aplica acá).
+  app.use("/internal/gateway", gatewayRouter);
 
   // Middleware central de errores (AGENTS.md §4): siempre el último, después del router.
   app.use(errorHandler);
