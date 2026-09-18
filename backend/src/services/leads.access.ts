@@ -33,7 +33,7 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"
  * backend pre-deploy) — sigue siendo el mismo criterio "acceso total de
  * lectura", `canEdit` es la única función que la deja fuera a propósito.
  */
-const ROLES_HOLDING_TOTAL: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
+const ROLES_HOLDING_TOTAL: readonly RolUsuario[] = ["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING", "SUPER_ADMIN"];
 
 /**
  * Bloque C (Fase 2/Stage 2, D-cutover): único punto de la compuerta de
@@ -289,6 +289,7 @@ export function canCreateManual(usuario: UsuarioAcceso): boolean {
     "ADMINISTRADOR",
     "SUPERVISOR",
     "ASESOR",
+    "ADMINISTRADOR_HOLDING",
     "SUPERVISOR_HOLDING",
     "SUPER_ADMIN",
   ];

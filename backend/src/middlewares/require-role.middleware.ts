@@ -16,7 +16,7 @@ import * as shadowAuthorizationService from "../services/shadow-authorization.se
  * `/productos` (POST), `/usuarios/*`, `/bridges/*`, etc. sin tocar ninguno de
  * esos archivos de rutas.
  */
-const ROLES_HOLDING_BYPASS: readonly RolUsuario[] = ["SUPERVISOR_HOLDING", "SUPER_ADMIN"];
+const ROLES_HOLDING_BYPASS: readonly RolUsuario[] = ["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING", "SUPER_ADMIN"];
 
 /**
  * Debe montarse después de `requireAuthentication` — asume `req.user` ya

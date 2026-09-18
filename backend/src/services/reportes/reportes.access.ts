@@ -19,6 +19,7 @@ import type { AuthenticatedUser } from "../../types/authenticated-user.js";
 export const ROLES_REPORTES: readonly RolUsuario[] = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];

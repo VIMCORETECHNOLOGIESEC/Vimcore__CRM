@@ -7,6 +7,7 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
   "ADMINISTRADOR",
   "SUPERVISOR",
   // Bloque F (aditivo): mismo alcance maximo que ADMINISTRADOR, sin atarse a una empresa.
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];

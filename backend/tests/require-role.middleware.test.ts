@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 
 function reqConUsuario(
-  rol?: "ADMINISTRADOR" | "VENDEDOR" | "SUPERVISOR_HOLDING" | "SUPER_ADMIN",
+  rol?: "ADMINISTRADOR" | "VENDEDOR" | "ADMINISTRADOR_HOLDING" | "SUPERVISOR_HOLDING" | "SUPER_ADMIN",
 ): Request {
   return {
     user: rol
@@ -59,6 +59,15 @@ describe("middlewares/require-role", () => {
 describe("middlewares/require-role — bypass holding-wide (Bloque F, aditivo)", () => {
   it("SUPERVISOR_HOLDING pasa aunque no esté en la lista fija de roles permitidos", () => {
     const req = reqConUsuario("SUPERVISOR_HOLDING");
+    const next = vi.fn();
+
+    requireRole("ADMINISTRADOR")(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("ADMINISTRADOR_HOLDING passes even when the fixed role list only names ADMINISTRADOR", () => {
+    const req = reqConUsuario("ADMINISTRADOR_HOLDING");
     const next = vi.fn();
 
     requireRole("ADMINISTRADOR")(req, {} as Response, next);

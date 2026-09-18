@@ -45,6 +45,7 @@ const NEGOCIACION_TRANSACTION_BOUNDS: TransactionBounds = { maxWait: 10_000, tim
 const ROLES_ADMIN: readonly RolUsuario[] = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];

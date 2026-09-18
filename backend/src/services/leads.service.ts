@@ -21,6 +21,7 @@ import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];

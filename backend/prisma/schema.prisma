@@ -24,6 +24,11 @@ enum RolUsuario {
   // por coordinación con otro equipo.
   SUPERVISOR_HOLDING
   SUPER_ADMIN
+  // holding-admin-gateway-auth (SaaS model): explicit holding administrator.
+  // Creates and administers SEVERAL empresas inside ONE holding
+  // (`Usuario.holdingId`); `ADMINISTRADOR` stays a single-empresa admin.
+  // Holding scope is this role/link, no longer "Usuario without Membresia".
+  ADMINISTRADOR_HOLDING
 
   @@map("rol_usuario")
 }
@@ -109,6 +114,11 @@ model Usuario {
   // …`), nunca auto-provisionado desde una request de `requireGatewayTrust`
   // (spec crm-gateway-trust, "Explicit Admin Linking (No Auto-Provisioning)").
   authUserId         String?    @unique(map: "idx_usuarios_auth_user") @map("auth_user_id") @db.Uuid
+  // holding-admin-gateway-auth: the ONE holding a holding-scoped user
+  // (ADMINISTRADOR_HOLDING / SUPERVISOR_HOLDING) belongs to. Nullable: company
+  // users and SUPER_ADMIN have none. Not unique (a holding has many users).
+  holdingId          String?    @map("holding_id") @db.Uuid
+  holding            Holding?   @relation(fields: [holdingId], references: [id], onDelete: Restrict)
 
   refreshTokens        RefreshToken[]
   leadEventos          LeadEvento[]
@@ -160,7 +170,22 @@ model Usuario {
   // propia acá).
   reporteJobs               ReporteJob[]
 
+  @@index([holdingId], map: "idx_usuarios_holding")
   @@map("usuarios")
+}
+
+// holding-admin-gateway-auth: tenant group above `Empresa`. A holding owns
+// several empresas and is administered by `ADMINISTRADOR_HOLDING` users
+// (`Usuario.holdingId`). Identity table like `empresas`: no RLS.
+model Holding {
+  id       String   @id @default(uuid()) @db.Uuid
+  nombre   String   @db.Text
+  creadoEn DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  empresas Empresa[]
+  usuarios Usuario[]
+
+  @@map("holdings")
 }
 
 // Bloque B (tenant-empresa-membresia-schema): unidad de tenant. Nace con una
@@ -199,6 +224,10 @@ model Empresa {
   // middleware `requireGatewayTrust` es SIEMPRE por este campo, nunca por
   // `Empresa.id` directo -- el Gateway solo conoce ids de Auth.
   authCompanyId String? @unique(map: "idx_empresas_auth_company") @map("auth_company_id") @db.Uuid
+  // holding-admin-gateway-auth: owning holding. Nullable (existing empresas
+  // predate `holdings`; the backfill links them, the column stays nullable).
+  holdingId     String? @map("holding_id") @db.Uuid
+  holding       Holding? @relation(fields: [holdingId], references: [id], onDelete: Restrict)
 
   membresias     Membresia[]
   bridges        Bridge[]
@@ -249,6 +278,7 @@ model Empresa {
   // (ver comentario de ese modelo).
   configuracionesReporte ConfiguracionReporte[]
 
+  @@index([holdingId], map: "idx_empresas_holding")
   @@map("empresas")
 }
 

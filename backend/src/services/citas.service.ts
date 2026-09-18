@@ -24,6 +24,7 @@ import { aplicarFiltroEmpresa, canEdit, canRead, type UsuarioAcceso } from "./le
 const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];

@@ -29,6 +29,7 @@ export interface ConversacionAcceso {
 export const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
   "ADMINISTRADOR",
   "SUPERVISOR",
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];

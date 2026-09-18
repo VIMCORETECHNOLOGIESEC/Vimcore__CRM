@@ -107,7 +107,7 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
     ]);
   });
 
-  it("rol_usuario (legado) tiene sus 4 valores originales más los 2 aditivos de Bloque F (SUPERVISOR_HOLDING/SUPER_ADMIN)", async () => {
+  it("rol_usuario (legado) tiene sus 4 valores originales más los 2 aditivos de Bloque F (SUPERVISOR_HOLDING/SUPER_ADMIN) y ADMINISTRADOR_HOLDING (holding-admin-gateway-auth)", async () => {
     // Bloque F (aditivo, decisión cerrada con el usuario): agrega
     // SUPERVISOR_HOLDING/SUPER_ADMIN al enum legado `rol_usuario` — acceso
     // total holding-wide, mismo criterio que ADMINISTRADOR hoy, sin atarse a
@@ -123,6 +123,7 @@ describe("schema Bloque B — Empresa/Membresia/RolMembresia (tenant-empresa-mem
     `;
     expect(valores.map((v) => v.enumlabel).sort()).toEqual([
       "ADMINISTRADOR",
+      "ADMINISTRADOR_HOLDING",
       "ASESOR",
       "SUPERVISOR",
       "SUPERVISOR_HOLDING",
