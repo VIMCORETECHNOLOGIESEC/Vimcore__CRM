@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { isAdministrador } from "@/funcionalidades/autenticacion/permissions";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
@@ -123,7 +124,7 @@ function formatTituloRango(fechaBase: Date, vista: VistaCalendarioCitas): string
 }
 
 function puedeGestionarCitas(rol: RolUsuario | undefined): boolean {
-  return rol === "ADMINISTRADOR" || rol === "SUPERVISOR" || rol === "SUPERVISOR_HOLDING" || rol === "SUPER_ADMIN";
+  return isAdministrador(rol) || rol === "SUPERVISOR" || rol === "SUPERVISOR_HOLDING" || rol === "SUPER_ADMIN";
 }
 
 function CitaStatusBadge({ estado }: { estado: CitaCalendario["estado"] }) {

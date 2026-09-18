@@ -4,6 +4,10 @@
  * Mantenerlos sincronizados manualmente: el frontend no comparte el cliente
  * de Prisma generado.
  *
+ * `ADMINISTRADOR_HOLDING`: administrador de holding explícito (puede crear y
+ * administrar varias empresas); alcanza todo lo que alcanzaba un
+ * `ADMINISTRADOR` de sesión `holding` -- ver `permissions.ts::hasRoleAccess`.
+ *
  * `SUPERVISOR_HOLDING`/`SUPER_ADMIN` (Bloque F, aditivo): mismo alcance
  * máximo entre los dos -- acceso total holding-wide, sin restricción de
  * `empresaId`, tratados como bypass total en cualquier chequeo de autoridad
@@ -15,6 +19,7 @@
  */
 export type RolUsuario =
   | "ADMINISTRADOR"
+  | "ADMINISTRADOR_HOLDING"
   | "SUPERVISOR"
   | "SUPERVISOR_HOLDING"
   | "SUPER_ADMIN"
@@ -37,6 +42,7 @@ export type RolUsuario =
  */
 export const ROLES_USUARIO = [
   "ADMINISTRADOR",
+  "ADMINISTRADOR_HOLDING",
   "SUPERVISOR",
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",

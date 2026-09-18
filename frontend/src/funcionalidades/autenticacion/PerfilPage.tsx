@@ -16,6 +16,7 @@ import { changePasswordApi } from "./autenticacion.api";
 // `RolUsuario` en `@/tipos/usuario` -- mismo texto que `usuarios/catalogos.ts::ROL_ETIQUETAS`.
 const ETIQUETAS_ROL: Record<RolUsuario, string> = {
   ADMINISTRADOR: "Administrador",
+  ADMINISTRADOR_HOLDING: "Administrador de holding",
   SUPERVISOR: "Supervisor",
   SUPERVISOR_HOLDING: "Supervisor de holding",
   SUPER_ADMIN: "Super administrador",

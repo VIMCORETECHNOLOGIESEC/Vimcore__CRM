@@ -3,6 +3,7 @@ import { useState } from "react";
 import { getErrorMessage } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { isAdministrador } from "@/funcionalidades/autenticacion/permissions";
 import { getCatalogoResponsables } from "@/funcionalidades/leads/leads.api";
 import { ResponsableCombobox } from "@/funcionalidades/leads/ResponsableCombobox";
 import type { Oportunidad } from "@/tipos/oportunidad";
@@ -34,7 +35,7 @@ export function OportunidadReasignarPanel({ oportunidad }: OportunidadReasignarP
   const reasignar = useReasignarOportunidad(oportunidad.id);
 
   const puedeReasignar =
-    (user?.rol === "ADMINISTRADOR" || user?.rol === "SUPERVISOR") &&
+    (isAdministrador(user?.rol) || user?.rol === "SUPERVISOR") &&
     !esTerminal(oportunidad.etapa);
 
   const { data: asesores = [] } = useQuery({

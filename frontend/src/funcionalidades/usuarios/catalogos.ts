@@ -8,6 +8,7 @@ import type { RolUsuario } from "@/tipos/usuario";
  */
 export const ROL_ETIQUETAS: Record<RolUsuario, string> = {
   ADMINISTRADOR: "Administrador",
+  ADMINISTRADOR_HOLDING: "Administrador de holding",
   SUPERVISOR: "Supervisor",
   SUPERVISOR_HOLDING: "Supervisor de holding",
   SUPER_ADMIN: "Super administrador",

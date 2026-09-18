@@ -1,9 +1,12 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter } from "react-router";
 import { NotFoundPage } from "@/componentes/NotFoundPage";
 import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { EmpresaBridgesPage } from "@/funcionalidades/bridges/EmpresaBridgesPage";
-import { LoginPage } from "@/funcionalidades/autenticacion/LoginPage";
+import {
+  IniciarSesionRedirect,
+  LandingRedirect,
+} from "@/funcionalidades/autenticacion/EstadosAccesoPage";
 import { CalendarCitasPage } from "@/funcionalidades/citas/CalendarCitasPage";
 import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { EmpresaAparienciaPage } from "@/funcionalidades/empresa-apariencia/EmpresaAparienciaPage";
@@ -54,7 +57,7 @@ import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
  *
  * `/whatsapp/callback`: Paso 2 del flujo de conexión de WhatsApp Business
  * (`docs/contrato-frontend-whatsapp-api_mat_04.md`, secciones 1-3) --
- * pública a propósito, como `/iniciar-sesion`: Meta redirige ahí el
+ * pública a propósito: Meta redirige ahí el
  * navegador del administrador de verdad, sin JWT (`GET /whatsapp/callback`
  * no exige `Authorization`, la identidad se recupera del `state`). Mismo
  * criterio que las rutas públicas ya existentes: fuera del árbol de
@@ -94,8 +97,9 @@ import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
  */
 export const router = createBrowserRouter([
   {
+    // Favoritos viejos: el CRM ya no tiene login propio, va al frontend de auth.
     path: "/iniciar-sesion",
-    element: <LoginPage />,
+    element: <IniciarSesionRedirect />,
   },
   {
     path: "/whatsapp/callback",
@@ -121,7 +125,7 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <Navigate to="/panel" replace /> },
+          { index: true, element: <LandingRedirect /> },
           { path: "panel", element: <DashboardPage /> },
           { path: "leads", element: <LeadsPage /> },
           {

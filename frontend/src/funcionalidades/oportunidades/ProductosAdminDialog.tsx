@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { isAdministrador } from "@/funcionalidades/autenticacion/permissions";
 import { useCrearProducto, useProductos } from "./useOportunidades";
 
 // Espejo de crearProductoBodySchema del backend
@@ -65,7 +66,7 @@ export function ProductosAdminDialog({
   esVistaSoloLectura = false,
 }: ProductosAdminDialogProps) {
   const { user } = useAuth();
-  const esAdmin = user?.rol === "ADMINISTRADOR";
+  const esAdmin = isAdministrador(user?.rol);
 
   const { data: productos = [], isLoading } = useProductos({ empresaId: empresaVistaId });
   const crearProducto = useCrearProducto();

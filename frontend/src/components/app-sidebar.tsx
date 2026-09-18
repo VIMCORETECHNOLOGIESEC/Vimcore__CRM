@@ -29,6 +29,7 @@ function iniciales(nombre: string): string {
 
 const ETIQUETA_ROL: Record<string, string> = {
   ADMINISTRADOR: "Administrador",
+  ADMINISTRADOR_HOLDING: "Administrador de holding",
   SUPERVISOR: "Supervisor",
   // Bloque F (aditivo, holding-wide con acceso total): sin estas dos
   // entradas, el footer del sidebar caía al fallback `user.rol` crudo

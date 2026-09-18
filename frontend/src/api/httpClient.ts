@@ -1,24 +1,22 @@
 /**
- * Cliente HTTP para la API del backend (AGENTS.md §4, docs/07 F1/F2).
+ * Cliente HTTP del CRM hacia el Api Gateway de la plataforma (AGENTS.md §4).
  *
  * Cobertura de TDD (AGENTS.md §5): este módulo contiene lógica no trivial
- * (inyección de JWT, cola de refresco ante 401, deduplicación de refrescos
- * concurrentes, mapeo de errores, persistencia de sesión, serialización de
- * query params) -- ver `frontend/tests/httpClient.test.ts`.
+ * (redirección al frontend de auth ante 401 con guarda anti-bucle, mapeo de
+ * los dos formatos de error, serialización de query params) -- ver
+ * `frontend/tests/httpClient.test.ts`.
  *
- * Contrato verificado contra `backend/src/controllers/auth.controller.ts`,
- * `backend/src/services/auth.service.ts` y
- * `backend/src/middlewares/error-handler.middleware.ts`:
- * - Login: `POST /auth/login` con `{ correo, password }` → `{ accessToken,
- *   refreshToken, user }`.
- * - Refresco: `POST /auth/refresh` con `{ refreshToken }` en el cuerpo (no
- *   cookie) → `{ accessToken, refreshToken }`. Rotación en cada uso: el
- *   backend revoca toda la familia si detecta reutilización de un
- *   `refreshToken` ya usado, por eso `refreshAccessToken()` deduplica
- *   refrescos concurrentes en una única promesa compartida.
- * - Autorización: header `Authorization: Bearer <accessToken>`.
- * - Errores de dominio: `{ code, message }` con `message` ya accionable en
- *   español -- se reexpone tal cual en `ApiError.message`.
+ * Contrato (gateway `/crm/*` -> CRM `/api/v1/*`):
+ * - Sesión: cookie HttpOnly `gw_session` del gateway, enviada con
+ *   `credentials: "include"`. El CRM no maneja tokens: ni `Authorization`, ni
+ *   refresh, ni nada en `localStorage`.
+ * - URL: `${VITE_GATEWAY_BASE_URL}/crm<path>` (antes `${VITE_API_BASE_URL}<path>`).
+ * - Éxito: el gateway reenvía la respuesta del CRM tal cual (sin sobre).
+ * - Errores: del CRM `{ code, message }` (mensaje ya accionable en español);
+ *   generados por el gateway `{ success: false, error: { code, message } }`.
+ *   Se normalizan ambos a `ApiError`.
+ * - 401 (`AUTH_REQUIRED` o cualquiera): no hay sesión de plataforma -> se
+ *   redirige el navegador al frontend de auth (`VITE_AUTH_APP_URL`).
  */
 
 export class ApiError extends Error {
@@ -40,135 +38,77 @@ const NETWORK_ERROR_MESSAGE =
   "No se pudo conectar con el servidor. Verifica tu conexión e intenta nuevamente.";
 const SESSION_EXPIRED_MESSAGE = "Tu sesión expiró. Inicia sesión nuevamente.";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
-
-interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
 }
 
-const REFRESH_TOKEN_STORAGE_KEY = "crm.refreshToken";
+const GATEWAY_BASE_URL = stripTrailingSlash(
+  import.meta.env.VITE_GATEWAY_BASE_URL ?? "http://localhost:3001",
+);
+const AUTH_APP_URL = stripTrailingSlash(
+  import.meta.env.VITE_AUTH_APP_URL ?? "http://localhost:5174",
+);
+const API_BASE_URL = `${GATEWAY_BASE_URL}/crm`;
+/** El frontend de auth no admite URL de retorno: se redirige a su login. */
+const AUTH_LOGIN_URL = `${AUTH_APP_URL}/auth/login`;
+
+/** Origen del gateway (para llamadas fuera de `/crm`, p. ej. `POST /auth/logout`). */
+export function getGatewayBaseUrl(): string {
+  return GATEWAY_BASE_URL;
+}
+
+export function getAuthLoginUrl(): string {
+  return AUTH_LOGIN_URL;
+}
 
 /**
- * `localStorage` puede no estar disponible (modo privado estricto de algunos
- * navegadores, contextos sin `window`) -- estas envolturas degradan a
- * "sin persistencia" en vez de romper el login.
+ * Guarda anti-bucle auth <-> CRM: (1) `redirecting` evita disparar varias
+ * navegaciones en la misma carga (varias peticiones con 401 a la vez);
+ * (2) si ya se redirigió hace menos de `AUTH_REDIRECT_THROTTLE_MS` (un
+ * rebote auth -> CRM -> auth), no se redirige otra vez y el llamador debe
+ * mostrar una pantalla con un enlace manual. `sessionStorage` solo guarda un
+ * timestamp, nunca datos de sesión.
  */
-function readPersistedRefreshToken(): string | null {
-  try {
-    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
+const AUTH_REDIRECT_STORAGE_KEY = "crm.authRedirectAt";
+const AUTH_REDIRECT_THROTTLE_MS = 10_000;
+let redirecting = false;
 
-function persistRefreshToken(token: string | null): void {
+/** `true` si el navegador ya va (o acaba de ir) al frontend de auth; `false` si se frenó por posible bucle. */
+export function redirectToAuth(): boolean {
+  if (redirecting) {
+    return true;
+  }
   try {
-    if (token) {
-      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
-    } else {
-      localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    const now = Date.now();
+    const last = Number(sessionStorage.getItem(AUTH_REDIRECT_STORAGE_KEY));
+    if (last && now - last < AUTH_REDIRECT_THROTTLE_MS) {
+      return false;
     }
+    sessionStorage.setItem(AUTH_REDIRECT_STORAGE_KEY, String(now));
   } catch {
-    // Sin persistencia disponible, la sesión no sobrevive a un recargo pero
-    // sigue funcionando en memoria durante la pestaña actual.
+    // Sin `sessionStorage` la guarda (2) no aplica; la (1) sigue vigente.
   }
+  redirecting = true;
+  window.location.assign(AUTH_LOGIN_URL);
+  return true;
 }
 
-/**
- * Estado de tokens: `accessToken` solo vive en memoria (nunca se persiste --
- * vida corta, se rehidrata desde `refreshTokenValue` al montar la app). El
- * `refreshTokenValue` sí se persiste en `localStorage` (F2, "Persistencia de
- * sesión y cierre automático al expirar el refresh") y se lee una vez al
- * cargar este módulo para que `restoreSession()` pueda usarlo al arrancar.
- */
-let accessToken: string | null = null;
-let refreshTokenValue: string | null = readPersistedRefreshToken();
-
-export function setTokens(tokens: TokenPair | null): void {
-  accessToken = tokens?.accessToken ?? null;
-  refreshTokenValue = tokens?.refreshToken ?? null;
-  persistRefreshToken(refreshTokenValue);
-}
-
-export function getAccessToken(): string | null {
-  return accessToken;
-}
-
-export function getRefreshToken(): string | null {
-  return refreshTokenValue;
+/** Solo para tests: reinicia la guarda anti-bucle entre casos. */
+export function resetAuthRedirectGuard(): void {
+  redirecting = false;
+  try {
+    sessionStorage.removeItem(AUTH_REDIRECT_STORAGE_KEY);
+  } catch {
+    // Sin `sessionStorage` no hay nada que reiniciar.
+  }
 }
 
 type SessionExpiredHandler = () => void;
 let onSessionExpired: SessionExpiredHandler | null = null;
 
-function expireSession(): void {
-  setTokens(null);
-  onSessionExpired?.();
-}
-
-/** Registrado por `AuthProvider` para limpiar el estado de sesión en React. */
+/** Registrado por `AuthProvider` para limpiar el estado de sesión en React ante un 401. */
 export function setOnSessionExpired(handler: SessionExpiredHandler | null): void {
   onSessionExpired = handler;
-}
-
-/**
- * Deduplica refrescos concurrentes: si dos peticiones reciben 401 al mismo
- * tiempo, ambas deben esperar el mismo intento de refresco en lugar de
- * disparar dos llamadas a `/auth/refresh` con el mismo refresh token --el
- * backend rota y revoca toda la familia ante reutilización (D-D en
- * `auth.service.ts`), así que un segundo refresco en paralelo con el mismo
- * token cerraría la sesión igual que un token robado.
- */
-let pendingRefresh: Promise<string | null> | null = null;
-
-async function refreshAccessToken(): Promise<string | null> {
-  if (!refreshTokenValue) {
-    return null;
-  }
-
-  if (!pendingRefresh) {
-    pendingRefresh = fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: refreshTokenValue }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("refresh_failed");
-        }
-        const data = (await response.json()) as TokenPair;
-        setTokens(data);
-        return data.accessToken;
-      })
-      .catch(() => {
-        expireSession();
-        return null;
-      })
-      .finally(() => {
-        pendingRefresh = null;
-      });
-  }
-
-  return pendingRefresh;
-}
-
-/**
- * Rehidrata la sesión al montar la app a partir del refresh token
- * persistido (F2). Reutiliza `refreshAccessToken()` -- la misma cola que
- * deduplica refrescos concurrentes ante un 401 -- así un refresco disparado
- * al arrancar nunca compite con uno disparado por una petición temprana.
- * Si el refresh token persistido ya expiró o fue revocado, `AuthProvider`
- * recibe el mismo `onSessionExpired` que usa el interceptor 401 y cierra la
- * sesión sola (sin sesión previa real que cerrar, es un no-op visible).
- */
-export async function restoreSession(): Promise<boolean> {
-  if (!refreshTokenValue) {
-    return false;
-  }
-  const newAccessToken = await refreshAccessToken();
-  return newAccessToken !== null;
 }
 
 /**
@@ -183,7 +123,11 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   /** Query params de un GET, serializados a `?clave=valor` (F7, listado con filtro y paginación real). */
   params?: Record<string, QueryParamValue>;
-  /** No adjunta ni espera `Authorization` (login, refresh). */
+  /**
+   * Endpoint que no debe tratar un 401 como "sesión de plataforma perdida"
+   * (marca pública, callbacks OAuth): el 401 es un error normal, sin
+   * redirección al frontend de auth.
+   */
   skipAuth?: boolean;
 }
 
@@ -191,9 +135,11 @@ export interface AuthenticatedFetchOptions extends RequestInit {
   params?: Record<string, QueryParamValue>;
 }
 
+/** Errores del CRM (`{ code, message }`) o del gateway (`{ success: false, error: { code, message } }`). */
 interface ApiErrorBody {
   code?: string;
   message?: string;
+  error?: { code?: string; message?: string };
 }
 
 function buildQueryString(params?: Record<string, QueryParamValue>): string {
@@ -207,64 +153,45 @@ function buildQueryString(params?: Record<string, QueryParamValue>): string {
   return query ? `?${query}` : "";
 }
 
-async function fetchAuthenticatedResponse(
+async function fetchGateway(
   path: string,
   options: AuthenticatedFetchOptions,
-  isRetry: boolean,
+  redirectOn401: boolean,
 ): Promise<Response> {
-  const { headers, params, ...rest } = options;
-  const finalHeaders: Record<string, string> = {
-    ...(headers as Record<string, string> | undefined),
-  };
-  if (accessToken) {
-    finalHeaders.Authorization = `Bearer ${accessToken}`;
-  }
+  const { params, ...rest } = options;
 
   const response = await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, {
     ...rest,
-    headers: finalHeaders,
+    credentials: "include",
   });
 
-  if (response.status !== 401) {
-    return response;
-  }
-
-  if (isRetry) {
-    expireSession();
-    return response;
-  }
-
-  const hadLocalSession = accessToken !== null || refreshTokenValue !== null;
-  const newAccessToken = await refreshAccessToken();
-  if (newAccessToken) {
-    return fetchAuthenticatedResponse(path, options, true);
-  }
-  if (hadLocalSession && (accessToken !== null || refreshTokenValue !== null)) {
-    expireSession();
+  if (response.status === 401 && redirectOn401) {
+    onSessionExpired?.();
+    redirectToAuth();
   }
   return response;
 }
 
 /**
- * Ejecuta una petición autenticada y devuelve la `Response` sin consumirla.
- * Se usa tanto por el cliente JSON como por streams SSE: el bearer viaja solo
- * en headers, un 401 admite como máximo un refresco y un segundo 401 expira la
- * sesión antes de devolver la respuesta terminal al consumidor.
+ * Ejecuta una petición con la cookie de sesión del gateway y devuelve la
+ * `Response` sin consumirla. Se usa tanto por el cliente JSON como por streams
+ * SSE. Un 401 limpia el estado de sesión local y redirige al frontend de auth
+ * antes de devolver la respuesta terminal al consumidor.
  */
 export function authenticatedFetch(
   path: string,
   options: AuthenticatedFetchOptions = {},
 ): Promise<Response> {
-  return fetchAuthenticatedResponse(path, options, false);
+  return fetchGateway(path, options, true);
 }
 
 /**
  * Extraído de `request()` para compartirlo con `requestFormData()` (subida de
- * archivos, `postFormData`): ambos hacen `fetch`/`authenticatedFetch` con
- * cuerpos distintos (JSON serializado vs. `FormData`), pero el mapeo de
- * `Response` -> `T`/`ApiError` es idéntico. `skipAuth` solo importa para el
- * caso 401: en un endpoint sin auth (login) un 401 es un error de dominio
- * normal con su propio `code`/`message` del backend, no una sesión expirada.
+ * archivos, `postFormData`): ambos hacen `fetch` con cuerpos distintos (JSON
+ * serializado vs. `FormData`), pero el mapeo de `Response` -> `T`/`ApiError`
+ * es idéntico. `skipAuth` solo importa para el caso 401: en un endpoint
+ * público un 401 es un error de dominio normal con su propio `code`/`message`,
+ * no una sesión perdida.
  */
 async function parseResponse<T>(response: Response, skipAuth: boolean): Promise<T> {
   if (response.status === 401 && !skipAuth) {
@@ -283,7 +210,8 @@ async function parseResponse<T>(response: Response, skipAuth: boolean): Promise<
   }
 
   if (!response.ok) {
-    const apiError = payload as ApiErrorBody | null;
+    const body = payload as ApiErrorBody | null;
+    const apiError = body?.error ?? body;
     throw new ApiError(
       apiError?.code ?? "error_desconocido",
       response.status,
@@ -301,21 +229,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     "Content-Type": "application/json",
     ...(headers as Record<string, string> | undefined),
   };
-  if (!skipAuth && accessToken) {
-    finalHeaders.Authorization = `Bearer ${accessToken}`;
-  }
 
   let response: Response;
   try {
-    const fetchOptions = {
-      ...rest,
-      headers: finalHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      params,
-    };
-    response = skipAuth
-      ? await fetch(`${API_BASE_URL}${path}${buildQueryString(params)}`, fetchOptions)
-      : await authenticatedFetch(path, fetchOptions);
+    response = await fetchGateway(
+      path,
+      {
+        ...rest,
+        headers: finalHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        params,
+      },
+      !skipAuth,
+    );
   } catch {
     throw new ApiError("error_red", 0, NETWORK_ERROR_MESSAGE);
   }
@@ -324,14 +250,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 /**
- * Subida de archivo (`multipart/form-data`) autenticada -- a propósito NO pasa
- * por `request()`: ese helper siempre serializa `body` a JSON y fuerza
+ * Subida de archivo (`multipart/form-data`) -- a propósito NO pasa por
+ * `request()`: ese helper siempre serializa `body` a JSON y fuerza
  * `Content-Type: application/json`, lo que rompería un `FormData` (el
  * navegador necesita fijar `Content-Type: multipart/form-data; boundary=...`
  * él mismo a partir del `FormData`, y solo lo hace si el header queda
- * ausente). Por eso acá no se pasa ningún `headers` a `authenticatedFetch`
- * más que el `Authorization` que ya inyecta internamente -- nunca se setea
- * `Content-Type` a mano.
+ * ausente). Por eso acá nunca se setea `Content-Type` a mano.
  */
 async function requestFormData<T>(path: string, formData: FormData): Promise<T> {
   let response: Response;

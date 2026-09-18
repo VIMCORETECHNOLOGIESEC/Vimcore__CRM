@@ -1,5 +1,4 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { getRefreshToken } from "@/api/httpClient";
 import {
   CONFIGURACION_EMPRESA_DEFAULT,
   type ConfiguracionEmpresa,
@@ -11,24 +10,21 @@ import { WelcomeSplashLoader } from "./WelcomeSplashLoader";
 
 /**
  * Estado inicial de la cortina (fix "boot desincronizado" -- F5 con sesión
- * activa): si HABÍA un refresh token persistido (mismo chequeo que
- * `AuthContext.tsx::hadPersistedRefreshToken`, `Boolean(getRefreshToken())`,
- * reusado tal cual) Y hay una marca cacheada (`@/lib/marca-cache`, escrita
- * por `AuthContext` cada vez que `GET /auth/perfil` resolvió con éxito),
- * arranca con ESA marca en vez del default público del holding -- evita el
- * corte visual brusco de pintar primero el branding del holding y recién
- * después el real de la empresa. Sin refresh token persistido (nunca hubo
- * sesión en este navegador) o sin cache, comportamiento sin cambios: default
- * de fábrica hasta que resuelva `GET /marca-publica` (PASO 5, abajo).
+ * activa): si hay una marca cacheada (`@/lib/marca-cache`, escrita por
+ * `AuthContext` cada vez que `GET /auth/perfil` resolvió con éxito), arranca
+ * con ESA marca en vez del default público del holding -- evita el corte
+ * visual brusco de pintar primero el branding del holding y recién después el
+ * real de la empresa. Ya no hay un refresh token persistido que indique "hubo
+ * sesión": la sesión vive en la cookie del gateway, ilegible desde JS, así que
+ * el único indicio es la propia marca cacheada. Sin cache, comportamiento sin
+ * cambios: default de fábrica hasta que resuelva `GET /marca-publica` (PASO 5,
+ * abajo).
  *
  * Dato stale por diseño, nunca fuente de verdad -- ver comentario en
  * `marca-cache.ts`. `GET /marca-publica` sigue disparando en paralelo y
  * reemplaza este pintado optimista en cuanto resuelve.
  */
 function resolveMarcaInicial(): ConfiguracionEmpresa {
-  if (!getRefreshToken()) {
-    return CONFIGURACION_EMPRESA_DEFAULT;
-  }
   const marcaConocida = getMarcaConocida();
   if (!marcaConocida) {
     return CONFIGURACION_EMPRESA_DEFAULT;

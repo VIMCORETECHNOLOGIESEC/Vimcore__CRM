@@ -1,41 +1,22 @@
-import { httpClient } from "@/api/httpClient";
-import type { AuthenticatedUser, PublicUser } from "@/tipos/usuario";
-
-interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  // Bloque D0: `PublicUser`, no `AuthenticatedUser` -- `POST /auth/login` no
-  // se amplía (docs/blocks/d0-visualizacion-multitenant.md). `AuthContext`
-  // ignora este campo para hidratar sesión; ver `AuthContext.tsx::login`.
-  user: PublicUser;
-}
-
-interface RefreshResponse {
-  accessToken: string;
-  refreshToken: string;
-}
-
-/** `POST /auth/login` — ver `backend/src/controllers/auth.controller.ts`. */
-export function loginApi(correo: string, password: string): Promise<LoginResponse> {
-  return httpClient.post<LoginResponse>(
-    "/auth/login",
-    { correo, password },
-    { skipAuth: true },
-  );
-}
+import { getGatewayBaseUrl, httpClient } from "@/api/httpClient";
+import type { AuthenticatedUser } from "@/tipos/usuario";
 
 /**
- * `POST /auth/logout` — requiere `Authorization`. Idempotente en el backend
- * (D-E): nunca revela si el refresh token pertenecía a otra sesión.
+ * Cierre de sesión de la plataforma: `POST /auth/logout` del gateway (origen
+ * del gateway, NO bajo `/crm`), con la cookie `gw_session`. Destruye la sesión
+ * y limpia la cookie. Un fallo no es accionable: el llamador redirige igual.
  */
-export function logoutApi(refreshToken: string): Promise<void> {
-  return httpClient.post<void>("/auth/logout", { refreshToken });
+export async function logoutApi(): Promise<void> {
+  await fetch(`${getGatewayBaseUrl()}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
 }
 
 /**
- * `GET /auth/perfil` — requiere `Authorization`. Usado por `AuthProvider`
- * para rehidratar el usuario al arrancar la app a partir del refresh token
- * persistido (F2, "Persistencia de sesión").
+ * `GET /auth/perfil` (vía gateway `/crm/auth/perfil`) — requiere la sesión de
+ * plataforma. Usado por `AuthProvider` para hidratar al usuario al arrancar la
+ * app; el CRM resuelve rol y scope desde su propia BD.
  */
 export function getPerfilApi(): Promise<AuthenticatedUser> {
   return httpClient.get<AuthenticatedUser>("/auth/perfil");
@@ -61,5 +42,3 @@ export function getPerfilApi(): Promise<AuthenticatedUser> {
 export function changePasswordApi(userId: string, password: string): Promise<void> {
   return httpClient.patch<unknown>(`/usuarios/${userId}`, { password }).then(() => undefined);
 }
-
-export type { LoginResponse, RefreshResponse };

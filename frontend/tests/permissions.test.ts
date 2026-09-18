@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getLandingRoute,
+  isAdministrador,
   hasRoleAccess,
   hasScopeAccess,
   hasVistaEmpresaAccess,
@@ -106,5 +107,33 @@ describe("getLandingRoute", () => {
     expect(getLandingRoute("SUPERVISOR")).toBe("/panel");
     expect(getLandingRoute("ASESOR")).toBe("/panel");
     expect(getLandingRoute("VENDEDOR")).toBe("/panel");
+  });
+
+  it("ADMINISTRADOR_HOLDING de sesión holding aterriza en /empresas", () => {
+    expect(getLandingRoute("ADMINISTRADOR_HOLDING", "holding")).toBe("/empresas");
+    expect(getLandingRoute("ADMINISTRADOR_HOLDING")).toBe("/empresas");
+  });
+
+  it("los demás roles (incluido SUPERVISOR_HOLDING) mantienen su aterrizaje, aun con scope holding", () => {
+    expect(getLandingRoute("ADMINISTRADOR", "holding")).toBe("/panel");
+    expect(getLandingRoute("SUPERVISOR_HOLDING", "holding")).toBe("/panel");
+  });
+});
+
+describe("ADMINISTRADOR_HOLDING", () => {
+  it("hasRoleAccess: alcanza toda ruta que alcanzaba un ADMINISTRADOR", () => {
+    expect(hasRoleAccess("ADMINISTRADOR_HOLDING", ["ADMINISTRADOR"])).toBe(true);
+    expect(hasRoleAccess("ADMINISTRADOR_HOLDING", ["ADMINISTRADOR", "SUPERVISOR"])).toBe(true);
+  });
+
+  it("hasRoleAccess: no alcanza rutas que no incluyen ADMINISTRADOR", () => {
+    expect(hasRoleAccess("ADMINISTRADOR_HOLDING", ["SUPERVISOR"])).toBe(false);
+  });
+
+  it("isAdministrador cubre ADMINISTRADOR y ADMINISTRADOR_HOLDING, no SUPERVISOR_HOLDING", () => {
+    expect(isAdministrador("ADMINISTRADOR")).toBe(true);
+    expect(isAdministrador("ADMINISTRADOR_HOLDING")).toBe(true);
+    expect(isAdministrador("SUPERVISOR_HOLDING")).toBe(false);
+    expect(isAdministrador(undefined)).toBe(false);
   });
 });

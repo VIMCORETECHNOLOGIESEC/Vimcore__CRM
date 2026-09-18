@@ -2,11 +2,18 @@
 
 interface ImportMetaEnv {
   /**
-   * URL base de la API del backend, incluido el prefijo de versión
-   * (ej. `http://localhost:3000/api/v1`). Opcional: `src/api/httpClient.ts`
-   * usa un valor por defecto apto para `docker compose up` si no se define.
+   * Origen del Api Gateway de la plataforma, sin sufijo (ej.
+   * `http://localhost:3001`): el CRM llama `${VITE_GATEWAY_BASE_URL}/crm/<ruta>`
+   * con la cookie de sesión. Opcional: `src/api/httpClient.ts` usa
+   * `http://localhost:3001` si no se define.
    */
-  readonly VITE_API_BASE_URL?: string;
+  readonly VITE_GATEWAY_BASE_URL?: string;
+  /**
+   * Origen del frontend de auth (ej. `http://localhost:5174`): a donde se
+   * redirige al usuario sin sesión y tras el cierre de sesión. Opcional:
+   * `src/api/httpClient.ts` usa `http://localhost:5174` si no se define.
+   */
+  readonly VITE_AUTH_APP_URL?: string;
 }
 
 interface ImportMeta {

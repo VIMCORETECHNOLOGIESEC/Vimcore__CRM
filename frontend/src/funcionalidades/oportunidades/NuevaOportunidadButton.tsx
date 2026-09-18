@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/componentes/states/EmptyState";
 import { useAuth } from "@/funcionalidades/autenticacion/auth-context";
+import { isAdministrador } from "@/funcionalidades/autenticacion/permissions";
 import { ProductosAdminDialog } from "./ProductosAdminDialog";
 import { useCrearOportunidad, useProductos } from "./useOportunidades";
 
@@ -51,7 +52,7 @@ interface NuevaOportunidadButtonProps {
 export function NuevaOportunidadButton({ leadId }: NuevaOportunidadButtonProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const esAdmin = user?.rol === "ADMINISTRADOR";
+  const esAdmin = isAdministrador(user?.rol);
   const [open, setOpen] = useState(false);
   const [productoId, setProductoId] = useState(SIN_PRODUCTO);
   const [dialogProductosAbierto, setDialogProductosAbierto] = useState(false);

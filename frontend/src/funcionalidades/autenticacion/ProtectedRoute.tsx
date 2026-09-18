@@ -1,7 +1,8 @@
-import { Navigate, Outlet, useLocation } from "react-router";
+import { Navigate, Outlet } from "react-router";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 import { useVistaEmpresa } from "@/funcionalidades/empresa-apariencia/useVistaEmpresa";
 import { useAuth } from "./auth-context";
+import { ErrorArranquePage, IdentidadNoVinculadaPage, SinSesionPage } from "./EstadosAccesoPage";
 import { hasRoleAccess, hasScopeAccess, hasVistaEmpresaAccess } from "./permissions";
 
 interface ProtectedRouteProps {
@@ -34,13 +35,12 @@ export function ProtectedRoute({
   allowedScopes,
   requiereVistaEmpresaSiHolding,
 }: ProtectedRouteProps) {
-  const { user, isAuthenticated, isLoading } = useAuth();
-  const location = useLocation();
+  const { user, isAuthenticated, isLoading, identityNotLinked, bootstrapError } = useAuth();
   const { empresaVistaId } = useVistaEmpresa();
 
-  // `isLoading` cubre la rehidratación de sesión al arrancar la app (F2):
-  // sin esto, un refresh token persistido válido igual mostraría un
-  // parpadeo de "sesión expirada" -> login mientras se restaura.
+  // `isLoading` cubre la hidratación de sesión al arrancar la app
+  // (`GET /auth/perfil` vía gateway): sin esto se vería un parpadeo de
+  // "sin sesión" mientras resuelve.
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -49,8 +49,19 @@ export function ProtectedRoute({
     );
   }
 
+  // Autenticado en auth pero sin vínculo en el CRM (T5 decide el flujo real):
+  // pantalla temporal, sin login ni redirección para no crear un bucle.
+  if (identityNotLinked) {
+    return <IdentidadNoVinculadaPage />;
+  }
+
+  if (bootstrapError) {
+    return <ErrorArranquePage />;
+  }
+
+  // Sin sesión de plataforma: al frontend de auth (no hay login propio).
   if (!isAuthenticated) {
-    return <Navigate to="/iniciar-sesion" replace state={{ desde: location.pathname }} />;
+    return <SinSesionPage />;
   }
 
   if (

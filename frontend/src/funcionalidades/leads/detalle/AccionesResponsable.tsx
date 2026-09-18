@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { isAdministrador } from "@/funcionalidades/autenticacion/permissions";
 import type { Lead } from "@/tipos/lead";
 import type { AuthenticatedUser } from "@/tipos/usuario";
 import { getCatalogoResponsables, getCatalogoVendedores } from "../leads.api";
@@ -33,7 +34,7 @@ export function AccionesResponsable({ lead, user }: AccionesResponsableProps) {
 
   const handoff = useHandoffToVendedor(lead.id);
   const reassign = useReassignLead(lead.id);
-  const eligeVendedorManualmente = user.rol === "ADMINISTRADOR" || user.rol === "SUPERVISOR";
+  const eligeVendedorManualmente = isAdministrador(user.rol) || user.rol === "SUPERVISOR";
 
   // Backend real (D-A2, integración F3/F4): `getCatalogoVendedores`/
   // `getCatalogoResponsables` ahora son async. `GET /usuarios/responsables`

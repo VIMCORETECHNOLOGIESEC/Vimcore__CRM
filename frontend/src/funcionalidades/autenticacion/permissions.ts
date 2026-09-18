@@ -38,7 +38,17 @@ export function hasRoleAccess(
   if (ROLES_HOLDING_BYPASS.includes(rol)) {
     return true;
   }
+  // `ADMINISTRADOR_HOLDING` alcanza todo lo que alcanzaba un `ADMINISTRADOR`
+  // de sesión `holding` (incluido `/empresas`), sin cambiar cada lista fija.
+  if (rol === "ADMINISTRADOR_HOLDING") {
+    return allowedRoles.includes("ADMINISTRADOR");
+  }
   return allowedRoles.includes(rol);
+}
+
+/** `ADMINISTRADOR` o `ADMINISTRADOR_HOLDING`: comparaciones directas de rol (fuera de `hasRoleAccess`). */
+export function isAdministrador(rol: RolUsuario | null | undefined): boolean {
+  return rol === "ADMINISTRADOR" || rol === "ADMINISTRADOR_HOLDING";
 }
 
 /**
@@ -126,12 +136,16 @@ export function hasVistaEmpresaAusente(
  * post-login según rol"). Primer ítem de `NAVIGATION_ITEMS` accesible para el
  * rol -- única fuente de verdad, ya usada por la barra lateral.
  *
- * Hoy F3+ (leads, dashboard) todavía no distingue vistas por rol, así que
- * el resultado es "/panel" para los 4 roles; cuando existan landings
- * distintas por rol, esta función ya las resuelve sin tocar quien la llama
- * (`LoginPage`).
+ * Hoy solo `ADMINISTRADOR_HOLDING` (sesión `holding`) tiene un aterrizaje
+ * propio ("/empresas"); el resto resuelve "/panel". Quien la llama es
+ * `LandingRedirect` (índice de `router.tsx`).
  */
-export function getLandingRoute(rol: RolUsuario): string {
+export function getLandingRoute(rol: RolUsuario, scope?: SessionScope): string {
+  // Un administrador de holding aterriza directo en la administración del
+  // holding (gestor de empresas), no en el dashboard.
+  if (rol === "ADMINISTRADOR_HOLDING" && scope !== "company") {
+    return "/empresas";
+  }
   const primerItemAccesible = NAVIGATION_ITEMS.find((item) =>
     hasRoleAccess(rol, item.allowedRoles),
   );

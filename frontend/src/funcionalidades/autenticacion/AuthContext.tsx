@@ -1,11 +1,14 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { getRefreshToken, restoreSession, setOnSessionExpired, setTokens } from "@/api/httpClient";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { ApiError, getAuthLoginUrl, setOnSessionExpired } from "@/api/httpClient";
 import { persistMarcaConocida } from "@/lib/marca-cache";
 import type { AuthenticatedUser, RolUsuario } from "@/tipos/usuario";
-import { getPerfilApi, loginApi, logoutApi } from "./autenticacion.api";
+import { getPerfilApi, logoutApi } from "./autenticacion.api";
 import { hasRoleAccess } from "./permissions";
 import { AuthContext, type AuthContextValue } from "./auth-context";
+
+/** Código del gateway: autenticado en auth pero sin identidad vinculada en el CRM (T5 decide qué hacer). */
+export const CRM_IDENTITY_NOT_LINKED = "CRM_IDENTITY_NOT_LINKED";
 
 /**
  * Query key del perfil de sesión. Representa `GET /auth/perfil` (ver
@@ -46,8 +49,8 @@ function isPerfilConsistente(perfil: AuthenticatedUser): boolean {
 /**
  * Termina el estado de sesión reactivo y purga cualquier otro dato
  * cacheado de la sesión saliente -- se invoca tanto en `logout()` explícito
- * como cuando `httpClient` reporta sesión expirada (un refresco fallido
- * también termina la sesión sin pasar por el botón de logout).
+ * como cuando `httpClient` reporta sesión expirada (un 401 también termina la
+ * sesión sin pasar por el botón de logout).
  *
  * Riesgo que evita: sin esto, cualquier query cacheada por otro módulo que
  * no incluya `user.id` en su key (p. ej. `useLeads` -- el backend ya filtra
@@ -73,9 +76,9 @@ function isPerfilConsistente(perfil: AuthenticatedUser): boolean {
  * inmediato porque reutiliza el mismo objeto `Query` vivo. Por eso: primero
  * `setQueryData` (perfil pasa a `null` ya mismo, dispara la redirección de
  * `ProtectedRoute`), después `removeQueries` excluyendo esa query -- si se
- * la volviera a eliminar, el próximo `login()`/`setQueryData` construiría
- * un `Query` nuevo desconectado del observer ya montado, rompiendo el
- * flujo de login siguiente en la misma pestaña.
+ * la volviera a eliminar, el próximo `setQueryData` construiría
+ * un `Query` nuevo desconectado del observer ya montado, rompiendo la
+ * rehidratación siguiente en la misma pestaña.
  */
 function clearSessionCache(queryClient: QueryClient): void {
   queryClient.setQueryData(PERFIL_QUERY_KEY, null);
@@ -85,51 +88,40 @@ function clearSessionCache(queryClient: QueryClient): void {
 }
 
 /**
- * Estado de sesión (F2, "Persistencia de sesión y cierre automático al
- * expirar el refresh" -- ver `api/httpClient.ts`). `user` es estado de
- * servidor (`GET /auth/perfil`) y vive en TanStack Query bajo la key
- * `["auth", "perfil"]` (AGENTS.md §4).
+ * Estado de sesión. `user` es estado de servidor (`GET /auth/perfil`, vía el
+ * gateway con la cookie `gw_session`) y vive en TanStack Query bajo la key
+ * `["auth", "perfil"]` (AGENTS.md §4). El CRM ya no tiene login propio: al
+ * arrancar la app hidrata la sesión con esa única llamada.
  *
- * La `queryFn` reproduce la rehidratación de sesión al arrancar la app:
- * intenta `restoreSession()` a partir del refresh token persistido en
- * `localStorage`; si no hay sesión que restaurar, o si `restoreSession()`/
- * `getPerfilApi()` fallan (refresh token expirado o revocado), resuelve a
- * `null` en silencio -- el usuario simplemente ve la pantalla de login, sin
- * error visible (el interceptor 401 de `httpClient.ts` ya limpió el store
- * de tokens en ese caso).
- *
- * La query solo se dispara si había un refresh token persistido *al
- * montar* (capturado una única vez en `hadPersistedRefreshToken`, no leído
- * de nuevo en cada render) -- así se evita el parpadeo de "cargando" en el
- * caso normal de "nunca inició sesión".
+ * Resultados de la `queryFn`:
+ * - 200 consistente -> hidrata `user`.
+ * - 401 (sin sesión de plataforma) -> `null`; `httpClient` ya redirigió al
+ *   frontend de auth, y `ProtectedRoute` cubre el caso de la guarda anti-bucle.
+ * - 403 `CRM_IDENTITY_NOT_LINKED` u otro error (502 `UPSTREAM_ERROR`, red) ->
+ *   se propaga como `error` de la query, expuesto como `identityNotLinked` /
+ *   `bootstrapError`. Nunca se redirige a auth por estos (evita bucles).
  *
  * `retry: false`, `refetchOnWindowFocus: false`, `refetchOnMount: false` y
- * `staleTime: Infinity`: esta query es una comprobación de arranque de una
- * sola vez, no un dato que deba revalidarse en segundo plano. La validez de
- * la sesión durante el uso de la app la sigue gobernando el interceptor 401
- * de `httpClient.ts` (que invoca `onSessionExpired` para limpiar la cache),
- * no el ciclo de vida normal de TanStack Query.
+ * `staleTime: Infinity`: comprobación de arranque de una sola vez. La validez
+ * de la sesión durante el uso la gobierna el 401 de `httpClient.ts` (que
+ * invoca `onSessionExpired` para limpiar la cache).
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [hadPersistedRefreshToken] = useState(() => Boolean(getRefreshToken()));
-  const [isLoginPending, setIsLoginPending] = useState(false);
 
   const perfilQuery = useQuery({
     queryKey: PERFIL_QUERY_KEY,
     queryFn: async (): Promise<AuthenticatedUser | null> => {
       try {
-        const restaurada = await restoreSession();
-        if (!restaurada) {
-          return null;
-        }
         const perfil = await getPerfilApi();
         return isPerfilConsistente(perfil) ? perfil : null;
-      } catch {
-        return null;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          return null;
+        }
+        throw error;
       }
     },
-    enabled: hadPersistedRefreshToken,
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
@@ -137,6 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const user = perfilQuery.data ?? null;
+  const identityNotLinked =
+    perfilQuery.error instanceof ApiError && perfilQuery.error.code === CRM_IDENTITY_NOT_LINKED;
+  const bootstrapError = perfilQuery.error && !identityNotLinked ? perfilQuery.error : null;
 
   useEffect(() => {
     setOnSessionExpired(() => clearSessionCache(queryClient));
@@ -144,58 +139,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   // Fix "boot desincronizado" (F5 con sesión activa): cada vez que el perfil
-  // hidrata con éxito (rehidratación al arrancar o login), deja en
-  // `localStorage` la última marca conocida (`@/lib/marca-cache`) -- la lee
-  // `AppBoot.tsx` en el próximo arranque para pintar el splash con ese
-  // branding en vez del público del holding, mientras la query real resuelve
-  // en paralelo. Dato stale por diseño, ver comentario en `marca-cache.ts`.
+  // hidrata con éxito, deja en `localStorage` la última marca conocida
+  // (`@/lib/marca-cache`) -- la lee `AppBoot.tsx` en el próximo arranque para
+  // pintar el splash con ese branding en vez del público del holding, mientras
+  // la query real resuelve en paralelo. Dato stale por diseño, ver comentario
+  // en `marca-cache.ts`.
   useEffect(() => {
     if (user) persistMarcaConocida(user);
   }, [user]);
 
-  const login = useCallback(
-    async (correo: string, password: string) => {
-      setIsLoginPending(true);
-      try {
-        const response = await loginApi(correo, password);
-        setTokens({ accessToken: response.accessToken, refreshToken: response.refreshToken });
-
-        // Bloque D0 ("Secuencia obligatoria"): `POST /auth/login` no
-        // devuelve `sessionScope`/`empresaId`/`empresaNombre` (decisión
-        // explícita de no ampliarlo) -- el estado autenticado se construye
-        // ÚNICAMENTE con `GET /auth/perfil`, igual que la rehidratación de
-        // arranque de arriba. `response.user` (`PublicUser`) nunca alimenta
-        // la sesión.
-        const perfil = await getPerfilApi();
-        if (!isPerfilConsistente(perfil)) {
-          // Fila "Perfil incompleto o inconsistente": fallo cerrado. Los
-          // tokens del login válido se conservan -- la autenticación en sí
-          // fue correcta, solo la hidratación del scope falló -- para
-          // permitir reintentar el perfil sin forzar un login nuevo.
-          throw new Error("perfil_inconsistente");
-        }
-        queryClient.setQueryData(PERFIL_QUERY_KEY, perfil);
-        return perfil;
-      } finally {
-        setIsLoginPending(false);
-      }
-    },
-    [queryClient],
-  );
-
+  // No hay sesión de CRM que cerrar: se destruye la sesión de plataforma en el
+  // gateway y se manda al usuario al login del frontend de auth (navegación
+  // completa, sin pasar por la guarda anti-bucle de `redirectToAuth`).
   const logout = useCallback(async () => {
-    const refreshToken = getRefreshToken();
-    setTokens(null);
     clearSessionCache(queryClient);
-    if (refreshToken) {
-      try {
-        await logoutApi(refreshToken);
-      } catch {
-        // Logout es idempotente y de un solo intento (D-E en
-        // auth.service.ts): si falla, la sesión local ya quedó cerrada, no
-        // hay nada accionable que mostrarle al usuario.
-      }
+    try {
+      await logoutApi();
+    } catch {
+      // Un fallo de red no es accionable: se redirige igual.
     }
+    window.location.assign(getAuthLoginUrl());
   }, [queryClient]);
 
   const hasRole = useCallback(
@@ -207,12 +170,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isAuthenticated: user !== null,
-      isLoading: perfilQuery.isLoading || isLoginPending,
-      login,
+      isLoading: perfilQuery.isLoading,
+      identityNotLinked,
+      bootstrapError,
       logout,
       hasRole,
     }),
-    [user, perfilQuery.isLoading, isLoginPending, login, logout, hasRole],
+    [user, perfilQuery.isLoading, identityNotLinked, bootstrapError, logout, hasRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -30,6 +30,7 @@ export function canHandoffToVendedor(lead: Lead, user: AuthenticatedUser): boole
     case "ASESOR":
       return lead.asesor?.id === user.id;
     case "ADMINISTRADOR":
+    case "ADMINISTRADOR_HOLDING":
     case "SUPERVISOR":
     // Bloque F: bypass total, mismo criterio que ADMINISTRADOR (ver
     // el docblock de `RolUsuario` en `@/tipos/usuario`).
@@ -52,6 +53,7 @@ export function canReassignLead(lead: Lead, user: AuthenticatedUser): boolean {
     case "ASESOR":
       return lead.asesor?.id === user.id && lead.semaforo !== "VERDE";
     case "ADMINISTRADOR":
+    case "ADMINISTRADOR_HOLDING":
     case "SUPERVISOR":
     case "SUPERVISOR_HOLDING":
     case "SUPER_ADMIN":

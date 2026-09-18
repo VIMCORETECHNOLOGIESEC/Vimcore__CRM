@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RolUsuario, SessionScope } from "@/tipos/usuario";
 
 vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
@@ -9,6 +9,7 @@ vi.mock("@/funcionalidades/autenticacion/auth-context", () => ({
 
 const { useAuth } = await import("@/funcionalidades/autenticacion/auth-context");
 const { ProtectedRoute } = await import("@/funcionalidades/autenticacion/ProtectedRoute");
+const { resetAuthRedirectGuard } = await import("@/api/httpClient");
 
 const useAuthMock = vi.mocked(useAuth);
 
@@ -20,7 +21,6 @@ function renderWithRoute(opciones: {
 } = {}) {
   const router = createMemoryRouter(
     [
-      { path: "/iniciar-sesion", element: <div>Pantalla de inicio de sesión</div> },
       { path: "/panel", element: <div>Panel</div> },
       {
         element: (
@@ -38,21 +38,95 @@ function renderWithRoute(opciones: {
   return render(<RouterProvider router={router} />);
 }
 
+let assignMock: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  resetAuthRedirectGuard();
+  assignMock = vi.fn();
+  vi.stubGlobal("location", { assign: assignMock, href: "http://crm.test/" });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const sesionBase = {
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  identityNotLinked: false,
+  bootstrapError: null,
+  logout: vi.fn(),
+  hasRole: vi.fn(),
+};
+
 describe("ProtectedRoute", () => {
-  it("redirige a /iniciar-sesion cuando no hay sesión", async () => {
-    useAuthMock.mockReturnValue({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-      login: vi.fn(),
-      logout: vi.fn(),
-      hasRole: vi.fn(),
-    });
+  it("sin sesión de plataforma redirige al frontend de auth (una sola vez) y no muestra el contenido", async () => {
+    useAuthMock.mockReturnValue(sesionBase);
 
     renderWithRoute();
 
-    expect(await screen.findByText("Pantalla de inicio de sesión")).toBeInTheDocument();
+    expect(await screen.findByText("Redirigiendo al inicio de sesión…")).toBeInTheDocument();
+    expect(assignMock).toHaveBeenCalledTimes(1);
+    expect(assignMock).toHaveBeenCalledWith("http://localhost:5174/auth/login");
     expect(screen.queryByText("Contenido privado")).not.toBeInTheDocument();
+  });
+
+  it("si la guarda anti-bucle frena la redirección, muestra un enlace manual en vez de redirigir otra vez", async () => {
+    sessionStorage.setItem("crm.authRedirectAt", String(Date.now()));
+    useAuthMock.mockReturnValue(sesionBase);
+
+    renderWithRoute();
+
+    const enlace = await screen.findByRole("link", { name: "Ir al inicio de sesión" });
+    expect(enlace).toHaveAttribute("href", "http://localhost:5174/auth/login");
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("403 CRM_IDENTITY_NOT_LINKED: pantalla temporal sin formulario de login y sin redirección", async () => {
+    useAuthMock.mockReturnValue({ ...sesionBase, identityNotLinked: true });
+
+    renderWithRoute();
+
+    expect(
+      await screen.findByText("Tu cuenta aún no está vinculada al CRM"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver al inicio de sesión" })).toHaveAttribute(
+      "href",
+      "http://localhost:5174/auth/login",
+    );
+    expect(screen.queryByLabelText(/contraseña/i)).not.toBeInTheDocument();
+    expect(document.querySelector("form")).toBeNull();
+    expect(assignMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("Contenido privado")).not.toBeInTheDocument();
+  });
+
+  it("error de arranque (502): pantalla con reintento, sin redirigir a auth", async () => {
+    useAuthMock.mockReturnValue({ ...sesionBase, bootstrapError: new Error("UPSTREAM_ERROR") });
+
+    renderWithRoute();
+
+    expect(await screen.findByText("No pudimos cargar tu sesión")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("ADMINISTRADOR_HOLDING accede a una ruta restringida a ADMINISTRADOR de scope holding", async () => {
+    useAuthMock.mockReturnValue({
+      ...sesionBase,
+      user: {
+        id: "u1",
+        nombre: "Ana",
+        correo: "ana@crm.test",
+        rol: "ADMINISTRADOR_HOLDING",
+        sessionScope: "holding",
+      },
+      isAuthenticated: true,
+    });
+
+    renderWithRoute({ allowedRoles: ["ADMINISTRADOR"], allowedScopes: ["holding"] });
+
+    expect(await screen.findByText("Contenido privado")).toBeInTheDocument();
   });
 
   it("redirige a /panel cuando hay sesión pero el rol del usuario no tiene acceso", async () => {
