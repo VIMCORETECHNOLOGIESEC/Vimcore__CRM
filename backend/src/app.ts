@@ -4,7 +4,7 @@ import { pinoHttp } from "pino-http";
 import { apiRouter } from "./routes/index.js";
 import { gatewayRouter } from "./routes/gateway.routes.js";
 import { errorHandler } from "./middlewares/error-handler.middleware.js";
-import { env } from "./config/env.js";
+import { env, parseCorsOrigins } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 
 export function createApp(): Express {
@@ -30,7 +30,8 @@ export function createApp(): Express {
   // El frontend (SPA en otro origen) autentica con `Authorization: Bearer`,
   // no con cookies -- no hace falta `credentials: true`. `cors` resuelve el
   // preflight `OPTIONS` automáticamente para el POST JSON de login.
-  app.use(cors({ origin: env.CORS_ORIGIN }));
+  // `CORS_ORIGIN` is a comma-separated list (parsed in config/env.ts).
+  app.use(cors({ origin: parseCorsOrigins(env.CORS_ORIGIN) }));
   // `verify` captura el buffer crudo exacto de cada request en `req.rawBody`
   // ANTES de que `express.json()` lo parsee/descarte — el webhook de Meta
   // (`meta-webhook.controller.ts`) lo necesita para verificar

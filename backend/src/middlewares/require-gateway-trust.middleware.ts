@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import type { RolUsuario } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env.js";
 import { AppError } from "../lib/app-error.js";
@@ -45,39 +46,46 @@ function compareGatewaySecret(secret: string, presented: string): boolean {
 }
 
 /**
+ * holding-admin-gateway-auth: roles whose scope is the holding
+ * (`Usuario.holdingId`), never a single empresa. They need neither a
+ * `Membresia` nor a company header, and resolve `empresaId: null`
+ * (holding-wide through the application role, same as the JWT holding session
+ * of `requireAuthentication`). Every other role stays company-scoped.
+ */
+const HOLDING_SCOPED_ROLES: readonly RolUsuario[] = ["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING"];
+
+/**
+ * True when the request carries `X-Gateway-Secret` at all (even empty). Used by
+ * `requireAuthentication` to pick the trust path: a request that presents the
+ * header is NEVER allowed to fall back to the CRM JWT path.
+ */
+export function hasGatewaySecretHeader(req: Request): boolean {
+  return req.headers["x-gateway-secret"] !== undefined;
+}
+
+/**
  * crm-gateway-proxy (CRM Gateway Trust, design.md, ADR #8 "Server-to-server
- * trust, not JWT propagation"): primer paso de la migración de CRM hacia una
- * identidad resuelta por Auth/Gateway. El Gateway (Api_gateway_Vimcore) ya
- * validó el JWT real de Auth y reenvía, servicio a servicio, la identidad
- * resuelta -- mismo patrón ya vivo para `api_vimpey` -- vía tres encabezados:
- * `X-Gateway-Secret` (secreto compartido, INV-4), `X-Gateway-Company-Id` y
- * `X-Gateway-User-Id` (ids de AUTH, nunca ids propios de CRM, INV-1). Este
- * middleware NUNCA valida un JWT de Auth directamente -- esa opción fue
- * evaluada y rechazada explícitamente (reabriría la decisión de seguridad ya
- * cerrada sobre HS256 sin JWKS).
+ * trust, not JWT propagation"): the Gateway (Api_gateway_Vimcore) already
+ * validated the real Auth JWT and forwards the resolved identity, service to
+ * service, through `X-Gateway-Secret` (shared secret, INV-4),
+ * `X-Gateway-User-Id` (Auth user id) and, only when the session belongs to a
+ * company, `X-Gateway-Company-Id` (Auth ids, never CRM ids, INV-1). This
+ * middleware NEVER validates an Auth JWT directly.
  *
- * `authCompanyId`/`authUserId` (migración `20260916203815_auth_identity_link`)
- * son la única traducción entre los ids de Auth y los ids propios de CRM
- * (`Empresa`/`Usuario`) -- exactamente el mismo criterio de traducción que
- * `require-bridge-key.middleware.ts` aplica para `claveApiHash` -> `Bridge`.
- * CRM sigue siendo la única autoridad de autorización (`Usuario.rol`,
- * `Membresia.rol`): este middleware SOLO establece identidad confiable +
- * contexto de tenant, igual que `require-authentication.middleware.ts`, pero
- * entrando por encabezados en vez de por JWT.
+ * `authUserId`/`authCompanyId` (migration `20260916203815_auth_identity_link`)
+ * are the only translation between Auth ids and CRM ids. The CRM DB stays the
+ * single authority for role, scope, holding and empresas: the headers assert
+ * identity only; everything else is re-read on every request.
  *
- * Desviación deliberada frente a `requireAuthentication`: esa función resuelve
- * `sessionScope` ("company" | "holding") desde un claim de sesión propio de
- * CRM (`dual-login-routing`), inexistente acá -- el modelo de sesión de Auth
- * hoy es single-company, así que el Gateway SIEMPRE reenvía una
- * `authCompanyId` puntual, nunca "todas las empresas". No hay encabezado que
- * pueda pedir alcance holding-wide (el diseño lo prohíbe explícitamente: "no
- * inventar semántica de scope nueva que los encabezados no llevan"), así que
- * `sessionScope` es SIEMPRE `"company"` y `empresaId` SIEMPRE la `Empresa`
- * resuelta -- nunca `null`. `membresiaCoincide` (requireAuthentication)
- * compara la `Membresia` recargada contra los claims de un JWT ya emitido;
- * acá no hay claims previos que puedan quedar desincronizados -- cada request
- * relee `Usuario`/`Empresa`/`Membresia` desde cero, así que ese chequeo de
- * consistencia no aplica.
+ * holding-admin-gateway-auth: the scope is resolved from the `Usuario`:
+ * - `ADMINISTRADOR_HOLDING` / `SUPERVISOR_HOLDING` -> `sessionScope: "holding"`,
+ *   `empresaId: null`, requires `Usuario.holdingId`; a company header, if sent,
+ *   is ignored (it cannot narrow or widen a holding user).
+ * - any other role -> `sessionScope: "company"`; the asserted company must
+ *   resolve to an `Empresa` where the user has an active `Membresia`.
+ * `membresiaCoincide` (requireAuthentication) compares the `Membresia` against
+ * the claims of an already issued JWT; there are no prior claims here, so that
+ * consistency check does not apply.
  */
 export async function requireGatewayTrust(
   req: Request,
@@ -90,37 +98,60 @@ export async function requireGatewayTrust(
   // INV-4 (design.md): mismo guard que cubre a la vez encabezado ausente,
   // secreto presentado ausente y `CRM_GATEWAY_SECRET` sin configurar -- este
   // último es a propósito el kill switch de rollback (config/env.ts): dejar
-  // la variable sin setear cierra el camino confiable sin ningún deploy,
-  // mientras `requireAuthentication` sigue sirviendo el resto de la API sin
-  // interrupción.
+  // la variable sin setear cierra el camino confiable sin ningún deploy.
   if (!secret || !presented || !compareGatewaySecret(secret, presented)) {
     next(gatewayNoAutorizado());
     return;
   }
 
-  const authCompanyId = req.header("X-Gateway-Company-Id")?.trim();
   const authUserId = req.header("X-Gateway-User-Id")?.trim();
 
-  if (!authCompanyId || !authUserId) {
+  if (!authUserId) {
     next(identidadNoVinculada());
     return;
   }
 
   // `empresas`/`usuarios` NO tienen RLS (mismo comentario que
   // `empresa.repository.ts::findByAuthCompanyId`/`usuario.repository.ts::
-  // findByAuthUserId`) -- ambas lecturas corren ANTES de que exista cualquier
+  // findByAuthUserId`) -- las lecturas corren ANTES de que exista cualquier
   // TenantContext, sin necesidad de GUC bootstrap.
-  const [empresa, usuario] = await Promise.all([
-    empresaRepository.findByAuthCompanyId(authCompanyId),
-    usuarioRepository.findByAuthUserId(authUserId),
-  ]);
+  const usuario = await usuarioRepository.findByAuthUserId(authUserId);
 
   // INV-1 (design.md, "identity resolution fails closed"): un solo código de
-  // rechazo para TODA falla de resolución de identidad (empresa no linkeada,
-  // usuario no linkeado, usuario inactivo, sin membresía) -- deliberado, para
-  // no filtrarle al Gateway CUÁL de los cuatro casos fue (mismo criterio
-  // deny-not-leak que ya aplica esta suite a nivel de fila, INV-2).
-  if (!empresa || !usuario || !usuario.activo) {
+  // rechazo para TODA falla de resolución de identidad (usuario no linkeado,
+  // inactivo, holding sin `holdingId`, empresa no linkeada, sin membresía) --
+  // deliberado, para no filtrarle al Gateway CUÁL de los casos fue.
+  if (!usuario || !usuario.activo) {
+    next(identidadNoVinculada());
+    return;
+  }
+
+  if (HOLDING_SCOPED_ROLES.includes(usuario.rol)) {
+    if (!usuario.holdingId) {
+      next(identidadNoVinculada());
+      return;
+    }
+
+    req.user = {
+      id: usuario.id,
+      nombre: usuario.nombre,
+      correo: usuario.correo,
+      rol: usuario.rol,
+      sessionScope: "holding",
+      empresaId: null,
+    };
+    // Same TenantContext as a JWT holding session: `empresaId: null` =
+    // holding-wide through the application role, never `crm_bypass_jobs`.
+    runWithTenantContext({ empresaId: null }, next);
+    return;
+  }
+
+  const authCompanyId = req.header("X-Gateway-Company-Id")?.trim();
+  const empresa = authCompanyId
+    ? await empresaRepository.findByAuthCompanyId(authCompanyId)
+    : null;
+
+  if (!empresa) {
     next(identidadNoVinculada());
     return;
   }

@@ -7,6 +7,7 @@ import { verifyAccessToken } from "../lib/jwt.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import { rolEquivalente } from "../services/shadow-authorization.service.js";
+import { hasGatewaySecretHeader, requireGatewayTrust } from "./require-gateway-trust.middleware.js";
 
 /**
  * Bloque C (D2, spec "Request-scoped tenant context"): mismos dos roles que
@@ -43,6 +44,16 @@ export async function requireAuthentication(
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // holding-admin-gateway-auth (transitional dual mode): a request that
+  // presents `X-Gateway-Secret` takes the gateway trust path EXCLUSIVELY --
+  // an invalid/unconfigured secret is rejected there, never retried as a JWT,
+  // and identity headers are only ever read after the secret is verified.
+  // Without the header the CRM JWT path below is unchanged.
+  if (hasGatewaySecretHeader(req)) {
+    await requireGatewayTrust(req, _res, next);
+    return;
+  }
+
   const header = req.headers.authorization;
   const [scheme, token] = header?.split(" ") ?? [];
 

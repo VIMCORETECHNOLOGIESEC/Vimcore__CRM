@@ -71,6 +71,7 @@ function usuarioFalso(overrides: Partial<Usuario> = {}): Usuario {
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     authUserId: "auth-usuario-1",
+    holdingId: null,
     ...overrides,
   } as Usuario;
 }
@@ -243,16 +244,7 @@ describe("middlewares/require-gateway-trust — happy path puebla req.user + Ten
     expect(req.user?.correo).toBe("ana@empresa.local");
   });
 
-  /**
-   * Desviación deliberada frente a `requireAuthentication` (ver doc comment
-   * del middleware): el Gateway SIEMPRE reenvía una `authCompanyId` puntual
-   * -- no existe ningún encabezado de alcance "holding-wide" que este
-   * middleware pueda leer, así que `sessionScope`/`empresaId` NUNCA resuelven
-   * a `"holding"`/`null` acá, ni siquiera para un ADMINISTRADOR (que en el
-   * camino JWT SÍ puede tener una sesión holding-wide). Este test documenta
-   * esa ausencia en vez de asumirla en silencio.
-   */
-  it("un ADMINISTRADOR vinculado NUNCA resuelve sessionScope holding-wide vía gateway trust", async () => {
+  it("a company ADMINISTRADOR (single empresa) stays company-scoped via gateway trust", async () => {
     vi.mocked(empresaRepository.findByAuthCompanyId).mockResolvedValue(empresaFalsa());
     vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(
       usuarioFalso({ rol: "ADMINISTRADOR" }),
@@ -267,5 +259,100 @@ describe("middlewares/require-gateway-trust — happy path puebla req.user + Ten
 
     expect(req.user?.sessionScope).toBe("company");
     expect(req.user?.empresaId).not.toBeNull();
+  });
+});
+
+describe("middlewares/require-gateway-trust — holding scope (holding-admin-gateway-auth)", () => {
+  it.each(["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING"] as const)(
+    "%s: holding scope, empresaId null, no company header and no Membresia needed",
+    async (rol) => {
+      vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(
+        usuarioFalso({ id: "usuario-h", rol, holdingId: "holding-1" }),
+      );
+      const req = reqConHeaders({ secret: SECRET_VALIDO, userId: "auth-usuario-1" });
+      const next = vi.fn();
+
+      await requireGatewayTrust(req, {} as Response, next);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(req.user).toEqual({
+        id: "usuario-h",
+        nombre: "Test",
+        correo: "t@t.com",
+        rol,
+        sessionScope: "holding",
+        empresaId: null,
+      });
+      expect(empresaRepository.findByAuthCompanyId).not.toHaveBeenCalled();
+      expect(membresiaRepository.findActivaByUsuarioAndEmpresa).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a company header sent by a holding user is ignored (scope stays holding)", async () => {
+    vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(
+      usuarioFalso({ rol: "ADMINISTRADOR_HOLDING", holdingId: "holding-1" }),
+    );
+    const req = reqConHeaders(HEADERS_VALIDOS);
+    const next = vi.fn();
+
+    await requireGatewayTrust(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(req.user?.sessionScope).toBe("holding");
+    expect(req.user?.empresaId).toBeNull();
+    expect(empresaRepository.findByAuthCompanyId).not.toHaveBeenCalled();
+  });
+
+  it("403 identidad_no_vinculada: holding role without Usuario.holdingId", async () => {
+    vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(
+      usuarioFalso({ rol: "ADMINISTRADOR_HOLDING", holdingId: null }),
+    );
+    const req = reqConHeaders({ secret: SECRET_VALIDO, userId: "auth-usuario-1" });
+    const next = vi.fn();
+
+    await requireGatewayTrust(req, {} as Response, next);
+
+    expect(next.mock.calls[0]?.[0]).toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+    expect(req.user).toBeUndefined();
+  });
+
+  it("403 identidad_no_vinculada: inactive holding user", async () => {
+    vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(
+      usuarioFalso({ rol: "ADMINISTRADOR_HOLDING", holdingId: "holding-1", activo: false }),
+    );
+    const req = reqConHeaders({ secret: SECRET_VALIDO, userId: "auth-usuario-1" });
+    const next = vi.fn();
+
+    await requireGatewayTrust(req, {} as Response, next);
+
+    expect(next.mock.calls[0]?.[0]).toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+  });
+
+  it("403 identidad_no_vinculada: company user without company header", async () => {
+    vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(usuarioFalso({ rol: "ADMINISTRADOR" }));
+    const req = reqConHeaders({ secret: SECRET_VALIDO, userId: "auth-usuario-1" });
+    const next = vi.fn();
+
+    await requireGatewayTrust(req, {} as Response, next);
+
+    expect(next.mock.calls[0]?.[0]).toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+    expect(req.user).toBeUndefined();
+  });
+
+  it("403 identidad_no_vinculada: asserted company where the user has no active Membresia (company mismatch)", async () => {
+    vi.mocked(usuarioRepository.findByAuthUserId).mockResolvedValue(usuarioFalso({ rol: "ASESOR" }));
+    vi.mocked(empresaRepository.findByAuthCompanyId).mockResolvedValue(empresaFalsa({ id: "empresa-otra" }));
+    vi.mocked(membresiaRepository.findActivaByUsuarioAndEmpresa).mockResolvedValue(null);
+    const req = reqConHeaders(HEADERS_VALIDOS);
+    const next = vi.fn();
+
+    await requireGatewayTrust(req, {} as Response, next);
+
+    expect(next.mock.calls[0]?.[0]).toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+    expect(membresiaRepository.findActivaByUsuarioAndEmpresa).toHaveBeenCalledWith(
+      "usuario-1",
+      "empresa-otra",
+      expect.anything(),
+    );
   });
 });

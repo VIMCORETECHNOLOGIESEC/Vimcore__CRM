@@ -22,6 +22,19 @@ const LINKEDIN_VARIABLES = [
   "LINKEDIN_API_BASE_URL",
 ] as const;
 
+/**
+ * holding-admin-gateway-auth: `CORS_ORIGIN` accepts a comma-separated list of
+ * origins (trimmed, empties dropped). The wildcard `*` is never accepted: it
+ * cannot be combined with credentials, so if credentials are ever enabled
+ * (`cors({ credentials: true })`) a wildcard origin would be a misconfiguration.
+ */
+export function parseCorsOrigins(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin !== "" && origin !== "*");
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL es obligatoria"),
   // D8 (Bloque C, Etapa 3): conexión de runtime de la aplicación, distinta
@@ -39,9 +52,16 @@ const envSchema = z.object({
   // `setExpirationTime` y el cálculo de `expiraEn` en `refresh_tokens`.
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2592000),
-  // Origen permitido para CORS (frontend). Default: donde corre el frontend
-  // en Docker Compose / `pnpm dev` local.
-  CORS_ORIGIN: z.string().min(1, "CORS_ORIGIN es obligatoria").default("http://localhost:5173"),
+  // Comma-separated list of allowed CORS origins (frontend). Default: where the
+  // frontend runs in Docker Compose / local `pnpm dev`. See `parseCorsOrigins`.
+  CORS_ORIGIN: z
+    .string()
+    .min(1, "CORS_ORIGIN es obligatoria")
+    .refine(
+      (value) => parseCorsOrigins(value).length > 0,
+      "CORS_ORIGIN debe listar al menos un origen explícito (sin comodín *)",
+    )
+    .default("http://localhost:5173"),
   // M4 (decisión 2026-08-18, docs/03-modelo-datos.md §cuentas_publicitarias):
   // clave maestra AES-256-GCM (`lib/cifrado-token.ts`) para cifrar tokens de
   // redes sociales en reposo (`cuentas_publicitarias.token_cifrado`). 64
