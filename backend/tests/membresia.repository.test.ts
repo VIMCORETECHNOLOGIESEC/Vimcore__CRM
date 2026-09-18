@@ -197,3 +197,51 @@ describe("repositories/membresia — assertCorreoDisponible (cross-table uniquen
   });
 });
 
+describe("repositories/membresia — findActivaByUsuarioAndEmpresa (crm-gateway-proxy, CRM Gateway Trust)", () => {
+  it("resuelve la Membresia activa de ese usuario en esa empresa", async () => {
+    const usuario = await crearUsuario("ASESOR");
+    const empresa = await prisma.empresa.create({ data: { nombre: `Empresa gateway trust ${randomUUID()}` } });
+    const membresia = await testAdminPrisma.membresia.create({
+      data: { usuarioId: usuario.id, empresaId: empresa.id, rol: "ASESOR", activa: true },
+    });
+
+    const encontrada = await membresiaRepository.findActivaByUsuarioAndEmpresa(
+      usuario.id,
+      empresa.id,
+      testAdminPrisma,
+    );
+
+    expect(encontrada?.id).toBe(membresia.id);
+    expect(encontrada?.empresaId).toBe(empresa.id);
+  });
+
+  it("devuelve null cuando la Membresia de ese usuario en esa empresa está desactivada (activa=false)", async () => {
+    const usuario = await crearUsuario("ASESOR");
+    const empresa = await prisma.empresa.create({ data: { nombre: `Empresa gateway trust inactiva ${randomUUID()}` } });
+    await testAdminPrisma.membresia.create({
+      data: { usuarioId: usuario.id, empresaId: empresa.id, rol: "ASESOR", activa: false },
+    });
+
+    const encontrada = await membresiaRepository.findActivaByUsuarioAndEmpresa(
+      usuario.id,
+      empresa.id,
+      testAdminPrisma,
+    );
+
+    expect(encontrada).toBeNull();
+  });
+
+  it("devuelve null cuando el usuario no tiene ninguna Membresia en esa empresa", async () => {
+    const usuario = await crearUsuario("ASESOR");
+    const empresa = await prisma.empresa.create({ data: { nombre: `Empresa gateway trust sin membresia ${randomUUID()}` } });
+
+    const encontrada = await membresiaRepository.findActivaByUsuarioAndEmpresa(
+      usuario.id,
+      empresa.id,
+      testAdminPrisma,
+    );
+
+    expect(encontrada).toBeNull();
+  });
+});
+

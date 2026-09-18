@@ -20,6 +20,22 @@ export async function findByEmail(correo: string): Promise<Usuario | null> {
 }
 
 /**
+ * crm-gateway-proxy (CRM Gateway Trust, spec "Tenant and User Identity
+ * Resolution From Forwarded Ids"): resuelve el `Usuario` linkeado a partir
+ * del id de USUARIO de Auth reenviado por el Gateway (`x-gateway-user-id`)
+ * -- mismo criterio que `empresaRepository.findByAuthCompanyId` (lookup por
+ * el id de Auth, nunca por `Usuario.id` directo). `usuarios` NO tiene RLS
+ * (mismo comentario que `findById`), esta lectura corre ANTES de que exista
+ * cualquier `TenantContext`.
+ */
+export async function findByAuthUserId(
+  authUserId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Usuario | null> {
+  return client.usuario.findUnique({ where: { authUserId } });
+}
+
+/**
  * Vista pública administrativa: nunca incluye `passwordHash`. `select`
  * explícito (no spread del modelo completo) por diseño — evita que un futuro
  * campo sensible se filtre por accidente.

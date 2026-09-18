@@ -126,6 +126,18 @@ const envSchema = z.object({
   // criterio de default que `AZURE_STORAGE_CONTAINER_ISOTIPOS`: no es un
   // secreto, no hace falta exigirlo explícitamente en cada entorno.
   AZURE_STORAGE_CONTAINER_REPORTES: z.string().min(1).default("reportes"),
+  // crm-gateway-proxy (ADR #8, design.md): secreto compartido validado por
+  // `requireGatewayTrust` contra `x-gateway-secret`. Deliberadamente
+  // OPCIONAL (a diferencia de `JWT_SECRET`/`TOKEN_ENCRYPTION_KEY`, que fallan
+  // el arranque) -- es el kill switch de rollback (proposal §Rollback 2):
+  // dejarla sin setear cierra el camino confiable sin ningún deploy, mientras
+  // `requireAuthentication` y el frontend propio de CRM siguen sirviendo
+  // `/api/v1/canales-manuales` sin interrupción. Un valor requerido
+  // convertiría "deshabilitar el camino confiable" en "CRM no arranca".
+  CRM_GATEWAY_SECRET: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().min(32).optional(),
+  ),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,

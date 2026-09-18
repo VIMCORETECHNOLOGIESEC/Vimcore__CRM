@@ -36,6 +36,24 @@ export async function findById(
 }
 
 /**
+ * crm-gateway-proxy (CRM Gateway Trust, spec "Tenant and User Identity
+ * Resolution From Forwarded Ids" / INV-1): resuelve la `Membresia` ACTIVA
+ * del `Usuario` ya linkeado en la `Empresa` ya linkeada -- `requireGatewayTrust`
+ * (design.md) invoca esto SIEMPRE dentro de `withBootstrapUsuarioGuc`, mismo
+ * criterio de chicken-and-egg que `require-authentication.middleware.ts:86-88`
+ * (`membresias` carga RLS y todavía no hay `TenantContext` en este punto).
+ * `activa=false` nunca resuelve (mismo criterio que `findByEmail` arriba) --
+ * una `Membresia` dada de baja nunca autoriza, aunque la fila persista.
+ */
+export async function findActivaByUsuarioAndEmpresa(
+  usuarioId: string,
+  empresaId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Membresia | null> {
+  return client.membresia.findFirst({ where: { usuarioId, empresaId, activa: true } });
+}
+
+/**
  * Spec (dual-login-routing, "Cross-table email collision blocked"): guarda
  * transaccional de unicidad de aplicación entre `Usuario.correo` y
  * `Membresia.correo` — ninguna restricción de BD cruza ambas tablas. Debe

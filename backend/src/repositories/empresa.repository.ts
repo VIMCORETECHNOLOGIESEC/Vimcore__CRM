@@ -89,6 +89,22 @@ export async function updateLogo(
   return client.empresa.update({ where: { id }, data: { logoUrl } });
 }
 
+/**
+ * crm-gateway-proxy (CRM Gateway Trust, spec "Tenant and User Identity
+ * Resolution From Forwarded Ids"): resuelve la `Empresa` linkeada a partir
+ * del id de COMPAÑÍA de Auth reenviado por el Gateway
+ * (`x-gateway-company-id`) -- nunca por `Empresa.id` directo, que el Gateway
+ * no conoce (design.md, "Identity direction"). `empresas` NO tiene RLS
+ * (mismo comentario que `findById`), así que esta lectura corre ANTES de que
+ * exista cualquier `TenantContext`, sin necesidad de ningún GUC bootstrap.
+ */
+export async function findByAuthCompanyId(
+  authCompanyId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Empresa | null> {
+  return client.empresa.findUnique({ where: { authCompanyId } });
+}
+
 export interface EmpresaListItem {
   id: string;
   nombre: string;

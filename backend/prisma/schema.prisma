@@ -101,6 +101,14 @@ model Usuario {
   ultimaAsignacionEn DateTime?  @map("ultima_asignacion_en") @db.Timestamptz(6)
   creadoEn           DateTime   @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn      DateTime   @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+  // crm-gateway-proxy (CRM Gateway Trust, Explicit Admin Linking): vínculo
+  // opcional 1:1 con el `id` de usuario de Auth -- nullable/unique, sin
+  // default, mismo criterio que `Empresa.holdingId` (`@unique` porque el
+  // vínculo es 1:1, nunca compartido entre dos `Usuario`). Poblado solo por
+  // linking administrativo explícito (`UPDATE usuarios SET auth_user_id =
+  // …`), nunca auto-provisionado desde una request de `requireGatewayTrust`
+  // (spec crm-gateway-trust, "Explicit Admin Linking (No Auto-Provisioning)").
+  authUserId         String?    @unique(map: "idx_usuarios_auth_user") @map("auth_user_id") @db.Uuid
 
   refreshTokens        RefreshToken[]
   leadEventos          LeadEvento[]
@@ -184,6 +192,13 @@ model Empresa {
   // criterio que colorPrimario/colorSecundario arriba -- ninguna `Empresa`
   // existente antes de este cambio tiene esto seteado.
   logoUrl String? @map("logo_url") @db.Text
+  // crm-gateway-proxy (CRM Gateway Trust, Explicit Admin Linking): vínculo
+  // opcional 1:1 con el `id` de empresa de Auth -- mismo criterio que
+  // `Usuario.authUserId` arriba (nullable/unique, sin default, sin backfill,
+  // poblado únicamente por linking administrativo explícito). El lookup del
+  // middleware `requireGatewayTrust` es SIEMPRE por este campo, nunca por
+  // `Empresa.id` directo -- el Gateway solo conoce ids de Auth.
+  authCompanyId String? @unique(map: "idx_empresas_auth_company") @map("auth_company_id") @db.Uuid
 
   membresias     Membresia[]
   bridges        Bridge[]

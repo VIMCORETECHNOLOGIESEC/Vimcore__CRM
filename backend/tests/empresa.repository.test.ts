@@ -217,3 +217,25 @@ describe("empresa.repository::create", () => {
     });
   });
 });
+
+// crm-gateway-proxy (CRM Gateway Trust, "Tenant and User Identity Resolution
+// From Forwarded Ids"): lookup usado por `requireGatewayTrust` para resolver
+// la `Empresa` linkeada a partir del id de Auth reenviado por el Gateway.
+describe("empresa.repository::findByAuthCompanyId", () => {
+  it("resuelve una Empresa linkeada por su authCompanyId", async () => {
+    const authCompanyId = randomUUID();
+    const empresa = await prisma.empresa.create({
+      data: { nombre: `Empresa gateway trust ${randomUUID()}`, authCompanyId },
+    });
+
+    const encontrada = await empresaRepository.findByAuthCompanyId(authCompanyId);
+
+    expect(encontrada?.id).toBe(empresa.id);
+  });
+
+  it("devuelve null cuando ningún Empresa tiene ese authCompanyId (identidad no vinculada)", async () => {
+    const encontrada = await empresaRepository.findByAuthCompanyId(randomUUID());
+
+    expect(encontrada).toBeNull();
+  });
+});
