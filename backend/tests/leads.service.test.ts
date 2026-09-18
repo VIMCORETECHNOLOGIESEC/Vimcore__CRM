@@ -65,8 +65,8 @@ async function crearLead(
   }> = {},
 ): Promise<{ id: string }> {
   contador += 1;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente LS ${contador}`, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente LS ${contador}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: {
@@ -202,7 +202,7 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
     conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
     const marcador = `marcador-${Date.now()}`;
-    const cliente = await prisma.cliente.create({ data: { nombre: marcador, telefonoValido: false } });
+    const cliente = await testAdminPrisma.cliente.create({ data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: marcador, telefonoValido: false } });
     await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", semaforo: null, ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
@@ -225,7 +225,7 @@ describe("services/leads.service — findLeads (spec: Listado filtrado por rol)"
   it("filtro estadoSla=sin_iniciar devuelve únicamente leads con slaInicioEn null", () =>
     conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
-    const cliente = await prisma.cliente.create({ data: { nombre: `SLA-null-${Date.now()}`, telefonoValido: false } });
+    const cliente = await testAdminPrisma.cliente.create({ data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `SLA-null-${Date.now()}`, telefonoValido: false } });
     const sinIniciar = await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", slaInicioEn: null, ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
     });
@@ -546,8 +546,8 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
   it("el filtro en cascada por etapa reduce las redes sociales devueltas", () =>
     conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
-    const cliente = await prisma.cliente.create({
-      data: { nombre: `Cliente cascada ${Date.now()}`, telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente cascada ${Date.now()}`, telefonoValido: false },
     });
     await testAdminPrisma.lead.create({
       data: {
@@ -599,11 +599,11 @@ describe("services/leads.service — listRedesSocialesVisibles (catálogo en cas
   it("el filtro en cascada por busqueda (nombre de cliente) reduce las redes sociales devueltas", () =>
     conContexto(async () => {
     const supervisor = await crearUsuario("SUPERVISOR");
-    const clienteBuscado = await prisma.cliente.create({
-      data: { nombre: `Cliente busqueda cascada ${Date.now()}`, telefonoValido: false },
+    const clienteBuscado = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente busqueda cascada ${Date.now()}`, telefonoValido: false },
     });
-    const otroCliente = await prisma.cliente.create({
-      data: { nombre: `Otro cliente ${Date.now()}`, telefonoValido: false },
+    const otroCliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Otro cliente ${Date.now()}`, telefonoValido: false },
     });
     await testAdminPrisma.lead.create({
       data: {

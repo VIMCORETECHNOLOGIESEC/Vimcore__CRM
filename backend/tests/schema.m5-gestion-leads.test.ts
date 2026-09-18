@@ -28,8 +28,8 @@ async function crearBridge(): Promise<{ id: string }> {
 }
 
 async function crearCliente(): Promise<{ id: string }> {
-  const cliente = await prisma.cliente.create({
-    data: { nombre: "Cliente de prueba M5 schema", creadoEn: new Date() },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: "Cliente de prueba M5 schema", creadoEn: new Date() },
   });
   return { id: cliente.id };
 }

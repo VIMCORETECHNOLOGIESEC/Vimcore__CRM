@@ -258,7 +258,7 @@ export async function procesarMensajeEntrante(
     undefined,
     async (tx) => {
       const cliente = await clienteRepository.upsertByTelefonoNormalizado(
-        { nombre: entrante.nombrePerfil, telefonoOriginal: original, telefonoNormalizado: normalizado, creadoEn: ahora },
+        { empresaId: conexion.empresaId, nombre: entrante.nombrePerfil, telefonoOriginal: original, telefonoNormalizado: normalizado, creadoEn: ahora },
         tx,
       );
 

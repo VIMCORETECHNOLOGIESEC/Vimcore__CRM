@@ -74,7 +74,7 @@ async function enviarLeadGoogleForms(bridgeKey: string, lead: LeadFixture): Prom
 async function esperarLeadCreado(telefonoNormalizado: string, timeoutMs = 3000): Promise<{ id: string; asesorId: string | null } | null> {
   const inicio = Date.now();
   while (Date.now() - inicio < timeoutMs) {
-    const cliente = await prisma.cliente.findUnique({ where: { telefonoNormalizado } });
+    const cliente = await prisma.cliente.findFirst({ where: { telefonoNormalizado } });
     if (cliente) {
       const lead = await prisma.lead.findFirst({ where: { clienteId: cliente.id } });
       if (lead) return { id: lead.id, asesorId: lead.asesorId };

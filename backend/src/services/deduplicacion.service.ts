@@ -142,7 +142,29 @@ export async function deduplicateLead(
   const outcome = await runInTransaction(
     txExterna,
     async (tx) => {
-      // A. IDENTIDAD — primera sentencia de la transacción, sin excepciones.
+      // Pre-A. EMPRESA — `Cliente` es tenant-scoped (identidad por
+      // `(empresaId, telefonoNormalizado)`), así que la empresa se resuelve
+      // ANTES de la identidad. Es una lectura de `Bridge` sin locks: no altera
+      // el orden de bloqueo que A garantiza sobre la fila de `Cliente`.
+      // `empresaIdCandidato` se resuelve una sola vez y se reutiliza en C;
+      // la rama `crear_lead` re-resuelve su propia atribución completa más
+      // abajo (mismo empresaId, más cuenta/campaña).
+      const empresaIdCandidato = entrada.bridgeId
+        ? await resolverEmpresaIdDesdeBridge(entrada.bridgeId, tx)
+        : (entrada.empresaId ?? null);
+
+      // Sin empresa no hay a qué `Cliente` resolver ni lead que crear: mismo
+      // 422 `empresa_no_resuelta` que ya devolvía la rama `crear_lead` (que
+      // era inalcanzable con empresa nula sin pasar antes por este rechazo).
+      if (empresaIdCandidato === null) {
+        throw new AppError(
+          "empresa_no_resuelta",
+          422,
+          "No se pudo resolver la empresa del lead — falta bridgeId o el bridge no existe",
+        );
+      }
+
+      // A. IDENTIDAD — primera escritura de la transacción, sin excepciones.
       let clienteId: string;
       let clienteCreado: boolean;
       let identidadPor: "telefono" | "correo" | "nueva";
@@ -150,6 +172,7 @@ export async function deduplicateLead(
       if (telefono.valido) {
         const cliente = await clienteRepository.upsertByTelefonoNormalizado(
           {
+            empresaId: empresaIdCandidato,
             nombre: entrada.nombre,
             telefonoOriginal: telefono.original,
             telefonoNormalizado: telefono.normalizado,
@@ -164,7 +187,7 @@ export async function deduplicateLead(
         // D7: teléfono inválido, respaldo por correo (si viene).
         const existente =
           correo !== null
-            ? await clienteRepository.findByCorreoNormalizado(correo.normalizado, tx)
+            ? await clienteRepository.findByCorreoNormalizado(correo.normalizado, empresaIdCandidato, tx)
             : null;
         if (existente !== null) {
           clienteId = existente.id;
@@ -172,7 +195,7 @@ export async function deduplicateLead(
           identidadPor = "correo";
         } else {
           const nuevo = await clienteRepository.createWithoutTelefono(
-            { nombre: entrada.nombre, telefonoOriginal: telefono.original, creadoEn: ahora },
+            { empresaId: empresaIdCandidato, nombre: entrada.nombre, telefonoOriginal: telefono.original, creadoEn: ahora },
             tx,
           );
           clienteId = nuevo.id;
@@ -207,34 +230,17 @@ export async function deduplicateLead(
       // solo OBSERVABA esta divergencia sin corregirla — 10 casos reales ya
       // detectados en producción, cliente con lead abierto de la empresa A
       // absorbiendo silenciosamente ingestas nuevas de las empresas B/C/D
-      // como "interacción repetida" ajena. `empresaIdCandidato` se resuelve
-      // ACÁ (antes solo se resolvía más abajo, dentro de la rama
-      // `crear_lead`, vía `resolverAtribucion`) porque este paso ya lo
-      // necesita para acotar la búsqueda; la rama `crear_lead` re-resuelve su
-      // propia atribución completa más abajo (mismo empresaId, más
-      // cuenta/campaña) — recomputar esa única lectura de `Bridge` es más
-      // simple que enhebrar el valor ya resuelto a través de
-      // `resolverAtribucion`, y es barata (misma transacción, sin I/O
+      // como "interacción repetida" ajena. `empresaIdCandidato` ya viene resuelto
+      // desde el paso Pre-A (recomputar la lectura de `Bridge` en la rama
+      // `crear_lead` es más simple que enhebrar el valor a través de
+      // `resolverAtribucion`, y es barata: misma transacción, sin I/O
       // externo).
-      const empresaIdCandidato = entrada.bridgeId
-        ? await resolverEmpresaIdDesdeBridge(entrada.bridgeId, tx)
-        : (entrada.empresaId ?? null);
-
-      // `empresaIdCandidato === null` (bridgeId inexistente/sin empresa, o
-      // ni bridgeId ni empresaId en la entrada): no hay a qué empresa acotar
-      // la búsqueda, así que se trata como "sin lead abierto" sin consultar
-      // la BD — nunca se cae de vuelta a la búsqueda global vieja (eso
-      // reabriría exactamente el bug que este fix cierra). Si la entrada
-      // termina siendo una creación, el guard `empresa_no_resuelta` de la
-      // rama `crear_lead` (abajo) rechaza la ingesta igual.
-      const leadAbierto =
-        empresaIdCandidato !== null
-          ? await leadRepository.findLeadAbierto(clienteId, empresaIdCandidato, tx)
-          : null;
-      const ultimoLeadCerradoRow =
-        empresaIdCandidato !== null
-          ? await leadRepository.findUltimoLeadCerrado(clienteId, empresaIdCandidato, tx)
-          : null;
+      const leadAbierto = await leadRepository.findLeadAbierto(clienteId, empresaIdCandidato, tx);
+      const ultimoLeadCerradoRow = await leadRepository.findUltimoLeadCerrado(
+        clienteId,
+        empresaIdCandidato,
+        tx,
+      );
       // Invariante de negocio: un lead cerrado siempre tiene `cerradoEn`; si
       // esa invariante se rompiera, se trata como "sin lead cerrado" en vez
       // de romper el flujo con una aserción no nula.

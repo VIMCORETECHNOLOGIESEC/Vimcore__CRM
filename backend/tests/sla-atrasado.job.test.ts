@@ -10,10 +10,10 @@ const PLAZO_MS = SLA_HORAS * 60 * 60 * 1000;
 
 let contador = 0;
 
-async function crearCliente(): Promise<{ id: string }> {
+async function crearCliente(empresaId: string = EMPRESA_BOOTSTRAP_ID): Promise<{ id: string }> {
   contador += 1;
-  return prisma.cliente.create({
-    data: { nombre: `Cliente sla-atrasado ${contador}`, telefonoValido: false },
+  return testAdminPrisma.cliente.create({
+    data: { empresaId, nombre: `Cliente sla-atrasado ${contador}`, telefonoValido: false },
   });
 }
 
@@ -35,7 +35,7 @@ async function crearLeadAtrasado(
   asesorId: string,
   empresaId: string = EMPRESA_BOOTSTRAP_ID,
 ): Promise<{ id: string }> {
-  const cliente = await crearCliente();
+  const cliente = await crearCliente(empresaId);
   return testAdminPrisma.lead.create({
     data: {
       clienteId: cliente.id,

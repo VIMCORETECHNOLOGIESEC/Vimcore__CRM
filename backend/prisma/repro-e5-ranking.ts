@@ -14,7 +14,7 @@ async function crearOportunidadEnEmpresa(empresaId: string, nombreProducto: stri
     create: { empresaId, nombre: nombreProducto },
   });
   const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente repro E5 ${Date.now()}`, telefonoValido: false },
+    data: { empresaId, nombre: `Cliente repro E5 ${Date.now()}`, telefonoValido: false },
   });
   const lead = await prisma.lead.create({
     data: { clienteId: cliente.id, empresaId, origen: "NUEVO", ingresadoEn: new Date() },

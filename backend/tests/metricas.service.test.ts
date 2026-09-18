@@ -61,8 +61,8 @@ interface LeadOverrides {
 
 async function crearLead(overrides: LeadOverrides = {}): Promise<{ id: string }> {
   contador += 1;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente MS ${contador}`, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente MS ${contador}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: {
@@ -675,7 +675,7 @@ describe("services/metricas.service — getRankingProductosPorEmpresa (E5)", () 
         data: { empresaId: empresaB.id, nombre: `Producto B ${Date.now()}` },
       });
       const clienteEmpresaB = await testAdminPrisma.cliente.create({
-        data: { nombre: "Cliente Empresa B Ranking", telefonoValido: false },
+        data: { empresaId: empresaB.id, nombre: "Cliente Empresa B Ranking", telefonoValido: false },
       });
       const leadEmpresaB = await testAdminPrisma.lead.create({
         data: {

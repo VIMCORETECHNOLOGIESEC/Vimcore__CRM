@@ -78,9 +78,9 @@ describe("deduplicacion.service — deduplicateLead(txExterna) (M4, PR0)", () =>
 
     // Sin `txExterna`, las escrituras deben quedar comprometidas de inmediato
     // (la propia transacción de deduplicateLead ya hizo commit).
-    const cliente = await prisma.cliente.findUniqueOrThrow({
-      where: { id: resultado.clienteId },
-    });
+    const cliente = await conContexto(async () =>
+      prisma.cliente.findUniqueOrThrow({ where: { id: resultado.clienteId } }),
+    );
     expect(cliente.id).toBe(resultado.clienteId);
   });
 
@@ -104,7 +104,7 @@ describe("deduplicacion.service — deduplicateLead(txExterna) (M4, PR0)", () =>
     // de usar `tx`), estas filas habrían quedado comprometidas pese al
     // rollback del llamador externo. Que no existan prueba que comparten una
     // única transacción (precondición DD2 de "no segunda conexión").
-    const totalClientes = await prisma.cliente.count({ where: { id: clienteId } });
+    const totalClientes = await conContexto(async () => prisma.cliente.count({ where: { id: clienteId } }));
     expect(totalClientes).toBe(0);
     const totalLeads = await prisma.lead.count({ where: { id: leadId } });
     expect(totalLeads).toBe(0);

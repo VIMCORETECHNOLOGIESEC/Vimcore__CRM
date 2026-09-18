@@ -10,7 +10,7 @@ import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
  */
 async function crearClienteYLead(empresaId: string): Promise<{ leadId: string }> {
   const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente RLS ${crypto.randomUUID()}`, telefonoValido: false },
+    data: { empresaId, nombre: `Cliente RLS ${crypto.randomUUID()}`, telefonoValido: false },
   });
   const lead = await prisma.lead.create({
     data: {

@@ -210,6 +210,7 @@ model Empresa {
   citas          Cita[]
   leadEventos    LeadEvento[]
   notificaciones Notificacion[]
+  clientes       Cliente[]
   bridgeLogs     BridgeLog[]
   // whatsappMessages: un solo número de WhatsApp por empresa (D-mensajería,
   // "un solo número por empresa"), por eso es opcional y no un arreglo.
@@ -373,12 +374,19 @@ enum TipoEventoLead {
 
 model Cliente {
   id                  String   @id @default(uuid()) @db.Uuid
+  // Tenant-scoped (RLS, migración 20260918120000_cliente_empresa_tenant_isolation):
+  // `empresaId` directo en `Cliente` (no derivado de `Lead`, para evitar la
+  // circularidad Lead -> Cliente -> Lead). La identidad por teléfono es por
+  // empresa: `@@unique([empresaId, telefonoNormalizado])` reemplaza al
+  // `@unique` global anterior de `telefonoNormalizado`.
+  empresaId           String   @map("empresa_id") @db.Uuid
   nombre              String?  @db.Text
   telefonoOriginal    String?  @map("telefono_original") @db.Text
-  telefonoNormalizado String?  @unique @map("telefono_normalizado") @db.Text
+  telefonoNormalizado String?  @map("telefono_normalizado") @db.Text
   telefonoValido      Boolean  @default(false) @map("telefono_valido")
   creadoEn            DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
 
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
   correos CorreoCliente[]
   leads   Lead[]
   // Bloque B (Fase 3, dedup shadow): cola de revisión no invasiva — ver
@@ -390,6 +398,8 @@ model Cliente {
   // (decisión de la exploración: mensajes ≠ leads).
   conversacionesWhatsapp Conversacion[]
 
+  @@unique([empresaId, telefonoNormalizado], map: "clientes_empresa_id_telefono_normalizado_key")
+  @@index([empresaId], map: "idx_clientes_empresa")
   @@map("clientes")
 }
 

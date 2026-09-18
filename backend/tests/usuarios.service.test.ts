@@ -92,8 +92,8 @@ let contador = 0;
 
 async function crearCliente(): Promise<{ id: string }> {
   contador += 1;
-  return prisma.cliente.create({
-    data: { nombre: `Cliente baja usuario ${contador}`, telefonoValido: false },
+  return testAdminPrisma.cliente.create({
+    data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: `Cliente baja usuario ${contador}`, telefonoValido: false },
   });
 }
 

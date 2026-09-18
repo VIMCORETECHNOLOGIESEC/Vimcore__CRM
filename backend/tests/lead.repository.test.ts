@@ -10,8 +10,8 @@ let contador = 0;
 
 async function crearClienteYLead(): Promise<{ leadId: string }> {
   contador += 1;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente LR ${contador}`, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente LR ${contador}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },
@@ -82,8 +82,8 @@ describe("repositories/lead — findById (PR3)", () => {
 
 describe("repositories/lead — findMany (PR3, listado filtrado)", () => {
   it("filtra por etapa y pagina con el total real, no el de la página", async () => {
-    const cliente = await prisma.cliente.create({
-      data: { nombre: "Cliente FM", telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: "Cliente FM", telefonoValido: false },
     });
     await testAdminPrisma.lead.createMany({
       data: [
@@ -107,8 +107,8 @@ describe("repositories/lead — findMany (PR3, listado filtrado)", () => {
 describe("repositories/lead — findById/findMany incluyen relaciones anidadas (spec: Listado/Detalle con relaciones)", () => {
   it("findById devuelve cliente/asesor/vendedor como objetos anidados, no solo IDs", async () => {
     contador += 1;
-    const cliente = await prisma.cliente.create({
-      data: { nombre: `Cliente Rel ${contador}`, telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente Rel ${contador}`, telefonoValido: false },
     });
     const asesor = await prisma.usuario.create({
       data: {
@@ -149,8 +149,8 @@ describe("repositories/lead — findById/findMany incluyen relaciones anidadas (
 
   it("findMany devuelve cliente/asesor/vendedor anidados para cada item del listado", async () => {
     contador += 1;
-    const cliente = await prisma.cliente.create({
-      data: { nombre: `Cliente Rel FM ${contador}`, telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente Rel FM ${contador}`, telefonoValido: false },
     });
     const asesor = await prisma.usuario.create({
       data: {

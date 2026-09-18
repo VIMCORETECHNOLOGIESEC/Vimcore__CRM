@@ -291,9 +291,12 @@ async function main(): Promise<void> {
       }
 
       const cliente = await prisma.cliente.upsert({
-        where: { telefonoNormalizado: demo.clienteTelefono },
+        where: {
+          empresaId_telefonoNormalizado: { empresaId: demo.empresaId, telefonoNormalizado: demo.clienteTelefono },
+        },
         update: {},
         create: {
+          empresaId: demo.empresaId,
           nombre: demo.clienteNombre,
           telefonoOriginal: demo.clienteTelefono,
           telefonoNormalizado: demo.clienteTelefono,

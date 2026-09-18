@@ -81,8 +81,8 @@ async function createUsuarioConMembresia(
 
 async function createLead(asesorId?: string) {
   sequence += 1;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente productor M8 ${sequence}`, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: `Cliente productor M8 ${sequence}`, telefonoValido: false },
   });
   return testAdminPrisma.lead.create({
     data: {
@@ -116,8 +116,8 @@ describe("M8 scheduled and bridge producers", () => {
 
     try {
       sequence += 1;
-      const cliente = await prisma.cliente.create({
-        data: { nombre: `Cliente SLA sin destinatarios ${sequence}`, telefonoValido: false },
+      const cliente = await testAdminPrisma.cliente.create({
+        data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: `Cliente SLA sin destinatarios ${sequence}`, telefonoValido: false },
       });
       const lead = await testAdminPrisma.lead.create({
         data: {

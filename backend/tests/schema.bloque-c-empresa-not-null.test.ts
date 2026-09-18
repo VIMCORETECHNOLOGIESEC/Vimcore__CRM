@@ -28,8 +28,8 @@ describe("schema Bloque C — empresa_id NOT NULL en leads/bridges (D4, sin back
    * error de tipo/cast que probaría otra cosa.
    */
   it("leads.empresa_id es NOT NULL: un INSERT crudo sin empresa_id es rechazado por Postgres (23502, no_null_violation)", async () => {
-    const cliente = await prisma.cliente.create({
-      data: { nombre: `Cliente NOT NULL ${randomUUID()}`, telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente NOT NULL ${randomUUID()}`, telefonoValido: false },
     });
 
     await expect(
@@ -52,8 +52,8 @@ describe("schema Bloque C — empresa_id NOT NULL en leads/bridges (D4, sin back
   });
 
   it("un lead/bridge CON empresa_id válida se inserta sin problema (control positivo, no es un guard de más)", async () => {
-    const cliente = await prisma.cliente.create({
-      data: { nombre: `Cliente con empresa ${randomUUID()}`, telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente con empresa ${randomUUID()}`, telefonoValido: false },
     });
     const leadId = randomUUID();
     await testAdminPrisma.$executeRawUnsafe(

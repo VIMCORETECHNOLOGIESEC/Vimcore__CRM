@@ -39,6 +39,9 @@ const TABLAS_TENANT_SCOPED = [
   // tres de arriba, que necesitaron un fix aparte) -- ver
   // 20260831040556_bloque_d_ingreso_manual_leads.
   "canales_manuales",
+  // Cliente tenant-scoped (empresa_id directo) -- ver
+  // 20260918120000_cliente_empresa_tenant_isolation.
+  "clientes",
 ] as const;
 
 afterAll(async () => {

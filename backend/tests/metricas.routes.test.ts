@@ -95,8 +95,8 @@ describe("routes/metricas — wiring y autenticación", () => {
     const admin = await crearUsuarioConToken("ADMINISTRADOR");
     const cam = marcador();
     const dia = "2026-08-18";
-    const cliente = await prisma.cliente.create({
-      data: { nombre: `Cliente MR ${cam}`, telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente MR ${cam}`, telefonoValido: false },
     });
     await testAdminPrisma.lead.create({
       data: {

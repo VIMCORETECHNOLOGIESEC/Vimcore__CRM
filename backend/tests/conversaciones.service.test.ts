@@ -34,10 +34,10 @@ async function crearEmpresaConConexion(): Promise<{ empresaId: string; conexionI
   return { empresaId: empresa.id, conexionId: conexion.id };
 }
 
-async function crearCliente(nombre: string): Promise<{ id: string }> {
+async function crearCliente(nombre: string, empresaId: string): Promise<{ id: string }> {
   contador += 1;
   return testAdminPrisma.cliente.create({
-    data: { nombre: `${nombre} ${contador}`, telefonoValido: false },
+    data: { empresaId, nombre: `${nombre} ${contador}`, telefonoValido: false },
   });
 }
 
@@ -90,8 +90,8 @@ afterAll(async () => {
 describe("services/whatsappMessages/conversaciones.service — listConversaciones filtro clienteId (hotfix)", () => {
   it("(a) con clienteId, devuelve solo la conversación de ese cliente, no otra de la misma empresa", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const clienteObjetivo = await crearCliente("Cliente Objetivo");
-    const otroCliente = await crearCliente("Otro Cliente");
+    const clienteObjetivo = await crearCliente("Cliente Objetivo", empresaId);
+    const otroCliente = await crearCliente("Otro Cliente", empresaId);
     const admin = await crearUsuario("ADMINISTRADOR");
 
     const conversacionObjetivo = await crearConversacion({
@@ -115,7 +115,7 @@ describe("services/whatsappMessages/conversaciones.service — listConversacione
 
   it("(b) caso de seguridad: un asesor no ve, vía clienteId, la conversación de OTRO asesor aunque el clienteId sea válido y exista en su propia empresa", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const clienteAjeno = await crearCliente("Cliente De Otro Asesor");
+    const clienteAjeno = await crearCliente("Cliente De Otro Asesor", empresaId);
     const asesorDueno = await crearUsuario("ASESOR");
     const asesorIntruso = await crearUsuario("ASESOR");
 
@@ -138,7 +138,7 @@ describe("services/whatsappMessages/conversaciones.service — listConversacione
 
   it("triangulación: el mismo asesor SÍ ve su propia conversación filtrando por ese clienteId (clienteId es aditivo, no reemplaza el scope RBAC)", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const clientePropio = await crearCliente("Cliente Propio");
+    const clientePropio = await crearCliente("Cliente Propio", empresaId);
     const asesor = await crearUsuario("ASESOR");
 
     const conversacionPropia = await crearConversacion({
@@ -160,8 +160,8 @@ describe("services/whatsappMessages/conversaciones.service — listConversacione
 
   it("sin clienteId, el comportamiento de listado previo no cambia (mismo scope RBAC, sin filtro adicional)", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const clienteUno = await crearCliente("Cliente Uno");
-    const clienteDos = await crearCliente("Cliente Dos");
+    const clienteUno = await crearCliente("Cliente Uno", empresaId);
+    const clienteDos = await crearCliente("Cliente Dos", empresaId);
     const admin = await crearUsuario("ADMINISTRADOR");
 
     await crearConversacion({ clienteId: clienteUno.id, conexionId, empresaId, asesorId: null });
@@ -186,7 +186,7 @@ describe("services/whatsappMessages/conversaciones.service — listConversacione
 describe("services/whatsappMessages/conversaciones.service — leído/no leído (D-mensajería)", () => {
   it("sin lectura previa: noLeido=true si hay al menos un mensaje", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente");
+    const cliente = await crearCliente("Cliente", empresaId);
     const asesor = await crearUsuario("ASESOR");
     const conversacion = await crearConversacion({ clienteId: cliente.id, conexionId, empresaId, asesorId: asesor.id });
     const actor: UsuarioAccesoConversacion = { id: asesor.id, rol: "ASESOR", empresaId };
@@ -200,7 +200,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
 
   it("conversación recién creada sin mensajes todavía: nunca noLeido, aunque nadie la haya marcado como leída", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente Sin Mensajes");
+    const cliente = await crearCliente("Cliente Sin Mensajes", empresaId);
     const asesor = await crearUsuario("ASESOR");
     const conversacion = await crearConversacion({
       clienteId: cliente.id,
@@ -220,7 +220,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
 
   it("marcarConversacionLeida apaga noLeido para ESE usuario, sin tocar el Mensaje ni la Conversacion", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente");
+    const cliente = await crearCliente("Cliente", empresaId);
     const asesor = await crearUsuario("ASESOR");
     const conversacion = await crearConversacion({ clienteId: cliente.id, conexionId, empresaId, asesorId: asesor.id });
     const actor: UsuarioAccesoConversacion = { id: asesor.id, rol: "ASESOR", empresaId };
@@ -235,7 +235,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
 
   it("un mensaje nuevo DESPUÉS de marcar como leído vuelve a prender noLeido", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente");
+    const cliente = await crearCliente("Cliente", empresaId);
     const asesor = await crearUsuario("ASESOR");
     const conversacion = await crearConversacion({ clienteId: cliente.id, conexionId, empresaId, asesorId: asesor.id });
     const actor: UsuarioAccesoConversacion = { id: asesor.id, rol: "ASESOR", empresaId };
@@ -257,7 +257,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
 
   it("el watermark es por USUARIO: el Supervisor marca leído y el badge del Asesor no se apaga", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente");
+    const cliente = await crearCliente("Cliente", empresaId);
     const asesor = await crearUsuario("ASESOR");
     const supervisor = await crearUsuario("ADMINISTRADOR");
     const conversacion = await crearConversacion({ clienteId: cliente.id, conexionId, empresaId, asesorId: asesor.id });
@@ -274,7 +274,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
 
   it("marcarConversacionLeida publica whatsapp.conversacion-leida por el mismo canal SSE que mensaje-nuevo", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente");
+    const cliente = await crearCliente("Cliente", empresaId);
     const asesor = await crearUsuario("ASESOR");
     const conversacion = await crearConversacion({ clienteId: cliente.id, conexionId, empresaId, asesorId: asesor.id });
     const actor: UsuarioAccesoConversacion = { id: asesor.id, rol: "ASESOR", empresaId };
@@ -304,7 +304,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
 
   it("403 permiso_denegado: un asesor no puede marcar como leída la conversación de OTRO asesor", async () => {
     const { empresaId, conexionId } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente");
+    const cliente = await crearCliente("Cliente", empresaId);
     const asesorDueno = await crearUsuario("ASESOR");
     const asesorIntruso = await crearUsuario("ASESOR");
     const conversacion = await crearConversacion({
@@ -323,7 +323,7 @@ describe("services/whatsappMessages/conversaciones.service — leído/no leído 
   it("RLS real: un tenant restringido a la empresa B nunca ve el watermark de un usuario/conversación de la empresa A, aunque los ids sean exactos", async () => {
     const { empresaId: empresaA, conexionId: conexionA } = await crearEmpresaConConexion();
     const { empresaId: empresaB } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente Empresa A");
+    const cliente = await crearCliente("Cliente Empresa A", empresaA);
     const asesorA = await crearUsuario("ASESOR");
     const conversacionA = await crearConversacion({
       clienteId: cliente.id,
@@ -368,7 +368,7 @@ describe("RLS (2026-09-01): conversaciones_whatsapp/mensajes_whatsapp/conversaci
   it("una empresa distinta nunca ve la Conversacion, el Mensaje ni el ConversacionEvento de otra, aunque los ids sean exactos", async () => {
     const { empresaId: empresaA, conexionId: conexionA } = await crearEmpresaConConexion();
     const { empresaId: empresaB } = await crearEmpresaConConexion();
-    const cliente = await crearCliente("Cliente Empresa A");
+    const cliente = await crearCliente("Cliente Empresa A", empresaA);
     const asesorA = await crearUsuario("ASESOR");
     const conversacionA = await crearConversacion({
       clienteId: cliente.id,

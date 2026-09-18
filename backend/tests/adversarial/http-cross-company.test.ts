@@ -69,7 +69,7 @@ async function crearAdminDeEmpresa(etiqueta: string): Promise<EmpresaAdmin> {
 
 async function crearLead(empresaId: string): Promise<{ id: string }> {
   const cliente = await testAdminPrisma.cliente.create({
-    data: { nombre: `Cliente HTTP adversarial ${crypto.randomUUID()}`, telefonoValido: false },
+    data: { empresaId, nombre: `Cliente HTTP adversarial ${crypto.randomUUID()}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId },

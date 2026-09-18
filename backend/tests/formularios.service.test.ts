@@ -33,8 +33,8 @@ async function crearUsuario(): Promise<{ id: string }> {
 
 async function crearLead(overrides: Partial<{ etapa: "NUEVO" | "CONTACTADO" | "CITA" | "VENTA" | "NO_VENTA"; semaforo: "ROJO" | "AMARILLO" | "VERDE" | null }> = {}): Promise<ApplyFormularioLead> {
   contador += 1;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente FS ${contador}`, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: `Cliente FS ${contador}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: {

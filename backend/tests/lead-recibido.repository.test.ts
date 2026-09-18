@@ -25,8 +25,9 @@ async function crearBridge(): Promise<{ id: string }> {
 /** Cliente + lead minimos para satisfacer la FK de `marcarProcesado`. */
 async function crearLead(): Promise<{ id: string }> {
   contador += 1;
-  const cliente = await prisma.cliente.create({
+  const cliente = await testAdminPrisma.cliente.create({
     data: {
+      empresaId: EMPRESA_BOOTSTRAP_ID,
       nombre: `Cliente de prueba ${contador}`,
       telefonoNormalizado: `+549110000${contador}`,
       telefonoValido: true,

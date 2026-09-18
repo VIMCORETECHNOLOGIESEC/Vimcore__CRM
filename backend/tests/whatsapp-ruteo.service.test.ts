@@ -95,6 +95,7 @@ async function crearClienteConLeadAbierto(
   const nombre = `Cliente Ruteo ${contador}`;
   const cliente = await testAdminPrisma.cliente.create({
     data: {
+      empresaId,
       nombre,
       telefonoOriginal: telefonoNormalizado,
       telefonoNormalizado,
@@ -258,5 +259,37 @@ describe("services/whatsappMessages/whatsapp-ruteo — Notificacion WHATSAPP_MEN
     const notificaciones = await notificacionesWhatsapp(empresaId);
     expect(notificaciones).toHaveLength(1);
     expect(notificaciones[0].usuarioId).toBe(asesor.id);
+  });
+});
+
+describe("services/whatsappMessages/whatsapp-ruteo — Cliente tenant-scoped (identity per empresa + phone)", () => {
+  it("the same waId writing to two empresas creates two distinct Clientes; a repeat in the same empresa reuses its own", async () => {
+    const empresaA = await crearEmpresaConConexion();
+    const empresaB = await crearEmpresaConConexion();
+    const waId = waIdUnico();
+    const ahora = new Date("2026-09-01T12:00:00.000Z");
+
+    for (const { empresaId, conexionId } of [empresaA, empresaB, empresaA]) {
+      await runWithTenantContext({ empresaId }, () =>
+        procesarMensajeEntrante(entranteBase(waId), { id: conexionId, empresaId }, ahora),
+      );
+    }
+
+    const clientes = await testAdminPrisma.cliente.findMany({
+      where: { telefonoNormalizado: `+${waId}` },
+      select: { id: true, empresaId: true },
+    });
+    expect(clientes).toHaveLength(2);
+    expect(new Set(clientes.map((c) => c.empresaId))).toEqual(
+      new Set([empresaA.empresaId, empresaB.empresaId]),
+    );
+    const conversaciones = await testAdminPrisma.conversacion.findMany({
+      where: { clienteId: { in: clientes.map((c) => c.id) } },
+    });
+    expect(conversaciones).toHaveLength(2);
+    for (const conversacion of conversaciones) {
+      const cliente = clientes.find((c) => c.id === conversacion.clienteId);
+      expect(cliente?.empresaId).toBe(conversacion.empresaId);
+    }
   });
 });

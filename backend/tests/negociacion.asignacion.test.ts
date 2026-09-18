@@ -76,7 +76,7 @@ async function crearAsesorConMembresia(
 async function crearLead(empresaId: string): Promise<{ id: string }> {
   contador += 1;
   const cliente = await testAdminPrisma.cliente.create({
-    data: { nombre: `Cliente NA ${contador}`, telefonoValido: false },
+    data: { empresaId, nombre: `Cliente NA ${contador}`, telefonoValido: false },
   });
   return testAdminPrisma.lead.create({
     data: {

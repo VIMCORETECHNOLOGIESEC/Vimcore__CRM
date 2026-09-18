@@ -85,8 +85,8 @@ async function crearLead(
   }> = {},
 ): Promise<{ id: string }> {
   contador += 1;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: `Cliente AR ${contador}`, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: `Cliente AR ${contador}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: {

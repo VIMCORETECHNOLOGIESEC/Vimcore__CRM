@@ -5,6 +5,7 @@ import { testAdminPrisma } from "../fixtures/admin-prisma.js";
 
 const TABLES = [
   "membresias",
+  "clientes",
   "leads",
   "bridges",
   "citas",
@@ -44,7 +45,7 @@ async function crearGrafoEmpresa(empresaId: string, suffix: string): Promise<Rec
     data: { usuarioId: usuario.id, empresaId, rol: "ASESOR" },
   });
   const cliente = await testAdminPrisma.cliente.create({
-    data: { nombre: `Cliente RLS ${suffix}`, telefonoValido: false },
+    data: { empresaId, nombre: `Cliente RLS ${suffix}`, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: { clienteId: cliente.id, empresaId, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date() },
@@ -150,6 +151,7 @@ async function crearGrafoEmpresa(empresaId: string, suffix: string): Promise<Rec
   });
   return {
     membresias: membresia.id,
+    clientes: cliente.id,
     leads: lead.id,
     bridges: bridge.id,
     citas: cita.id,

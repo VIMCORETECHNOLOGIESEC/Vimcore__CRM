@@ -26,8 +26,8 @@ describe("schema M6 — SIN_ASIGNAR en el enum tipo_evento_lead (D6)", () => {
   });
 
   it("un lead_eventos puede persistirse con tipo SIN_ASIGNAR (round-trip real, no mockeado)", async () => {
-    const cliente = await prisma.cliente.create({
-      data: { nombre: "Cliente schema M6", telefonoValido: false },
+    const cliente = await testAdminPrisma.cliente.create({
+      data: { empresaId: EMPRESA_BOOTSTRAP_ID, nombre: "Cliente schema M6", telefonoValido: false },
     });
     const lead = await testAdminPrisma.lead.create({
       data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: EMPRESA_BOOTSTRAP_ID },

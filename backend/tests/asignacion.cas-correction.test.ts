@@ -42,7 +42,7 @@ describe("asignacion.service — corrección tras agotamiento CAS", () => {
       ],
     });
     const cliente = await testAdminPrisma.cliente.create({
-      data: { nombre: `Cliente CAS ${randomUUID()}`, telefonoValido: false },
+      data: { empresaId: empresaA.id, nombre: `Cliente CAS ${randomUUID()}`, telefonoValido: false },
     });
     const lead = await testAdminPrisma.lead.create({
       data: {

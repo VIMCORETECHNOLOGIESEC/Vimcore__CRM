@@ -59,8 +59,8 @@ async function crearLead(
 ): Promise<{ id: string; clienteNombre: string }> {
   contador += 1;
   const clienteNombre = `Cliente LR ${contador} ${randomUUID()}`;
-  const cliente = await prisma.cliente.create({
-    data: { nombre: clienteNombre, telefonoValido: false },
+  const cliente = await testAdminPrisma.cliente.create({
+    data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: clienteNombre, telefonoValido: false },
   });
   const lead = await testAdminPrisma.lead.create({
     data: {
@@ -197,15 +197,17 @@ describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de clie
   it("filtra por teléfono del cliente vía busqueda, sin devolver leads de otros clientes", async () => {
     const admin = await crearUsuarioConToken("ADMINISTRADOR");
     contador += 1;
-    const clienteMatch = await prisma.cliente.create({
+    const clienteMatch = await testAdminPrisma.cliente.create({
       data: {
+        empresaId: BOOTSTRAP_EMPRESA_ID,
         nombre: `Cliente Busqueda Match ${contador}`,
         telefonoOriginal: "3011234567",
         telefonoValido: true,
       },
     });
-    const clienteNoMatch = await prisma.cliente.create({
+    const clienteNoMatch = await testAdminPrisma.cliente.create({
       data: {
+        empresaId: BOOTSTRAP_EMPRESA_ID,
         nombre: `Cliente Busqueda NoMatch ${contador}`,
         telefonoOriginal: "3029876543",
         telefonoValido: true,
@@ -231,8 +233,8 @@ describe("GET /api/v1/leads?busqueda= (spec: Búsqueda libre sobre datos de clie
   it("campaña queda fuera de la búsqueda libre: un lead cuya campaña matchea pero cuyo cliente no, no aparece", async () => {
     const admin = await crearUsuarioConToken("ADMINISTRADOR");
     contador += 1;
-    const clienteAjeno = await prisma.cliente.create({
-      data: { nombre: `Cliente Busqueda Camp ${contador}`, telefonoValido: false },
+    const clienteAjeno = await testAdminPrisma.cliente.create({
+      data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: `Cliente Busqueda Camp ${contador}`, telefonoValido: false },
     });
     await testAdminPrisma.lead.create({
       data: {

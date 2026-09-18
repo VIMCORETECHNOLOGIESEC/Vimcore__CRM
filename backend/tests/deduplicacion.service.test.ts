@@ -470,10 +470,16 @@ describe("deduplicacion.service — D2 (resuelto 2026-08-25): lead abierto por (
       expect(segunda.empresaId).toBe(empresaB);
       expect(segunda.leadId).not.toBe(primera.leadId);
 
-      // El Cliente sigue siendo compartido a nivel holding (D2): mismo
-      // telefonoNormalizado, un solo Cliente, dos Lead independientes.
-      expect(segunda.clienteId).toBe(primera.clienteId);
-      expect(segunda.clienteCreado).toBe(false);
+      // `Cliente` is tenant-scoped (identity per `(empresaId,
+      // telefonoNormalizado)`): the same phone in two empresas yields two
+      // distinct `Cliente` rows, each with its own lead.
+      expect(segunda.clienteId).not.toBe(primera.clienteId);
+      expect(segunda.clienteCreado).toBe(true);
+      const clienteA = await prisma.cliente.findUniqueOrThrow({ where: { id: primera.clienteId } });
+      const clienteB = await prisma.cliente.findUniqueOrThrow({ where: { id: segunda.clienteId } });
+      expect(clienteA.empresaId).toBe(EMPRESA_BOOTSTRAP);
+      expect(clienteB.empresaId).toBe(empresaB);
+      expect(clienteB.telefonoNormalizado).toBe(clienteA.telefonoNormalizado);
 
       // Repetir DESDE la empresa B ahora sí es "interacción repetida" —
       // pero sobre el lead de B, nunca sobre el de A.
@@ -508,5 +514,90 @@ describe("deduplicacion.service — D2 (resuelto 2026-08-25): lead abierto por (
       await expect(deduplicateLead(entradaBase({ telefono, bridgeId: undefined }))).rejects.toMatchObject({
         code: "empresa_no_resuelta",
       });
+    }));
+});
+
+describe("deduplicacion.service — tenant-scoped Cliente (identity per empresa + phone)", () => {
+  async function crearBridgeConEmpresa(empresaId: string): Promise<{ id: string }> {
+    const bridge = await testAdminPrisma.bridge.create({
+      data: {
+        redSocial: "FACEBOOK",
+        nombre: `Bridge dedupe-cliente ${randomUUID()}`,
+        claveApiHash: hashClaveBridge(`clave-dedupe-cliente-${randomUUID()}`),
+        estado: "ACTIVO",
+        empresaId,
+      },
+    });
+    return { id: bridge.id };
+  }
+
+  it("same phone in the SAME empresa: a single Cliente (dedupe), even with 5 concurrent ingests", () =>
+    conContexto(async () => {
+      const bridge = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP_ID);
+      const telefono = telefonoUnico();
+
+      const resultados = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridge.id }),
+        ),
+      );
+
+      expect(new Set(resultados.map((r) => r.clienteId)).size).toBe(1);
+      const total = await prisma.cliente.count({
+        where: { empresaId: EMPRESA_BOOTSTRAP_ID, telefonoNormalizado: normalizadoDe(telefono) },
+      });
+      expect(total).toBe(1);
+    }));
+
+  it("same phone in TWO empresas: two distinct Clientes, each with its own empresaId", () =>
+    conContexto(async () => {
+      const empresaB = (
+        await prisma.empresa.create({ data: { nombre: `Empresa B cliente ${randomUUID()}` } })
+      ).id;
+      const bridgeA = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP_ID);
+      const bridgeB = await crearBridgeConEmpresa(empresaB);
+      const telefono = telefonoUnico();
+
+      const [a, b] = await Promise.all([
+        deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeA.id }),
+        deduplicateLead({ ...entradaBase({ telefono }), bridgeId: bridgeB.id }),
+      ]);
+
+      expect(a.clienteId).not.toBe(b.clienteId);
+      expect(a.clienteCreado).toBe(true);
+      expect(b.clienteCreado).toBe(true);
+      const clientes = await prisma.cliente.findMany({
+        where: { telefonoNormalizado: normalizadoDe(telefono) },
+        select: { id: true, empresaId: true },
+      });
+      expect(clientes).toHaveLength(2);
+      expect(new Set(clientes.map((c) => c.empresaId))).toEqual(new Set([EMPRESA_BOOTSTRAP_ID, empresaB]));
+    }));
+
+  it("D7: the correo fallback (invalid phone) only resolves a Cliente of the SAME empresa", () =>
+    conContexto(async () => {
+      const empresaB = (
+        await prisma.empresa.create({ data: { nombre: `Empresa B correo ${randomUUID()}` } })
+      ).id;
+      const bridgeA = await crearBridgeConEmpresa(EMPRESA_BOOTSTRAP_ID);
+      const bridgeB = await crearBridgeConEmpresa(empresaB);
+      const correo = `dedupe-${randomUUID()}@integracion.test`;
+
+      const primero = await deduplicateLead({
+        ...entradaBase({ telefono: "no-es-un-telefono", correo }),
+        bridgeId: bridgeA.id,
+      });
+      const mismaEmpresa = await deduplicateLead({
+        ...entradaBase({ telefono: "no-es-un-telefono", correo }),
+        bridgeId: bridgeA.id,
+      });
+      const otraEmpresa = await deduplicateLead({
+        ...entradaBase({ telefono: "no-es-un-telefono", correo }),
+        bridgeId: bridgeB.id,
+      });
+
+      expect(mismaEmpresa.clienteId).toBe(primero.clienteId);
+      expect(otraEmpresa.clienteId).not.toBe(primero.clienteId);
+      expect(otraEmpresa.clienteCreado).toBe(true);
     }));
 });

@@ -10,6 +10,7 @@ import { prisma, type PrismaClientOrTransaction } from "../lib/prisma.js";
  */
 const CLIENTE_RETURNING = Prisma.sql`
   id,
+  empresa_id           AS "empresaId",
   nombre,
   telefono_original    AS "telefonoOriginal",
   telefono_normalizado AS "telefonoNormalizado",
@@ -18,6 +19,7 @@ const CLIENTE_RETURNING = Prisma.sql`
 `;
 
 export interface UpsertClienteData {
+  empresaId: string;
   nombre: string | null;
   telefonoOriginal: string;
   telefonoNormalizado: string;
@@ -25,7 +27,9 @@ export interface UpsertClienteData {
 }
 
 /**
- * D3: resolución de identidad por teléfono válido — `ON CONFLICT ... DO
+ * D3: resolución de identidad por teléfono válido, acotada por empresa (la
+ * identidad de `Cliente` es por `(empresaId, telefonoNormalizado)`, no global
+ * — el mismo teléfono en dos empresas son dos `Cliente` distintos) — `ON CONFLICT ... DO
  * UPDATE` (nunca `upsert`/catch-P2002) para garantizar exactamente una fila
  * incluso ante N webhooks concurrentes con el mismo teléfono. `xmax = 0` es
  * el idioma de Postgres para distinguir inserción de conflicto dentro de la
@@ -36,10 +40,10 @@ export async function upsertByTelefonoNormalizado(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Cliente & { clienteCreado: boolean }> {
   const [row] = await client.$queryRaw<Array<Cliente & { clienteCreado: boolean }>>(Prisma.sql`
-    INSERT INTO clientes (id, nombre, telefono_original, telefono_normalizado, telefono_valido, creado_en)
-    VALUES (${randomUUID()}::uuid, ${data.nombre}, ${data.telefonoOriginal},
+    INSERT INTO clientes (id, empresa_id, nombre, telefono_original, telefono_normalizado, telefono_valido, creado_en)
+    VALUES (${randomUUID()}::uuid, ${data.empresaId}::uuid, ${data.nombre}, ${data.telefonoOriginal},
             ${data.telefonoNormalizado}, TRUE, ${data.creadoEn}::timestamptz)
-    ON CONFLICT (telefono_normalizado)
+    ON CONFLICT (empresa_id, telefono_normalizado)
     DO UPDATE SET telefono_normalizado = EXCLUDED.telefono_normalizado
     RETURNING ${CLIENTE_RETURNING}, (xmax = 0) AS "clienteCreado"
   `);
@@ -49,7 +53,7 @@ export async function upsertByTelefonoNormalizado(
 
 /**
  * D7: resolución de respaldo cuando el teléfono es inválido — busca un
- * cliente ya registrado por correo. Deliberadamente NO filtra por
+ * cliente de la empresa ya registrado por correo. Deliberadamente NO filtra por
  * `telefonoValido: false`: encontrar un cliente que antes entró con
  * teléfono válido es el resultado deseado. Orden `creadoEn asc` para
  * converger de forma determinista al cliente más antiguo si el hueco
@@ -57,15 +61,17 @@ export async function upsertByTelefonoNormalizado(
  */
 export async function findByCorreoNormalizado(
   correoNormalizado: string,
+  empresaId: string,
   client: PrismaClientOrTransaction = prisma,
 ): Promise<Cliente | null> {
   return client.cliente.findFirst({
-    where: { correos: { some: { correoNormalizado } } },
+    where: { empresaId, correos: { some: { correoNormalizado } } },
     orderBy: { creadoEn: "asc" },
   });
 }
 
 export interface CreateClienteSinTelefonoData {
+  empresaId: string;
   nombre: string | null;
   telefonoOriginal: string | null;
   creadoEn: Date;

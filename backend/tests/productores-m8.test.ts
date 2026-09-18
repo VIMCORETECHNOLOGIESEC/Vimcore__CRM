@@ -51,7 +51,7 @@ const actor = async (rol: "ADMINISTRADOR" | "SUPERVISOR" | "ASESOR" | "VENDEDOR"
   return { id: user.id, rol: user.rol, empresaId } satisfies UsuarioAcceso;
 };
 const lead = async (responsables: { asesorId?: string; vendedorId?: string } = {}) => {
-  const cliente = await prisma.cliente.create({ data: { nombre: "M8 producer", telefonoValido: false } });
+  const cliente = await testAdminPrisma.cliente.create({ data: { empresaId: BOOTSTRAP_EMPRESA_ID, nombre: "M8 producer", telefonoValido: false } });
   return testAdminPrisma.lead.create({ data: { clienteId: cliente.id, origen: "NUEVO", etapa: "NUEVO", ingresadoEn: new Date(), empresaId: BOOTSTRAP_EMPRESA_ID, ...responsables } });
 };
 /**
