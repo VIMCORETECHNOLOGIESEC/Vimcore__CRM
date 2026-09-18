@@ -15,8 +15,12 @@ export async function findById(
   return client.usuario.findUnique({ where: { id } });
 }
 
-export async function findByEmail(correo: string): Promise<Usuario | null> {
-  return prisma.usuario.findUnique({ where: { correo } });
+// `usuarios.correo` is Citext: the equality lookup is case-insensitive.
+export async function findByEmail(
+  correo: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Usuario | null> {
+  return client.usuario.findUnique({ where: { correo } });
 }
 
 /**
@@ -94,6 +98,30 @@ export async function createUsuario(
   client: PrismaClientOrTransaction = prisma,
 ): Promise<AdminUsuarioView> {
   return client.usuario.create({ data, select: adminUsuarioSelect });
+}
+
+export interface CreateLinkedUsuarioData extends CreateUsuarioData {
+  authUserId: string;
+  holdingId: string;
+}
+
+/**
+ * holding-admin-gateway-auth (auth event provisioning): creates the holding
+ * administrator announced by auth, already linked to its auth user and holding.
+ */
+export async function createLinked(
+  data: CreateLinkedUsuarioData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Usuario> {
+  return client.usuario.create({ data });
+}
+
+export async function setHolding(
+  id: string,
+  holdingId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Usuario> {
+  return client.usuario.update({ where: { id }, data: { holdingId } });
 }
 
 export interface FindUsuariosOptions {

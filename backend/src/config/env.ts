@@ -158,6 +158,27 @@ const envSchema = z.object({
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().min(32).optional(),
   ),
+  // holding-admin-gateway-auth: Azure Service Bus consumer that auto-provisions
+  // Holding + Empresa + admin from the auth `CompanyModuleSubscribed` event
+  // (`messaging/crm-company-event-consumer.ts`). Everything is optional: without
+  // the settings of the chosen mode the consumer is not created, the CRM logs
+  // that provisioning is disabled and boots normally. `azure` (default) needs
+  // the fully qualified namespace (authenticates with `DefaultAzureCredential`);
+  // `local` (Docker Compose / Service Bus emulator) needs the connection string.
+  SERVICE_BUS_MODE: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.enum(["azure", "local"]).default("azure"),
+  ),
+  SERVICE_BUS_CONNECTION_STRING: optionalEnvString,
+  SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE: optionalEnvString,
+  SERVICE_BUS_TOPIC_NAME: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().min(1).default("vimcore-domain-events"),
+  ),
+  SERVICE_BUS_CRM_SUBSCRIPTION_NAME: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().min(1).default("crm-company-events"),
+  ),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,

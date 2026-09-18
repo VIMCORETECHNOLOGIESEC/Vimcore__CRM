@@ -105,6 +105,32 @@ export async function findByAuthCompanyId(
   return client.empresa.findUnique({ where: { authCompanyId } });
 }
 
+export interface CreateLinkedEmpresaData {
+  nombre: string;
+  authCompanyId: string;
+  holdingId: string;
+}
+
+/**
+ * holding-admin-gateway-auth (auth event provisioning): creates the `Empresa`
+ * announced by auth, already linked to its auth company and to its holding.
+ * Distinct from `create` (holding-admin `POST /empresas`, which links nothing).
+ */
+export async function createLinked(
+  data: CreateLinkedEmpresaData,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Empresa> {
+  return client.empresa.create({ data });
+}
+
+export async function setHolding(
+  id: string,
+  holdingId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Empresa> {
+  return client.empresa.update({ where: { id }, data: { holdingId } });
+}
+
 export interface EmpresaListItem {
   id: string;
   nombre: string;

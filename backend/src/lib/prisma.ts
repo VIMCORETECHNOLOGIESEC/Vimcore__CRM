@@ -513,6 +513,16 @@ export const VERIFICACION_TOKEN_TRANSACTION_BOUNDS: TransactionBounds = {
 };
 
 /**
+ * Límites de la transacción de `auth-provisioning.service.ts` (evento de Auth
+ * por Service Bus): independiente, mismo criterio numérico que el resto -- un
+ * flujo de escritura propio (Holding + Empresa + Usuario) sin anidar con nada.
+ */
+export const AUTH_PROVISIONING_TRANSACTION_BOUNDS: TransactionBounds = {
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+
+/**
  * Seam D1 (diseño M4, DD1c): si el llamador ya trae una transacción externa
  * (`txExterna`), `fn` corre dentro de ella y `bounds` se ignora — nunca se
  * abre una segunda transacción/conexión (precondición de DD2). Si no,

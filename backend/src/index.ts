@@ -9,6 +9,7 @@ import { startSlaAtrasadoJob } from "./jobs/sla-atrasado.job.js";
 import { startVerificacionTokenJob } from "./jobs/verificacion-token.job.js";
 import { startWhatsAppSlaJob } from "./jobs/whatsappMessages/whatsapp-sla.job.js";
 import { prisma } from "./lib/prisma.js";
+import { startCrmCompanyEventConsumer } from "./messaging/crm-company-event-consumer.js";
 import { shutdownBackend } from "./server-lifecycle.js";
 
 const app = createApp();
@@ -33,6 +34,8 @@ const bridgeApiPollTimer = startBridgeApiPollJob();
 const whatsappSlaTimer = startWhatsAppSlaJob();
 const metaAdsSyncTimer = startMetaAdsSyncJob();
 const ingestionWorker = startIngestionWorker();
+// holding-admin-gateway-auth: auto-provisioning from the auth Service Bus event; null when not configured.
+const companyEventConsumer = startCrmCompanyEventConsumer();
 
 let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
@@ -50,7 +53,9 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
         clearInterval(metaAdsSyncTimer);
       },
       closeHttp: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
-      stopAndDrain: () => ingestionWorker.stopAndDrain(),
+      stopAndDrain: async () => {
+        await Promise.all([ingestionWorker.stopAndDrain(), companyEventConsumer?.close()]);
+      },
       disconnect: () => prisma.$disconnect(),
     });
   });
