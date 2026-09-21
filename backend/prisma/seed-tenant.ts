@@ -7,6 +7,16 @@ import type { PrismaClient, RolMembresia, RolUsuario } from "@prisma/client";
  */
 export const BOOTSTRAP_EMPRESA_ID = "00000000-0000-0000-0000-000000000001";
 
+/**
+ * holding-scoped-tenant-isolation (T5c): id fijo del Holding de demostración.
+ * Las empresas demo y los usuarios holding-wide (ADMINISTRADOR/SUPERVISOR
+ * legados, que inician sesión por `Usuario.correo`) cuelgan de él; sin
+ * `Usuario.holdingId` esas sesiones se rechazan con 403 `identidad_no_vinculada`.
+ */
+export const DEMO_HOLDING_ID = "00000000-0000-0000-0000-0000000000f1";
+
+const ROLES_HOLDING_WIDE_LEGADOS: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
+
 export interface UsuarioParaMembresia {
   id: string;
   rol: RolUsuario;
@@ -47,13 +57,23 @@ export async function seedTenant(
   prisma: PrismaClient,
   usuarios: readonly UsuarioParaMembresia[],
 ): Promise<void> {
+  await prisma.holding.upsert({
+    where: { id: DEMO_HOLDING_ID },
+    update: {},
+    create: { id: DEMO_HOLDING_ID, nombre: "Holding Demo" },
+  });
+
   await prisma.empresa.upsert({
     where: { id: BOOTSTRAP_EMPRESA_ID },
-    update: {},
-    create: { id: BOOTSTRAP_EMPRESA_ID, nombre: "Empresa Bootstrap" },
+    update: { holdingId: DEMO_HOLDING_ID },
+    create: { id: BOOTSTRAP_EMPRESA_ID, nombre: "Empresa Bootstrap", holdingId: DEMO_HOLDING_ID },
   });
 
   for (const usuario of usuarios) {
+    if (ROLES_HOLDING_WIDE_LEGADOS.includes(usuario.rol)) {
+      await prisma.usuario.update({ where: { id: usuario.id }, data: { holdingId: DEMO_HOLDING_ID } });
+    }
+
     const { rol, habilitadoParaVenta } = membresiaDesdeRolUsuario(usuario.rol);
 
     await prisma.membresia.upsert({

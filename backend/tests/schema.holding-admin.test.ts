@@ -76,7 +76,7 @@ describe("schema — Holding", () => {
   });
 
   it("usuarios.holding_id is NULLABLE: company users carry no holding", async () => {
-    const usuario = await testAdminPrisma.usuario.create({ data: usuarioData({ rol: "ADMINISTRADOR" }) });
+    const usuario = await testAdminPrisma.usuario.create({ data: usuarioData({ rol: "ADMINISTRADOR", holdingId: null }) });
     expect(usuario.holdingId).toBeNull();
   });
 

@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { generarClaveBridge, hashClaveBridge } from "../src/lib/clave-bridge.js";
 import { hashPassword } from "../src/lib/password.js";
-import { seedTenant, type UsuarioParaMembresia } from "./seed-tenant.js";
+import { DEMO_HOLDING_ID, seedTenant, type UsuarioParaMembresia } from "./seed-tenant.js";
 
 /**
  * Bloque C (Etapa 3 — fix pre-existente, no relacionado a esta etapa): mismo
@@ -16,10 +16,9 @@ const EMPRESA_BOOTSTRAP_ID = "00000000-0000-0000-0000-000000000001";
 
 /**
  * Bloque D0 (docs/blocks/d0-visualizacion-multitenant.md, "Datos de
- * demostración"): dos empresas del mismo tenant holding -- esta instancia no
- * tiene un modelo `Holding` separado (`schema.prisma::Empresa`), así que
- * "mismo tenant holding" simplemente significa "dos filas `Empresa` en el
- * mismo despliegue", sin nada adicional que sembrar para eso. Ids fijos
+ * demostración"): dos empresas del mismo tenant holding: desde
+ * holding-scoped-tenant-isolation (T5c) ambas cuelgan del Holding demo
+ * (`seed-tenant.ts::DEMO_HOLDING_ID`, sembrado por `seedTenant`). Ids fijos
  * (mismo patrón que `EMPRESA_BOOTSTRAP_ID` arriba) para que reejecutar el
  * seed sea idempotente.
  */
@@ -184,10 +183,15 @@ async function main(): Promise<void> {
     for (const demo of empresasDemoD0) {
       await prisma.empresa.upsert({
         where: { id: demo.empresaId },
-        update: { colorPrimario: demo.colorPrimario, colorSecundario: demo.colorSecundario },
+        update: {
+          colorPrimario: demo.colorPrimario,
+          colorSecundario: demo.colorSecundario,
+          holdingId: DEMO_HOLDING_ID,
+        },
         create: {
           id: demo.empresaId,
           nombre: demo.empresaNombre,
+          holdingId: DEMO_HOLDING_ID,
           colorPrimario: demo.colorPrimario,
           colorSecundario: demo.colorSecundario,
         },
@@ -245,12 +249,14 @@ async function main(): Promise<void> {
       // en runtime contra `integration-theme` antes de esta corrección).
       const usuarioAdmin = await prisma.usuario.upsert({
         where: { correo: demo.usuarioAdminCorreo },
-        update: {},
+        // holding-scoped-tenant-isolation (T5c): ADMINISTRADOR legado -> holding demo.
+        update: { holdingId: DEMO_HOLDING_ID },
         create: {
           nombre: demo.usuarioAdminNombre,
           correo: demo.usuarioAdminCorreo,
           passwordHash,
           rol: "ADMINISTRADOR",
+          holdingId: DEMO_HOLDING_ID,
         },
       });
 
