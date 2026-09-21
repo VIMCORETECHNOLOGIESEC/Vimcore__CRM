@@ -126,6 +126,18 @@ export async function createMembresiaConCredencial(
   });
 }
 
+/**
+ * crm-user-email-sync (E1): rewrites the login email of one membresia. Callers
+ * run `assertCorreoDisponible` first, in the same transaction.
+ */
+export async function updateCorreo(
+  id: string,
+  correo: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<Membresia> {
+  return client.membresia.update({ where: { id }, data: { correo } });
+}
+
 export async function assertCorreoDisponible(
   correo: string,
   client: PrismaClientOrTransaction,

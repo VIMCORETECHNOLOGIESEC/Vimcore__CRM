@@ -10,6 +10,7 @@ import { prisma } from "../lib/prisma.js";
  */
 
 export const CRM_USER_CREATED_EVENT = "CrmUserCreated";
+export const CRM_USER_EMAIL_CHANGED_EVENT = "CrmUserEmailChanged";
 export const OUTBOX_DEFAULT_BATCH_SIZE = 10;
 export const OUTBOX_DEFAULT_LEASE_MS = 60_000;
 export const OUTBOX_DEFAULT_MAX_ATTEMPTS = 10;

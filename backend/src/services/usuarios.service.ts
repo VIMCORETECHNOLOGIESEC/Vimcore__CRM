@@ -27,6 +27,7 @@ import {
 } from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { enqueueCrmUserCreated } from "../messaging/crm-user-created.js";
+import { enqueueCrmUserEmailChanged } from "../messaging/crm-user-email-changed.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 import { getPresenceForUsuarios, type PresenciaUsuarioView } from "./presencia.service.js";
 
@@ -64,6 +65,9 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
   "SUPERVISOR_HOLDING",
   "SUPER_ADMIN",
 ];
+
+/** crm-user-email-sync (E1): roles never provisioned in Auth (no empresa identity). */
+const HOLDING_WIDE_ROLES: readonly RolUsuario[] = ["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING", "SUPER_ADMIN"];
 
 /**
  * holding-scoped-tenant-isolation (T5b): role ceiling for user management.
@@ -863,6 +867,11 @@ export async function updateUsuario(
   }
 
   try {
+    // crm-user-email-sync (E1): only a PATCH carrying `correo` takes the
+    // transactional path; every other PATCH keeps its previous behavior.
+    if (input.correo !== undefined) {
+      return await updateUsuarioConCorreo(id, input.correo, data);
+    }
     const updated = await usuarioRepository.updateUsuario(id, data);
     if (!updated) {
       throw userNotFound();
@@ -874,6 +883,93 @@ export async function updateUsuario(
     }
     throw error;
   }
+}
+
+/**
+ * crm-user-email-sync (E1): PATCH with `correo`. Resolves the REAL login email
+ * per role (active membership `correo` for portador users, `Usuario.correo`
+ * for the rest), and in ONE transaction: uniqueness across both tables, the
+ * email write and `CrmUserEmailChanged` (so a rollback enqueues nothing).
+ * A case-only difference counts as unchanged: no email write, no event.
+ * Holding-wide users keep the legacy write and are not synced with Auth.
+ */
+async function updateUsuarioConCorreo(
+  id: string,
+  requestedCorreo: string,
+  data: UpdateUsuarioData,
+): Promise<AdminUsuarioView> {
+  return runInTransaction(
+    undefined,
+    async (tx) => {
+      const usuario = await usuarioRepository.findById(id, tx);
+      if (!usuario) throw userNotFound();
+
+      const membresias = await membresiaRepository.findActivasByUsuarioId(id, tx);
+      const portadora = membresias.find((m) => m.correo !== null) ?? null;
+      const membresiaEmpresa =
+        HOLDING_WIDE_ROLES.includes(usuario.rol) ? null : (portadora ?? membresias[0] ?? null);
+
+      // Holding-wide (or membership-less) users: legacy behavior, no Auth identity.
+      if (membresiaEmpresa === null) {
+        return writeUsuario(id, data, tx);
+      }
+
+      const currentLoginEmail = portadora?.correo ?? usuario.correo;
+      const oldEmail = currentLoginEmail.trim().toLowerCase();
+      const newEmail = requestedCorreo.trim().toLowerCase();
+      if (oldEmail === newEmail) {
+        // Unchanged (also case-only): keep the other fields, never touch the email.
+        return writeUsuario(id, { ...data, correo: undefined }, tx);
+      }
+
+      if (usuario.authUserId === null) {
+        throw new AppError(
+          "usuario_sin_vinculo_auth",
+          409,
+          "La cuenta todavía no está vinculada a la plataforma de acceso; no se puede cambiar el correo. Inténtalo más tarde",
+        );
+      }
+      const empresa = await empresaRepository.findById(membresiaEmpresa.empresaId, tx);
+      if (!empresa?.authCompanyId) {
+        throw new AppError(
+          "empresa_sin_vinculo_auth",
+          409,
+          "La empresa todavía no está vinculada a la plataforma de acceso; no se puede cambiar el correo. Inténtalo más tarde",
+        );
+      }
+
+      await membresiaRepository.assertCorreoDisponible(requestedCorreo, tx);
+
+      let updated: AdminUsuarioView;
+      if (portadora !== null) {
+        // The login email lives in the membership; Usuario.correo stays synthetic.
+        await membresiaRepository.updateCorreo(portadora.id, requestedCorreo, tx);
+        updated = await writeUsuario(id, { ...data, correo: undefined }, tx);
+      } else {
+        updated = await writeUsuario(id, data, tx);
+      }
+
+      await enqueueCrmUserEmailChanged(tx, {
+        crmUserId: id,
+        authUserId: usuario.authUserId,
+        authCompanyId: empresa.authCompanyId,
+        oldEmail,
+        newEmail,
+      });
+      return updated;
+    },
+    USUARIOS_TRANSACTION_BOUNDS,
+  );
+}
+
+async function writeUsuario(
+  id: string,
+  data: UpdateUsuarioData,
+  tx: Prisma.TransactionClient,
+): Promise<AdminUsuarioView> {
+  const updated = await usuarioRepository.updateUsuario(id, data, tx);
+  if (!updated) throw userNotFound();
+  return updated;
 }
 
 /**

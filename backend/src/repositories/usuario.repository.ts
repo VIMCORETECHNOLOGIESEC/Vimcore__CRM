@@ -300,9 +300,10 @@ export async function existsEnHolding(
 export async function updateUsuario(
   id: string,
   data: UpdateUsuarioData,
+  client: PrismaClientOrTransaction = prisma,
 ): Promise<AdminUsuarioView | null> {
   try {
-    return await prisma.usuario.update({ where: { id }, data, select: adminUsuarioSelect });
+    return await client.usuario.update({ where: { id }, data, select: adminUsuarioSelect });
   } catch (error) {
     if (isRecordNotFoundError(error)) {
       return null;
