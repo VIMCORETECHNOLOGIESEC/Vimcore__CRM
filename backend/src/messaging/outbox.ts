@@ -11,6 +11,7 @@ import { prisma } from "../lib/prisma.js";
 
 export const CRM_USER_CREATED_EVENT = "CrmUserCreated";
 export const CRM_USER_EMAIL_CHANGED_EVENT = "CrmUserEmailChanged";
+export const CRM_USER_ACCESS_RESEND_REQUESTED_EVENT = "CrmUserAccessResendRequested";
 export const OUTBOX_DEFAULT_BATCH_SIZE = 10;
 export const OUTBOX_DEFAULT_LEASE_MS = 60_000;
 export const OUTBOX_DEFAULT_MAX_ATTEMPTS = 10;
@@ -54,6 +55,23 @@ export async function findOutboxEventByCorrelation(
       correlationId: input.correlationId,
     },
     select: { id: true, payload: true },
+  });
+}
+
+/**
+ * Finds the most recent outbox row of `eventType` for `aggregateId` created at
+ * or after `since` (used for per-user cooldowns without a dedicated table).
+ */
+export async function findRecentOutboxEvent(
+  tx: Prisma.TransactionClient,
+  eventType: string,
+  aggregateId: string,
+  since: Date,
+): Promise<{ id: string; createdAt: Date } | null> {
+  return tx.outboxMessage.findFirst({
+    where: { eventType, aggregateId, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, createdAt: true },
   });
 }
 

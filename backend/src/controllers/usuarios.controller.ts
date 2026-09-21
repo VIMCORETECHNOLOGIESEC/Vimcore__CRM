@@ -22,6 +22,7 @@ import {
   findResponsables,
   findUsuarioById,
   findUsuarios,
+  requestUsuarioAccessResend,
   resolveEmpresaId,
   updateUsuario,
 } from "../services/usuarios.service.js";
@@ -196,4 +197,17 @@ export async function deleteUsuario(req: Request, res: Response): Promise<void> 
 
   await deactivateUsuario(usuario, parsedId.data.id);
   res.status(204).send();
+}
+
+/** crm-user-access-resend (F2): 202 = solicitado; el resultado llega por logs/eventos. */
+export async function postReenviarAccesoUsuario(req: Request, res: Response): Promise<void> {
+  const usuario = assertAuthenticated(req);
+
+  const parsedId = idParamSchema.safeParse(req.params);
+  if (!parsedId.success) {
+    throw invalidIdParam();
+  }
+
+  await requestUsuarioAccessResend(usuario, parsedId.data.id);
+  res.status(202).json({ estado: "solicitado" });
 }

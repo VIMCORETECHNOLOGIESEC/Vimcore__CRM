@@ -28,6 +28,8 @@ import {
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
 import { enqueueCrmUserCreated } from "../messaging/crm-user-created.js";
 import { enqueueCrmUserEmailChanged } from "../messaging/crm-user-email-changed.js";
+import { enqueueCrmUserAccessResend } from "../messaging/crm-user-access-resend.js";
+import { CRM_USER_ACCESS_RESEND_REQUESTED_EVENT, findRecentOutboxEvent } from "../messaging/outbox.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 import { getPresenceForUsuarios, type PresenciaUsuarioView } from "./presencia.service.js";
 
@@ -957,6 +959,81 @@ async function updateUsuarioConCorreo(
         newEmail,
       });
       return updated;
+    },
+    USUARIOS_TRANSACTION_BOUNDS,
+  );
+}
+
+/** crm-user-access-resend (F2): minimum gap between two resend requests of one user. */
+export const ACCESS_RESEND_COOLDOWN_MS = 5 * 60 * 1000;
+
+/**
+ * crm-user-access-resend (F2): `POST /usuarios/:id/reenviar-acceso`. Resolves
+ * the user exactly like `updateUsuarioConCorreo` (real login email per role),
+ * checks scope, link and cooldown, and enqueues `CrmUserAccessResendRequested`
+ * in ONE transaction (the cooldown is re-checked inside it). The email is only
+ * placed in the event, never returned to the caller.
+ */
+export async function requestUsuarioAccessResend(
+  actor: AuthenticatedUser,
+  id: string,
+  now: Date = new Date(),
+): Promise<void> {
+  await runInTransaction(
+    undefined,
+    async (tx) => {
+      await assertUsuarioEnAlcance(actor, id, tx);
+      const usuario = await usuarioRepository.findById(id, tx);
+      if (!usuario) throw userNotFound();
+      assertRolWithinCeiling(actor, usuario.rol);
+
+      const membresias = await membresiaRepository.findActivasByUsuarioId(id, tx);
+      const portadora = membresias.find((m) => m.correo !== null) ?? null;
+      const membresiaEmpresa = HOLDING_WIDE_ROLES.includes(usuario.rol) ? null : (portadora ?? membresias[0] ?? null);
+      if (membresiaEmpresa === null) {
+        throw new AppError(
+          "usuario_no_sincronizable",
+          409,
+          "El usuario no tiene acceso por empresa; no se puede reenviar el acceso",
+        );
+      }
+      if (usuario.authUserId === null) {
+        throw new AppError(
+          "usuario_sin_vinculo_auth",
+          409,
+          "La cuenta todavía no está vinculada a la plataforma de acceso. Inténtalo más tarde",
+        );
+      }
+      const empresa = await empresaRepository.findById(membresiaEmpresa.empresaId, tx);
+      if (!empresa?.authCompanyId) {
+        throw new AppError(
+          "empresa_sin_vinculo_auth",
+          409,
+          "La empresa todavía no está vinculada a la plataforma de acceso. Inténtalo más tarde",
+        );
+      }
+
+      const recent = await findRecentOutboxEvent(
+        tx,
+        CRM_USER_ACCESS_RESEND_REQUESTED_EVENT,
+        id,
+        new Date(now.getTime() - ACCESS_RESEND_COOLDOWN_MS),
+      );
+      if (recent !== null) {
+        throw new AppError(
+          "reenvio_en_cooldown",
+          429,
+          "Ya se solicitó un reenvío hace poco. Espera unos minutos antes de intentarlo de nuevo",
+        );
+      }
+
+      await enqueueCrmUserAccessResend(tx, {
+        crmUserId: id,
+        authUserId: usuario.authUserId,
+        authCompanyId: empresa.authCompanyId,
+        email: portadora?.correo ?? usuario.correo,
+        now,
+      });
     },
     USUARIOS_TRANSACTION_BOUNDS,
   );

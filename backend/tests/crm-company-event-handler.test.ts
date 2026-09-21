@@ -467,3 +467,74 @@ describe("decideCompanyEvent — AuthUserEmailUpdated for crm", () => {
     expect(revertUserEmail).not.toHaveBeenCalled();
   });
 });
+
+describe("decideCompanyEvent — AuthUserAccessResent for crm", () => {
+  const reply = (overrides: Record<string, unknown> = {}) => ({
+    crmUserId: randomUUID(),
+    authUserId: randomUUID(),
+    authCompanyId: randomUUID(),
+    outcome: "sent",
+    correlationId: "corr-r1",
+    occurredAt: "2026-09-21T10:00:00.000Z",
+    module: "crm",
+    email: "must-not-be-logged@acme.test",
+    ...overrides,
+  });
+  const resentMessage = (body: unknown) =>
+    message(body, { eventType: "AuthUserAccessResent", module: "crm", correlationId: "corr-r1" });
+
+  it.each([
+    ["sent", "info"],
+    ["not_pending", "warn"],
+    ["email_mismatch", "warn"],
+    ["cooldown", "warn"],
+    ["failed", "error"],
+  ] as const)("logs %s at %s level, completes and changes nothing", async (outcome, level) => {
+    const body = reply({ outcome, reason: outcome === "sent" ? undefined : "why" });
+
+    expect(await decideCompanyEvent(resentMessage(body), deps)).toEqual({ kind: "complete" });
+
+    expect(log[level]).toHaveBeenCalledTimes(1);
+    const [fields] = log[level].mock.calls[0];
+    expect(fields).toMatchObject({
+      holdingWide: true,
+      outcome,
+      correlationId: "corr-r1",
+      crmUserId: body.crmUserId,
+      authUserId: body.authUserId,
+      authCompanyId: body.authCompanyId,
+    });
+    expect(JSON.stringify(log.info.mock.calls) + JSON.stringify(log.warn.mock.calls) + JSON.stringify(log.error.mock.calls))
+      .not.toContain("must-not-be-logged");
+    expect(provision).not.toHaveBeenCalled();
+    expect(linkAuthUser).not.toHaveBeenCalled();
+    expect(revertUserEmail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["crmUserId is not a uuid", { crmUserId: "nope" }],
+    ["outcome is unknown", { outcome: "weird" }],
+    ["correlationId is missing", { correlationId: undefined }],
+  ])("dead-letters when %s", async (_label, overrides) => {
+    expect(await decideCompanyEvent(resentMessage(reply(overrides)), deps)).toMatchObject({
+      kind: "deadLetter",
+      reason: "InvalidPayload",
+    });
+  });
+
+  it("dead-letters a malformed body", async () => {
+    expect(await decideCompanyEvent(resentMessage("{not json"), deps)).toMatchObject({
+      kind: "deadLetter",
+      reason: "MalformedPayload",
+    });
+  });
+
+  it("ignores other modules and still completes unknown event types", async () => {
+    const other = message(reply(), { eventType: "AuthUserAccessResent", module: "billing" });
+    const unknown = message(reply(), { eventType: "SomethingElse", module: "crm" });
+
+    expect(await decideCompanyEvent(other, deps)).toEqual({ kind: "complete" });
+    expect(await decideCompanyEvent(unknown, deps)).toEqual({ kind: "complete" });
+    expect(log.info).not.toHaveBeenCalled();
+  });
+});

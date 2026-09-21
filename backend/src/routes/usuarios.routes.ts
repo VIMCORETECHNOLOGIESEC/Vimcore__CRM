@@ -9,6 +9,7 @@ import {
   postEmpresaSupervisor,
   patchUsuario,
   postUsuario,
+  postReenviarAccesoUsuario,
 } from "../controllers/usuarios.controller.js";
 import { requireAuthentication } from "../middlewares/require-authentication.middleware.js";
 import { requireRole } from "../middlewares/require-role.middleware.js";
@@ -80,4 +81,12 @@ usuariosRouter.delete(
   requireAuthentication,
   requireRole("ADMINISTRADOR"),
   deleteUsuario,
+);
+// crm-user-access-resend (F2): mismo guard que PATCH /usuarios/:id; el alcance
+// (holding/empresa) lo aplica el service.
+usuariosRouter.post(
+  "/usuarios/:id/reenviar-acceso",
+  requireAuthentication,
+  requireRole("ADMINISTRADOR"),
+  postReenviarAccesoUsuario,
 );

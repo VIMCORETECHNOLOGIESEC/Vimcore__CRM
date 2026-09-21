@@ -13,6 +13,7 @@ const SUBSCRIBED_EVENT = "CompanyModuleSubscribed";
 const UNSUBSCRIBED_EVENT = "CompanyModuleUnsubscribed";
 const AUTH_USER_PROVISIONED_EVENT = "AuthUserProvisioned";
 const AUTH_USER_EMAIL_UPDATED_EVENT = "AuthUserEmailUpdated";
+const AUTH_USER_ACCESS_RESENT_EVENT = "AuthUserAccessResent";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidSchema = z.string().regex(UUID_PATTERN);
@@ -54,6 +55,19 @@ const authUserEmailUpdatedSchema = z.object({
   outcome: z.enum(["updated", "unchanged", "conflict", "stale", "failed"]),
   reason: z.string().nullish(),
   email: z.string(),
+  correlationId: z.string().min(1),
+  occurredAt: z.string(),
+  module: z.literal("crm").optional(),
+});
+
+// crm-user-access-resend (F2): Auth's reply to `CrmUserAccessResendRequested`.
+// Extra fields are tolerated; the payload carries no email and none is logged.
+const authUserAccessResentSchema = z.object({
+  crmUserId: uuidSchema,
+  authUserId: uuidSchema,
+  authCompanyId: uuidSchema,
+  outcome: z.enum(["sent", "not_pending", "email_mismatch", "cooldown", "failed"]),
+  reason: z.string().nullish(),
   correlationId: z.string().min(1),
   occurredAt: z.string(),
   module: z.literal("crm").optional(),
@@ -107,7 +121,8 @@ function isKnownEventType(eventType: string | undefined): boolean {
     eventType === SUBSCRIBED_EVENT ||
     eventType === UNSUBSCRIBED_EVENT ||
     eventType === AUTH_USER_PROVISIONED_EVENT ||
-    eventType === AUTH_USER_EMAIL_UPDATED_EVENT
+    eventType === AUTH_USER_EMAIL_UPDATED_EVENT ||
+    eventType === AUTH_USER_ACCESS_RESENT_EVENT
   );
 }
 
@@ -184,6 +199,10 @@ export async function decideCompanyEvent(
 
   if (eventType === AUTH_USER_EMAIL_UPDATED_EVENT) {
     return decideAuthUserEmailUpdated(message.messageId, body, { log, revert: revertUserEmail });
+  }
+
+  if (eventType === AUTH_USER_ACCESS_RESENT_EVENT) {
+    return decideAuthUserAccessResent(message.messageId, body, log);
   }
 
   if (eventType === UNSUBSCRIBED_EVENT) {
@@ -376,6 +395,42 @@ async function decideAuthUserEmailUpdated(
     );
     return { kind: "abandon" };
   }
+}
+
+/**
+ * `AuthUserAccessResent`: informational only. Every valid outcome is logged
+ * (info for `sent`, warn for the business refusals, error for `failed`) and
+ * completed; no CRM state changes. Logs never carry emails.
+ */
+function decideAuthUserAccessResent(
+  messageId: string | number | Buffer | undefined,
+  body: Record<string, unknown>,
+  log: CrmCompanyEventHandlerDeps["log"],
+): MessageDecision {
+  const parsed = authUserAccessResentSchema.safeParse(body);
+  if (!parsed.success) {
+    log.error(
+      { holdingWide: true, messageId, correlationId: asString(body.correlationId) },
+      "Invalid AuthUserAccessResent payload",
+    );
+    return {
+      kind: "deadLetter",
+      reason: "InvalidPayload",
+      description: "AuthUserAccessResent payload failed shape validation",
+    };
+  }
+
+  const { crmUserId, authUserId, authCompanyId, outcome, reason, correlationId } = parsed.data;
+  const context = { holdingWide: true, messageId, correlationId, crmUserId, authUserId, authCompanyId, outcome };
+
+  if (outcome === "sent") {
+    log.info(context, "AuthUserAccessResent processed: access email resent");
+  } else if (outcome === "failed") {
+    log.error({ ...context, reason }, "Auth failed to resend the access email");
+  } else {
+    log.warn({ ...context, reason }, "Auth did not resend the access email");
+  }
+  return { kind: "complete" };
 }
 
 /** Builds the `processMessage` callback: decide, then settle exactly once. */
