@@ -179,6 +179,11 @@ const envSchema = z.object({
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().min(1).default("crm-company-events"),
   ),
+  // crm-user-auth-provisioning (C1): outbox publisher loop
+  // (`messaging/outbox-publisher-loop.ts`). It only runs when Service Bus is
+  // configured (same settings as above); these tune its polling and retry cap.
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
+  OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,

@@ -26,6 +26,7 @@ import {
   type CandidatoAsignacion,
 } from "./asignacion.service.js";
 import { publishCommittedEvents, type CommittedEvent } from "./committed-events.service.js";
+import { enqueueCrmUserCreated } from "../messaging/crm-user-created.js";
 import { scheduleMetricasBroadcast } from "../lib/metricas-broadcast.js";
 import { getPresenceForUsuarios, type PresenciaUsuarioView } from "./presencia.service.js";
 
@@ -349,8 +350,9 @@ export async function createUsuario(
       async (tx) => {
         // holding-scoped-tenant-isolation: a holding-wide actor may only
         // place a membresia in an empresa of its own holding.
+        let empresa: Awaited<ReturnType<typeof empresaRepository.findById>> = null;
         if (empresaId !== undefined && actor.empresaId === null) {
-          const empresa = await empresaRepository.findById(empresaId, tx);
+          empresa = await empresaRepository.findById(empresaId, tx);
           if (!empresa || isEmpresaOutsideScope(empresa, resolveEmpresaScope(actor))) {
             throw empresaNotFound();
           }
@@ -380,6 +382,18 @@ export async function createUsuario(
             },
             tx,
           );
+
+          // crm-user-auth-provisioning (C1): same transaction as the user.
+          // ASESOR/VENDEDOR created here have NO membresia credential, so the
+          // login email is `Usuario.correo` itself (= `input.correo`).
+          empresa ??= await empresaRepository.findById(empresaId, tx);
+          await enqueueCrmUserCreated(tx, {
+            crmUserId: usuario.id,
+            loginEmail: input.correo,
+            fullName: input.nombre,
+            crmRole: input.rol,
+            empresa,
+          });
         }
 
         return usuario;
@@ -443,6 +457,16 @@ export async function createEmpresaAdministrador(
           },
           tx,
         );
+
+        // crm-user-auth-provisioning (C1): same transaction as the user. The
+        // real login email is `Membresia.correo`, not the synthetic carrier.
+        await enqueueCrmUserCreated(tx, {
+          crmUserId: usuario.id,
+          loginEmail: input.correo,
+          fullName: input.nombre,
+          crmRole: "ADMINISTRADOR",
+          empresa,
+        });
 
         return {
           usuario: {
@@ -523,6 +547,16 @@ export async function createEmpresaSupervisor(
           },
           tx,
         );
+
+        // crm-user-auth-provisioning (C1): same transaction as the user. The
+        // real login email is `Membresia.correo`, not the synthetic carrier.
+        await enqueueCrmUserCreated(tx, {
+          crmUserId: usuario.id,
+          loginEmail: input.correo,
+          fullName: input.nombre,
+          crmRole: "SUPERVISOR",
+          empresa,
+        });
 
         return {
           usuario: {
@@ -607,6 +641,16 @@ export async function createEmpresaAsesor(
           },
           tx,
         );
+
+        // crm-user-auth-provisioning (C1): same transaction as the user. The
+        // real login email is `Membresia.correo`, not the synthetic carrier.
+        await enqueueCrmUserCreated(tx, {
+          crmUserId: usuario.id,
+          loginEmail: input.correo,
+          fullName: input.nombre,
+          crmRole: "ASESOR",
+          empresa,
+        });
 
         return {
           usuario: {

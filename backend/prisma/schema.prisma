@@ -1676,3 +1676,39 @@ model ReporteJob {
   @@index([usuarioId, estado])
   @@map("reporte_jobs")
 }
+
+enum OutboxMessageStatus {
+  pending
+  processing
+  published
+  failed
+
+  @@map("outbox_message_status")
+}
+
+// crm-user-auth-provisioning (C1): transactional outbox for integration events
+// published to the shared Service Bus topic (first event: `CrmUserCreated`).
+// It is a SYSTEM table, not tenant data: no `empresa_id`, NO RLS. Rows are
+// written inside the caller's transaction (`messaging/outbox.ts`) and drained by
+// the publisher loop under `runAsSystem`. `id` doubles as the Service Bus
+// MessageId (broker-side de-duplication key for consumers).
+model OutboxMessage {
+  id            String              @id @default(uuid()) @db.Uuid
+  eventType     String              @map("event_type") @db.Text
+  // Id of the aggregate the event is about (e.g. the CRM user id).
+  aggregateId   String              @map("aggregate_id") @db.Text
+  correlationId String              @map("correlation_id") @db.Text
+  payload       Json                @db.JsonB
+  status        OutboxMessageStatus @default(pending)
+  attemptCount  Int                 @default(0) @map("attempt_count")
+  nextAttemptAt DateTime            @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  // Lease held while a worker publishes the row (`processing`).
+  lockedUntil   DateTime?           @map("locked_until") @db.Timestamptz(6)
+  claimedBy     String?             @map("claimed_by") @db.Text
+  lastError     String?             @map("last_error") @db.Text
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime?           @map("published_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt], map: "idx_outbox_messages_poll")
+  @@map("outbox_messages")
+}
