@@ -8,6 +8,7 @@ import {
   updateEmpresaAparienciaHoldingBodySchema,
 } from "../schemas/empresa-apariencia.schema.js";
 import {
+  type EmpresaScope,
   createEmpresa,
   getEmpresaHolding,
   listEmpresas,
@@ -104,6 +105,14 @@ export function forbiddenSessionScope(): AppError {
   );
 }
 
+/**
+ * holding-scoped-tenant-isolation: scope handed to the service. `holdingId`
+ * comes from the authenticated session (T1), never from the request.
+ */
+function empresaScope(req: Request): EmpresaScope {
+  return { holdingId: req.user?.holdingId ?? null };
+}
+
 function invalidIdParam(): AppError {
   return new AppError("validacion_invalida", 400, "El identificador de la empresa es inválido");
 }
@@ -127,7 +136,11 @@ export async function patchEmpresaAparienciaHolding(req: Request, res: Response)
   // `Empresa` a editar. A diferencia del self-service de arriba, acá el id
   // SÍ viene de la URL en vez de la sesión: es intencionalmente cross-empresa
   // (D0, excepción explícita PASO 8).
-  const apariencia = await updateAparienciaHolding(parsedParams.data.empresaId, parsedBody.data);
+  const apariencia = await updateAparienciaHolding(
+    parsedParams.data.empresaId,
+    parsedBody.data,
+    empresaScope(req),
+  );
   res.status(200).json(apariencia);
 }
 
@@ -149,7 +162,7 @@ export async function getEmpresas(req: Request, res: Response): Promise<void> {
     throw zodValidationError();
   }
 
-  const resultado = await listEmpresas(parsedQuery.data);
+  const resultado = await listEmpresas(parsedQuery.data, empresaScope(req));
   res.status(200).json(resultado);
 }
 
@@ -170,7 +183,7 @@ export async function getEmpresa(req: Request, res: Response): Promise<void> {
     throw invalidIdParam();
   }
 
-  const empresa = await getEmpresaHolding(parsedParams.data.empresaId);
+  const empresa = await getEmpresaHolding(parsedParams.data.empresaId, empresaScope(req));
   res.status(200).json(empresa);
 }
 
@@ -192,6 +205,6 @@ export async function postEmpresa(req: Request, res: Response): Promise<void> {
     throw zodValidationError();
   }
 
-  const empresa = await createEmpresa(parsedBody.data);
+  const empresa = await createEmpresa(parsedBody.data, empresaScope(req));
   res.status(201).json(empresa);
 }

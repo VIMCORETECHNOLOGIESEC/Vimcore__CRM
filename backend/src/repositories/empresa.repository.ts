@@ -144,6 +144,9 @@ export interface CreateEmpresaData {
   colorPrimario?: string | null;
   colorSecundario?: string | null;
   logoUrl?: string | null;
+  // holding-scoped-tenant-isolation: holding of the creating session; omitted
+  // only for the global (SUPER_ADMIN) path, which keeps the previous behavior.
+  holdingId?: string;
 }
 
 /**
