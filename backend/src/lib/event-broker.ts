@@ -33,9 +33,27 @@ export interface BrokerEvent {
   data: unknown;
 }
 
+/**
+ * holding-scoped-tenant-isolation (T5b): a holding subscriber carries its
+ * `holdingId` (`null` = global subscriber, SUPER_ADMIN only). Publishers that
+ * know the holding of the event's empresa pass it, and holding subscribers of
+ * a different holding never receive that event.
+ */
 export type EventScope =
   | { sessionScope: "company"; empresaId: string }
-  | { sessionScope: "holding"; empresaId: null };
+  | { sessionScope: "holding"; empresaId: null; holdingId: string | null };
+
+/**
+ * `eventHolding === undefined`: the publisher did not tag the event (it is
+ * addressed to one user, whose key already bounds the audience) -> deliver.
+ * A global subscriber (`null`) receives everything; a company subscriber has
+ * no holding (`undefined`) and is bounded by its empresa key.
+ */
+function holdingMayReceive(eventHolding: string | undefined, subscriberHolding: string | null | undefined): boolean {
+  if (eventHolding === undefined) return true;
+  if (subscriberHolding === null || subscriberHolding === undefined) return true;
+  return subscriberHolding === eventHolding;
+}
 
 type EventSink = (event: BrokerEvent) => void;
 
@@ -52,20 +70,28 @@ export class EventBroker {
   private counter = 0;
   private readonly retained = new Map<string, BrokerEvent[]>();
   private readonly connections = new Map<string, Set<EventSink>>();
+  // holding tag of a retained/published event and the holding of a subscriber sink.
+  private readonly eventHolding = new WeakMap<BrokerEvent, string>();
+  private readonly sinkHolding = new WeakMap<EventSink, string | null>();
 
   constructor(options: EventBrokerOptions = {}) {
     this.bootNonce = options.bootNonce ?? randomUUID();
     this.capacity = options.capacity ?? DEFAULT_CAPACITY;
   }
 
-  publish(userId: string, type: EventType, data: unknown, empresaId: string | null): BrokerEvent {
+  publish(
+    userId: string,
+    type: EventType,
+    data: unknown,
+    empresaId: string | null,
+    holdingId?: string,
+  ): BrokerEvent {
     const event = this.createEvent(type, data);
+    if (holdingId !== undefined) this.eventHolding.set(event, holdingId);
+    const holdingKey = this.scopeKey(userId, { sessionScope: "holding", empresaId: null, holdingId: null });
     const targetKeys = empresaId === null
-      ? [this.scopeKey(userId, { sessionScope: "holding", empresaId: null })]
-      : [
-          this.scopeKey(userId, { sessionScope: "company", empresaId }),
-          this.scopeKey(userId, { sessionScope: "holding", empresaId: null }),
-        ];
+      ? [holdingKey]
+      : [this.scopeKey(userId, { sessionScope: "company", empresaId }), holdingKey];
     for (const key of targetKeys) {
       const retained = this.retained.get(key) ?? [];
       retained.push(event);
@@ -73,6 +99,7 @@ export class EventBroker {
       this.retained.set(key, retained);
 
       for (const sink of this.connections.get(key) ?? []) {
+        if (!this.sinkMayReceive(event, sink)) continue;
         try {
           sink(event);
         } catch {
@@ -90,16 +117,20 @@ export class EventBroker {
     sink: EventSink,
   ): () => void {
     const key = this.scopeKey(userId, scope);
+    const subscriberHolding = scope.sessionScope === "holding" ? scope.holdingId : undefined;
     if (lastEventId) {
       const retained = this.retained.get(key) ?? [];
       const cursorIndex = retained.findIndex((event) => event.id === lastEventId);
       if (cursorIndex === -1) {
         sink(this.createEvent("sincronizacion.requerida", { motivo: "cursor_no_disponible" }));
       } else {
-        for (const event of retained.slice(cursorIndex + 1)) sink(event);
+        for (const event of retained.slice(cursorIndex + 1)) {
+          if (holdingMayReceive(this.eventHolding.get(event), subscriberHolding)) sink(event);
+        }
       }
     }
 
+    if (scope.sessionScope === "holding") this.sinkHolding.set(sink, scope.holdingId);
     const connections = this.connections.get(key) ?? new Set<EventSink>();
     connections.add(sink);
     this.connections.set(key, connections);
@@ -122,10 +153,12 @@ export class EventBroker {
    * que el frontend recargue incondicionalmente al reconectar, no que
    * dependa de eventos perdidos durante la desconexión.
    */
-  broadcastAll(type: EventType, data: unknown): void {
+  broadcastAll(type: EventType, data: unknown, holdingId?: string): void {
     for (const [key, sinks] of this.connections) {
       const event = this.createEvent(type, data);
+      if (holdingId !== undefined) this.eventHolding.set(event, holdingId);
       for (const sink of sinks) {
+        if (!this.sinkMayReceive(event, sink)) continue;
         try {
           sink(event);
         } catch {
@@ -133,6 +166,11 @@ export class EventBroker {
         }
       }
     }
+  }
+
+  private sinkMayReceive(event: BrokerEvent, sink: EventSink): boolean {
+    // Company sinks are absent from `sinkHolding` -> undefined -> bounded by their empresa key.
+    return holdingMayReceive(this.eventHolding.get(event), this.sinkHolding.get(sink));
   }
 
   private createEvent(type: EventType, data: unknown): BrokerEvent {

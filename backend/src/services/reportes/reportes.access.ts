@@ -1,6 +1,9 @@
 import type { RolUsuario } from "@prisma/client";
 import { AppError } from "../../lib/app-error.js";
+import { isEmpresaOutsideScope, resolveEmpresaScope } from "../../lib/holding-scope.js";
+import type { TenantContext } from "../../lib/tenant-context.js";
 import type { PrismaClientOrTransaction } from "../../lib/prisma.js";
+import * as empresaRepository from "../../repositories/empresa.repository.js";
 import * as membresiaRepository from "../../repositories/membresia.repository.js";
 import type { AuthenticatedUser } from "../../types/authenticated-user.js";
 
@@ -74,6 +77,16 @@ export async function resolverEmpresaIdReporte(
   }
 
   if (usuario.empresaId === null) {
+    // holding-scoped-tenant-isolation (T5b): a holding session may only ask
+    // for an empresa of its own holding (`empresas` has no RLS); 404 style,
+    // SUPER_ADMIN (global scope) is exempt. Fails closed without holdingId.
+    const scope = resolveEmpresaScope(usuario);
+    if (scope.holdingId !== null) {
+      const empresa = await empresaRepository.findById(empresaIdSolicitado, client);
+      if (!empresa || isEmpresaOutsideScope(empresa, scope)) {
+        throw new AppError("empresa_no_encontrada", 404, "Empresa no encontrada");
+      }
+    }
     return empresaIdSolicitado;
   }
 
@@ -87,4 +100,23 @@ export async function resolverEmpresaIdReporte(
     );
   }
   return empresaIdSolicitado;
+}
+
+/**
+ * holding-scoped-tenant-isolation (T5b): tenant context a report job runs in.
+ * A job scoped to one empresa runs in that empresa (already validated by
+ * `resolverEmpresaIdReporte` when the job was created). A holding-wide job
+ * (`empresaId === null`) runs in the requester's holding, so the aggregation
+ * never spans other holdings; only a SUPER_ADMIN requester keeps the global
+ * (unrestricted) scope. Returns `null` (fail closed) for a holding-wide
+ * requester that is bound to no holding.
+ */
+export function resolverTenantContextReporte(
+  usuario: { rol: RolUsuario; holdingId?: string | null },
+  empresaId: string | null,
+): TenantContext | null {
+  if (empresaId !== null) return { empresaId };
+  if (usuario.rol === "SUPER_ADMIN") return { unrestricted: true };
+  if (usuario.holdingId) return { holdingId: usuario.holdingId };
+  return null;
 }

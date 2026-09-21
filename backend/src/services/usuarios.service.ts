@@ -64,6 +64,22 @@ const ROLES_ACCESO_TOTAL: readonly RolUsuario[] = [
 ];
 
 /**
+ * holding-scoped-tenant-isolation (T5b): role ceiling for user management.
+ * `requireRole` lets holding roles through every gate, so the service must stop
+ * privilege escalation itself. There is no role-hierarchy module, so only the
+ * two holding-wide tiers are enforced:
+ * - `SUPER_ADMIN` can be assigned/created/managed ONLY by a `SUPER_ADMIN`.
+ * - `ADMINISTRADOR_HOLDING` ONLY by `ADMINISTRADOR_HOLDING` or `SUPER_ADMIN`.
+ * Everything below stays as before (see the T5b report for the open gap).
+ */
+function assertRolWithinCeiling(actor: AuthenticatedUser, rol: RolUsuario): void {
+  if (actor.rol === "SUPER_ADMIN") return;
+  if (rol === "SUPER_ADMIN" || (rol === "ADMINISTRADOR_HOLDING" && actor.rol !== "ADMINISTRADOR_HOLDING")) {
+    throw new AppError("permiso_denegado", 403, "No tienes permiso para asignar ese rol");
+  }
+}
+
+/**
  * D2/backfill (mismo mapeo que `shadow-authorization.service.ts::
  * rolEquivalente`): `VENDEDOR` legado no tiene su propio `RolMembresia` —
  * mapea a `ASESOR` con `habilitadoParaVenta = true`; `ASESOR` legado mapea a
@@ -293,6 +309,7 @@ export async function createUsuario(
   actor: AuthenticatedUser,
   input: CreateUsuarioInput,
 ): Promise<AdminUsuarioView> {
+  assertRolWithinCeiling(actor, input.rol);
   const empresaId = ROLES_ACCESO_TOTAL.includes(input.rol)
     ? undefined
     : resolveEmpresaId(actor, input.empresaId);
@@ -778,6 +795,10 @@ export async function updateUsuario(
   input: UpdateUsuarioInput,
 ): Promise<AdminUsuarioView> {
   await assertUsuarioEnAlcance(actor, id);
+  // T5b: neither promote to, nor edit a user already at, a tier above the actor's.
+  if (input.rol) assertRolWithinCeiling(actor, input.rol);
+  const current = await usuarioRepository.findPublicById(id);
+  if (current) assertRolWithinCeiling(actor, current.rol);
   const data: UpdateUsuarioData = {
     nombre: input.nombre,
     correo: input.correo,

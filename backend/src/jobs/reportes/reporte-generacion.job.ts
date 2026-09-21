@@ -9,6 +9,7 @@ import type { UsuarioAcceso } from "../../services/leads.access.js";
 import { getEmbudo, getPorAsesor, getPorCampania, getRendimientoCampanias, getResumen } from "../../services/metricas.service.js";
 import type { ParametrosReportePersistidos } from "../../services/reportes/reporte-parametros.js";
 import { aMetricasQuery } from "../../services/reportes/reporte-parametros.js";
+import { resolverTenantContextReporte } from "../../services/reportes/reportes.access.js";
 import { generarPdfReporte } from "./pdf-reporte.js";
 import { resolverMarcaReporte } from "./reporte-marca.js";
 import type { DatosReporte } from "./tipos.js";
@@ -70,9 +71,13 @@ export async function procesarReporteJob(jobId: string): Promise<void> {
     // (`aMetricasQuery` no la proyecta, ver ese archivo) -- se lee directo
     // de lo persistido y se pasa aparte, solo para elegir el renderer PDF.
     const plantilla = parametros.plantilla === "ejecutivo" ? "ejecutivo" : "detallado";
-    // TODO(holding-scoped-tenant-isolation T5): a holding-wide report (`null`)
-    // keeps the unrestricted scope for now; T5 scopes it to the holding.
-    const archivoUrl = await runWithTenantContext(empresaId === null ? { unrestricted: true } : { empresaId }, () =>
+    // holding-scoped-tenant-isolation (T5b): a holding-wide report (`null`)
+    // runs in the requester's holding; only SUPER_ADMIN stays unrestricted.
+    const tenantContext = resolverTenantContextReporte(usuario, empresaId);
+    if (tenantContext === null) {
+      throw new AppError("identidad_no_vinculada", 403, "El usuario de holding no está vinculado a ningún holding");
+    }
+    const archivoUrl = await runWithTenantContext(tenantContext, () =>
       generarArchivo(job.tipo, usuarioView, aMetricasQuery(parametros), plantilla),
     );
 

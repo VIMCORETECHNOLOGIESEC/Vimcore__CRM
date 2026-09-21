@@ -73,7 +73,7 @@ describe("M8 EventBroker", () => {
     const holding: string[] = [];
     broker.subscribe("multi", { sessionScope: "company", empresaId: "empresa-a" }, undefined, (event) => empresaA.push(event.id));
     broker.subscribe("multi", { sessionScope: "company", empresaId: "empresa-b" }, undefined, (event) => empresaB.push(event.id));
-    broker.subscribe("multi", { sessionScope: "holding", empresaId: null }, undefined, (event) => holding.push(event.id));
+    broker.subscribe("multi", { sessionScope: "holding", empresaId: null, holdingId: null }, undefined, (event) => holding.push(event.id));
 
     const publicado = broker.publish("multi", "notificacion.nueva", { empresaId: "empresa-a" }, "empresa-a");
 

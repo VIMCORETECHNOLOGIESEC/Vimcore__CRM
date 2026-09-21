@@ -1,12 +1,14 @@
 import type { Request, Response } from "express";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
+import { resolveEmpresaScope } from "../lib/holding-scope.js";
 import { openEventStream } from "../services/eventos.service.js";
 import { registerPresenceConnection } from "../services/presencia.service.js";
 
 export function getEvents(req: Request, res: Response): void {
   const user = assertAuthenticated(req);
   const scope = user.sessionScope === "holding"
-    ? { sessionScope: "holding" as const, empresaId: null }
+    // Fails closed (403) for a holding session without holdingId; null = SUPER_ADMIN (global).
+    ? { sessionScope: "holding" as const, empresaId: null, holdingId: resolveEmpresaScope(user).holdingId }
     : { sessionScope: "company" as const, empresaId: user.empresaId as string };
   const presence = registerPresenceConnection(user);
   openEventStream(req, res, user.id, scope, undefined, undefined, {
