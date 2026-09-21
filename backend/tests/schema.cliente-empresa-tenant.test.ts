@@ -110,7 +110,7 @@ describe("schema — RLS on clientes", () => {
     expect(sinContexto).toEqual([]);
 
     // Holding-wide (unrestricted) context sees both.
-    const holding = await runWithTenantContext({ empresaId: null }, async () =>
+    const holding = await runWithTenantContext({ unrestricted: true }, async () =>
       prisma.cliente.findMany({ where: { id: { in: [clienteA.id, clienteB.id] } } }),
     );
     expect(holding).toHaveLength(2);

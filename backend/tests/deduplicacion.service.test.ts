@@ -35,7 +35,7 @@ vi.mock("../src/repositories/lead-evento.repository.js", async (importOriginal) 
  * acá.
  */
 function conContexto<T>(fn: () => Promise<T>): Promise<T> {
-  return runWithTenantContext({ empresaId: null }, fn);
+  return runWithTenantContext({ unrestricted: true }, fn);
 }
 
 let contadorTelefono = 0;

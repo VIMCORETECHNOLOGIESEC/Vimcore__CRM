@@ -13,15 +13,17 @@ describe("tenant logger", () => {
     const { logger, lines } = captureLogs();
 
     runWithTenantContext({ empresaId: "empresa-a" }, () => logger.info({ operation: "company" }, "company"));
-    runWithTenantContext({ empresaId: null }, () => logger.info({ operation: "holding" }, "holding"));
+    runWithTenantContext({ unrestricted: true }, () => logger.info({ operation: "holding" }, "holding"));
+    runWithTenantContext({ holdingId: "holding-a" }, () => logger.info({ operation: "holding-bound" }, "holding-bound"));
     logger.info({ foreignPayload: "no-debe-salir" }, "ambiguous");
 
     const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(records[0]).toMatchObject({ empresaId: "empresa-a", operation: "company" });
     expect(records[1]).toMatchObject({ holdingWide: true, operation: "holding" });
-    expect(records[2]).toMatchObject({ event: "tenant_output_suppressed" });
-    expect(records[2]).not.toHaveProperty("foreignPayload");
-    expect(records[2]?.msg).not.toBe("ambiguous");
+    expect(records[2]).toMatchObject({ holdingWide: true, holdingId: "holding-a", operation: "holding-bound" });
+    expect(records[3]).toMatchObject({ event: "tenant_output_suppressed" });
+    expect(records[3]).not.toHaveProperty("foreignPayload");
+    expect(records[3]?.msg).not.toBe("ambiguous");
   });
 
   it("no suprime logs de acceso HTTP marcados con accessLog (binding, no argumento)", () => {

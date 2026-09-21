@@ -282,6 +282,7 @@ describe("middlewares/require-gateway-trust — holding scope (holding-admin-gat
         rol,
         sessionScope: "holding",
         empresaId: null,
+        holdingId: "holding-1",
       });
       expect(empresaRepository.findByAuthCompanyId).not.toHaveBeenCalled();
       expect(membresiaRepository.findActivaByUsuarioAndEmpresa).not.toHaveBeenCalled();

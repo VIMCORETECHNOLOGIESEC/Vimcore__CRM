@@ -26,7 +26,7 @@ export interface ResultadoReasignacionSla {
  * `BYPASS_JOB_ALLOWLIST` en `lib/prisma.ts` para este job nuevo — ese
  * archivo está fuera de los tres editables de esta tarea, ver el resumen
  * final): la fase de descubrimiento cross-empresa usa
- * `runWithTenantContext({ empresaId: null })` (D3, holding-wide vía el ROL
+ * `runWithTenantContext({ unrestricted: true })` (D3, holding-wide vía el ROL
  * DE APLICACIÓN `crm_app`) en vez de `runAsBypassJob` (`crm_bypass_jobs`,
  * READ ONLY) — mismo mecanismo que ya usa `jobs/ingesta-inbox.job.ts::
  * runIngestionOnce` para un job sin `TenantContext` de request. Si se
@@ -50,7 +50,7 @@ export async function detectarConversacionesAtrasadas(
   // `meta-webhook.service.ts::encolarLeadgenMeta` para
   // `aceptarLeadgenMetaPendiente`) para que `app.tenant_unrestricted` quede
   // fijado ANTES de que corra la consulta cross-empresa.
-  const candidatos = await runWithTenantContext({ empresaId: null }, () =>
+  const candidatos = await runWithTenantContext({ unrestricted: true }, () =>
     prisma.$transaction(
       (tx) => conversacionRepository.findCandidatosSlaVencido(frontera, tx),
       ASIGNACION_TRANSACTION_BOUNDS,

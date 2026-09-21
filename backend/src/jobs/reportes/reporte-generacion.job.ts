@@ -70,7 +70,9 @@ export async function procesarReporteJob(jobId: string): Promise<void> {
     // (`aMetricasQuery` no la proyecta, ver ese archivo) -- se lee directo
     // de lo persistido y se pasa aparte, solo para elegir el renderer PDF.
     const plantilla = parametros.plantilla === "ejecutivo" ? "ejecutivo" : "detallado";
-    const archivoUrl = await runWithTenantContext({ empresaId }, () =>
+    // TODO(holding-scoped-tenant-isolation T5): a holding-wide report (`null`)
+    // keeps the unrestricted scope for now; T5 scopes it to the holding.
+    const archivoUrl = await runWithTenantContext(empresaId === null ? { unrestricted: true } : { empresaId }, () =>
       generarArchivo(job.tipo, usuarioView, aMetricasQuery(parametros), plantilla),
     );
 

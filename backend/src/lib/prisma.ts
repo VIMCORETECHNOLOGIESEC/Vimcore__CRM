@@ -5,11 +5,12 @@ import { AppError } from "./app-error.js";
 import { logger } from "./logger.js";
 import {
   currentTenantContext,
+  runAsSystem,
   runWithTenantContext,
   type TenantContext,
 } from "./tenant-context.js";
 
-export { runWithTenantContext };
+export { runAsSystem, runWithTenantContext };
 export type { TenantContext };
 
 /**
@@ -79,13 +80,24 @@ function alreadyInGucTransaction(): boolean {
  * por esto — sin el `NULLIF`, `''::uuid` lanza un error real de Postgres en
  * vez de simplemente no matchear ninguna fila.
  */
-async function applyTenantGucs(tx: Prisma.TransactionClient): Promise<void> {
+export async function applyTenantGucs(tx: Prisma.TransactionClient): Promise<void> {
   const context = currentTenantContext();
   if (context === undefined) return;
 
-  if (context.empresaId === null) {
+  if ("unrestricted" in context) {
     await tx.$executeRaw(
       Prisma.sql`SELECT set_config('app.tenant_unrestricted', 'on', true)`,
+    );
+    return;
+  }
+
+  if ("holdingId" in context) {
+    // holding-scoped-tenant-isolation: a holding-bound session must NOT get the
+    // unrestricted bypass. The RLS policies that read `app.tenant_holding_id`
+    // arrive with the T2 migration; until it is applied a holding session sees
+    // no tenant rows (fail-closed). T1 and T2 must ship together.
+    await tx.$executeRaw(
+      Prisma.sql`SELECT set_config('app.tenant_holding_id', ${context.holdingId}, true)`,
     );
     return;
   }
@@ -242,7 +254,7 @@ export const prisma = basePrisma.$extends({
  * de cualquier ciclo de request). El worker de ingesta durable
  * (`jobs/ingesta-inbox.job.ts::runIngestionOnce`) NO usa este seam — necesita
  * `UPDATE` (`claimNext`/`marcarFallo`), incompatible con `READ ONLY`; usa en
- * cambio el GUC holding-wide (`runWithTenantContext({ empresaId: null })`,
+ * cambio el GUC holding-wide (`runWithTenantContext({ unrestricted: true })`,
  * D3) bajo el rol `crm_app` normal, ver `INGESTA_WORKER_TRANSACTION_BOUNDS`.
  */
 export const BYPASS_JOB_ALLOWLIST = {

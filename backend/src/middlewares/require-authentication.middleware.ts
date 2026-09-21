@@ -7,7 +7,8 @@ import { verifyAccessToken } from "../lib/jwt.js";
 import * as membresiaRepository from "../repositories/membresia.repository.js";
 import * as usuarioRepository from "../repositories/usuario.repository.js";
 import { rolEquivalente } from "../services/shadow-authorization.service.js";
-import { hasGatewaySecretHeader, requireGatewayTrust } from "./require-gateway-trust.middleware.js";
+import type { TenantContext } from "../lib/tenant-context.js";
+import { HOLDING_SCOPED_ROLES, hasGatewaySecretHeader, requireGatewayTrust } from "./require-gateway-trust.middleware.js";
 
 /**
  * Bloque C (D2, spec "Request-scoped tenant context"): mismos dos roles que
@@ -77,6 +78,7 @@ export async function requireAuthentication(
   }
 
   let empresaId: string | null | undefined;
+  let holdingId: string | undefined;
   let membresiaId: string | undefined;
   let correoMembresia: string | undefined;
   if (payload.sessionScope === "holding") {
@@ -86,7 +88,24 @@ export async function requireAuthentication(
       payload.rol !== user.rol
     ) {
       empresaId = undefined;
+    } else if (HOLDING_SCOPED_ROLES.includes(user.rol)) {
+      // holding-scoped-tenant-isolation: fail closed when the holding user has
+      // no holding; the id always comes from the DB row, never from the token.
+      if (!user.holdingId) {
+        next(
+          new AppError(
+            "identidad_no_vinculada",
+            403,
+            "El usuario de holding no está vinculado a ningún holding",
+          ),
+        );
+        return;
+      }
+      empresaId = null;
+      holdingId = user.holdingId;
     } else {
+      // SUPER_ADMIN (and legacy ADMINISTRADOR/SUPERVISOR holding sessions)
+      // keep the global scope.
       empresaId = null;
     }
   } else if (
@@ -134,6 +153,7 @@ export async function requireAuthentication(
     sessionScope: payload.sessionScope,
     ...(membresiaId ? { membresiaId } : {}),
     empresaId,
+    ...(holdingId ? { holdingId } : {}),
   };
   // Bloque C (Etapa 3, D2/D3): puebla el carrier de `AsyncLocalStorage` de
   // `lib/prisma.ts` alrededor de `next()` — todo el resto del ciclo de vida
@@ -141,6 +161,15 @@ export async function requireAuthentication(
   // response termine) corre dentro de este contexto. `empresaId` ya viene
   // resuelto arriba con el mismo criterio D2/D3 (`null` = holding-wide vía
   // el ROL DE APLICACIÓN, nunca `crm_bypass_jobs` — spec §2 "HTTP request
-  // always uses application role").
-  runWithTenantContext({ empresaId }, next);
+  // always uses application role"). holding-scoped-tenant-isolation: `null`
+  // ya no implica sin restricción para todos — un usuario de holding corre
+  // acotado a su `holdingId`; solo el resto de sesiones globales (SUPER_ADMIN)
+  // conserva `{ unrestricted: true }`.
+  const tenantContext: TenantContext =
+    empresaId !== null
+      ? { empresaId }
+      : holdingId
+        ? { holdingId }
+        : { unrestricted: true };
+  runWithTenantContext(tenantContext, next);
 }

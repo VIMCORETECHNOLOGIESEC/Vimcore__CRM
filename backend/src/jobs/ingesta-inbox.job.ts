@@ -24,7 +24,7 @@ export async function runIngestionOnce(now: Date = new Date()): Promise<void> {
   // (mismo gap documentado en `lib/prisma.ts::$allOperations`), así que
   // necesitan tanto el `TenantContext` activo como su propia transaccion
   // explicita (`prisma.$transaction`) para que `applyTenantGucs` corra.
-  await runWithTenantContext({ empresaId: null }, async () => {
+  await runWithTenantContext({ unrestricted: true }, async () => {
     const claim = await prisma.$transaction(
       (tx) => inbox.claimNext(now, owner, tx),
       INGESTA_WORKER_TRANSACTION_BOUNDS,

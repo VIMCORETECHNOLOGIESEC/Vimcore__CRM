@@ -225,7 +225,7 @@ export function createLinkedInOAuthService(
   async function completeOAuth(
     callback: LinkedInOAuthCallbackQuery,
   ): Promise<LinkedInConexionDto> {
-    return runWithTenantContext({ empresaId: null }, async () => {
+    return runWithTenantContext({ unrestricted: true }, async () => {
       const config = requireConfig(dependencies.config);
       if (!callback.state) throw invalidState();
 

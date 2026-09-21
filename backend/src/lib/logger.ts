@@ -15,9 +15,9 @@ function loggerOptions(useTransport: boolean): LoggerOptions {
     mixin() {
       const context = currentTenantContext();
       if (!context) return {};
-      return context.empresaId === null
-        ? { holdingWide: true }
-        : { empresaId: context.empresaId };
+      if ("empresaId" in context) return { empresaId: context.empresaId };
+      if ("holdingId" in context) return { holdingWide: true, holdingId: context.holdingId };
+      return { holdingWide: true };
     },
     hooks: {
       logMethod(args, method) {

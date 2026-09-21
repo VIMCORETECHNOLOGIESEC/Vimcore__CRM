@@ -33,7 +33,7 @@ import * as inbox from "../src/repositories/lead-recibido.repository.js";
 import { procesarRecepcion } from "../src/services/ingesta.service.js";
 
 function conContexto<T>(fn: () => Promise<T>): Promise<T> {
-  return runWithTenantContext({ empresaId: null }, fn);
+  return runWithTenantContext({ unrestricted: true }, fn);
 }
 
 let contador = 0;

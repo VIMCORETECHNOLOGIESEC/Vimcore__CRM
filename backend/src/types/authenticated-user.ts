@@ -18,4 +18,8 @@ export interface AuthenticatedUser {
   // downstream lo usa todavía en esta etapa (Fase 1 / Stage 1) — Stage 2 lo
   // conecta a decisiones de acceso reales.
   empresaId: string | null;
+  // holding-scoped-tenant-isolation: set for ADMINISTRADOR_HOLDING /
+  // SUPERVISOR_HOLDING sessions (loaded server-side from `Usuario.holdingId`).
+  // `null`/absent for company sessions and for own-JWT global roles.
+  holdingId?: string | null;
 }

@@ -75,7 +75,7 @@ async function registrarLogSeguro(data: Parameters<typeof registrarBridgeLog>[0]
  * este proyecto y no corresponde inventarlo acá (decisión de alcance, no un
  * TODO pendiente).
  *
- * `runWithTenantContext({ empresaId: null })` (D3, "holding-wide" vía el rol
+ * `runWithTenantContext({ unrestricted: true })` (D3, "holding-wide" vía el rol
  * de aplicación): este webhook se autentica por `X-LI-Signature` (secreto
  * único de la app, nunca por bridge/empresa), así que no hay un
  * `TenantContext` de request que fijar de antemano — mismo criterio que
@@ -90,7 +90,7 @@ export async function encolarNotificacionLinkedIn(body: LinkedInNotificationBody
     return;
   }
 
-  await runWithTenantContext({ empresaId: null }, async () => {
+  await runWithTenantContext({ unrestricted: true }, async () => {
     const ownerUrn = ownerUrnFrom(body.owner);
     const fuente = await linkedinFuenteRepository.findActiveByOwner(ownerUrn, body.leadType);
 

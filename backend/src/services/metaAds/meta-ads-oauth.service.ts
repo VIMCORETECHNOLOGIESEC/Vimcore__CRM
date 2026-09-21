@@ -141,7 +141,7 @@ export async function completeMetaAdsOAuthCallback(
   // `meta-webhook.service.ts::procesarNotificacionMeta`/
   // `bridgeApi/poll.job.ts::pollBridgesApiExterna` para código sin actor
   // autenticado.
-  const consumedState = await runWithTenantContext({ empresaId: null }, () =>
+  const consumedState = await runWithTenantContext({ unrestricted: true }, () =>
     oauthStateRepository.consumeValidState(sha256(callback.state as string)),
   );
   if (!consumedState) throw invalidState();

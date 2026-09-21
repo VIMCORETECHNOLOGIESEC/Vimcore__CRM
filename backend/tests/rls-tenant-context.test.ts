@@ -66,7 +66,7 @@ describe("lib/prisma — holding-wide vía rol de aplicación (tarea 2.5)", () =
       await crearClienteYLead(empresaB.id);
     });
 
-    const total = await runWithTenantContext({ empresaId: null }, async () => {
+    const total = await runWithTenantContext({ unrestricted: true }, async () => {
       const rolActual = await prisma.$queryRaw<{ current_user: string }[]>`SELECT current_user`;
       expect(rolActual[0]?.current_user).not.toBe("crm_bypass_jobs");
       return prisma.lead.findMany({

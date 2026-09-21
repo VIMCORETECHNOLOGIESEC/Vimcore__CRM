@@ -52,7 +52,7 @@ function compareGatewaySecret(secret: string, presented: string): boolean {
  * (holding-wide through the application role, same as the JWT holding session
  * of `requireAuthentication`). Every other role stays company-scoped.
  */
-const HOLDING_SCOPED_ROLES: readonly RolUsuario[] = ["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING"];
+export const HOLDING_SCOPED_ROLES: readonly RolUsuario[] = ["ADMINISTRADOR_HOLDING", "SUPERVISOR_HOLDING"];
 
 /**
  * True when the request carries `X-Gateway-Secret` at all (even empty). Used by
@@ -139,10 +139,11 @@ export async function requireGatewayTrust(
       rol: usuario.rol,
       sessionScope: "holding",
       empresaId: null,
+      holdingId: usuario.holdingId,
     };
-    // Same TenantContext as a JWT holding session: `empresaId: null` =
-    // holding-wide through the application role, never `crm_bypass_jobs`.
-    runWithTenantContext({ empresaId: null }, next);
+    // Holding-bound TenantContext: RLS exposes only the empresas of this
+    // holding, never the unrestricted bypass (nor `crm_bypass_jobs`).
+    runWithTenantContext({ holdingId: usuario.holdingId }, next);
     return;
   }
 

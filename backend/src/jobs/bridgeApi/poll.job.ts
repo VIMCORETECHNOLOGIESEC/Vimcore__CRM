@@ -120,7 +120,7 @@ async function pollUnBridge(bridge: Bridge): Promise<void> {
     // Fix (RLS, 2026-08-31): `aceptarLeadRecibido` hace un `$queryRaw` suelto
     // -- `lib/prisma.ts::$allOperations` nunca aplica las GUCs de tenant a una
     // operación raw fuera de una transacción explícita, sin importar que este
-    // job ya corra dentro del `runWithTenantContext({ empresaId: null })` de
+    // job ya corra dentro del `runWithTenantContext({ unrestricted: true })` de
     // `pollBridgesApiExterna`. Mismo gap y mismo fix ya aplicado en
     // `ingesta.service.ts::ingestarLead`/`meta-webhook.service.ts::
     // encolarLeadgenMeta` -- sin esto, todo poll de un bridge API_EXTERNA
@@ -174,7 +174,7 @@ export async function pollUnBridgeSeguro(bridge: Bridge): Promise<void> {
  * escribir en `leads_recibidos`).
  */
 export async function pollBridgesApiExterna(): Promise<void> {
-  await runWithTenantContext({ empresaId: null }, async () => {
+  await runWithTenantContext({ unrestricted: true }, async () => {
     const bridges = await bridgeRepository.findBridgesApiExternaActivos();
     for (const bridge of bridges) {
       await pollUnBridgeSeguro(bridge);

@@ -40,7 +40,7 @@ export async function procesarWebhookWhatsApp(body: WhatsAppWebhookNotificationB
   const mensajes = adaptWhatsAppWebhook(body);
   if (mensajes.length === 0) return;
 
-  await runWithTenantContext({ empresaId: null }, async () => {
+  await runWithTenantContext({ unrestricted: true }, async () => {
     for (const mensaje of mensajes) {
       const conexion = await whatsappConexionRepository.findByNumeroTelefonoId(mensaje.numeroTelefonoId);
       if (!conexion) {

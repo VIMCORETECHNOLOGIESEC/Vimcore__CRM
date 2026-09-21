@@ -85,7 +85,7 @@ function conContexto<T>(fn: () => Promise<T>): Promise<T> {
  * service.
  */
 function sinRestriccion<T>(fn: () => Promise<T>): Promise<T> {
-  return runWithTenantContext({ empresaId: null }, fn);
+  return runWithTenantContext({ unrestricted: true }, fn);
 }
 
 let contador = 0;

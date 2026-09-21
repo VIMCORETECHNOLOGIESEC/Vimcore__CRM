@@ -175,7 +175,7 @@ export async function encolarLeadgenMeta(
   // ver el comentario ahi) — `lib/prisma.ts::$allOperations` no aplica las
   // GUCs de tenant a una operacion raw fuera de una transaccion explicita,
   // sin importar que `procesarNotificacionMeta` ya haya activado
-  // `runWithTenantContext({ empresaId: null })` alrededor de este call site.
+  // `runWithTenantContext({ unrestricted: true })` alrededor de este call site.
   // Envolver la llamada en `runInTransaction` hace que `applyTenantGucs`
   // corra primero, fijando `app.tenant_unrestricted = 'on'` (holding-wide,
   // D3) — necesario porque un solo webhook puede traer leads de Paginas de
@@ -211,7 +211,7 @@ export async function procesarNotificacionMeta(body: MetaWebhookNotificationBody
   // `empresaId: null` (D3, "holding-wide" vía el ROL DE APLICACIÓN, nunca
   // `crm_bypass_jobs` — spec §2) le da a `encolarLeadgenMeta` la visibilidad
   // que necesita para resolver cada `page_id` a su `Bridge`/empresa real.
-  await runWithTenantContext({ empresaId: null }, async () => {
+  await runWithTenantContext({ unrestricted: true }, async () => {
     for (const entry of body.entry) {
       for (const change of entry.changes) {
         if (change.field !== "leadgen") continue;

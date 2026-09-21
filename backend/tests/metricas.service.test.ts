@@ -701,7 +701,7 @@ describe("services/metricas.service — getRankingProductosPorEmpresa (E5)", () 
       // activo (20260830020000_negociacion_rls_tenant_isolation), la fila de
       // `empresaB` queda bloqueada a nivel de base de datos sin este
       // contexto anidado que sí marca la sesion como holding-wide de verdad.
-      const filas = await runWithTenantContext({ empresaId: null }, () =>
+      const filas = await runWithTenantContext({ unrestricted: true }, () =>
         getRankingProductosPorEmpresa(admin, query()),
       );
       const filaBootstrap = filas.find((f) => f.productoId === productoBootstrap.id);

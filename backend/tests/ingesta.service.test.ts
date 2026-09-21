@@ -9,12 +9,12 @@ import { EMPRESA_BOOTSTRAP_ID } from "./fixtures/empresa.js";
 
 /**
  * Bloque C (Etapa 3, batch 3 discovery, D2 gap closure): `procesarRecepcion`
- * corre en producción dentro de `runWithTenantContext({ empresaId: null },
+ * corre en producción dentro de `runWithTenantContext({ unrestricted: true },
  * ...)` (ver `jobs/ingesta-inbox.job.ts`) porque el worker no tiene ciclo de
  * request HTTP.
  */
 function conContexto<T>(fn: () => Promise<T>): Promise<T> {
-  return runWithTenantContext({ empresaId: null }, fn);
+  return runWithTenantContext({ unrestricted: true }, fn);
 }
 
 let contador = 0;
