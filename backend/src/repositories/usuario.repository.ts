@@ -118,6 +118,23 @@ export async function createLinked(
   return client.usuario.create({ data });
 }
 
+/**
+ * crm-user-auth-provisioning: sets `authUserId` only while the row is still
+ * unlinked (compare-and-set), so a concurrent link can never be overwritten.
+ * Returns `true` when this call linked the user.
+ */
+export async function linkAuthUserIfUnlinked(
+  id: string,
+  authUserId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<boolean> {
+  const { count } = await client.usuario.updateMany({
+    where: { id, authUserId: null },
+    data: { authUserId },
+  });
+  return count === 1;
+}
+
 export async function setHolding(
   id: string,
   holdingId: string,

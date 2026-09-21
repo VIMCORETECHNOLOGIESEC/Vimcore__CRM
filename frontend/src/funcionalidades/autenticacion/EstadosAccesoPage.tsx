@@ -35,7 +35,7 @@ export function IdentidadNoVinculadaPage() {
   return (
     <PantallaAcceso
       titulo="Tu cuenta aún no está vinculada al CRM"
-      descripcion="Iniciaste sesión en la plataforma, pero tu cuenta todavía no tiene acceso al CRM. Contacta a un administrador para que la vincule."
+      descripcion="Iniciaste sesión en la plataforma, pero tu cuenta todavía se está vinculando al CRM. Intenta nuevamente en unos minutos o contacta a un administrador si el problema continúa."
     >
       <Button asChild>
         <a href={getAuthLoginUrl()}>Volver al inicio de sesión</a>

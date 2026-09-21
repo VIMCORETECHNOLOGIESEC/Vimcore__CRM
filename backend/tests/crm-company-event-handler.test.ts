@@ -25,11 +25,13 @@ const RESULT: ProvisionCrmCompanyResult = {
 
 const provision = vi.fn();
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-const deps = { provision, log } as unknown as CrmCompanyEventHandlerDeps;
+const linkAuthUser = vi.fn();
+const deps = { provision, linkAuthUser, log } as unknown as CrmCompanyEventHandlerDeps;
 
 beforeEach(() => {
   vi.clearAllMocks();
   provision.mockResolvedValue(RESULT);
+  linkAuthUser.mockResolvedValue("linked");
 });
 
 function payload(overrides: Record<string, unknown> = {}) {
@@ -273,5 +275,98 @@ describe("createCompanyEventHandler — settlement", () => {
 
     expect(settler.completeMessage).toHaveBeenCalledExactlyOnceWith(msg);
     expect(provision).not.toHaveBeenCalled();
+  });
+});
+
+describe("decideCompanyEvent — AuthUserProvisioned for crm", () => {
+  const reply = (overrides: Record<string, unknown> = {}) => ({
+    crmUserId: randomUUID(),
+    authUserId: randomUUID(),
+    authCompanyId: randomUUID(),
+    outcome: "created",
+    correlationId: "corr-1",
+    occurredAt: "2026-09-21T10:00:00.000Z",
+    ...overrides,
+  });
+  const replyMessage = (body: unknown) =>
+    message(body, { eventType: "AuthUserProvisioned", module: "crm", correlationId: "corr-1" });
+
+  it("links on outcome created and completes", async () => {
+    const body = reply();
+
+    expect(await decideCompanyEvent(replyMessage(body), deps)).toEqual({ kind: "complete" });
+    expect(linkAuthUser).toHaveBeenCalledWith({
+      crmUserId: body.crmUserId,
+      authUserId: body.authUserId,
+      authCompanyId: body.authCompanyId,
+    });
+    expect(provision).not.toHaveBeenCalled();
+  });
+
+  it("completes a redelivery (idempotent no-op result) with an info log", async () => {
+    linkAuthUser.mockResolvedValue("already_linked");
+
+    expect(await decideCompanyEvent(replyMessage(reply()), deps)).toEqual({ kind: "complete" });
+    expect(log.info).toHaveBeenCalledTimes(1);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["user_not_found", "warn"],
+    ["different_auth_user", "warn"],
+    ["auth_user_in_use", "error"],
+    ["company_mismatch", "error"],
+  ] as const)("completes and logs at %s level when the service reports %s", async (result, level) => {
+    linkAuthUser.mockResolvedValue(result);
+
+    expect(await decideCompanyEvent(replyMessage(reply()), deps)).toEqual({ kind: "complete" });
+    expect(log[level]).toHaveBeenCalledTimes(1);
+    expect(log.info).not.toHaveBeenCalled();
+  });
+
+  it.each(["already_exists", "failed"])("does not link on %s: warns with reason and completes", async (outcome) => {
+    const body = reply({ outcome, authUserId: null, reason: "email_taken" });
+
+    expect(await decideCompanyEvent(replyMessage(body), deps)).toEqual({ kind: "complete" });
+    expect(linkAuthUser).not.toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome, reason: "email_taken", correlationId: "corr-1" }),
+      expect.any(String),
+    );
+  });
+
+  it.each([
+    ["crmUserId is not a uuid", { crmUserId: "nope" }],
+    ["authCompanyId is missing", { authCompanyId: undefined }],
+    ["outcome is unknown", { outcome: "maybe" }],
+    ["created without authUserId", { authUserId: null }],
+    ["authUserId is not a uuid", { authUserId: "nope" }],
+  ])("dead-letters when %s", async (_label, overrides) => {
+    const decision = await decideCompanyEvent(replyMessage(reply(overrides)), deps);
+
+    expect(decision).toMatchObject({ kind: "deadLetter", reason: "InvalidPayload" });
+    expect(linkAuthUser).not.toHaveBeenCalled();
+  });
+
+  it("dead-letters a malformed body", async () => {
+    expect(await decideCompanyEvent(replyMessage("{not json"), deps)).toMatchObject({
+      kind: "deadLetter",
+      reason: "MalformedPayload",
+    });
+  });
+
+  it("abandons on an unexpected error so the broker redelivers", async () => {
+    linkAuthUser.mockRejectedValue(new Error("db down"));
+
+    expect(await decideCompanyEvent(replyMessage(reply()), deps)).toEqual({ kind: "abandon" });
+  });
+
+  it("still completes unknown event types and other modules without linking", async () => {
+    const unknown = message(reply(), { eventType: "SomethingElse", module: "crm" });
+    const otherModule = message(reply(), { eventType: "AuthUserProvisioned", module: "billing" });
+
+    expect(await decideCompanyEvent(unknown, deps)).toEqual({ kind: "complete" });
+    expect(await decideCompanyEvent(otherModule, deps)).toEqual({ kind: "complete" });
+    expect(linkAuthUser).not.toHaveBeenCalled();
   });
 });

@@ -5,10 +5,12 @@ import {
   AuthProvisioningConflictError,
   provisionCrmCompanyAdmin,
 } from "../services/auth-provisioning.service.js";
+import { linkAuthUser } from "../services/auth-user-link.service.js";
 
 const CRM_MODULE = "crm";
 const SUBSCRIBED_EVENT = "CompanyModuleSubscribed";
 const UNSUBSCRIBED_EVENT = "CompanyModuleUnsubscribed";
+const AUTH_USER_PROVISIONED_EVENT = "AuthUserProvisioned";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidSchema = z.string().regex(UUID_PATTERN);
@@ -28,6 +30,17 @@ const provisionableSchema = z.object({
   adminUserId: uuidSchema,
   adminEmail: z.string().trim().pipe(z.email()),
   adminFullName: z.string().trim().min(1),
+});
+
+// crm-user-auth-provisioning: Auth's reply to `CrmUserCreated`. `authUserId` is
+// null unless the outcome is `created`; the link itself is validated again in
+// the service (never trusted from the payload alone).
+const authUserProvisionedSchema = z.object({
+  crmUserId: uuidSchema,
+  authUserId: uuidSchema.nullable(),
+  authCompanyId: uuidSchema,
+  outcome: z.enum(["created", "already_exists", "failed"]),
+  reason: z.string().nullish(),
 });
 
 /** What to do with the message; settlement happens once, after the decision. */
@@ -53,6 +66,7 @@ export type CrmCompanyEventMessage = Pick<
 
 export interface CrmCompanyEventHandlerDeps {
   provision: typeof provisionCrmCompanyAdmin;
+  linkAuthUser: typeof linkAuthUser;
   log: Pick<typeof logger, "debug" | "info" | "warn" | "error">;
 }
 
@@ -72,7 +86,11 @@ function asString(value: unknown): string | undefined {
 }
 
 function isKnownEventType(eventType: string | undefined): boolean {
-  return eventType === SUBSCRIBED_EVENT || eventType === UNSUBSCRIBED_EVENT;
+  return (
+    eventType === SUBSCRIBED_EVENT ||
+    eventType === UNSUBSCRIBED_EVENT ||
+    eventType === AUTH_USER_PROVISIONED_EVENT
+  );
 }
 
 /**
@@ -93,7 +111,7 @@ export async function decideCompanyEvent(
   message: CrmCompanyEventMessage,
   deps: CrmCompanyEventHandlerDeps,
 ): Promise<MessageDecision> {
-  const { log, provision } = deps;
+  const { log, provision, linkAuthUser: link } = deps;
   const properties = message.applicationProperties ?? {};
   const propertyEventType = asString(properties.eventType);
   const propertyModule = asString(properties.module);
@@ -140,6 +158,10 @@ export async function decideCompanyEvent(
       "Ignoring event not handled by the CRM",
     );
     return { kind: "complete" };
+  }
+
+  if (eventType === AUTH_USER_PROVISIONED_EVENT) {
+    return decideAuthUserProvisioned(message.messageId, body, correlationId, { log, link });
   }
 
   if (eventType === UNSUBSCRIBED_EVENT) {
@@ -221,10 +243,67 @@ export async function decideCompanyEvent(
   }
 }
 
+/**
+ * `AuthUserProvisioned`: links the CRM user only for `created`; `already_exists`
+ * / `failed` are logged and completed (the user stays unlinked). Every business
+ * outcome completes the message; only an unexpected error abandons it.
+ */
+async function decideAuthUserProvisioned(
+  messageId: string | number | Buffer | undefined,
+  body: Record<string, unknown>,
+  correlationId: string,
+  { log, link }: { log: CrmCompanyEventHandlerDeps["log"]; link: typeof linkAuthUser },
+): Promise<MessageDecision> {
+  const parsed = authUserProvisionedSchema.safeParse(body);
+  if (!parsed.success || (parsed.data.outcome === "created" && parsed.data.authUserId === null)) {
+    log.error({ holdingWide: true, messageId, correlationId }, "Invalid AuthUserProvisioned payload");
+    return {
+      kind: "deadLetter",
+      reason: "InvalidPayload",
+      description: "AuthUserProvisioned payload failed shape validation",
+    };
+  }
+
+  const { crmUserId, authUserId, authCompanyId, outcome, reason } = parsed.data;
+  // `holdingWide`: the logger drops output emitted without a tenant context
+  // (a consumer has none); this is the explicit system scope it accepts.
+  const context = { holdingWide: true, messageId, correlationId, crmUserId, authCompanyId, outcome };
+
+  if (outcome !== "created" || authUserId === null) {
+    log.warn({ ...context, reason }, "Auth did not create the user: CRM user left unlinked");
+    return { kind: "complete" };
+  }
+
+  try {
+    const result = await link({ crmUserId, authUserId, authCompanyId });
+    const fields = { ...context, authUserId, result };
+    if (result === "linked" || result === "already_linked") {
+      log.info(fields, "AuthUserProvisioned processed");
+    } else if (result === "user_not_found") {
+      log.warn(fields, "AuthUserProvisioned for an unknown CRM user: nothing linked");
+    } else if (result === "different_auth_user") {
+      log.warn(fields, "CRM user already linked to a different auth user: not overwritten");
+    } else {
+      log.error(fields, "AuthUserProvisioned rejected: nothing linked");
+    }
+    return { kind: "complete" };
+  } catch (error) {
+    log.error(
+      { ...context, message: error instanceof Error ? error.message : String(error) },
+      "Failed to link the auth user",
+    );
+    return { kind: "abandon" };
+  }
+}
+
 /** Builds the `processMessage` callback: decide, then settle exactly once. */
 export function createCompanyEventHandler(
   settler: MessageSettler,
-  deps: CrmCompanyEventHandlerDeps = { provision: provisionCrmCompanyAdmin, log: logger },
+  deps: CrmCompanyEventHandlerDeps = {
+    provision: provisionCrmCompanyAdmin,
+    linkAuthUser,
+    log: logger,
+  },
 ): (message: ServiceBusReceivedMessage) => Promise<void> {
   return async (message) => {
     const decision = await decideCompanyEvent(message, deps);
