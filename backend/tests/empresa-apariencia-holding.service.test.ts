@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { AppError } from "../src/lib/app-error.js";
+import { GLOBAL_EMPRESA_SCOPE } from "../src/lib/holding-scope.js";
 import { prisma } from "../src/lib/prisma.js";
 import {
   createEmpresa,
@@ -26,7 +27,7 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
       nombre: "Nombre renombrado por holding",
       colorPrimario: "#7c2d12",
       colorSecundario: "#f97316",
-    });
+    }, GLOBAL_EMPRESA_SCOPE);
 
     expect(resultado).toEqual({
       id: empresa.id,
@@ -53,7 +54,7 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
 
     const resultado = await updateAparienciaHolding(empresa.id, {
       nombre: "Solo nombre nuevo",
-    });
+    }, GLOBAL_EMPRESA_SCOPE);
 
     expect(resultado.nombre).toBe("Solo nombre nuevo");
     expect(resultado.colorPrimario).toBe("#333333");
@@ -73,7 +74,7 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
     const resultado = await updateAparienciaHolding(empresa.id, {
       colorPrimario: null,
       colorSecundario: null,
-    });
+    }, GLOBAL_EMPRESA_SCOPE);
 
     expect(resultado.colorPrimario).toBeNull();
     expect(resultado.colorSecundario).toBeNull();
@@ -82,7 +83,7 @@ describe("services/empresa-apariencia — updateAparienciaHolding", () => {
 
   it("lanza AppError 404 cuando la empresa no existe", async () => {
     await expect(
-      updateAparienciaHolding(randomUUID(), { nombre: "No importa" }),
+      updateAparienciaHolding(randomUUID(), { nombre: "No importa" }, GLOBAL_EMPRESA_SCOPE),
     ).rejects.toMatchObject<Partial<AppError>>({ statusHttp: 404, code: "empresa_no_encontrada" });
   });
 });
@@ -103,7 +104,7 @@ describe("services/empresa-apariencia — getEmpresaHolding", () => {
       },
     });
 
-    const resultado = await getEmpresaHolding(empresa.id);
+    const resultado = await getEmpresaHolding(empresa.id, GLOBAL_EMPRESA_SCOPE);
 
     expect(resultado).toEqual({
       id: empresa.id,
@@ -115,7 +116,7 @@ describe("services/empresa-apariencia — getEmpresaHolding", () => {
   });
 
   it("lanza AppError 404 cuando la empresa no existe", async () => {
-    await expect(getEmpresaHolding(randomUUID())).rejects.toMatchObject<Partial<AppError>>({
+    await expect(getEmpresaHolding(randomUUID(), GLOBAL_EMPRESA_SCOPE)).rejects.toMatchObject<Partial<AppError>>({
       statusHttp: 404,
       code: "empresa_no_encontrada",
     });
@@ -136,7 +137,7 @@ describe("services/empresa-apariencia — createEmpresa", () => {
       colorPrimario: "#7c2d12",
       colorSecundario: "#f97316",
       logoUrl: "https://cdn.miempresa.com/logo.svg",
-    });
+    }, GLOBAL_EMPRESA_SCOPE);
 
     expect(resultado).toEqual({
       id: resultado.id,
@@ -153,7 +154,7 @@ describe("services/empresa-apariencia — createEmpresa", () => {
   it("crea una Empresa nueva solo con nombre (apariencia queda null)", async () => {
     const nombre = `Empresa service alta minima ${randomUUID()}`;
 
-    const resultado = await createEmpresa({ nombre });
+    const resultado = await createEmpresa({ nombre }, GLOBAL_EMPRESA_SCOPE);
 
     expect(resultado).toEqual({
       id: resultado.id,
@@ -167,7 +168,7 @@ describe("services/empresa-apariencia — createEmpresa", () => {
   it("no crea ninguna Membresia (bypass por Usuario.rol, sin auto-provisioning)", async () => {
     const nombre = `Empresa service alta sin membresia ${randomUUID()}`;
 
-    const resultado = await createEmpresa({ nombre });
+    const resultado = await createEmpresa({ nombre }, GLOBAL_EMPRESA_SCOPE);
 
     const membresias = await prisma.membresia.findMany({ where: { empresaId: resultado.id } });
     expect(membresias).toHaveLength(0);
@@ -197,7 +198,7 @@ describe("services/empresa-apariencia — listEmpresas", () => {
       },
     });
 
-    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre });
+    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre }, GLOBAL_EMPRESA_SCOPE);
 
     expect(items).toContainEqual({
       id: empresa.id,
@@ -212,7 +213,7 @@ describe("services/empresa-apariencia — listEmpresas", () => {
     const nombre = `Empresa service listado sin color ${randomUUID()}`;
     const empresa = await prisma.empresa.create({ data: { nombre } });
 
-    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre });
+    const { items } = await listEmpresas({ page: 1, pageSize: 25, search: nombre }, GLOBAL_EMPRESA_SCOPE);
 
     expect(items).toContainEqual({
       id: empresa.id,
@@ -224,7 +225,7 @@ describe("services/empresa-apariencia — listEmpresas", () => {
   });
 
   it("devuelve un array en items", async () => {
-    const { items } = await listEmpresas({ page: 1, pageSize: 25 });
+    const { items } = await listEmpresas({ page: 1, pageSize: 25 }, GLOBAL_EMPRESA_SCOPE);
 
     expect(Array.isArray(items)).toBe(true);
   });
@@ -235,7 +236,7 @@ describe("services/empresa-apariencia — listEmpresas", () => {
     await prisma.empresa.create({ data: { nombre: `${nombreBase} B` } });
     await prisma.empresa.create({ data: { nombre: `${nombreBase} C` } });
 
-    const { items, total } = await listEmpresas({ page: 1, pageSize: 2, search: nombreBase });
+    const { items, total } = await listEmpresas({ page: 1, pageSize: 2, search: nombreBase }, GLOBAL_EMPRESA_SCOPE);
 
     expect(items).toHaveLength(2);
     expect(total).toBe(3);
@@ -249,7 +250,7 @@ describe("services/empresa-apariencia — listEmpresas", () => {
       page: 1,
       pageSize: 25,
       search: marca.toLowerCase(),
-    });
+    }, GLOBAL_EMPRESA_SCOPE);
 
     expect(total).toBe(1);
     expect(items[0]?.nombre).toContain(marca);

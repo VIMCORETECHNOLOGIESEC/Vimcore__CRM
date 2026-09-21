@@ -1,4 +1,4 @@
-import type { Membresia, Usuario } from "@prisma/client";
+import type { Membresia, RolUsuario, Usuario } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { logger } from "../lib/logger.js";
@@ -9,6 +9,13 @@ import * as usuarioRepository from "../repositories/usuario.repository.js";
 import { rolEquivalente } from "../services/shadow-authorization.service.js";
 import type { TenantContext } from "../lib/tenant-context.js";
 import { HOLDING_SCOPED_ROLES, hasGatewaySecretHeader, requireGatewayTrust } from "./require-gateway-trust.middleware.js";
+
+/**
+ * holding-scoped-tenant-isolation: legacy roles that can still arrive in an
+ * own-JWT `holding` session (login by `Usuario.correo`, no membresia). They
+ * are bound to `Usuario.holdingId` like `HOLDING_SCOPED_ROLES`.
+ */
+const LEGACY_HOLDING_SESSION_ROLES: readonly RolUsuario[] = ["ADMINISTRADOR", "SUPERVISOR"];
 
 /**
  * Bloque C (D2, spec "Request-scoped tenant context"): mismos dos roles que
@@ -88,9 +95,15 @@ export async function requireAuthentication(
       payload.rol !== user.rol
     ) {
       empresaId = undefined;
-    } else if (HOLDING_SCOPED_ROLES.includes(user.rol)) {
+    } else if (
+      HOLDING_SCOPED_ROLES.includes(user.rol) ||
+      LEGACY_HOLDING_SESSION_ROLES.includes(user.rol)
+    ) {
       // holding-scoped-tenant-isolation: fail closed when the holding user has
       // no holding; the id always comes from the DB row, never from the token.
+      // Legacy own-JWT ADMINISTRADOR/SUPERVISOR holding sessions (no
+      // membresia) are bound to their holding exactly like the explicit
+      // holding roles.
       if (!user.holdingId) {
         next(
           new AppError(
@@ -104,8 +117,8 @@ export async function requireAuthentication(
       empresaId = null;
       holdingId = user.holdingId;
     } else {
-      // SUPER_ADMIN (and legacy ADMINISTRADOR/SUPERVISOR holding sessions)
-      // keep the global scope.
+      // SUPER_ADMIN keeps the global scope. TODO(decision): ASESOR/VENDEDOR
+      // own-JWT holding sessions are still global (not covered by T5a).
       empresaId = null;
     }
   } else if (

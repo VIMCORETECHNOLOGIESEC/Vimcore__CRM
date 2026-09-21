@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
+import { isEmpresaOutsideScope, type EmpresaScope } from "../lib/holding-scope.js";
 import { uploadImage, type UploadImageInput } from "../lib/azure-blob-storage.js";
 import * as empresaRepository from "../repositories/empresa.repository.js";
 import type {
@@ -87,25 +88,11 @@ function toHoldingView(empresa: {
   };
 }
 
-/**
- * holding-scoped-tenant-isolation: `empresas` has no RLS, so holding isolation
- * for this domain is enforced here. `holdingId: string` restricts every read,
- * write and create to that holding. `holdingId: null` is the existing global
- * path (SUPER_ADMIN, `{ unrestricted }` context): no filter.
- * TODO(open decision): legacy own-JWT ADMINISTRADOR/SUPERVISOR holding
- * sessions also arrive with `holdingId == null` and therefore stay
- * unrestricted until the product decision on those roles is made.
- */
-export interface EmpresaScope {
-  holdingId: string | null;
-}
-
-const UNRESTRICTED_SCOPE: EmpresaScope = { holdingId: null };
-
-function isOutsideScope(empresa: { holdingId: string | null }, scope: EmpresaScope): boolean {
-  return scope.holdingId !== null && empresa.holdingId !== scope.holdingId;
-}
-
+// holding-scoped-tenant-isolation: `empresas` has no RLS, so holding isolation
+// for this domain is enforced here through the REQUIRED `EmpresaScope`
+// (see `lib/holding-scope.ts`). `{ holdingId: null }` is the explicit global
+// scope (SUPER_ADMIN only).
+export type { EmpresaScope };
 function empresaNoEncontrada(): AppError {
   return new AppError("empresa_no_encontrada", 404, "La empresa indicada no existe");
 }
@@ -122,11 +109,11 @@ function empresaNoEncontrada(): AppError {
 export async function updateAparienciaHolding(
   empresaId: string,
   input: UpdateEmpresaAparienciaHoldingBody,
-  scope: EmpresaScope = UNRESTRICTED_SCOPE,
+  scope: EmpresaScope,
 ): Promise<EmpresaAparienciaHoldingView> {
   const existente = await empresaRepository.findById(empresaId);
   // 404 (not 403) for another holding's empresa: do not leak its existence.
-  if (!existente || isOutsideScope(existente, scope)) {
+  if (!existente || isEmpresaOutsideScope(existente, scope)) {
     throw empresaNoEncontrada();
   }
 
@@ -149,10 +136,10 @@ export async function updateAparienciaHolding(
  */
 export async function getEmpresaHolding(
   empresaId: string,
-  scope: EmpresaScope = UNRESTRICTED_SCOPE,
+  scope: EmpresaScope,
 ): Promise<EmpresaAparienciaHoldingView> {
   const existente = await empresaRepository.findById(empresaId);
-  if (!existente || isOutsideScope(existente, scope)) {
+  if (!existente || isEmpresaOutsideScope(existente, scope)) {
     throw empresaNoEncontrada();
   }
   return toHoldingView(existente);
@@ -169,7 +156,7 @@ export async function getEmpresaHolding(
  */
 export async function createEmpresa(
   input: CreateEmpresaBody,
-  scope: EmpresaScope = UNRESTRICTED_SCOPE,
+  scope: EmpresaScope,
 ): Promise<EmpresaAparienciaHoldingView> {
   const creada = await empresaRepository.create({
     nombre: input.nombre,
@@ -208,7 +195,7 @@ export async function listEmpresas(query: {
   page: number;
   pageSize: number;
   search?: string;
-}, scope: EmpresaScope = UNRESTRICTED_SCOPE): Promise<ListEmpresasResult> {
+}, scope: EmpresaScope): Promise<ListEmpresasResult> {
   const conditions: Prisma.EmpresaWhereInput[] = [];
   if (scope.holdingId !== null) {
     conditions.push({ holdingId: scope.holdingId });

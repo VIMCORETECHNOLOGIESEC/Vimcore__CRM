@@ -61,6 +61,8 @@ export interface CreateUsuarioData {
   correo: string;
   passwordHash: string;
   rol: RolUsuario;
+  // holding-scoped-tenant-isolation (T5c): holding of a holding-wide user.
+  holdingId?: string;
 }
 
 export interface UpdateUsuarioData {
@@ -254,6 +256,30 @@ export async function existsEnEmpresa(
   return match !== null;
 }
 
+/**
+ * holding-scoped-tenant-isolation: `usuarios` has no RLS, so a holding session
+ * is confined here. A usuario belongs to a holding when it is linked directly
+ * (`Usuario.holdingId`, holding-wide roles) or holds a membresia in one of the
+ * holding's empresas.
+ */
+export function usuarioEnHoldingWhere(holdingId: string): Prisma.UsuarioWhereInput {
+  return {
+    OR: [{ holdingId }, { membresias: { some: { empresa: { holdingId } } } }],
+  };
+}
+
+export async function existsEnHolding(
+  id: string,
+  holdingId: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<boolean> {
+  const match = await client.usuario.findFirst({
+    where: { id, ...usuarioEnHoldingWhere(holdingId) },
+    select: { id: true },
+  });
+  return match !== null;
+}
+
 export async function updateUsuario(
   id: string,
   data: UpdateUsuarioData,
@@ -296,12 +322,24 @@ export type ResponsableView = Prisma.UsuarioGetPayload<{ select: typeof responsa
 export async function findResponsablesActivosPorRol(
   rol: RolUsuario,
   empresaId?: string,
+  holdingId?: string,
 ): Promise<ResponsableView[]> {
   return prisma.usuario.findMany({
     where: {
       rol,
       activo: true,
-      ...(empresaId ? { membresias: { some: { empresaId, activa: true } } } : {}),
+      ...(empresaId
+        ? {
+            membresias: {
+              some: {
+                empresaId,
+                activa: true,
+                ...(holdingId ? { empresa: { holdingId } } : {}),
+              },
+            },
+          }
+        : {}),
+      ...(holdingId ? usuarioEnHoldingWhere(holdingId) : {}),
     },
     select: responsableSelect,
   });

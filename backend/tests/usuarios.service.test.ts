@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/lib/app-error.js";
+import { GLOBAL_EMPRESA_SCOPE } from "../src/lib/holding-scope.js";
 import { eventBroker } from "../src/lib/event-broker.js";
 import { prisma, runWithTenantContext } from "../src/lib/prisma.js";
 import { testAdminPrisma } from "./fixtures/admin-prisma.js";
@@ -182,6 +183,16 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * holding-scoped-tenant-isolation (T5c): a holding-wide user created by
+ * `createUsuario` inherits the ACTOR's holdingId, so the actor needs a real
+ * holding (FK `usuarios.holding_id`).
+ */
+async function actorConHolding(): Promise<AuthenticatedUser> {
+  const holding = await testAdminPrisma.holding.create({ data: { nombre: `Holding actor ${randomUUID()}` } });
+  return { ...actorHoldingWide, holdingId: holding.id };
+}
+
 describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure: Membresia bootstrap at user creation)", () => {
   it("ASESOR: crea el Usuario y una Membresia activa (rol=ASESOR, habilitadoParaVenta=false) en la misma transacción", () =>
     conContexto(async () => {
@@ -223,7 +234,7 @@ describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure
 
   it("ADMINISTRADOR: crea el Usuario SIN ninguna Membresia (holding-wide incondicional, D2)", () =>
     conContexto(async () => {
-      const creado = await createUsuario(actorHoldingWide, {
+      const creado = await createUsuario(await actorConHolding(), {
         nombre: "Admin Nuevo",
         correo: `admin-nuevo-${randomUUID()}@integracion.test`,
         password: "clave-admin-123456",
@@ -236,7 +247,7 @@ describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure
 
   it("SUPERVISOR: crea el Usuario SIN ninguna Membresia (holding-wide incondicional, D2)", () =>
     conContexto(async () => {
-      const creado = await createUsuario(actorHoldingWide, {
+      const creado = await createUsuario(await actorConHolding(), {
         nombre: "Supervisor Nuevo",
         correo: `supervisor-nuevo-${randomUUID()}@integracion.test`,
         password: "clave-supervisor-123456",
@@ -258,7 +269,7 @@ describe("usuarios.service — createUsuario (Bloque C follow-up, D2 gap closure
    */
   it("SUPERVISOR_HOLDING: crea el Usuario SIN ninguna Membresia (holding-wide incondicional, Bloque F)", () =>
     conContexto(async () => {
-      const creado = await createUsuario(actorHoldingWide, {
+      const creado = await createUsuario(await actorConHolding(), {
         nombre: "Supervisor Holding Nuevo",
         correo: `supervisor-holding-nuevo-${randomUUID()}@integracion.test`,
         password: "clave-supervisor-holding-123456",
@@ -335,7 +346,7 @@ describe("usuarios.service — createEmpresaAdministrador", () => {
         nombre: "Administradora de Empresa Service",
         correo,
         password: "clave-admin-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
 
       expect(resultado.membresia).toMatchObject({
         empresaId: empresa.id,
@@ -376,7 +387,7 @@ describe("usuarios.service — createEmpresaSupervisor", () => {
         nombre: "Supervisora de Empresa Service",
         correo,
         password: "clave-supervisor-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
 
       expect(resultado.membresia).toMatchObject({
         empresaId: empresa.id,
@@ -409,12 +420,12 @@ describe("usuarios.service — createEmpresaSupervisor", () => {
         nombre: "Administradora",
         correo,
         password: "clave-admin-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
       const supervisor = await createEmpresaSupervisor(empresa.id, {
         nombre: "Supervisora",
         correo: `otro-${correo}`,
         password: "clave-supervisor-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
 
       const usuarioAdministrador = await testAdminPrisma.usuario.findUniqueOrThrow({
         where: { id: administrador.usuario.id },
@@ -445,7 +456,7 @@ describe("usuarios.service — createEmpresaAsesor", () => {
         nombre: "Asesora de Empresa Service",
         correo,
         password: "clave-asesor-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
 
       expect(resultado.membresia).toMatchObject({
         empresaId: empresa.id,
@@ -483,12 +494,12 @@ describe("usuarios.service — createEmpresaAsesor", () => {
         nombre: "Supervisora",
         correo,
         password: "clave-supervisor-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
       const asesor = await createEmpresaAsesor(empresa.id, {
         nombre: "Asesora",
         correo: `otro-${correo}`,
         password: "clave-asesor-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
 
       const usuarioSupervisor = await testAdminPrisma.usuario.findUniqueOrThrow({
         where: { id: supervisor.usuario.id },
@@ -506,7 +517,7 @@ describe("usuarios.service — createEmpresaAsesor", () => {
           nombre: "Asesora Empresa Inexistente",
           correo: `asesor-empresa-inexistente-${randomUUID()}@integracion.test`,
           password: "clave-asesor-empresa-123456",
-        }),
+        }, GLOBAL_EMPRESA_SCOPE),
       ).rejects.toMatchObject<Partial<AppError>>({ statusHttp: 404, code: "empresa_no_encontrada" });
     }));
 
@@ -521,14 +532,14 @@ describe("usuarios.service — createEmpresaAsesor", () => {
         nombre: "Primera Asesora",
         correo,
         password: "clave-asesor-empresa-123456",
-      });
+      }, GLOBAL_EMPRESA_SCOPE);
 
       await expect(
         createEmpresaAsesor(empresa.id, {
           nombre: "Segunda Asesora",
           correo,
           password: "clave-asesor-empresa-123456",
-        }),
+        }, GLOBAL_EMPRESA_SCOPE),
       ).rejects.toMatchObject<Partial<AppError>>({ statusHttp: 409, code: "correo_no_disponible" });
     }));
 });

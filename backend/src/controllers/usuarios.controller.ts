@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
 import { assertAuthenticated } from "../lib/assert-authenticated.js";
+import { resolveEmpresaScope } from "../lib/holding-scope.js";
 import {
   createEmpresaAdministradorBodySchema,
   createEmpresaAsesorBodySchema,
@@ -72,7 +73,7 @@ export async function postEmpresaAdministrador(req: Request, res: Response): Pro
   }
 
   const empresaId = resolveEmpresaId(usuario, parsedParams.data.empresaId);
-  const administrador = await createEmpresaAdministrador(empresaId, parsedBody.data);
+  const administrador = await createEmpresaAdministrador(empresaId, parsedBody.data, resolveEmpresaScope(usuario));
   res.status(201).json({ administrador });
 }
 
@@ -91,7 +92,7 @@ export async function postEmpresaSupervisor(req: Request, res: Response): Promis
   }
 
   const empresaId = resolveEmpresaId(usuario, parsedParams.data.empresaId);
-  const supervisor = await createEmpresaSupervisor(empresaId, parsedBody.data);
+  const supervisor = await createEmpresaSupervisor(empresaId, parsedBody.data, resolveEmpresaScope(usuario));
   res.status(201).json({ supervisor });
 }
 
@@ -110,7 +111,7 @@ export async function postEmpresaAsesor(req: Request, res: Response): Promise<vo
   }
 
   const empresaId = resolveEmpresaId(usuario, parsedParams.data.empresaId);
-  const asesor = await createEmpresaAsesor(empresaId, parsedBody.data);
+  const asesor = await createEmpresaAsesor(empresaId, parsedBody.data, resolveEmpresaScope(usuario));
   res.status(201).json({ asesor });
 }
 

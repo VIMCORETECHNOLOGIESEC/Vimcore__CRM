@@ -36,11 +36,11 @@ function empresaRow(id: string, holdingId: string | null) {
 }
 
 function makeReq(
-  user: { holdingId?: string | null },
+  user: { holdingId?: string | null; rol?: string },
   extra: { params?: object; query?: object; body?: object } = {},
 ): Request {
   return {
-    user: { sessionScope: "holding", empresaId: null, ...user },
+    user: { sessionScope: "holding", empresaId: null, rol: "ADMINISTRADOR_HOLDING", ...user },
     params: {},
     query: {},
     body: {},
@@ -59,6 +59,19 @@ beforeEach(() => {
 });
 
 describe("empresa-apariencia holding scope", () => {
+  describe("session without holdingId", () => {
+    it("fails closed (403 identidad_no_vinculada) for a non-SUPER_ADMIN holding session and never reads", async () => {
+      await expect(
+        getEmpresas(makeReq({ rol: "ADMINISTRADOR" }, { query: { page: "1", pageSize: "25" } }), makeRes()),
+      ).rejects.toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+      await expect(
+        getEmpresa(makeReq({ rol: "ADMINISTRADOR" }, { params: { empresaId: EMPRESA_A } }), makeRes()),
+      ).rejects.toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+      expect(repo.findAll).not.toHaveBeenCalled();
+      expect(repo.findById).not.toHaveBeenCalled();
+    });
+  });
+
   describe("GET /empresas", () => {
     it("filters by the caller holdingId", async () => {
       repo.findAll.mockResolvedValue({ items: [], total: 0 });
@@ -85,13 +98,13 @@ describe("empresa-apariencia holding scope", () => {
 
     it("does not filter by holding for the global (SUPER_ADMIN) path", async () => {
       repo.findAll.mockResolvedValue({ items: [], total: 0 });
-      await getEmpresas(makeReq({}, { query: { page: "1", pageSize: "25" } }), makeRes());
+      await getEmpresas(makeReq({ rol: "SUPER_ADMIN" }, { query: { page: "1", pageSize: "25" } }), makeRes());
       expect(repo.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: undefined }));
     });
 
     it("global path still supports the name search", async () => {
       repo.findAll.mockResolvedValue({ items: [], total: 0 });
-      await getEmpresas(makeReq({}, { query: { page: "1", pageSize: "25", search: "acme" } }), makeRes());
+      await getEmpresas(makeReq({ rol: "SUPER_ADMIN" }, { query: { page: "1", pageSize: "25", search: "acme" } }), makeRes());
       expect(repo.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { AND: [{ nombre: { contains: "acme", mode: "insensitive" } }] },
@@ -125,7 +138,7 @@ describe("empresa-apariencia holding scope", () => {
     it("global path can read any empresa", async () => {
       repo.findById.mockResolvedValue(empresaRow(EMPRESA_B, HOLDING_B));
       const res = makeRes();
-      await getEmpresa(makeReq({}, { params: { empresaId: EMPRESA_B } }), res);
+      await getEmpresa(makeReq({ rol: "SUPER_ADMIN" }, { params: { empresaId: EMPRESA_B } }), res);
       expect(res.status).toHaveBeenCalledWith(200);
     });
   });
@@ -175,7 +188,7 @@ describe("empresa-apariencia holding scope", () => {
 
     it("global path keeps the previous behavior (no holdingId)", async () => {
       repo.create.mockResolvedValue(empresaRow(EMPRESA_A, null));
-      await postEmpresa(makeReq({}, { body: { nombre: "Nueva" } }), makeRes());
+      await postEmpresa(makeReq({ rol: "SUPER_ADMIN" }, { body: { nombre: "Nueva" } }), makeRes());
       expect(repo.create.mock.calls[0]?.[0]).not.toHaveProperty("holdingId");
     });
   });

@@ -126,6 +126,36 @@ describe("own-JWT path — TenantContext by session type", () => {
     expect(req.user).toBeUndefined();
   });
 
+  it.each(["ADMINISTRADOR", "SUPERVISOR"] as const)(
+    "legacy %s holding session with holdingId gets a holding context",
+    async (rol) => {
+      jwt(rol);
+      vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol, holdingId: "holding-1" }));
+      const req = reqConHeaders({ authorization: "Bearer t" });
+
+      const { context, error } = await run(req);
+
+      expect(error).toBeUndefined();
+      expect(req.user).toMatchObject({ sessionScope: "holding", empresaId: null, holdingId: "holding-1" });
+      expect(context).toEqual({ holdingId: "holding-1" });
+    },
+  );
+
+  it.each(["ADMINISTRADOR", "SUPERVISOR"] as const)(
+    "legacy %s holding session without holdingId is rejected 403 (fail-closed)",
+    async (rol) => {
+      jwt(rol);
+      vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol, holdingId: null }));
+      const req = reqConHeaders({ authorization: "Bearer t" });
+
+      const { context, error } = await run(req);
+
+      expect(error).toMatchObject({ code: "identidad_no_vinculada", statusHttp: 403 });
+      expect(context).toBeUndefined();
+      expect(req.user).toBeUndefined();
+    },
+  );
+
   it("SUPER_ADMIN keeps the unrestricted scope", async () => {
     jwt("SUPER_ADMIN");
     vi.mocked(usuarioRepository.findById).mockResolvedValue(usuarioFalso({ rol: "SUPER_ADMIN" }));

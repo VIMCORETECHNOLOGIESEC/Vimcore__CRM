@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { AppError } from "../lib/app-error.js";
+import { resolveEmpresaScope, type EmpresaScope } from "../lib/holding-scope.js";
 import {
   createEmpresaBodySchema,
   empresaIdParamSchema,
@@ -8,7 +9,6 @@ import {
   updateEmpresaAparienciaHoldingBodySchema,
 } from "../schemas/empresa-apariencia.schema.js";
 import {
-  type EmpresaScope,
   createEmpresa,
   getEmpresaHolding,
   listEmpresas,
@@ -110,7 +110,8 @@ export function forbiddenSessionScope(): AppError {
  * comes from the authenticated session (T1), never from the request.
  */
 function empresaScope(req: Request): EmpresaScope {
-  return { holdingId: req.user?.holdingId ?? null };
+  if (!req.user) throw forbiddenSessionScope();
+  return resolveEmpresaScope(req.user);
 }
 
 function invalidIdParam(): AppError {

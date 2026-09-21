@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Prisma, RolUsuario } from "@prisma/client";
 import { AppError } from "../lib/app-error.js";
+import { isEmpresaOutsideScope, resolveEmpresaScope, type EmpresaScope } from "../lib/holding-scope.js";
 import { hashPassword } from "../lib/password.js";
 import { runInTransaction, USUARIOS_TRANSACTION_BOUNDS, type PrismaClientOrTransaction } from "../lib/prisma.js";
 import * as empresaRepository from "../repositories/empresa.repository.js";
@@ -296,18 +297,46 @@ export async function createUsuario(
     ? undefined
     : resolveEmpresaId(actor, input.empresaId);
 
+  // holding-scoped-tenant-isolation (T5c): a holding-wide user (every
+  // ROLES_ACCESO_TOTAL role except SUPER_ADMIN) is bound to ONE holding and is
+  // rejected with 403 `identidad_no_vinculada` when it has none, so it inherits
+  // the ACTOR's holding (session only, never request input). An actor without a
+  // holdingId (SUPER_ADMIN, or a company-scoped session) is rejected instead of
+  // creating a user that could never log in.
+  let holdingId: string | undefined;
+  if (input.rol !== "SUPER_ADMIN" && ROLES_ACCESO_TOTAL.includes(input.rol)) {
+    if (!actor.holdingId) {
+      throw new AppError(
+        "holding_requerido",
+        400,
+        "Solo una sesión vinculada a un holding puede crear usuarios de alcance holding",
+      );
+    }
+    holdingId = actor.holdingId;
+  }
+
   const passwordHash = await hashPassword(input.password);
 
   try {
     return await runInTransaction(
       undefined,
       async (tx) => {
+        // holding-scoped-tenant-isolation: a holding-wide actor may only
+        // place a membresia in an empresa of its own holding.
+        if (empresaId !== undefined && actor.empresaId === null) {
+          const empresa = await empresaRepository.findById(empresaId, tx);
+          if (!empresa || isEmpresaOutsideScope(empresa, resolveEmpresaScope(actor))) {
+            throw empresaNotFound();
+          }
+        }
+
         const usuario = await usuarioRepository.createUsuario(
           {
             nombre: input.nombre,
             correo: input.correo,
             passwordHash,
             rol: input.rol,
+            ...(holdingId !== undefined ? { holdingId } : {}),
           },
           tx,
         );
@@ -347,6 +376,7 @@ export async function createUsuario(
 export async function createEmpresaAdministrador(
   empresaId: string,
   input: CreateEmpresaAdministradorInput,
+  scope: EmpresaScope,
 ): Promise<EmpresaAdministradorView> {
   const membresiaPasswordHash = await hashPassword(input.password);
   const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
@@ -357,7 +387,8 @@ export async function createEmpresaAdministrador(
       undefined,
       async (tx) => {
         const empresa = await empresaRepository.findById(empresaId, tx);
-        if (!empresa) {
+        // 404 (not 403) for another holding's empresa: do not leak its existence.
+        if (!empresa || isEmpresaOutsideScope(empresa, scope)) {
           throw empresaNotFound();
         }
 
@@ -425,6 +456,7 @@ export async function createEmpresaAdministrador(
 export async function createEmpresaSupervisor(
   empresaId: string,
   input: CreateEmpresaSupervisorInput,
+  scope: EmpresaScope,
 ): Promise<EmpresaSupervisorView> {
   const membresiaPasswordHash = await hashPassword(input.password);
   const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
@@ -435,7 +467,8 @@ export async function createEmpresaSupervisor(
       undefined,
       async (tx) => {
         const empresa = await empresaRepository.findById(empresaId, tx);
-        if (!empresa) {
+        // 404 (not 403) for another holding's empresa: do not leak its existence.
+        if (!empresa || isEmpresaOutsideScope(empresa, scope)) {
           throw empresaNotFound();
         }
 
@@ -507,6 +540,7 @@ export async function createEmpresaSupervisor(
 export async function createEmpresaAsesor(
   empresaId: string,
   input: CreateEmpresaAsesorInput,
+  scope: EmpresaScope,
 ): Promise<EmpresaAsesorView> {
   const membresiaPasswordHash = await hashPassword(input.password);
   const usuarioPasswordHash = await hashPassword(randomBytes(32).toString("base64url"));
@@ -517,7 +551,8 @@ export async function createEmpresaAsesor(
       undefined,
       async (tx) => {
         const empresa = await empresaRepository.findById(empresaId, tx);
-        if (!empresa) {
+        // 404 (not 403) for another holding's empresa: do not leak its existence.
+        if (!empresa || isEmpresaOutsideScope(empresa, scope)) {
           throw empresaNotFound();
         }
 
@@ -605,7 +640,14 @@ async function assertUsuarioEnAlcance(
   targetId: string,
   client?: PrismaClientOrTransaction,
 ): Promise<void> {
-  if (actor.empresaId === null) return;
+  if (actor.empresaId === null) {
+    // holding-wide: confined to the caller's holding (SUPER_ADMIN: global).
+    const { holdingId } = resolveEmpresaScope(actor);
+    if (holdingId !== null && !(await usuarioRepository.existsEnHolding(targetId, holdingId, client))) {
+      throw userNotFound();
+    }
+    return;
+  }
   const pertenece = await usuarioRepository.existsEnEmpresa(targetId, actor.empresaId, client);
   if (!pertenece) {
     throw userNotFound();
@@ -657,12 +699,26 @@ function buildWhere(query: ListUsuariosQuery, actor: AuthenticatedUser): Prisma.
   // string de un modo anterior (ej. volver del drill-down de una empresa sin
   // limpiar el query). Silenciar `soloHoldingWide` por un `empresaId`
   // residual rompería ese tab sin ningún error visible.
+  // holding-scoped-tenant-isolation: a holding session is additionally
+  // confined to the users of its holding (`Usuario.holdingId` or a membresia
+  // in one of its empresas); the drill-down empresa must belong to it too.
+  const holdingId = actor.empresaId === null ? resolveEmpresaScope(actor).holdingId : null;
+  if (holdingId !== null) {
+    where.AND = [usuarioRepository.usuarioEnHoldingWhere(holdingId)];
+  }
+
   if (actor.empresaId !== null) {
     where.membresias = { some: { empresaId: actor.empresaId, activa: true } };
   } else if (query.soloHoldingWide) {
     where.membresias = { none: {} };
   } else if (query.empresaId) {
-    where.membresias = { some: { empresaId: query.empresaId, activa: true } };
+    where.membresias = {
+      some: {
+        empresaId: query.empresaId,
+        activa: true,
+        ...(holdingId !== null ? { empresa: { holdingId } } : {}),
+      },
+    };
   }
 
   return where;
@@ -769,7 +825,10 @@ export async function findResponsables(
     empresaId = query.empresaId;
   }
 
-  return usuarioRepository.findResponsablesActivosPorRol(query.rol, empresaId);
+  // holding-wide sessions are confined to their holding (SUPER_ADMIN: global).
+  const holdingId =
+    actor.empresaId === null ? (resolveEmpresaScope(actor).holdingId ?? undefined) : undefined;
+  return usuarioRepository.findResponsablesActivosPorRol(query.rol, empresaId, holdingId);
 }
 
 /**
