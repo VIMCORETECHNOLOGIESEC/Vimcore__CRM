@@ -11,6 +11,7 @@ vi.mock("../src/lib/prisma.js", () => ({
 }));
 vi.mock("../src/lib/password.js", () => ({ hashPassword: vi.fn(async () => "hash") }));
 vi.mock("../src/repositories/empresa.repository.js", () => ({ findById: vi.fn() }));
+vi.mock("../src/repositories/holding.repository.js", () => ({ findById: vi.fn() }));
 vi.mock("../src/repositories/lead.repository.js", () => ({}));
 vi.mock("../src/repositories/membresia.repository.js", () => ({
   assertCorreoDisponible: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("../src/services/committed-events.service.js", () => ({ publishCommitted
 vi.mock("../src/lib/metricas-broadcast.js", () => ({ scheduleMetricasBroadcast: vi.fn() }));
 vi.mock("../src/services/presencia.service.js", () => ({ getPresenceForUsuarios: vi.fn(() => new Map()) }));
 
+import * as holdingRepository from "../src/repositories/holding.repository.js";
 import * as usuarioRepository from "../src/repositories/usuario.repository.js";
 import { createUsuario } from "../src/services/usuarios.service.js";
 import type { AuthenticatedUser } from "../src/types/authenticated-user.js";
@@ -53,7 +55,13 @@ const input = (rol: "ADMINISTRADOR" | "SUPERVISOR" | "SUPERVISOR_HOLDING" | "SUP
   rol,
 });
 
-beforeEach(() => vi.clearAllMocks());
+const HOLDING_B = "22222222-2222-4222-8222-222222222222";
+const holdingFind = vi.mocked(holdingRepository.findById);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  holdingFind.mockResolvedValue({ id: HOLDING_B } as never);
+});
 
 describe("createUsuario — holding inheritance (T5c)", () => {
   it.each(["ADMINISTRADOR", "SUPERVISOR", "SUPERVISOR_HOLDING"] as const)(
@@ -88,6 +96,52 @@ describe("createUsuario — holding inheritance (T5c)", () => {
 
   it("SUPER_ADMIN needs no holding (platform-wide, never linked)", async () => {
     await createUsuario(actor({ rol: "SUPER_ADMIN", holdingId: null }), input("SUPER_ADMIN"));
+    const data = createRepo.mock.calls[0]![0] as unknown as Record<string, unknown>;
+    expect(data).not.toHaveProperty("holdingId");
+  });
+});
+
+describe("createUsuario — SUPER_ADMIN chooses the holding (T7)", () => {
+  const superAdmin = () => actor({ rol: "SUPER_ADMIN", holdingId: null });
+
+  it("SUPER_ADMIN + holdingId creates the holding-wide user in that holding", async () => {
+    await createUsuario(superAdmin(), { ...input("ADMINISTRADOR"), holdingId: HOLDING_B });
+    expect(holdingFind).toHaveBeenCalledWith(HOLDING_B);
+    expect(createRepo).toHaveBeenCalledWith(expect.objectContaining({ holdingId: HOLDING_B }), expect.anything());
+  });
+
+  it("SUPER_ADMIN without holdingId gets 400 holding_requerido", async () => {
+    await expect(createUsuario(superAdmin(), input("SUPERVISOR"))).rejects.toMatchObject({
+      code: "holding_requerido",
+      statusHttp: 400,
+    });
+    expect(createRepo).not.toHaveBeenCalled();
+  });
+
+  it("SUPER_ADMIN with an unknown holding gets 404 and nothing is persisted", async () => {
+    holdingFind.mockResolvedValue(null);
+    await expect(
+      createUsuario(superAdmin(), { ...input("ADMINISTRADOR"), holdingId: HOLDING_B }),
+    ).rejects.toMatchObject({ code: "holding_no_encontrado", statusHttp: 404 });
+    expect(createRepo).not.toHaveBeenCalled();
+  });
+
+  it("a non-SUPER_ADMIN body holdingId cannot override the actor's own holding", async () => {
+    await createUsuario(actor(), { ...input("ADMINISTRADOR"), holdingId: HOLDING_B });
+    expect(holdingFind).not.toHaveBeenCalled();
+    expect(createRepo).toHaveBeenCalledWith(expect.objectContaining({ holdingId: HOLDING_A }), expect.anything());
+  });
+
+  it("company-role creation by SUPER_ADMIN is unaffected by holdingId", async () => {
+    const empresaRepo = await import("../src/repositories/empresa.repository.js");
+    vi.mocked(empresaRepo.findById).mockResolvedValue({ id: "e-1", holdingId: HOLDING_B } as never);
+    await createUsuario(superAdmin(), {
+      ...input("ADMINISTRADOR"),
+      rol: "ASESOR",
+      empresaId: "e-1",
+      holdingId: HOLDING_B,
+    } as never);
+    expect(holdingFind).not.toHaveBeenCalled();
     const data = createRepo.mock.calls[0]![0] as unknown as Record<string, unknown>;
     expect(data).not.toHaveProperty("holdingId");
   });

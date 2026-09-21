@@ -27,7 +27,12 @@ const usuarioBodyShapeSchema = z.object({
   empresaId: z.uuid().optional(),
 });
 
-export const createUsuarioBodySchema = usuarioBodyShapeSchema;
+// holding-scoped-tenant-isolation (T7): only honoured for SUPER_ADMIN actors
+// creating a holding-wide role; ignored (stripped by the controller) for every
+// other actor, who always inherit their own holding.
+export const createUsuarioBodySchema = usuarioBodyShapeSchema.extend({
+  holdingId: z.uuid().optional(),
+});
 
 export const createEmpresaAdministradorBodySchema = z.object({
   nombre: z.string().trim().min(1).max(120),

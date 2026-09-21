@@ -4,6 +4,7 @@ import { AppError } from "../lib/app-error.js";
 import { isEmpresaOutsideScope, resolveEmpresaScope, type EmpresaScope } from "../lib/holding-scope.js";
 import { hashPassword } from "../lib/password.js";
 import { runInTransaction, USUARIOS_TRANSACTION_BOUNDS, type PrismaClientOrTransaction } from "../lib/prisma.js";
+import * as holdingRepository from "../repositories/holding.repository.js";
 import * as empresaRepository from "../repositories/empresa.repository.js";
 import * as leadRepository from "../repositories/lead.repository.js";
 import type { PoolAsignacion } from "../repositories/lead.repository.js";
@@ -151,6 +152,9 @@ export interface CreateUsuarioInput {
   correo: string;
   password: string;
   rol: RolUsuario;
+  // T7: target holding for a holding-wide role. Honoured ONLY when the actor is
+  // SUPER_ADMIN; ignored for every other actor (they inherit their own holding).
+  holdingId?: string;
   // Bloque C follow-up (D2 gap closure) + fix (bug de seguridad, empresaId
   // forzado por sesión): opcional en el tipo -- `resolveEmpresaId` abajo
   // decide si hace falta y de dónde sale, según el actor. El schema Zod de la
@@ -322,14 +326,19 @@ export async function createUsuario(
   // creating a user that could never log in.
   let holdingId: string | undefined;
   if (input.rol !== "SUPER_ADMIN" && ROLES_ACCESO_TOTAL.includes(input.rol)) {
-    if (!actor.holdingId) {
+    // T7: a SUPER_ADMIN (no holding of its own) picks the holding explicitly.
+    const targetHoldingId = actor.rol === "SUPER_ADMIN" ? input.holdingId : actor.holdingId;
+    if (!targetHoldingId) {
       throw new AppError(
         "holding_requerido",
         400,
         "Solo una sesión vinculada a un holding puede crear usuarios de alcance holding",
       );
     }
-    holdingId = actor.holdingId;
+    if (actor.rol === "SUPER_ADMIN" && !(await holdingRepository.findById(targetHoldingId))) {
+      throw new AppError("holding_no_encontrado", 404, "El holding indicado no existe");
+    }
+    holdingId = targetHoldingId;
   }
 
   const passwordHash = await hashPassword(input.password);

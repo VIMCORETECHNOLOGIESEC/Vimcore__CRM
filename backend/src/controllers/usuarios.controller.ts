@@ -46,7 +46,14 @@ export async function postUsuario(req: Request, res: Response): Promise<void> {
     throw zodValidationError();
   }
 
-  const user = await createUsuario(usuario, parsed.data);
+  // T7: `holdingId` is honoured only for SUPER_ADMIN; any other actor's value
+  // is dropped here (and ignored again in the service) so they always inherit
+  // their own holding.
+  const { holdingId, ...rest } = parsed.data;
+  const user = await createUsuario(
+    usuario,
+    usuario.rol === "SUPER_ADMIN" && holdingId !== undefined ? { ...rest, holdingId } : rest,
+  );
   res.status(201).json({ user });
 }
 
