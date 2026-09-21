@@ -26,12 +26,14 @@ const RESULT: ProvisionCrmCompanyResult = {
 const provision = vi.fn();
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 const linkAuthUser = vi.fn();
-const deps = { provision, linkAuthUser, log } as unknown as CrmCompanyEventHandlerDeps;
+const revertUserEmail = vi.fn();
+const deps = { provision, linkAuthUser, revertUserEmail, log } as unknown as CrmCompanyEventHandlerDeps;
 
 beforeEach(() => {
   vi.clearAllMocks();
   provision.mockResolvedValue(RESULT);
   linkAuthUser.mockResolvedValue("linked");
+  revertUserEmail.mockResolvedValue("reverted");
 });
 
 function payload(overrides: Record<string, unknown> = {}) {
@@ -368,5 +370,100 @@ describe("decideCompanyEvent — AuthUserProvisioned for crm", () => {
     expect(await decideCompanyEvent(unknown, deps)).toEqual({ kind: "complete" });
     expect(await decideCompanyEvent(otherModule, deps)).toEqual({ kind: "complete" });
     expect(linkAuthUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("decideCompanyEvent — AuthUserEmailUpdated for crm", () => {
+  const reply = (overrides: Record<string, unknown> = {}) => ({
+    crmUserId: randomUUID(),
+    authUserId: randomUUID(),
+    authCompanyId: randomUUID(),
+    outcome: "conflict",
+    email: "old@acme.test",
+    correlationId: "corr-9",
+    occurredAt: "2026-09-21T10:00:00.000Z",
+    module: "crm",
+    extra: "tolerated",
+    ...overrides,
+  });
+  const emailMessage = (body: unknown) =>
+    message(body, { eventType: "AuthUserEmailUpdated", module: "crm", correlationId: "corr-9" });
+
+  it.each(["conflict", "failed"])("reverts on %s and completes, logging visibly without emails", async (outcome) => {
+    const body = reply({ outcome, reason: "email_taken" });
+
+    expect(await decideCompanyEvent(emailMessage(body), deps)).toEqual({ kind: "complete" });
+    expect(revertUserEmail).toHaveBeenCalledExactlyOnceWith({
+      crmUserId: body.crmUserId,
+      authUserId: body.authUserId,
+      authCompanyId: body.authCompanyId,
+      correlationId: "corr-9",
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingWide: true, result: "reverted", correlationId: "corr-9" }),
+      expect.any(String),
+    );
+    for (const call of [...log.warn.mock.calls, ...log.info.mock.calls, ...log.error.mock.calls]) {
+      expect(JSON.stringify(call)).not.toContain("@acme.test");
+    }
+  });
+
+  it("logs an error when the revert could not be applied, still completing", async () => {
+    revertUserEmail.mockResolvedValue("email_changed_again");
+
+    expect(await decideCompanyEvent(emailMessage(reply()), deps)).toEqual({ kind: "complete" });
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingWide: true, result: "email_changed_again", correlationId: "corr-9" }),
+      expect.any(String),
+    );
+  });
+
+  it.each(["updated", "unchanged"])("only logs info on %s", async (outcome) => {
+    expect(await decideCompanyEvent(emailMessage(reply({ outcome })), deps)).toEqual({ kind: "complete" });
+    expect(revertUserEmail).not.toHaveBeenCalled();
+    expect(log.info).toHaveBeenCalledTimes(1);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it("warns on stale and never reverts", async () => {
+    expect(await decideCompanyEvent(emailMessage(reply({ outcome: "stale" })), deps)).toEqual({ kind: "complete" });
+    expect(revertUserEmail).not.toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["crmUserId is not a uuid", { crmUserId: "nope" }],
+    ["authUserId is missing", { authUserId: undefined }],
+    ["authCompanyId is not a uuid", { authCompanyId: "nope" }],
+    ["outcome is unknown", { outcome: "maybe" }],
+    ["email is missing", { email: undefined }],
+    ["correlationId is missing", { correlationId: undefined }],
+  ])("dead-letters when %s", async (_label, overrides) => {
+    const decision = await decideCompanyEvent(emailMessage(reply(overrides)), deps);
+
+    expect(decision).toMatchObject({ kind: "deadLetter", reason: "InvalidPayload" });
+    expect(revertUserEmail).not.toHaveBeenCalled();
+  });
+
+  it("dead-letters a malformed body", async () => {
+    expect(await decideCompanyEvent(emailMessage("{not json"), deps)).toMatchObject({
+      kind: "deadLetter",
+      reason: "MalformedPayload",
+    });
+  });
+
+  it("abandons on an unexpected error so the broker redelivers", async () => {
+    revertUserEmail.mockRejectedValue(new Error("db down"));
+
+    expect(await decideCompanyEvent(emailMessage(reply()), deps)).toEqual({ kind: "abandon" });
+  });
+
+  it("ignores other modules and still completes unknown event types", async () => {
+    const other = message(reply(), { eventType: "AuthUserEmailUpdated", module: "billing" });
+    const unknown = message(reply(), { eventType: "SomethingElse", module: "crm" });
+
+    expect(await decideCompanyEvent(other, deps)).toEqual({ kind: "complete" });
+    expect(await decideCompanyEvent(unknown, deps)).toEqual({ kind: "complete" });
+    expect(revertUserEmail).not.toHaveBeenCalled();
   });
 });

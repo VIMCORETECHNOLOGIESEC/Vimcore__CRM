@@ -39,6 +39,24 @@ export async function enqueueOutboxEvent(
   return row;
 }
 
+/**
+ * Finds the outbox row of an already enqueued event by its correlation id
+ * (used by compensations to recover what the original event carried).
+ */
+export async function findOutboxEventByCorrelation(
+  tx: Prisma.TransactionClient,
+  input: { eventType: string; aggregateId: string; correlationId: string },
+): Promise<{ id: string; payload: unknown } | null> {
+  return tx.outboxMessage.findFirst({
+    where: {
+      eventType: input.eventType,
+      aggregateId: input.aggregateId,
+      correlationId: input.correlationId,
+    },
+    select: { id: true, payload: true },
+  });
+}
+
 export interface ClaimedOutboxMessage {
   id: string;
   eventType: string;

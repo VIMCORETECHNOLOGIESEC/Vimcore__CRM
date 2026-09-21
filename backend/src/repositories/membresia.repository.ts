@@ -138,6 +138,24 @@ export async function updateCorreo(
   return client.membresia.update({ where: { id }, data: { correo } });
 }
 
+/**
+ * crm-user-email-sync (E3): compare-and-set on the membership login email
+ * (`correo` is Citext: the equality is case-insensitive). Returns whether the
+ * row was updated; a concurrent change makes it `false` instead of overwriting.
+ */
+export async function replaceCorreoIfEquals(
+  id: string,
+  expectedCorreo: string,
+  correo: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<boolean> {
+  const { count } = await client.membresia.updateMany({
+    where: { id, correo: expectedCorreo },
+    data: { correo },
+  });
+  return count === 1;
+}
+
 export async function assertCorreoDisponible(
   correo: string,
   client: PrismaClientOrTransaction,

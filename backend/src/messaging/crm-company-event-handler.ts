@@ -6,11 +6,13 @@ import {
   provisionCrmCompanyAdmin,
 } from "../services/auth-provisioning.service.js";
 import { linkAuthUser } from "../services/auth-user-link.service.js";
+import { revertUserEmailChange } from "../services/email-sync.service.js";
 
 const CRM_MODULE = "crm";
 const SUBSCRIBED_EVENT = "CompanyModuleSubscribed";
 const UNSUBSCRIBED_EVENT = "CompanyModuleUnsubscribed";
 const AUTH_USER_PROVISIONED_EVENT = "AuthUserProvisioned";
+const AUTH_USER_EMAIL_UPDATED_EVENT = "AuthUserEmailUpdated";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuidSchema = z.string().regex(UUID_PATTERN);
@@ -43,6 +45,20 @@ const authUserProvisionedSchema = z.object({
   reason: z.string().nullish(),
 });
 
+// crm-user-email-sync (E3): Auth's reply to `CrmUserEmailChanged`. Extra fields
+// are tolerated. The email itself is validated as a string only and never logged.
+const authUserEmailUpdatedSchema = z.object({
+  crmUserId: uuidSchema,
+  authUserId: uuidSchema,
+  authCompanyId: uuidSchema,
+  outcome: z.enum(["updated", "unchanged", "conflict", "stale", "failed"]),
+  reason: z.string().nullish(),
+  email: z.string(),
+  correlationId: z.string().min(1),
+  occurredAt: z.string(),
+  module: z.literal("crm").optional(),
+});
+
 /** What to do with the message; settlement happens once, after the decision. */
 export type MessageDecision =
   | { kind: "complete" }
@@ -67,6 +83,7 @@ export type CrmCompanyEventMessage = Pick<
 export interface CrmCompanyEventHandlerDeps {
   provision: typeof provisionCrmCompanyAdmin;
   linkAuthUser: typeof linkAuthUser;
+  revertUserEmail: typeof revertUserEmailChange;
   log: Pick<typeof logger, "debug" | "info" | "warn" | "error">;
 }
 
@@ -89,7 +106,8 @@ function isKnownEventType(eventType: string | undefined): boolean {
   return (
     eventType === SUBSCRIBED_EVENT ||
     eventType === UNSUBSCRIBED_EVENT ||
-    eventType === AUTH_USER_PROVISIONED_EVENT
+    eventType === AUTH_USER_PROVISIONED_EVENT ||
+    eventType === AUTH_USER_EMAIL_UPDATED_EVENT
   );
 }
 
@@ -111,7 +129,7 @@ export async function decideCompanyEvent(
   message: CrmCompanyEventMessage,
   deps: CrmCompanyEventHandlerDeps,
 ): Promise<MessageDecision> {
-  const { log, provision, linkAuthUser: link } = deps;
+  const { log, provision, linkAuthUser: link, revertUserEmail } = deps;
   const properties = message.applicationProperties ?? {};
   const propertyEventType = asString(properties.eventType);
   const propertyModule = asString(properties.module);
@@ -162,6 +180,10 @@ export async function decideCompanyEvent(
 
   if (eventType === AUTH_USER_PROVISIONED_EVENT) {
     return decideAuthUserProvisioned(message.messageId, body, correlationId, { log, link });
+  }
+
+  if (eventType === AUTH_USER_EMAIL_UPDATED_EVENT) {
+    return decideAuthUserEmailUpdated(message.messageId, body, { log, revert: revertUserEmail });
   }
 
   if (eventType === UNSUBSCRIBED_EVENT) {
@@ -296,12 +318,73 @@ async function decideAuthUserProvisioned(
   }
 }
 
+/**
+ * `AuthUserEmailUpdated`: `updated` / `unchanged` need nothing; `stale` is a
+ * warning (manual attention, never reverted); `conflict` / `failed` compensate
+ * the CRM change through the email-sync service. Every business outcome
+ * completes the message; only an unexpected error abandons it. Logs never carry
+ * emails (only ids and the correlation id).
+ */
+async function decideAuthUserEmailUpdated(
+  messageId: string | number | Buffer | undefined,
+  body: Record<string, unknown>,
+  { log, revert }: { log: CrmCompanyEventHandlerDeps["log"]; revert: typeof revertUserEmailChange },
+): Promise<MessageDecision> {
+  const parsed = authUserEmailUpdatedSchema.safeParse(body);
+  if (!parsed.success) {
+    log.error(
+      { holdingWide: true, messageId, correlationId: asString(body.correlationId) },
+      "Invalid AuthUserEmailUpdated payload",
+    );
+    return {
+      kind: "deadLetter",
+      reason: "InvalidPayload",
+      description: "AuthUserEmailUpdated payload failed shape validation",
+    };
+  }
+
+  const { crmUserId, authUserId, authCompanyId, outcome, reason, correlationId } = parsed.data;
+  const context = { holdingWide: true, messageId, correlationId, crmUserId, authUserId, authCompanyId, outcome };
+
+  if (outcome === "updated" || outcome === "unchanged") {
+    log.info(context, "AuthUserEmailUpdated processed: nothing to change in the CRM");
+    return { kind: "complete" };
+  }
+  if (outcome === "stale") {
+    log.warn(
+      { ...context, reason },
+      "Auth email matched neither the old nor the new email: needs manual attention, CRM email NOT reverted",
+    );
+    return { kind: "complete" };
+  }
+
+  // conflict / failed: Auth kept its old email, compensate the CRM.
+  log.warn({ ...context, reason }, "Auth did not apply the email change: reverting the CRM email");
+  try {
+    const result = await revert({ crmUserId, authUserId, authCompanyId, correlationId });
+    const fields = { ...context, reason, result };
+    if (result === "reverted") {
+      log.warn(fields, "CRM email reverted after Auth rejected the change (no event enqueued)");
+    } else {
+      log.error(fields, "CRM email NOT reverted after Auth rejected the change: needs manual attention");
+    }
+    return { kind: "complete" };
+  } catch (error) {
+    log.error(
+      { ...context, message: error instanceof Error ? error.message : String(error) },
+      "Failed to revert the CRM email",
+    );
+    return { kind: "abandon" };
+  }
+}
+
 /** Builds the `processMessage` callback: decide, then settle exactly once. */
 export function createCompanyEventHandler(
   settler: MessageSettler,
   deps: CrmCompanyEventHandlerDeps = {
     provision: provisionCrmCompanyAdmin,
     linkAuthUser,
+    revertUserEmail: revertUserEmailChange,
     log: logger,
   },
 ): (message: ServiceBusReceivedMessage) => Promise<void> {

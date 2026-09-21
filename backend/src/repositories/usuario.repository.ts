@@ -135,6 +135,23 @@ export async function linkAuthUserIfUnlinked(
   return count === 1;
 }
 
+/**
+ * crm-user-email-sync (E3): compare-and-set on `Usuario.correo` (Citext, so the
+ * equality is case-insensitive). Returns whether the row was updated.
+ */
+export async function replaceCorreoIfEquals(
+  id: string,
+  expectedCorreo: string,
+  correo: string,
+  client: PrismaClientOrTransaction = prisma,
+): Promise<boolean> {
+  const { count } = await client.usuario.updateMany({
+    where: { id, correo: expectedCorreo },
+    data: { correo },
+  });
+  return count === 1;
+}
+
 export async function setHolding(
   id: string,
   holdingId: string,
