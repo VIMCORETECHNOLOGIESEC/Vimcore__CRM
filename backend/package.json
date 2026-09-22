@@ -15,10 +15,11 @@
   },
   "dependencies": {
     "@azure/identity": "4.13.3",
-    "@azure/service-bus": "7.9.5",
     "@azure/storage-blob": "12.33.0",
     "@node-rs/argon2": "2.0.2",
     "@prisma/client": "6.19.3",
+    "amqp-connection-manager": "^4.1.14",
+    "amqplib": "^0.10.4",
     "cors": "^2.8.6",
     "exceljs": "4.4.0",
     "express": "5.2.1",
@@ -33,6 +34,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.5",
     "@types/cors": "^2.8.19",
     "@types/express": "5.0.6",
     "@types/multer": "2.2.0",

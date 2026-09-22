@@ -1,4 +1,3 @@
-import type { ServiceBusReceivedMessage } from "@azure/service-bus";
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import {
@@ -79,20 +78,25 @@ export type MessageDecision =
   | { kind: "deadLetter"; reason: string; description: string }
   | { kind: "abandon" };
 
-/** The peekLock settlement operations this handler needs from a `ServiceBusReceiver`. */
+/** The settlement operations this handler needs from the broker's message settler. */
 export interface MessageSettler {
-  completeMessage(message: ServiceBusReceivedMessage): Promise<void>;
+  completeMessage(message: CrmCompanyEventMessage): Promise<void>;
   deadLetterMessage(
-    message: ServiceBusReceivedMessage,
+    message: CrmCompanyEventMessage,
     options: { deadLetterReason: string; deadLetterErrorDescription: string },
   ): Promise<void>;
-  abandonMessage(message: ServiceBusReceivedMessage): Promise<void>;
+  abandonMessage(message: CrmCompanyEventMessage): Promise<void>;
 }
 
-export type CrmCompanyEventMessage = Pick<
-  ServiceBusReceivedMessage,
-  "messageId" | "body" | "applicationProperties" | "correlationId"
->;
+// T4 (servicebus-to-rabbitmq-migration): the subset of the message shape this
+// handler needs, broker-agnostic so it can be tested without any SDK (was a
+// `Pick<ServiceBusReceivedMessage, ...>` before the migration).
+export type CrmCompanyEventMessage = {
+  messageId?: string | number | Buffer;
+  correlationId?: string | number | Buffer;
+  applicationProperties?: Record<string, unknown>;
+  body: unknown;
+};
 
 export interface CrmCompanyEventHandlerDeps {
   provision: typeof provisionCrmCompanyAdmin;
@@ -442,7 +446,7 @@ export function createCompanyEventHandler(
     revertUserEmail: revertUserEmailChange,
     log: logger,
   },
-): (message: ServiceBusReceivedMessage) => Promise<void> {
+): (message: CrmCompanyEventMessage) => Promise<void> {
   return async (message) => {
     const decision = await decideCompanyEvent(message, deps);
     switch (decision.kind) {

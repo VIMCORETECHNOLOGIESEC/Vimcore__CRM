@@ -10,8 +10,8 @@ import {
   type ClaimedOutboxMessage,
   type OutboxRepository,
 } from "./outbox.js";
-import { resolveServiceBusSettings, type ServiceBusSettings } from "./crm-company-event-consumer.js";
-import { ServiceBusMessagePublisher, type MessagePublisher } from "./service-bus-message-publisher.js";
+import { resolveRabbitMqSettings, type RabbitMqConsumerSettings } from "./crm-company-event-consumer.js";
+import { RabbitMqMessagePublisher, type MessagePublisher } from "./rabbitmq-message-publisher.js";
 
 /**
  * Exponential backoff (`baseMs * 2^(attempt-1)`, capped at `maxMs`) reduced by a
@@ -75,7 +75,7 @@ function boundedFailureReason(error: unknown, timedOut: boolean): string {
 
 /**
  * crm-user-auth-provisioning (C1): polls the outbox, claims due rows under a
- * lease and publishes them to Service Bus. A failed publish is retried with
+ * lease and publishes them to RabbitMQ. A failed publish is retried with
  * exponential backoff + jitter until `maxAttempts`, then the row is `failed`.
  * Ticks never overlap; `stop()` is idempotent and waits (bounded) for the
  * in-flight tick.
@@ -235,13 +235,13 @@ export class OutboxPublisherLoop {
 }
 
 export interface CrmOutboxPublisher {
-  /** Idempotent: stops the loop (bounded drain) and closes the Service Bus client. */
+  /** Idempotent: stops the loop (bounded drain) and closes the RabbitMQ connection. */
   close(): Promise<void>;
 }
 
 export interface OutboxPublisherWiring {
-  settings?: ServiceBusSettings | null;
-  createPublisher?: (settings: ServiceBusSettings) => MessagePublisher;
+  settings?: RabbitMqConsumerSettings | null;
+  createPublisher?: (settings: RabbitMqConsumerSettings) => MessagePublisher;
   repository?: OutboxRepository;
   intervalMs?: number;
   maxAttempts?: number;
@@ -250,18 +250,18 @@ export interface OutboxPublisherWiring {
 /**
  * Starts the outbox publisher next to the other background workers
  * (`index.ts`, never `app.ts`). Returns `null` -- and the CRM keeps running --
- * when Service Bus is not configured or the client cannot be built; events then
+ * when RabbitMQ is not configured or the client cannot be built; events then
  * simply accumulate in `outbox_messages` until a configured instance drains them.
  */
 export function startCrmOutboxPublisher(wiring: OutboxPublisherWiring = {}): CrmOutboxPublisher | null {
-  const settings = wiring.settings === undefined ? resolveServiceBusSettings() : wiring.settings;
+  const settings = wiring.settings === undefined ? resolveRabbitMqSettings() : wiring.settings;
   if (settings === null) {
-    defaultLogger.info("Service Bus is not configured: CRM outbox publishing (CrmUserCreated) is disabled");
+    defaultLogger.info("RabbitMQ is not configured: CRM outbox publishing (CrmUserCreated) is disabled");
     return null;
   }
 
   try {
-    const publisher = (wiring.createPublisher ?? ((s: ServiceBusSettings) => new ServiceBusMessagePublisher(s)))(settings);
+    const publisher = (wiring.createPublisher ?? ((s: RabbitMqConsumerSettings) => new RabbitMqMessagePublisher(s)))(settings);
     const loop = new OutboxPublisherLoop(wiring.repository ?? createPrismaOutboxRepository(), publisher, {
       intervalMs: wiring.intervalMs ?? env.OUTBOX_POLL_INTERVAL_MS,
       maxAttempts: wiring.maxAttempts ?? env.OUTBOX_MAX_ATTEMPTS,
@@ -270,7 +270,7 @@ export function startCrmOutboxPublisher(wiring: OutboxPublisherWiring = {}): Crm
       runTick: (fn) => runAsSystem(fn),
     });
     void loop.start();
-    defaultLogger.info({ mode: settings.mode, topicName: settings.topicName }, "CRM outbox publisher started");
+    defaultLogger.info({ exchangeName: settings.exchangeName }, "CRM outbox publisher started");
 
     let closePromise: Promise<void> | null = null;
     return {

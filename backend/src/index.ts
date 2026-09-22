@@ -35,9 +35,9 @@ const bridgeApiPollTimer = startBridgeApiPollJob();
 const whatsappSlaTimer = startWhatsAppSlaJob();
 const metaAdsSyncTimer = startMetaAdsSyncJob();
 const ingestionWorker = startIngestionWorker();
-// holding-admin-gateway-auth: auto-provisioning from the auth Service Bus event; null when not configured.
+// holding-admin-gateway-auth: auto-provisioning from the auth RabbitMQ event; null when not configured.
 const companyEventConsumer = startCrmCompanyEventConsumer();
-// crm-user-auth-provisioning: publishes CrmUserCreated from the outbox; null when Service Bus is not configured.
+// crm-user-auth-provisioning: publishes CrmUserCreated from the outbox; null when RabbitMQ is not configured.
 const outboxPublisher = startCrmOutboxPublisher();
 
 let shuttingDown = false;

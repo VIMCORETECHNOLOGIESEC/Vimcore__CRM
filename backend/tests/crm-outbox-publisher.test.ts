@@ -11,12 +11,13 @@ import {
   startCrmOutboxPublisher,
 } from "../src/messaging/outbox-publisher-loop.js";
 import type { ClaimedOutboxMessage, OutboxRepository } from "../src/messaging/outbox.js";
-import { ServiceBusMessagePublisher } from "../src/messaging/service-bus-message-publisher.js";
+import { RabbitMqMessagePublisher } from "../src/messaging/rabbitmq-message-publisher.js";
 
 /**
- * crm-user-auth-provisioning (C1): Service Bus message shape, retry math, and
- * the loop's claim / publish / complete / fail transitions with a fake
- * repository and a fake sender (no broker, no database).
+ * crm-user-auth-provisioning (C1) / T4 (servicebus-to-rabbitmq-migration):
+ * RabbitMQ message shape, retry math, and the loop's claim / publish /
+ * complete / fail transitions with a fake repository and a fake channel (no
+ * broker, no database).
  */
 const NOW = new Date("2026-09-21T12:00:00.000Z");
 
@@ -41,45 +42,63 @@ function fakeRepository(claimed: ClaimedOutboxMessage[] = []) {
 
 const silentLogger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() });
 
-describe("ServiceBusMessagePublisher", () => {
+describe("RabbitMqMessagePublisher", () => {
   function fakeResources() {
     return {
-      sender: { sendMessages: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) },
-      client: { close: vi.fn().mockResolvedValue(undefined) },
+      channelWrapper: {
+        publish: vi.fn().mockResolvedValue(true),
+        close: vi.fn().mockResolvedValue(undefined),
+      },
+      connectionManager: { close: vi.fn().mockResolvedValue(undefined) },
     };
   }
 
-  it("sends a JSON UTF-8 Buffer with the contract properties and the outbox id as messageId", async () => {
+  it("publishes to the fanout exchange with native AMQP correlation/messageId and JSON headers", async () => {
     const resources = fakeResources();
-    const publisher = new ServiceBusMessagePublisher({ mode: "local", topicName: "t" }, resources);
+    const publisher = new RabbitMqMessagePublisher({ url: "amqp://unused", exchangeName: "vimcore-domain-events" }, resources);
     const signal = new AbortController().signal;
 
     await publisher.publish("CrmUserCreated", '{"crmUserId":"ñ-1"}', "corr-1", "msg-1", { abortSignal: signal });
 
-    expect(resources.sender.sendMessages).toHaveBeenCalledTimes(1);
-    const [sent, options] = resources.sender.sendMessages.mock.calls[0];
-    expect(Buffer.isBuffer(sent.body)).toBe(true);
-    expect(sent.body.toString("utf-8")).toBe('{"crmUserId":"ñ-1"}');
-    expect(sent).toMatchObject({
+    expect(resources.channelWrapper.publish).toHaveBeenCalledTimes(1);
+    const [exchange, routingKey, content, options] = resources.channelWrapper.publish.mock.calls[0];
+    expect(exchange).toBe("vimcore-domain-events");
+    // Binding key is irrelevant on a fanout exchange.
+    expect(routingKey).toBe("");
+    expect(Buffer.isBuffer(content)).toBe(true);
+    expect(content.toString("utf-8")).toBe('{"crmUserId":"ñ-1"}');
+    expect(options).toMatchObject({
       contentType: "application/json",
+      persistent: true,
       messageId: "msg-1",
       correlationId: "corr-1",
-      applicationProperties: { eventType: "CrmUserCreated", module: "crm", correlationId: "corr-1" },
+      headers: { eventType: "CrmUserCreated", module: "crm" },
     });
-    expect(options).toEqual({ abortSignal: signal });
   });
 
-  it("close() is idempotent and closes the sender before the client", async () => {
+  it("rejects when the abort signal fires before the publish resolves", async () => {
     const resources = fakeResources();
-    const publisher = new ServiceBusMessagePublisher({ mode: "local", topicName: "t" }, resources);
+    resources.channelWrapper.publish.mockReturnValue(new Promise(() => undefined));
+    const publisher = new RabbitMqMessagePublisher({ url: "amqp://unused", exchangeName: "vimcore-domain-events" }, resources);
+    const controller = new AbortController();
+
+    const publishing = publisher.publish("CrmUserCreated", "{}", "corr-1", "msg-1", { abortSignal: controller.signal });
+    controller.abort();
+
+    await expect(publishing).rejects.toThrow();
+  });
+
+  it("close() is idempotent and closes the channel before the connection", async () => {
+    const resources = fakeResources();
+    const publisher = new RabbitMqMessagePublisher({ url: "amqp://unused", exchangeName: "vimcore-domain-events" }, resources);
 
     await Promise.all([publisher.close(), publisher.close()]);
     await publisher.close();
 
-    expect(resources.sender.close).toHaveBeenCalledTimes(1);
-    expect(resources.client.close).toHaveBeenCalledTimes(1);
-    expect(resources.sender.close.mock.invocationCallOrder[0]).toBeLessThan(
-      resources.client.close.mock.invocationCallOrder[0],
+    expect(resources.channelWrapper.close).toHaveBeenCalledTimes(1);
+    expect(resources.connectionManager.close).toHaveBeenCalledTimes(1);
+    expect(resources.channelWrapper.close.mock.invocationCallOrder[0]).toBeLessThan(
+      resources.connectionManager.close.mock.invocationCallOrder[0],
     );
   });
 });
@@ -207,7 +226,7 @@ describe("OutboxPublisherLoop", () => {
 });
 
 describe("startCrmOutboxPublisher", () => {
-  it("returns null (CRM boots normally) when Service Bus is not configured", () => {
+  it("returns null (CRM boots normally) when RabbitMQ is not configured", () => {
     const createPublisher = vi.fn();
     expect(startCrmOutboxPublisher({ settings: null, createPublisher })).toBeNull();
     expect(createPublisher).not.toHaveBeenCalled();
@@ -217,7 +236,7 @@ describe("startCrmOutboxPublisher", () => {
     const repo = fakeRepository();
     const fakePublisher = { publish: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
     const outbox = startCrmOutboxPublisher({
-      settings: { mode: "local", connectionString: "Endpoint=sb://x", topicName: "vimcore-domain-events", subscriptionName: "s" },
+      settings: { url: "amqp://guest:guest@localhost:5672", exchangeName: "vimcore-domain-events", queueName: "crm-company-events" },
       createPublisher: () => fakePublisher,
       repository: repo,
       intervalMs: 60_000,
@@ -232,7 +251,7 @@ describe("startCrmOutboxPublisher", () => {
 
   it("returns null when the publisher cannot be built", () => {
     const outbox = startCrmOutboxPublisher({
-      settings: { mode: "azure", fullyQualifiedNamespace: "ns.servicebus.windows.net", topicName: "t", subscriptionName: "s" },
+      settings: { url: "amqp://guest:guest@localhost:5672", exchangeName: "vimcore-domain-events", queueName: "crm-company-events" },
       createPublisher: () => {
         throw new Error("no credentials");
       },

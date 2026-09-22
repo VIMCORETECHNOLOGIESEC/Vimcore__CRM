@@ -158,29 +158,32 @@ const envSchema = z.object({
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().min(32).optional(),
   ),
-  // holding-admin-gateway-auth: Azure Service Bus consumer that auto-provisions
-  // Holding + Empresa + admin from the auth `CompanyModuleSubscribed` event
-  // (`messaging/crm-company-event-consumer.ts`). Everything is optional: without
-  // the settings of the chosen mode the consumer is not created, the CRM logs
-  // that provisioning is disabled and boots normally. `azure` (default) needs
-  // the fully qualified namespace (authenticates with `DefaultAzureCredential`);
-  // `local` (Docker Compose / Service Bus emulator) needs the connection string.
-  SERVICE_BUS_MODE: z.preprocess(
+  // holding-admin-gateway-auth / T4 (servicebus-to-rabbitmq-migration): RabbitMQ
+  // consumer that auto-provisions Holding + Empresa + admin from the auth
+  // `CompanyModuleSubscribed` event (`messaging/crm-company-event-consumer.ts`).
+  // Still optional, same criterion Service Bus had: without `RABBITMQ_URL` the
+  // consumer/publisher are not created, the CRM logs that messaging is disabled
+  // and boots normally. No more `azure`/`local` mode -- RabbitMQ has a single
+  // connection mechanism (the URL), so that dichotomy (and its Azure-specific
+  // credential/namespace split) no longer applies.
+  RABBITMQ_URL: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-    z.enum(["azure", "local"]).default("azure"),
+    z.string().regex(/^amqps?:\/\//, "RABBITMQ_URL debe ser una URL amqp:// o amqps://").optional(),
   ),
-  SERVICE_BUS_CONNECTION_STRING: optionalEnvString,
-  SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE: optionalEnvString,
-  SERVICE_BUS_TOPIC_NAME: z.preprocess(
+  // Fanout exchange every domain event is published to (shared across Auth,
+  // Billing and CRM); the CRM's own durable queue below is bound to it.
+  RABBITMQ_EXCHANGE_NAME: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().min(1).default("vimcore-domain-events"),
   ),
-  SERVICE_BUS_CRM_SUBSCRIPTION_NAME: z.preprocess(
+  // Same name the old Service Bus subscription used -- the consumer asserts and
+  // binds this queue itself on startup.
+  RABBITMQ_CRM_QUEUE_NAME: z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     z.string().min(1).default("crm-company-events"),
   ),
   // crm-user-auth-provisioning (C1): outbox publisher loop
-  // (`messaging/outbox-publisher-loop.ts`). It only runs when Service Bus is
+  // (`messaging/outbox-publisher-loop.ts`). It only runs when RabbitMQ is
   // configured (same settings as above); these tune its polling and retry cap.
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),

@@ -1,111 +1,153 @@
 import { describe, expect, it, vi } from "vitest";
+
+const connectMock = vi.fn();
+vi.mock("amqp-connection-manager", () => ({
+  default: { connect: (...args: unknown[]) => connectMock(...(args as [])) },
+}));
+
 import {
   CrmCompanyEventConsumer,
-  resolveServiceBusSettings,
+  resolveRabbitMqSettings,
   startCrmCompanyEventConsumer,
 } from "../src/messaging/crm-company-event-consumer.js";
 
 /**
- * holding-admin-gateway-auth (T5b): consumer wiring with a fake Service Bus
- * client/receiver (no broker involved): peekLock, manual settlement, log-only
- * `processError`, idempotent `close()`, and the "not configured" boot path.
+ * holding-admin-gateway-auth (T5b) / T4 (servicebus-to-rabbitmq-migration):
+ * consumer wiring with a fake RabbitMQ connection manager/channel (no broker
+ * involved): exchange/queue assert + bind, manual settlement (ack/nack), and
+ * the "not configured" boot path. Full settlement decision routing (complete
+ * / deadLetter / abandon) is covered against `decideCompanyEvent` directly in
+ * `crm-company-event-handler.test.ts`.
  */
-function fakeClient() {
-  const receiver = {
-    subscribe: vi.fn(),
-    close: vi.fn().mockResolvedValue(undefined),
-    completeMessage: vi.fn(),
-    deadLetterMessage: vi.fn(),
-    abandonMessage: vi.fn(),
+function fakeAmqp() {
+  const channel = {
+    assertExchange: vi.fn().mockResolvedValue(undefined),
+    assertQueue: vi.fn().mockResolvedValue(undefined),
+    bindQueue: vi.fn().mockResolvedValue(undefined),
+    consume: vi.fn((_queueName: string, cb: (message: unknown) => void) => {
+      consumeCallback = cb;
+      return Promise.resolve();
+    }),
+    ack: vi.fn(),
+    nack: vi.fn(),
   };
-  const client = {
-    createReceiver: vi.fn().mockReturnValue(receiver),
+  const channelWrapper = { close: vi.fn().mockResolvedValue(undefined) };
+  let consumeCallback: ((message: unknown) => void) | undefined;
+  let setupPromise: Promise<void> | undefined;
+  const connectionManager = {
+    on: vi.fn(),
+    createChannel: vi.fn((options: { setup: (ch: typeof channel) => Promise<void> }) => {
+      setupPromise = options.setup(channel);
+      return channelWrapper;
+    }),
     close: vi.fn().mockResolvedValue(undefined),
   };
-  return { client, receiver };
+  connectMock.mockReturnValue(connectionManager);
+  return {
+    channel,
+    channelWrapper,
+    connectionManager,
+    waitForSetup: () => setupPromise,
+    getConsumeCallback: () => consumeCallback,
+  };
+}
+
+const SETTINGS = { url: "amqp://guest:guest@localhost:5672", exchangeName: "vimcore-domain-events", queueName: "crm-company-events" };
+
+// The consume callback is fire-and-forget (`void this.processMessage(...)`, same as
+// amqplib idiom), so tests let its promise chain drain past pending microtasks before
+// asserting on ack/nack.
+function flushAsync(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 describe("CrmCompanyEventConsumer", () => {
-  it("opens a peekLock receiver on the topic/subscription and subscribes without auto-complete", () => {
-    const { client, receiver } = fakeClient();
+  it("asserts the fanout exchange, the durable queue, binds it and consumes without auto-ack", async () => {
+    const fake = fakeAmqp();
 
-    new CrmCompanyEventConsumer(client as never, "vimcore-domain-events", "crm-company-events").start();
+    new CrmCompanyEventConsumer(SETTINGS).start();
+    await fake.waitForSetup();
 
-    expect(client.createReceiver).toHaveBeenCalledWith("vimcore-domain-events", "crm-company-events", {
-      receiveMode: "peekLock",
+    expect(connectMock).toHaveBeenCalledWith([SETTINGS.url]);
+    expect(fake.channel.assertExchange).toHaveBeenCalledWith("vimcore-domain-events", "fanout", { durable: true });
+    expect(fake.channel.assertQueue).toHaveBeenCalledWith("crm-company-events", { durable: true });
+    expect(fake.channel.bindQueue).toHaveBeenCalledWith("crm-company-events", "vimcore-domain-events", "");
+    expect(fake.channel.consume).toHaveBeenCalledWith("crm-company-events", expect.any(Function));
+  });
+
+  it("acks a message the handler completes (unknown module: nothing to do)", async () => {
+    const fake = fakeAmqp();
+    new CrmCompanyEventConsumer(SETTINGS).start();
+    await fake.waitForSetup();
+    const onMessage = fake.getConsumeCallback();
+
+    onMessage?.({
+      properties: { messageId: "msg-1", correlationId: "corr-1", headers: { eventType: "Other", module: "billing" } },
+      content: Buffer.from("{}"),
     });
-    expect(receiver.subscribe).toHaveBeenCalledTimes(1);
-    const [handlers, options] = receiver.subscribe.mock.calls[0] as [
-      { processMessage: unknown; processError: (args: unknown) => Promise<void> },
-      { autoCompleteMessages: boolean },
-    ];
-    expect(options).toEqual({ autoCompleteMessages: false });
-    expect(typeof handlers.processMessage).toBe("function");
+    await flushAsync();
+
+    expect(fake.channel.ack).toHaveBeenCalledTimes(1);
+    expect(fake.channel.nack).not.toHaveBeenCalled();
   });
 
-  it("processError only logs: it neither throws nor settles anything", async () => {
-    const { client, receiver } = fakeClient();
-    new CrmCompanyEventConsumer(client as never, "t", "s").start();
-    const [handlers] = receiver.subscribe.mock.calls[0] as [{ processError: (args: unknown) => Promise<void> }];
+  it("nacks without requeue for a malformed JSON body (deadLetter, no dead-letter infrastructure added)", async () => {
+    const fake = fakeAmqp();
+    new CrmCompanyEventConsumer(SETTINGS).start();
+    await fake.waitForSetup();
+    const onMessage = fake.getConsumeCallback();
+    const message = {
+      properties: { messageId: "msg-2", correlationId: "corr-2", headers: { eventType: "CompanyModuleSubscribed", module: "crm" } },
+      content: Buffer.from("not json"),
+    };
 
-    await expect(
-      handlers.processError({ entityPath: "t/s", errorSource: "receive", error: new Error("boom") }),
-    ).resolves.toBeUndefined();
+    onMessage?.(message);
+    await flushAsync();
 
-    expect(receiver.completeMessage).not.toHaveBeenCalled();
-    expect(receiver.abandonMessage).not.toHaveBeenCalled();
+    expect(fake.channel.nack).toHaveBeenCalledWith(message, false, false);
+    expect(fake.channel.ack).not.toHaveBeenCalled();
   });
 
-  it("close() is idempotent and closes the receiver before the client", async () => {
-    const { client, receiver } = fakeClient();
-    const consumer = new CrmCompanyEventConsumer(client as never, "t", "s");
+  it("close() is idempotent and closes the channel before the connection", async () => {
+    const fake = fakeAmqp();
+    const consumer = new CrmCompanyEventConsumer(SETTINGS);
+    consumer.start();
+    await fake.waitForSetup();
 
     await consumer.close();
     await consumer.close();
 
-    expect(receiver.close).toHaveBeenCalledTimes(1);
-    expect(client.close).toHaveBeenCalledTimes(1);
-    expect(receiver.close.mock.invocationCallOrder[0]).toBeLessThan(client.close.mock.invocationCallOrder[0] as number);
+    expect(fake.channelWrapper.close).toHaveBeenCalledTimes(1);
+    expect(fake.connectionManager.close).toHaveBeenCalledTimes(1);
+    expect(fake.channelWrapper.close.mock.invocationCallOrder[0]).toBeLessThan(
+      fake.connectionManager.close.mock.invocationCallOrder[0] as number,
+    );
   });
 
   it("close() never rejects even if the broker connection fails to close", async () => {
-    const { client, receiver } = fakeClient();
-    receiver.close.mockRejectedValue(new Error("already gone"));
+    const fake = fakeAmqp();
+    fake.channelWrapper.close.mockRejectedValue(new Error("already gone"));
+    const consumer = new CrmCompanyEventConsumer(SETTINGS);
+    consumer.start();
+    await fake.waitForSetup();
 
-    await expect(new CrmCompanyEventConsumer(client as never, "t", "s").close()).resolves.toBeUndefined();
+    await expect(consumer.close()).resolves.toBeUndefined();
   });
 });
 
-describe("resolveServiceBusSettings / startCrmCompanyEventConsumer", () => {
-  const base = {
-    SERVICE_BUS_TOPIC_NAME: "vimcore-domain-events",
-    SERVICE_BUS_CRM_SUBSCRIPTION_NAME: "crm-company-events",
-  };
+describe("resolveRabbitMqSettings / startCrmCompanyEventConsumer", () => {
+  const base = { RABBITMQ_EXCHANGE_NAME: "vimcore-domain-events", RABBITMQ_CRM_QUEUE_NAME: "crm-company-events" };
 
-  it("local mode needs the connection string", () => {
-    expect(
-      resolveServiceBusSettings({ ...base, SERVICE_BUS_MODE: "local", SERVICE_BUS_CONNECTION_STRING: "Endpoint=sb://x" }),
-    ).toMatchObject({ mode: "local", connectionString: "Endpoint=sb://x" });
-    expect(
-      resolveServiceBusSettings({
-        ...base,
-        SERVICE_BUS_MODE: "local",
-        SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE: "ns.servicebus.windows.net",
-      }),
-    ).toBeNull();
+  it("returns null when RABBITMQ_URL is not set", () => {
+    expect(resolveRabbitMqSettings({ ...base, RABBITMQ_URL: undefined })).toBeNull();
   });
 
-  it("azure mode needs the fully qualified namespace", () => {
-    expect(
-      resolveServiceBusSettings({
-        ...base,
-        SERVICE_BUS_MODE: "azure",
-        SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE: "ns.servicebus.windows.net",
-      }),
-    ).toMatchObject({ mode: "azure", fullyQualifiedNamespace: "ns.servicebus.windows.net" });
-    expect(
-      resolveServiceBusSettings({ ...base, SERVICE_BUS_MODE: "azure", SERVICE_BUS_CONNECTION_STRING: "Endpoint=sb://x" }),
-    ).toBeNull();
+  it("resolves the settings when RABBITMQ_URL is set", () => {
+    expect(resolveRabbitMqSettings({ ...base, RABBITMQ_URL: "amqp://guest:guest@localhost:5672" })).toEqual({
+      url: "amqp://guest:guest@localhost:5672",
+      exchangeName: "vimcore-domain-events",
+      queueName: "crm-company-events",
+    });
   });
 
   it("does not create a consumer when the settings are missing (provisioning disabled)", () => {
