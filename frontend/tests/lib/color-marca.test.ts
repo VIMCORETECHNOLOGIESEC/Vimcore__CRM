@@ -162,11 +162,10 @@ describe("resolveEstilosMarca", () => {
       undefined,
     );
     expect(estilos).toEqual({
-      // Línea gráfica ARCANO CRM: colorSecundario default ("#B98A4E" ->
+      // Línea gráfica VimCoRe Management: colorSecundario default ("#B98A4E" ->
       // "185 138 78") alimenta los 4 tokens de acento; su foreground lo
       // calcula `foregroundForContrast` (variante oscura de esa tonalidad,
-      // blanco falla AA contra el dorado -- ver docs/branding/arcano-linea-
-      // grafica.md), no queda fijo en blanco.
+      // blanco falla AA contra el dorado), no queda fijo en blanco.
       "--primary": "185 138 78",
       "--primary-foreground": "55 40 22",
       "--ring": "185 138 78",
@@ -289,13 +288,13 @@ describe("resolveLogoMarca (PASO 6)", () => {
     expect(resolveLogoMarca(usuario, holdingConLogo)).toBe("https://cdn.holding.com/logo.svg");
   });
 
-  it("nivel 3 -- sin isotipo propio y sin isotipo de holding devuelve null (nunca un ícono genérico)", () => {
-    expect(resolveLogoMarca(usuarioBase, { logoUrl: null })).toBeNull();
-    expect(resolveLogoMarca(usuarioBase, undefined)).toBeNull();
+  it("nivel 3 -- sin isotipo propio y sin isotipo de holding devuelve el logo de fábrica", () => {
+    expect(resolveLogoMarca(usuarioBase, { logoUrl: null })).toBe("/logo_crm.jpeg");
+    expect(resolveLogoMarca(usuarioBase, undefined)).toBe("/logo_crm.jpeg");
   });
 
-  it("usuario null devuelve null (sesion sin resolver todavia)", () => {
-    expect(resolveLogoMarca(null, holdingConLogo)).toBeNull();
+  it("usuario null devuelve el logo de fábrica (sesion sin resolver todavia)", () => {
+    expect(resolveLogoMarca(null, holdingConLogo)).toBe("/logo_crm.jpeg");
   });
 });
 
@@ -313,11 +312,11 @@ describe("resolveNombreMarca (PASO 7)", () => {
 
   it("nivel 3 -- sin nombre de sesion y sin config de holding cae al default de fábrica", () => {
     const usuario = { ...usuarioBase, sessionScope: "holding" as const, empresaNombre: null };
-    expect(resolveNombreMarca(usuario, undefined)).toBe("ARCANO CRM");
+    expect(resolveNombreMarca(usuario, undefined)).toBe("VimCoRe Management");
   });
 
   it("usuario null cae al default de fábrica", () => {
-    expect(resolveNombreMarca(null, undefined)).toBe("ARCANO CRM");
+    expect(resolveNombreMarca(null, undefined)).toBe("VimCoRe Management");
     expect(resolveNombreMarca(null, holdingConNombre)).toBe("Holding En Vivo");
   });
 });
@@ -383,7 +382,7 @@ describe("resolveMarcaCompleta (fix splash duplicado)", () => {
       empresaColorSecundario: null,
     };
     expect(resolveMarcaCompleta(usuario, undefined)).toEqual({
-      nombre: "ARCANO CRM",
+      nombre: "VimCoRe Management",
       "--marca-color-1": "#241F1B",
       "--marca-color-2": "#B98A4E",
     });
@@ -391,7 +390,7 @@ describe("resolveMarcaCompleta (fix splash duplicado)", () => {
 
   it("usuario null cae al default de fábrica para las 3 variables", () => {
     expect(resolveMarcaCompleta(null, undefined)).toEqual({
-      nombre: "ARCANO CRM",
+      nombre: "VimCoRe Management",
       "--marca-color-1": "#241F1B",
       "--marca-color-2": "#B98A4E",
     });

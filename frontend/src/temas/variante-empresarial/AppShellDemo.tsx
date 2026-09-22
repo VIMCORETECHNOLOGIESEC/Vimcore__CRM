@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { LeadsTable } from "@/funcionalidades/leads/LeadsTable";
 import { NAVIGATION_ITEMS } from "@/layouts/navigation";
 import { cn } from "@/lib/utils";
+import { NombreProducto } from "./NombreProducto";
 import { LEADS_MOCK_STYLEGUIDE } from "./StyleguidePage";
 
 interface AppShellDemoProps {
@@ -88,7 +89,7 @@ export function AppShellDemo({ onReiniciar }: AppShellDemoProps) {
             <ImageIcon className="size-3.5 text-[#F5F3EE]/60" />
           </span>
           <p className="headline text-sm font-semibold !text-[var(--papel)]">
-            CRM Embudo de Leads
+            <NombreProducto />
           </p>
         </div>
         {NAVIGATION_ITEMS.map((item) => {

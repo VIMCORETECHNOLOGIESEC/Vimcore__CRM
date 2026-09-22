@@ -22,6 +22,7 @@ import { LeadsTable } from "@/funcionalidades/leads/LeadsTable";
 import { SemaforoBadge } from "@/funcionalidades/leads/SemaforoBadge";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/tipos/lead";
+import { NombreProducto } from "./NombreProducto";
 import { SidebarIndigoPreview } from "./SidebarIndigoPreview";
 import { WelcomeSplashLoader } from "./WelcomeSplashLoader";
 import "./tema-empresarial.css";
@@ -167,7 +168,7 @@ function Portada() {
           Directorio
         </h1>
         <p className="max-w-xl text-base !text-[var(--papel)] opacity-75 sm:text-lg">
-          Sistema de componentes — CRM Embudo de Leads.
+          Sistema de componentes — <NombreProducto />.
         </p>
       </div>
       <p className="dossier-colofon text-center sm:text-right">

@@ -38,17 +38,15 @@
     --card-foreground: 63 63 70;
     --popover: 255 255 255;
     --popover-foreground: 63 63 70;
-    /* Línea gráfica ARCANO CRM (rebrandeo de cliente, docs/branding/arcano-
-       linea-grafica.md en la rama cliente/arcano-crm): grafito/dorado
-       extraído del isotipo del cliente, reemplaza el azul vimcore genérico
-       en los tokens estáticos de fallback (pre-login / antes de que
-       resuelva la config dinámica por tenant, `color-marca.ts`). */
-    --arcano-graphite-900: 36 31 27;
-    --arcano-gold: 185 138 78;
-    /* `--arcano-gold-deep` (no `--arcano-gold`): blanco sobre gold plano da
+    /* Línea gráfica VimCoRe Management: grafito/dorado como fallback estático
+       de marca (pre-login / antes de que resuelva la config dinámica por
+       tenant, `color-marca.ts`). */
+    --vimcore-management-graphite-900: 36 31 27;
+    --vimcore-management-gold: 185 138 78;
+    /* `--vimcore-management-gold-deep` (no `--vimcore-management-gold`): blanco sobre gold plano da
        3.08:1, falla AA texto (ver el doc de arriba) -- gold-deep da 7.98:1,
        seguro para el pill sólido con texto blanco de abajo. */
-    --arcano-gold-deep: 107 74 37;
+    --vimcore-management-gold-deep: 107 74 37;
     --primary: 36 31 27;
     --primary-foreground: 255 255 255;
     --secondary: 233 231 225;
@@ -113,12 +111,12 @@
 
     /*
      * Marca "vimcore" (sidebar, inspirada en la variante empresarial):
-     * chrome grafito sólido (línea gráfica ARCANO CRM), texto hueso, pill
+     * chrome grafito sólido (línea gráfica VimCoRe Management), texto hueso, pill
      * activa dorado-oscuro. Canales RGB crudos como el resto de los tokens
-     * (ver nota de :root). El acento usa `--arcano-gold-deep`
-     * (107 74 37), no `--arcano-gold` plano: sobre este mismo fondo
+     * (ver nota de :root). El acento usa `--vimcore-management-gold-deep`
+     * (107 74 37), no `--vimcore-management-gold` plano: sobre este mismo fondo
      * grafito necesita distinguirse Y seguir dando AA con texto blanco
-     * encima (ver el comentario de `--arcano-gold-deep` más arriba).
+     * encima (ver el comentario de `--vimcore-management-gold-deep` más arriba).
      */
     --vimcore: 36 31 27;
     --vimcore-2: 27 23 20;

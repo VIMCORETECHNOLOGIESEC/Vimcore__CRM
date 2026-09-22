@@ -308,23 +308,22 @@ export function resolveEstilosMarcaEmpresaVista(
  * 1) isotipo propio de la `Empresa` de una sesión `company`
  *    (`usuario.empresaLogoUrl`); 2) si no, el del holding EN VIVO
  *    (`configuracionHolding.logoUrl`, `useConfiguracionEmpresa()`); 3) si
- *    ninguno de los dos existe todavía, `null` -- a propósito NUNCA un ícono
- *    genérico de reemplazo (decisión explícita del PASO 6): es mejor no
- *    mostrar nada que mostrar un isotipo roto o inventado.
+ *    ninguno de los dos existe todavía, el logo de fábrica
+ *    (`CONFIGURACION_EMPRESA_DEFAULT.logoUrl`, `/logo_crm.jpeg`).
  */
 export function resolveLogoMarca(
   usuario: AuthenticatedUser | null,
   configuracionHolding: Pick<ConfiguracionEmpresa, "logoUrl"> | undefined,
 ): string | null {
   if (!usuario) {
-    return null;
+    return CONFIGURACION_EMPRESA_DEFAULT.logoUrl;
   }
 
   if (usuario.sessionScope === "company" && usuario.empresaLogoUrl !== null) {
     return usuario.empresaLogoUrl;
   }
 
-  return configuracionHolding?.logoUrl ?? null;
+  return configuracionHolding?.logoUrl ?? CONFIGURACION_EMPRESA_DEFAULT.logoUrl;
 }
 
 /**

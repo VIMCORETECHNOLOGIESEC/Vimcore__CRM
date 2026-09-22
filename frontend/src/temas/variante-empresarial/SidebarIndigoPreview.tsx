@@ -2,6 +2,7 @@ import { Bell, Image as ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { NAVIGATION_ITEMS } from "@/layouts/navigation";
 import { cn } from "@/lib/utils";
+import { NombreProducto } from "./NombreProducto";
 
 /**
  * Propuesta de chrome sólido índigo para sidebar/header (revisión de
@@ -50,7 +51,7 @@ export function SidebarIndigoPreview() {
             <ImageIcon className="size-3.5 text-[#F5F3EE]/60" />
           </span>
           <p className="headline text-sm font-semibold !text-[var(--papel)]">
-            CRM Embudo de Leads
+            <NombreProducto />
           </p>
         </div>
         {NAVIGATION_ITEMS.map((item) => {

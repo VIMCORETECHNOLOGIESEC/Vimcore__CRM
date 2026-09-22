@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NombreProducto } from "./NombreProducto";
 
 interface LoginScreenDemoProps {
   /** Disparado tras el "envío" simulado (sin red, sin validación de credenciales). */
@@ -88,7 +89,7 @@ export function LoginScreenDemo({ onIniciarSesion }: LoginScreenDemoProps) {
           acá es fijo, la identidad del producto en sí.
         */}
         <p className="headline text-lg font-semibold tracking-wide !text-[var(--papel)]">
-          CRM Embudo de Leads
+          <NombreProducto />
         </p>
       </div>
 

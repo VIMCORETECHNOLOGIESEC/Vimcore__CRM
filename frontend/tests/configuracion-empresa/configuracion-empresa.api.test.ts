@@ -84,12 +84,12 @@ describe("configuracion-empresa.api", () => {
     expect(resultado).toBe("https://cdn.miempresa.com/logo.png");
   });
 
-  it("expone los defaults documentados como fallback (línea gráfica ARCANO CRM)", () => {
+  it("expone los defaults documentados como fallback (línea gráfica VimCoRe Management)", () => {
     expect(CONFIGURACION_EMPRESA_DEFAULT).toEqual({
-      nombre: "ARCANO CRM",
+      nombre: "VimCoRe Management",
       colorPrimario: "#241F1B",
       colorSecundario: "#B98A4E",
-      logoUrl: null,
+      logoUrl: "/logo_crm.jpeg",
     });
   });
 });

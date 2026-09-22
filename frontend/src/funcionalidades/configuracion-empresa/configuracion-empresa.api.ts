@@ -24,7 +24,8 @@ export interface ConfiguracionEmpresa {
   colorSecundario: string;
   /**
    * PASO 6 (tema-empresarial-integracion): URL del isotipo del holding --
-   * `null` cuando nunca se configuró ninguno (no hay un logo de fábrica).
+   * `null` cuando la empresa/holding no configuró uno propio; el frontend cae
+   * al logo de fábrica (`/logo_crm.jpeg`) en sus defaults.
    */
   logoUrl: string | null;
 }
@@ -37,20 +38,18 @@ export type UpdateConfiguracionEmpresaInput = Partial<ConfiguracionEmpresa>;
  * `LoginPage.tsx`), nunca como sustituto silencioso de una respuesta exitosa
  * del backend.
  *
- * Línea gráfica ARCANO CRM (rebrandeo de cliente, `docs/branding/arcano-
- * linea-grafica.md` en la rama `cliente/arcano-crm`): grafito `#241F1B`
- * (`--arcano-graphite-900`) + dorado `#B98A4E` (`--arcano-gold`), paleta
- * extraída del isotipo del cliente y verificada por contraste WCAG en ese
- * doc. Ya NO coincide con el default de fábrica del backend ("CRM Embudo de
- * Leads", `#1e2a5e`/`#2563eb`) -- divergencia intencional para este cliente,
- * solo visible en el instante breve de un fallback (el nombre/color real en
- * uso normal viaja siempre por `GET /configuracion-empresa`).
+ * Línea gráfica VimCoRe Management: grafito `#241F1B` + dorado `#B98A4E`,
+ * paleta verificada por contraste WCAG. Ya NO coincide con el default de
+ * fábrica del backend ("CRM Embudo de Leads", `#1e2a5e`/`#2563eb`) --
+ * divergencia intencional para este cliente, solo visible en el instante breve
+ * de un fallback (el nombre/color real en uso normal viaja siempre por
+ * `GET /configuracion-empresa`). El logo default vive en `public/logo_crm.jpeg`.
  */
 export const CONFIGURACION_EMPRESA_DEFAULT: ConfiguracionEmpresa = {
-  nombre: "ARCANO CRM",
+  nombre: "VimCoRe Management",
   colorPrimario: "#241F1B",
   colorSecundario: "#B98A4E",
-  logoUrl: null,
+  logoUrl: "/logo_crm.jpeg",
 };
 
 /** `GET /configuracion-empresa` -- cualquier usuario autenticado. */

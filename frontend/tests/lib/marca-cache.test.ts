@@ -89,7 +89,7 @@ describe("marca-cache — persistMarcaConocida", () => {
 
     expect(getMarcaConocida()).toEqual({
       empresaId: null,
-      nombre: "ARCANO CRM",
+      nombre: "VimCoRe Management",
       colorPrimario: "#241F1B",
       colorSecundario: "#B98A4E",
     });
@@ -99,7 +99,7 @@ describe("marca-cache — persistMarcaConocida", () => {
     persistMarcaConocida(usuarioCompanyConColorPropio);
     persistMarcaConocida(usuarioHolding);
 
-    expect(getMarcaConocida()?.nombre).toBe("ARCANO CRM");
+    expect(getMarcaConocida()?.nombre).toBe("VimCoRe Management");
   });
 });
 

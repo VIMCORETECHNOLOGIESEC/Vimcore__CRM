@@ -68,7 +68,7 @@ describe("LeadsNavigationTutorial -- color de marca en el botón 'Siguiente' de 
     expect(latestOptions?.primaryColor).toBe("#f97316");
   });
 
-  it("cae al color por defecto del CRM (#B98A4E, línea gráfica ARCANO CRM) cuando no se recibe colorAcento (ej. empresa sin marca propia)", () => {
+  it("cae al color por defecto del CRM (#B98A4E, línea gráfica VimCoRe Management) cuando no se recibe colorAcento (ej. empresa sin marca propia)", () => {
     renderProvider(undefined);
 
     expect(latestOptions?.primaryColor).toBe("#B98A4E");
