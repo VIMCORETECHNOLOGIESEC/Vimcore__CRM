@@ -3,10 +3,8 @@ import { NotFoundPage } from "@/componentes/NotFoundPage";
 import { BridgeDetallePage } from "@/funcionalidades/bridges/detalle/BridgeDetallePage";
 import { BridgesPage } from "@/funcionalidades/bridges/BridgesPage";
 import { EmpresaBridgesPage } from "@/funcionalidades/bridges/EmpresaBridgesPage";
-import {
-  IniciarSesionRedirect,
-  LandingRedirect,
-} from "@/funcionalidades/autenticacion/EstadosAccesoPage";
+import { IniciarSesionRedirect } from "@/funcionalidades/autenticacion/EstadosAccesoPage";
+import { LandingPage } from "@/funcionalidades/marketing/LandingPage";
 import { CalendarCitasPage } from "@/funcionalidades/citas/CalendarCitasPage";
 import { ConfiguracionEmpresaPage } from "@/funcionalidades/configuracion-empresa/ConfiguracionEmpresaPage";
 import { EmpresaAparienciaPage } from "@/funcionalidades/empresa-apariencia/EmpresaAparienciaPage";
@@ -96,6 +94,7 @@ import { StyleguidePage } from "@/temas/variante-empresarial/StyleguidePage";
  * autoridad cross-empresa).
  */
 export const router = createBrowserRouter([
+  { path: "/", element: <LandingPage /> },
   {
     // Favoritos viejos: el CRM ya no tiene login propio, va al frontend de auth.
     path: "/iniciar-sesion",
@@ -125,7 +124,6 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <LandingRedirect /> },
           { path: "panel", element: <DashboardPage /> },
           { path: "leads", element: <LeadsPage /> },
           {

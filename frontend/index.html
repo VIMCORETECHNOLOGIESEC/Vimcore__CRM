@@ -14,8 +14,7 @@
       sidebar) en cuanto la marca se resuelve, vía
       `lib/favicon-marca.ts::actualizarThemeColor`.
 
-      Favicon (`<link rel="icon">`): default ESTÁTICO del proyecto (isotipo
-      VimCoRe Management, `public/favicon_crm.jpeg`), no un placeholder vacío --
+      Favicon (`<link rel="icon">`): default ESTÁTICO del proyecto (isotipo azul transparente de Vimcore CRM, `public/favicon-vimcore.png`), no un placeholder vacío --
       antes de este cambio, sin sesión resuelta (login, boot) la pestaña
       quedaba con un ícono indefinido del navegador, porque `updateFavicon`
       (`lib/favicon-marca.ts`) solo corre en runtime desde `AppLayout.tsx`
@@ -26,7 +25,7 @@
       a que exista sesión.
     -->
     <meta name="theme-color" content="#241F1B" />
-    <link rel="icon" type="image/jpeg" href="/favicon_crm.jpeg" />
+    <link rel="icon" type="image/png" href="/favicon-vimcore.png" />
     <title>VimCoRe Management</title>
     <!--
       Google Fonts de la variante "Propuesta B -- Consejo directivo"

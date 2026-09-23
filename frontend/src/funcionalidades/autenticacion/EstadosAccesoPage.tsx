@@ -1,9 +1,6 @@
-import { Navigate } from "react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { getAuthLoginUrl, redirectToAuth } from "@/api/httpClient";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "./auth-context";
-import { getLandingRoute } from "./permissions";
 
 function PantallaAcceso({
   titulo,
@@ -82,9 +79,3 @@ export function SinSesionPage() {
 
 /** Ruta `/iniciar-sesion` (favoritos viejos): el CRM ya no tiene login propio. */
 export const IniciarSesionRedirect = SinSesionPage;
-
-/** Índice `/`: aterriza según rol (`ADMINISTRADOR_HOLDING` -> `/empresas`). */
-export function LandingRedirect() {
-  const { user } = useAuth();
-  return <Navigate to={user ? getLandingRoute(user.rol, user.sessionScope) : "/panel"} replace />;
-}

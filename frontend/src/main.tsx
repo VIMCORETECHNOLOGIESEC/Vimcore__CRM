@@ -13,10 +13,8 @@ if (!rootElement) {
   throw new Error("No se encontró el elemento raíz #root en index.html");
 }
 
+const isPublicLanding = window.location.pathname === "/";
+
 createRoot(rootElement).render(
-  <StrictMode>
-    <AppBoot>
-      <App />
-    </AppBoot>
-  </StrictMode>,
+  <StrictMode>{isPublicLanding ? <App /> : <AppBoot><App /></AppBoot>}</StrictMode>,
 );

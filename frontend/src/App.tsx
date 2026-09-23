@@ -7,13 +7,16 @@ import { AuthProvider } from "@/funcionalidades/autenticacion/AuthContext";
 import { router } from "@/router";
 
 function App() {
+  const isPublicLanding = window.location.pathname === "/";
+  const routerContent = (
+    <TooltipProvider>
+      <RouterProvider router={router} />
+    </TooltipProvider>
+  );
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-        </TooltipProvider>
-      </AuthProvider>
+      {isPublicLanding ? routerContent : <AuthProvider>{routerContent}</AuthProvider>}
       <Toaster richColors position="bottom-right" closeButton />
     </QueryClientProvider>
   );
