@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTenantLogger } from "../src/lib/logger.js";
 import {
   createCompanyEventHandler,
   decideCompanyEvent,
@@ -536,5 +537,47 @@ describe("decideCompanyEvent — AuthUserAccessResent for crm", () => {
     expect(await decideCompanyEvent(other, deps)).toEqual({ kind: "complete" });
     expect(await decideCompanyEvent(unknown, deps)).toEqual({ kind: "complete" });
     expect(log.info).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * crm-company-event-poison-loop (T1): drives `decideCompanyEvent` through the
+ * REAL tenant logger (not the mocked `log` object every other test in this
+ * file uses) so the assertion actually exercises `lib/logger.ts`'s
+ * suppression hook -- proving the production bug (a provisioning failure log
+ * without `holdingWide` gets replaced by `tenant_output_suppressed`, hiding
+ * the real cause) is fixed, not just that some field was passed to a mock.
+ */
+describe("decideCompanyEvent — explicit, non-suppressed error logs (poison-loop T1)", () => {
+  function captureLogs() {
+    const lines: string[] = [];
+    const realLogger = createTenantLogger({ write: (line: string) => lines.push(line) });
+    return { realLogger, lines };
+  }
+
+  it("logs a thrown provisioning error with holdingWide and the explicit cause, never suppressed", async () => {
+    const { realLogger, lines } = captureLogs();
+    const provisionError = new Error("connection refused: postgres unreachable");
+    const realDeps = {
+      provision: vi.fn().mockRejectedValue(provisionError),
+      linkAuthUser: vi.fn(),
+      revertUserEmail: vi.fn(),
+      log: realLogger,
+    } as unknown as CrmCompanyEventHandlerDeps;
+
+    const decision = await decideCompanyEvent(message(payload()), realDeps);
+
+    expect(decision).toEqual({ kind: "abandon" });
+    const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    const failureRecord = records.find((record) => record.msg === "Failed to provision CRM company");
+    expect(failureRecord).toBeDefined();
+    expect(failureRecord?.event).not.toBe("tenant_output_suppressed");
+    expect(failureRecord).toMatchObject({
+      holdingWide: true,
+      messageId: "msg-1",
+      eventType: "CompanyModuleSubscribed",
+      attempt: 1,
+    });
+    expect((failureRecord?.err as Record<string, unknown> | undefined)?.message).toBe(provisionError.message);
   });
 });

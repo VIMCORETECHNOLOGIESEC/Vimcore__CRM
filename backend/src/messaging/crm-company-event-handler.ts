@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { describeError } from "../lib/error-details.js";
 import { logger } from "../lib/logger.js";
 import {
   AuthProvisioningConflictError,
@@ -6,6 +7,7 @@ import {
 } from "../services/auth-provisioning.service.js";
 import { linkAuthUser } from "../services/auth-user-link.service.js";
 import { revertUserEmailChange } from "../services/email-sync.service.js";
+import { readRetryAttempt } from "./rabbitmq-retry.js";
 
 const CRM_MODULE = "crm";
 const SUBSCRIBED_EVENT = "CompanyModuleSubscribed";
@@ -160,7 +162,7 @@ export async function decideCompanyEvent(
     (propertyEventType !== undefined && !isKnownEventType(propertyEventType))
   ) {
     log.debug(
-      { messageId: message.messageId, eventType: propertyEventType, module: propertyModule },
+      { holdingWide: true, messageId: message.messageId, eventType: propertyEventType, module: propertyModule },
       "Ignoring event not handled by the CRM",
     );
     return { kind: "complete" };
@@ -175,7 +177,12 @@ export async function decideCompanyEvent(
     body = decoded as Record<string, unknown>;
   } catch {
     log.error(
-      { messageId: message.messageId, correlationId: propertyCorrelationId },
+      {
+        holdingWide: true,
+        messageId: message.messageId,
+        correlationId: propertyCorrelationId,
+        eventType: propertyEventType,
+      },
       "Malformed company event payload",
     );
     return {
@@ -191,7 +198,7 @@ export async function decideCompanyEvent(
 
   if (moduleName?.toLowerCase() !== CRM_MODULE || !isKnownEventType(eventType)) {
     log.debug(
-      { messageId: message.messageId, eventType, module: moduleName, correlationId },
+      { holdingWide: true, messageId: message.messageId, eventType, module: moduleName, correlationId },
       "Ignoring event not handled by the CRM",
     );
     return { kind: "complete" };
@@ -211,7 +218,7 @@ export async function decideCompanyEvent(
 
   if (eventType === UNSUBSCRIBED_EVENT) {
     log.info(
-      { messageId: message.messageId, companyId: asString(body.companyId), correlationId },
+      { holdingWide: true, messageId: message.messageId, eventType, companyId: asString(body.companyId), correlationId },
       "CompanyModuleUnsubscribed received for crm: not handled in this iteration",
     );
     return { kind: "complete" };
@@ -219,7 +226,10 @@ export async function decideCompanyEvent(
 
   const base = subscribedSchema.safeParse(body);
   if (!base.success) {
-    log.error({ messageId: message.messageId, correlationId }, "Invalid CompanyModuleSubscribed payload");
+    log.error(
+      { holdingWide: true, messageId: message.messageId, eventType, correlationId },
+      "Invalid CompanyModuleSubscribed payload",
+    );
     return {
       kind: "deadLetter",
       reason: "InvalidPayload",
@@ -230,7 +240,7 @@ export async function decideCompanyEvent(
   const { adminUserId, adminEmail, adminFullName } = base.data;
   if (![adminUserId, adminEmail, adminFullName].every((value) => asString(value) !== undefined)) {
     log.warn(
-      { messageId: message.messageId, companyId: base.data.companyId, correlationId },
+      { holdingWide: true, messageId: message.messageId, eventType, companyId: base.data.companyId, correlationId },
       "CompanyModuleSubscribed without admin fields: nothing to provision",
     );
     return { kind: "complete" };
@@ -238,7 +248,10 @@ export async function decideCompanyEvent(
 
   const input = provisionableSchema.safeParse(body);
   if (!input.success) {
-    log.error({ messageId: message.messageId, correlationId }, "Invalid CompanyModuleSubscribed payload");
+    log.error(
+      { holdingWide: true, messageId: message.messageId, eventType, correlationId },
+      "Invalid CompanyModuleSubscribed payload",
+    );
     return {
       kind: "deadLetter",
       reason: "InvalidPayload",
@@ -246,12 +259,20 @@ export async function decideCompanyEvent(
     };
   }
 
+  // crm-company-event-poison-loop (T1): the number of attempts already made by
+  // the consumer's bounded retry (`messaging/rabbitmq-retry.ts`), so a
+  // provisioning failure log below shows which attempt it is without needing
+  // to correlate with the consumer's own logs.
+  const attempt = readRetryAttempt(properties) + 1;
+
   try {
     const result = await provision(input.data);
     log.info(
       {
+        holdingWide: true,
         messageId: message.messageId,
         correlationId,
+        eventType,
         outcome: result.outcome,
         companyId: input.data.companyId,
         adminUserId: input.data.adminUserId,
@@ -265,8 +286,12 @@ export async function decideCompanyEvent(
     if (error instanceof AuthProvisioningConflictError) {
       log.error(
         {
+          holdingWide: true,
+          ...describeError(error),
           messageId: message.messageId,
           correlationId,
+          eventType,
+          attempt,
           companyId: input.data.companyId,
           adminUserId: input.data.adminUserId,
           reason: error.reason,
@@ -278,9 +303,14 @@ export async function decideCompanyEvent(
 
     log.error(
       {
+        holdingWide: true,
+        ...describeError(error),
         messageId: message.messageId,
         correlationId,
-        message: error instanceof Error ? error.message : String(error),
+        eventType,
+        attempt,
+        companyId: input.data.companyId,
+        adminUserId: input.data.adminUserId,
       },
       "Failed to provision CRM company",
     );

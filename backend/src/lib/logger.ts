@@ -45,6 +45,11 @@ function loggerOptions(useTransport: boolean): LoggerOptions {
         return method.apply(this, args);
       },
     },
+    // crm-company-event-poison-loop (T1): explicit `err.name`/`message`/`stack`
+    // on every error log instead of an ad hoc `{ message: string }` field --
+    // see `lib/error-details.ts::describeError`, which always puts a real
+    // `Error` under `err` so this serializer applies.
+    serializers: { err: pino.stdSerializers.err },
     redact: {
       paths: [
         "req.headers.authorization",

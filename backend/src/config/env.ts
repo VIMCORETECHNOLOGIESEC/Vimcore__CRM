@@ -187,6 +187,25 @@ const envSchema = z.object({
   // configured (same settings as above); these tune its polling and retry cap.
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+  // crm-company-event-poison-loop (T2): bounded retry for
+  // `messaging/crm-company-event-consumer.ts`. A processing failure (thrown
+  // error or handler abandon) is retried with exponential backoff
+  // (`messaging/rabbitmq-retry.ts::computeRetryDelayMs`) up to this many
+  // attempts, then the message is dead-lettered (nack, no requeue) instead of
+  // looping forever. Same sane-default criterion as OUTBOX_* above.
+  RABBITMQ_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  RABBITMQ_RETRY_BASE_DELAY_MS: z.coerce.number().int().positive().default(2_000),
+  // crm-company-event-poison-loop (T3): durable parking queue a message is
+  // published to (persistent copy, publisher-confirmed) instead of being
+  // dropped once retries are exhausted or the handler decides `deadLetter` --
+  // `crm-company-events` has no DLX and redeclaring it with one would be a
+  // breaking queue-argument change (PRECONDITION_FAILED) against the existing
+  // production queue. Optional: undefined derives `${RABBITMQ_CRM_QUEUE_NAME}.dead`
+  // in `resolveRabbitMqSettings`, so this only needs setting to override that name.
+  RABBITMQ_CRM_DEAD_QUEUE_NAME: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
 }).superRefine((values, context) => {
   const linkedinConfigured = LINKEDIN_VARIABLES.some(
     (variable) => values[variable] !== undefined,
