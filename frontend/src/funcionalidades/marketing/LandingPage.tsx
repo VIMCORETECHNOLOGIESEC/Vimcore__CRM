@@ -14,9 +14,9 @@ import {
   X,
 } from "lucide-react";
 import { type MouseEvent, useRef, useState } from "react";
-import { getAuthLoginUrl } from "@/api/httpClient";
 import { CrmScrollShowcase } from "./CrmScrollShowcase";
 import { ContactSection } from "./ContactSection";
+import { VIMCORE_PLATFORM_LOGIN_URL } from "./marketing.config";
 
 const navigation = [
   { label: "Inicio", href: "#inicio" },
@@ -38,7 +38,7 @@ function Brand() {
 export function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const pageRef = useRef<HTMLElement>(null);
-  const loginUrl = getAuthLoginUrl();
+  const loginUrl = VIMCORE_PLATFORM_LOGIN_URL;
 
   const scrollToHome = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
